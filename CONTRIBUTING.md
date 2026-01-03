@@ -3,6 +3,7 @@
 ## Prerequisites
 
 - Go 1.24.2 or later
+- Node.js 18+ and npm for frontend development
 - [mkcert](https://github.com/FiloSottile/mkcert) for local TLS certificates
 - [grpcurl](https://github.com/fullstorydev/grpcurl) for testing RPC endpoints
 
@@ -64,6 +65,22 @@ Start the server:
 ```bash
 make run
 ```
+
+### Frontend Development
+
+For frontend development with hot reloading, run the Vite dev server alongside the Go backend. See [docs/dev-server.md](docs/dev-server.md) for detailed instructions.
+
+Quick start:
+
+```bash
+# Terminal 1: Start Go backend
+make run
+
+# Terminal 2: Start Vite dev server
+make dev
+```
+
+Then open `https://localhost:5173/ui/` in your browser.
 
 ### Code Generation
 
