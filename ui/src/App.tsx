@@ -12,7 +12,15 @@ import {
   Card,
   CardContent,
 } from '@mui/material'
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useHref,
+  useLinkClickHandler,
+  useLocation,
+} from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
 
 const theme = createTheme({
@@ -24,6 +32,11 @@ const theme = createTheme({
 function App() {
   const location = useLocation()
   const isVersionPage = location.pathname.startsWith('/version')
+  const landingHref = useHref('/')
+  const landingClick = useLinkClickHandler('/')
+  const landingHrefWithSlash = landingHref.endsWith('/')
+    ? landingHref
+    : `${landingHref}/`
 
   return (
     <ThemeProvider theme={theme}>
@@ -47,8 +60,9 @@ function App() {
           <Divider />
           <List sx={{ px: 1 }}>
             <ListItemButton
-              component={Link}
-              to="/"
+              component="a"
+              href={landingHrefWithSlash}
+              onClick={landingClick}
               selected={!isVersionPage}
             >
               <ListItemText primary="Landing" />
