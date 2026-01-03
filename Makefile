@@ -67,8 +67,15 @@ tools: ## Install tool dependencies.
 	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
 
 .PHONY: test
-test: ## Run tests.
+test: test:go test:ui ## Run tests.
+
+.PHONY: test:go
+test:go: ## Run Go tests.
 	go test -race -coverprofile=coverage.out ./...
+
+.PHONY: test:ui
+test:ui: ## Run UI tests.
+	cd ui && npm test -- --run
 
 .PHONY: coverage
 coverage: test ## Test coverage profile.
