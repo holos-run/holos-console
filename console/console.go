@@ -92,7 +92,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Redirect /ui to /ui/
 	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/ui" {
-			http.Redirect(w, r, "/ui/", http.StatusFound)
+			http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
 			return
 		}
 		http.NotFound(w, r)

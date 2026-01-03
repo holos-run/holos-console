@@ -20,7 +20,7 @@ function renderApp(initialEntry: string) {
   return render(
     <TransportProvider transport={transport}>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter basename="/ui/" initialEntries={[initialEntry]}>
+        <MemoryRouter basename="/ui" initialEntries={[initialEntry]}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>

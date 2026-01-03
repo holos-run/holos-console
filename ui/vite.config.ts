@@ -10,7 +10,7 @@ const uiTrailingSlashRedirect = (): Plugin => ({
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
       if (req.url === '/ui') {
-        res.statusCode = 302
+        res.statusCode = 301
         res.setHeader('Location', '/ui/')
         res.end()
         return

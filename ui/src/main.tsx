@@ -18,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <TransportProvider transport={transport}>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename="/ui/">
+        <BrowserRouter basename="/ui">
           <App />
         </BrowserRouter>
       </QueryClientProvider>
