@@ -6,4 +6,6 @@ package main
 
 import (
 	_ "github.com/bufbuild/buf/cmd/buf"
+	_ "github.com/fullstorydev/grpcurl/cmd/grpcurl"
+	_ "filippo.io/mkcert"
 )
