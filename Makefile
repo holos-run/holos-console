@@ -29,13 +29,13 @@ tag: ## Create version tag.
 build: ## Build executable.
 	@echo "building ${BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
-	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/$(BIN_NAME)
+	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
 
 .PHONY: debug
 debug: ## Build debug executable.
 	@echo "building ${BIN_NAME}-debug ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
-	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd/$(BIN_NAME)
+	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd
 
 .PHONY: install
 install: build ## Install to GOPATH/bin
