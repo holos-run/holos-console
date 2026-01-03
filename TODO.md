@@ -22,14 +22,14 @@
 
 ### Phase 2: Add ConnectRPC Client with TypeScript Code Generation
 
-8. [ ] Add buf configuration for TypeScript/ES code generation (`buf.gen.yaml` updates).
-9. [ ] Install ConnectRPC client dependencies (`@connectrpc/connect`, `@connectrpc/connect-web`, `@bufbuild/protobuf`).
-10. [ ] Install buf plugins for TypeScript generation (`@bufbuild/protoc-gen-es`, `@connectrpc/protoc-gen-connect-es`).
-11. [ ] Configure buf to generate TypeScript client code to `ui/src/gen/`.
-12. [ ] Run `buf generate` to produce TypeScript client stubs.
-13. [ ] Create a ConnectRPC transport configured for the backend.
-13.b [ ] Document how the vite dev server is configured to make RPC calls to the go backend in dev mode.  Include this in the docs/dev-server.md file and mention this file exists in the CONTRIBUTING.md file.
-14. [ ] Commit: "Add ConnectRPC TypeScript client generation"
+8. [x] Add buf configuration for TypeScript/ES code generation (`buf.gen.yaml` updates).
+9. [x] Install ConnectRPC client dependencies (`@connectrpc/connect`, `@connectrpc/connect-web`, `@bufbuild/protobuf`).
+10. [x] Install buf plugins for TypeScript generation (`@bufbuild/protoc-gen-es`, `@connectrpc/protoc-gen-connect-es`).
+11. [x] Configure buf to generate TypeScript client code to `ui/src/gen/`.
+12. [x] Run `buf generate` to produce TypeScript client stubs.
+13. [x] Create a ConnectRPC transport configured for the backend.
+13.b [x] Document how the vite dev server is configured to make RPC calls to the go backend in dev mode.  Include this in the docs/dev-server.md file and mention this file exists in the CONTRIBUTING.md file.  Explain how the contributor can use a single env var to configure the host and port used by both the go backend and the react/vite frontend.
+14. [x] Commit: "Add ConnectRPC TypeScript client generation"
 
 ### Phase 3: Create Version Display Page
 
