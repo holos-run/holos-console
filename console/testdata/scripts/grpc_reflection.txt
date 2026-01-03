@@ -1,0 +1,3 @@
+startserver
+exec grpcurl -insecure $SERVER_ADDR list
+stdout 'holos.console.v1.VersionService'
