@@ -4,7 +4,7 @@ import { VersionService } from './gen/holos/console/v1/version_pb.js'
 
 // In development with Vite proxy, use relative path (proxied to backend).
 // In production, the frontend is served by the Go backend at the same origin.
-const transport = createConnectTransport({
+export const transport = createConnectTransport({
   baseUrl: '/',
 })
 

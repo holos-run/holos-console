@@ -1,100 +1,13 @@
-import { useEffect, useState } from 'react'
 import { Card, CardContent, Typography, Stack, Box } from '@mui/material'
-import { create } from '@bufbuild/protobuf'
-import { GetVersionRequestSchema } from '../gen/holos/console/v1/version_pb.js'
-import { versionClient } from '../client'
-
-type VersionInfo = {
-  version: string
-  gitCommit: string
-  gitTreeState: string
-  buildDate: string
-}
-
-type VersionState = {
-  loading: boolean
-  error: string | null
-  version: VersionInfo | null
-}
+import { useVersion } from '../queries/version'
 
 function formatValue(value: string) {
   return value && value.length > 0 ? value : 'unknown'
 }
 
-let cachedVersion: VersionInfo | null = null
-let inFlightVersion: Promise<VersionInfo> | null = null
-
-function fetchVersionInfo() {
-  if (cachedVersion) {
-    return Promise.resolve(cachedVersion)
-  }
-
-  if (inFlightVersion) {
-    return inFlightVersion
-  }
-
-  inFlightVersion = versionClient
-    .getVersion(create(GetVersionRequestSchema))
-    .then((response) => {
-      const info = {
-        version: response.version,
-        gitCommit: response.gitCommit,
-        gitTreeState: response.gitTreeState,
-        buildDate: response.buildDate,
-      }
-      cachedVersion = info
-      return info
-    })
-    .finally(() => {
-      inFlightVersion = null
-    })
-
-  return inFlightVersion
-}
-
 export function VersionCard() {
-  const [state, setState] = useState<VersionState>({
-    loading: true,
-    error: null,
-    version: null,
-  })
-
-  useEffect(() => {
-    let active = true
-
-    async function loadVersion() {
-      try {
-        const info = await fetchVersionInfo()
-
-        if (!active) {
-          return
-        }
-
-        setState({
-          loading: false,
-          error: null,
-          version: info,
-        })
-      } catch (error) {
-        if (!active) {
-          return
-        }
-
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        setState({
-          loading: false,
-          error: message,
-          version: null,
-        })
-      }
-    }
-
-    loadVersion()
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const { data, isLoading, error } = useVersion()
+  const errorMessage = error ? error.message : null
 
   return (
     <Card variant="outlined">
@@ -102,11 +15,11 @@ export function VersionCard() {
         <Typography variant="h6" gutterBottom>
           Server Version
         </Typography>
-        {state.loading ? (
+        {isLoading ? (
           <Typography variant="body2">Loading version info...</Typography>
-        ) : state.error ? (
+        ) : errorMessage ? (
           <Typography variant="body2" color="error">
-            Failed to load version info: {state.error}
+            Failed to load version info: {errorMessage}
           </Typography>
         ) : (
           <Stack spacing={1.5}>
@@ -115,7 +28,7 @@ export function VersionCard() {
                 Version
               </Typography>
               <Typography variant="body1">
-                {formatValue(state.version?.version ?? '')}
+                {formatValue(data?.version ?? '')}
               </Typography>
             </Box>
             <Box>
@@ -123,7 +36,7 @@ export function VersionCard() {
                 Git Commit
               </Typography>
               <Typography variant="body1">
-                {formatValue(state.version?.gitCommit ?? '')}
+                {formatValue(data?.gitCommit ?? '')}
               </Typography>
             </Box>
             <Box>
@@ -131,7 +44,7 @@ export function VersionCard() {
                 Git Tree State
               </Typography>
               <Typography variant="body1">
-                {formatValue(state.version?.gitTreeState ?? '')}
+                {formatValue(data?.gitTreeState ?? '')}
               </Typography>
             </Box>
             <Box>
@@ -139,7 +52,7 @@ export function VersionCard() {
                 Build Date
               </Typography>
               <Typography variant="body1">
-                {formatValue(state.version?.buildDate ?? '')}
+                {formatValue(data?.buildDate ?? '')}
               </Typography>
             </Box>
           </Stack>
