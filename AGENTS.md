@@ -1,0 +1,67 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+```bash
+make build          # Build executable to bin/holos-console
+make debug          # Build with debug symbols to bin/holos-console-debug
+make test           # Run tests with race detector
+make generate       # Run go generate (regenerates protobuf code)
+make tools          # Install pinned tool dependencies (buf)
+make certs          # Generate TLS certificates with mkcert (one-time setup)
+make run            # Build and run server with generated certificates
+make fmt            # Format code
+make vet            # Run go vet
+make lint           # Run golangci-lint
+```
+
+## Architecture
+
+This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC services.
+
+### Package Structure
+
+- `cmd/` - Main entrypoint, calls into cli package
+- `cli/` - Cobra CLI setup, exposes `Command()` and `Run()` functions
+- `console/` - Core server package
+  - `console.go` - HTTP server setup, TLS, route registration, embedded UI serving
+  - `version.go` - Version info with embedded version files and ldflags
+  - `rpc/` - ConnectRPC handler implementations
+  - `ui/` - Embedded static files served at `/ui/` (build output, not source)
+- `proto/` - Protobuf source files
+- `gen/` - Generated protobuf Go code (do not edit)
+
+### Code Generation
+
+Protobuf code is generated using buf. The `generate.go` file contains the `//go:generate buf generate` directive. After modifying `.proto` files in `proto/`, run:
+
+```bash
+make generate   # or: go generate ./...
+```
+
+This produces:
+- `gen/**/*.pb.go` - Go structs for messages
+- `gen/**/consolev1connect/*.connect.go` - ConnectRPC client/server bindings
+
+### Adding New RPCs
+
+1. Define RPC and messages in `proto/holos/console/v1/*.proto`
+2. Run `make generate`
+3. Implement handler method in `console/rpc/` (embed `Unimplemented*Handler` for forward compatibility)
+4. Handler is auto-wired when service is registered in `console/console.go`
+
+See `docs/rpc-service-definitions.md` for detailed examples.
+
+### Version Management
+
+Version is determined by:
+1. `console/version/{major,minor,patch}` files (embedded at compile time)
+2. `GitDescribe` ldflags override (set by Makefile during build)
+
+Build metadata (commit, tree state, date) injected via ldflags in Makefile.
+
+### Tool Dependencies
+
+Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
