@@ -88,6 +88,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		http.NotFound(w, r)
 	})
 
+	// Redirect /ui to /ui/
+	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ui" {
+			http.Redirect(w, r, "/ui/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
 	// Serve embedded UI files at /ui/
 	uiContent, err := fs.Sub(uiFS, "ui")
 	if err != nil {
