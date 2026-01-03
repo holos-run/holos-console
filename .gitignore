@@ -36,3 +36,4 @@ bin/
 .claude/*.local.json
 certs/tls.crt
 certs/tls.key
+console/ui/assets/index-*.js

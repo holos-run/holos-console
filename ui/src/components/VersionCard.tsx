@@ -4,19 +4,52 @@ import { create } from '@bufbuild/protobuf'
 import { GetVersionRequestSchema } from '../gen/holos/console/v1/version_pb.js'
 import { versionClient } from '../client'
 
+type VersionInfo = {
+  version: string
+  gitCommit: string
+  gitTreeState: string
+  buildDate: string
+}
+
 type VersionState = {
   loading: boolean
   error: string | null
-  version: {
-    version: string
-    gitCommit: string
-    gitTreeState: string
-    buildDate: string
-  } | null
+  version: VersionInfo | null
 }
 
 function formatValue(value: string) {
   return value && value.length > 0 ? value : 'unknown'
+}
+
+let cachedVersion: VersionInfo | null = null
+let inFlightVersion: Promise<VersionInfo> | null = null
+
+function fetchVersionInfo() {
+  if (cachedVersion) {
+    return Promise.resolve(cachedVersion)
+  }
+
+  if (inFlightVersion) {
+    return inFlightVersion
+  }
+
+  inFlightVersion = versionClient
+    .getVersion(create(GetVersionRequestSchema))
+    .then((response) => {
+      const info = {
+        version: response.version,
+        gitCommit: response.gitCommit,
+        gitTreeState: response.gitTreeState,
+        buildDate: response.buildDate,
+      }
+      cachedVersion = info
+      return info
+    })
+    .finally(() => {
+      inFlightVersion = null
+    })
+
+  return inFlightVersion
 }
 
 export function VersionCard() {
@@ -31,9 +64,7 @@ export function VersionCard() {
 
     async function loadVersion() {
       try {
-        const response = await versionClient.getVersion(
-          create(GetVersionRequestSchema),
-        )
+        const info = await fetchVersionInfo()
 
         if (!active) {
           return
@@ -42,12 +73,7 @@ export function VersionCard() {
         setState({
           loading: false,
           error: null,
-          version: {
-            version: response.version,
-            gitCommit: response.gitCommit,
-            gitTreeState: response.gitTreeState,
-            buildDate: response.buildDate,
-          },
+          version: info,
         })
       } catch (error) {
         if (!active) {

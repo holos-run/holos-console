@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -88,7 +89,23 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
-	mux.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.FS(uiContent))))
+	uiHandler := newUIHandler(uiContent)
+	mux.Handle("/ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/ui/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/ui/")
+		if r2.URL.Path == "" {
+			r2.URL.Path = "/"
+		} else if !strings.HasPrefix(r2.URL.Path, "/") {
+			r2.URL.Path = "/" + r2.URL.Path
+		}
+
+		uiHandler.ServeHTTP(w, r2)
+	}))
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -138,6 +155,40 @@ func (s *Server) Serve(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+type uiHandler struct {
+	fs         fs.FS
+	fileServer http.Handler
+}
+
+func newUIHandler(uiContent fs.FS) http.Handler {
+	return &uiHandler{
+		fs:         uiContent,
+		fileServer: http.FileServer(http.FS(uiContent)),
+	}
+}
+
+func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	requestPath := strings.TrimPrefix(r.URL.Path, "/")
+	if requestPath == "" {
+		r.URL.Path = "/index.html"
+		h.fileServer.ServeHTTP(w, r)
+		return
+	}
+
+	file, err := h.fs.Open(requestPath)
+	if err == nil {
+		defer file.Close()
+		stat, statErr := file.Stat()
+		if statErr == nil && !stat.IsDir() {
+			h.fileServer.ServeHTTP(w, r)
+			return
+		}
+	}
+
+	r.URL.Path = "/index.html"
+	h.fileServer.ServeHTTP(w, r)
 }
 
 // tlsConfig returns the TLS configuration for the server.

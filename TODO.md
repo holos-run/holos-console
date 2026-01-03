@@ -36,8 +36,14 @@
 15. [x] Create a Version component that calls `VersionService.GetVersion()`.
 16. [x] Display version, git commit, tree state, and build date in a MUI Card.
 17. [x] Wire up the Version component in App.tsx.
-18. [x] Test manually with Vite dev server proxying to Go backend.
+18. [z] Test manually with Vite dev server proxying to Go backend.
 19. [x] Commit: "Add version display page using ConnectRPC"
+
+Follow up fixes:
+
+20. [x] GetVersion is called twice when the version page loads.  Explain why and fix the problem.
+21. [x] Browsing directly to the go backend using https://localhost:8443/ui/ results in ERR_TOO_MANY_REDIRECTS fix this problem and explain why it happened in the commit message.
+22. [ ] TODO(jeff): Both of these fixes from Codex 5.2 seem wrong at first glance.  VersionInfo seems unnecessary to define and cache.
 
 ### Phase 4: Wire Up Go Generate and Embedding
 
