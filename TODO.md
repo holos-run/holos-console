@@ -33,11 +33,11 @@
 
 ### Phase 3: Create Version Display Page
 
-15. [ ] Create a Version component that calls `VersionService.GetVersion()`.
-16. [ ] Display version, git commit, tree state, and build date in a MUI Card.
-17. [ ] Wire up the Version component in App.tsx.
-18. [ ] Test manually with Vite dev server proxying to Go backend.
-19. [ ] Commit: "Add version display page using ConnectRPC"
+15. [x] Create a Version component that calls `VersionService.GetVersion()`.
+16. [x] Display version, git commit, tree state, and build date in a MUI Card.
+17. [x] Wire up the Version component in App.tsx.
+18. [x] Test manually with Vite dev server proxying to Go backend.
+19. [x] Commit: "Add version display page using ConnectRPC"
 
 ### Phase 4: Wire Up Go Generate and Embedding
 

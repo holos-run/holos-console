@@ -19,8 +19,8 @@ export default defineConfig({
       key: fs.readFileSync(path.resolve(__dirname, '../certs/tls.key')),
     },
     proxy: {
-      // Proxy all requests except /ui/ to the Go backend
-      '^(?!/ui/).*': {
+      // Proxy ConnectRPC requests to the Go backend.
+      '^/holos\\.console\\.v1\\..*': {
         target: backendUrl,
         secure: false,
         changeOrigin: true,
