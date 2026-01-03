@@ -5,7 +5,8 @@
 package main
 
 import (
+	_ "filippo.io/mkcert"
 	_ "github.com/bufbuild/buf/cmd/buf"
 	_ "github.com/fullstorydev/grpcurl/cmd/grpcurl"
-	_ "filippo.io/mkcert"
+	_ "github.com/rogpeppe/go-internal/testscript"
 )
