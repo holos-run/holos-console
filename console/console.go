@@ -16,6 +16,15 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"connectrpc.com/connect"
+	"connectrpc.com/grpcreflect"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
+	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
 //go:embed ui
@@ -42,6 +51,29 @@ func New(cfg Config) *Server {
 func (s *Server) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
 
+	// Configure ConnectRPC interceptors
+	interceptors := connect.WithInterceptors(
+		rpc.MetricsInterceptor(),
+		rpc.LoggingInterceptor(),
+	)
+
+	// Register VersionService
+	versionHandler := rpc.NewVersionHandler(rpc.VersionInfo{
+		Version:      GetVersion(),
+		GitCommit:    GitCommit,
+		GitTreeState: GitTreeState,
+		BuildDate:    BuildDate,
+	})
+	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, interceptors)
+	mux.Handle(path, handler)
+
+	// Register gRPC reflection for introspection (grpcurl, etc.)
+	reflector := grpcreflect.NewStaticReflector(consolev1connect.VersionServiceName)
+	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
+	mux.Handle(reflectPath, reflectHandler)
+	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
+	mux.Handle(reflectAlphaPath, reflectAlphaHandler)
+
 	// Redirect / to /ui/
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
@@ -58,9 +90,15 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	mux.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.FS(uiContent))))
 
+	// Expose Prometheus metrics at /metrics
+	mux.Handle("/metrics", promhttp.Handler())
+
+	// Wrap with h2c for HTTP/2 cleartext support (needed for gRPC over HTTP/2)
+	h2cHandler := h2c.NewHandler(mux, &http2.Server{})
+
 	server := &http.Server{
 		Addr:    s.cfg.ListenAddr,
-		Handler: mux,
+		Handler: h2cHandler,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
 		},

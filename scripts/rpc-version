@@ -1,0 +1,9 @@
+#!/bin/bash
+# Get the server version using grpcurl
+
+set -euo pipefail
+
+HOST="${1:-localhost:8443}"
+CACERT="${CACERT:-$(mkcert -CAROOT)/rootCA.pem}"
+
+grpcurl -cacert "$CACERT" "$HOST" holos.console.v1.VersionService/GetVersion

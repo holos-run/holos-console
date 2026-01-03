@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// VersionService provides version information about the server.
+service VersionService {
+  // GetVersion returns the current server version.
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}
+
+// GetVersionRequest is empty as no parameters are needed.
+message GetVersionRequest {}
+
+// GetVersionResponse contains version information.
+message GetVersionResponse {
+  // version is the semantic version string.
+  string version = 1;
+  // git_commit is the git commit hash.
+  string git_commit = 2;
+  // git_tree_state indicates if the working tree was clean or dirty.
+  string git_tree_state = 3;
+  // build_date is the build timestamp.
+  string build_date = 4;
+}
