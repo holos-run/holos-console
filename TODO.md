@@ -4,6 +4,7 @@
 2. [ ] Initialize the vite + react + material ui + connect rpc client with a simple page that reports the current version.
 3. [ ] Wire up auth, use Dex as an issuer to start with PKCE.
 4. [ ] Wire up a user profile page, store state in a Secret. Make the backend pluggable so it can write to the filesystem instead of the kube API server.
+5. [ ] Fix claude code not correctly killing the dev servers, creates lots of orphan vite and holos-console processes.
 
 ---
 
@@ -11,13 +12,13 @@
 
 ### Phase 1: Initialize Vite React TypeScript Project
 
-1. [ ] Create `ui/` directory at project root for the frontend source code.
-2. [ ] Initialize Vite with React TypeScript template (`npm create vite@latest ui -- --template react-ts`).
-3. [ ] Install Material UI dependencies (`@mui/material`, `@emotion/react`, `@emotion/styled`).
-4. [ ] Configure Vite to output build to `console/ui/` for Go embedding.
-5. [ ] Create a minimal App component with MUI ThemeProvider.
-6. [ ] Verify the dev server works (`npm run dev`).
-7. [ ] Commit: "Initialize Vite React TypeScript frontend with MUI"
+1. [x] Create `ui/` directory at project root for the frontend source code.
+2. [x] Initialize Vite with React TypeScript template (`npm create vite@latest ui -- --template react-ts`).
+3. [x] Install Material UI dependencies (`@mui/material`, `@emotion/react`, `@emotion/styled`).
+4. [x] Configure Vite to output build to `console/ui/` for Go embedding.
+5. [x] Create a minimal App component with MUI ThemeProvider.
+6. [x] Verify the dev server works (`npm run dev`).
+7. [x] Commit: "Initialize Vite React TypeScript frontend with MUI"
 
 ### Phase 2: Add ConnectRPC Client with TypeScript Code Generation
 
@@ -27,6 +28,7 @@
 11. [ ] Configure buf to generate TypeScript client code to `ui/src/gen/`.
 12. [ ] Run `buf generate` to produce TypeScript client stubs.
 13. [ ] Create a ConnectRPC transport configured for the backend.
+13.b [ ] Document how the vite dev server is configured to make RPC calls to the go backend in dev mode.  Include this in the docs/dev-server.md file and mention this file exists in the CONTRIBUTING.md file.
 14. [ ] Commit: "Add ConnectRPC TypeScript client generation"
 
 ### Phase 3: Create Version Display Page

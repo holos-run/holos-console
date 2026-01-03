@@ -86,6 +86,10 @@ certs: ## Generate TLS certificates using mkcert.
 run: build ## Run the server with generated certificates.
 	./bin/$(BIN_NAME) --cert certs/tls.crt --key certs/tls.key
 
+.PHONY: dev
+dev: ## Start the Vite dev server for frontend development.
+	./scripts/dev
+
 .PHONY: rpc-version
 rpc-version: ## Get server version via gRPC.
 	./scripts/rpc-version
