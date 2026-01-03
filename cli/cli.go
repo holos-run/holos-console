@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/holos-run/holos-console/internal/console"
+	"github.com/holos-run/holos-console/console"
 )
 
 var (
