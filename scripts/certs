@@ -1,0 +1,12 @@
+#!/bin/bash
+# Generate TLS certificates using mkcert
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+CERTS_DIR="$PROJECT_ROOT/certs"
+
+mkdir -p "$CERTS_DIR"
+
+mkcert -cert-file "$CERTS_DIR/tls.crt" -key-file "$CERTS_DIR/tls.key" localhost 127.0.0.1 ::1
