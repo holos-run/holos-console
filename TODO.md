@@ -66,7 +66,7 @@ Follow up fixes:
 
 ### Phase 6: Switch to ReactRouter avoiding anchors.
 
-33. [ ] Do not use anchors in URLs for navigation, switch to normal paths using the idiomatic way to handle client side routing in React.
+33. [x] Do not use anchors in URLs for navigation, switch to normal paths using the idiomatic way to handle client side routing in React.
 
 ### Key Implementation Notes
 
