@@ -26,7 +26,8 @@ var (
 // GetVersion returns the semantic version string.
 func GetVersion() string {
 	if GitDescribe != "" {
-		return GitDescribe
+		describe := strings.TrimSpace(GitDescribe)
+		return strings.TrimPrefix(describe, "v")
 	}
 	return strings.TrimSpace(major) + "." + strings.TrimSpace(minor) + "." + strings.TrimSpace(patch)
 }
