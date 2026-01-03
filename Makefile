@@ -14,6 +14,10 @@ GIT_TREE_STATE=$(shell test -n "`git status --porcelain`" && echo "dirty" || ech
 BUILD_DATE=$(shell date -Iseconds)
 
 LD_FLAGS="-w -X ${ORG_PATH}/${PROJ}/console.GitDescribe=${GIT_DETAIL}${GIT_SUFFIX} -X ${ORG_PATH}/${PROJ}/console.GitCommit=${GIT_COMMIT} -X ${ORG_PATH}/${PROJ}/console.GitTreeState=${GIT_TREE_STATE} -X ${ORG_PATH}/${PROJ}/console.BuildDate=${BUILD_DATE}"
+TEST_LDFLAGS=
+ifeq ($(OS),darwin)
+TEST_LDFLAGS=-ldflags=-linkmode=internal
+endif
 
 default: build
 
@@ -71,7 +75,7 @@ test: test-go test-ui ## Run tests.
 
 .PHONY: test-go
 test-go: ## Run Go tests.
-	go test -race -coverprofile=coverage.out ./...
+	go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
 .PHONY: test-ui
 test-ui: ## Run UI tests.

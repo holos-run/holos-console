@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Before making changes, review `CONTRIBUTING.md` for commit message requirements.
+
 ## Build Commands
 
 ```bash

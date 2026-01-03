@@ -99,6 +99,14 @@ make test           # Run tests
 make rpc-version    # Test version RPC with grpcurl
 ```
 
+## Commit Messages
+
+All commit messages must follow this format and include the root-cause analysis for why the issue happened, with citations to sources (for example, deep links to GitHub issues that describe the problem and its cause):
+
+```
+Without this patch ...  This patch fixes the problem by ...  Result: ... [AGENT INCLUDE VERIFICATION steps and output pasted into the commit]
+```
+
 ### Formatting and Linting
 
 ```bash
