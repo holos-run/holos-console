@@ -90,22 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
 	uiHandler := newUIHandler(uiContent)
-	mux.Handle("/ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/ui/") {
-			http.NotFound(w, r)
-			return
-		}
-
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/ui/")
-		if r2.URL.Path == "" {
-			r2.URL.Path = "/"
-		} else if !strings.HasPrefix(r2.URL.Path, "/") {
-			r2.URL.Path = "/" + r2.URL.Path
-		}
-
-		uiHandler.ServeHTTP(w, r2)
-	}))
+	mux.Handle("/ui/", http.StripPrefix("/ui/", uiHandler))
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
