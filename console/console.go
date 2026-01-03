@@ -100,10 +100,11 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Wrap with h2c for HTTP/2 cleartext support (needed for gRPC over HTTP/2)
 	h2cHandler := h2c.NewHandler(mux, &http2.Server{})
+	loggedHandler := logRequests(h2cHandler)
 
 	server := &http.Server{
 		Addr:    s.cfg.ListenAddr,
-		Handler: h2cHandler,
+		Handler: loggedHandler,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
 		},
@@ -143,6 +144,68 @@ func (s *Server) Serve(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	bytes      int
+}
+
+func (w *loggingResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *loggingResponseWriter) Write(data []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += n
+	return n, err
+}
+
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		writer := &loggingResponseWriter{ResponseWriter: w}
+
+		next.ServeHTTP(writer, r)
+
+		status := writer.statusCode
+		if status == 0 {
+			status = http.StatusOK
+		}
+
+		remoteAddr := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			remoteAddr = host
+		}
+
+		timestamp := start.Format("02/Jan/2006:15:04:05 -0700")
+		requestLine := fmt.Sprintf("%s %s %s", r.Method, r.URL.RequestURI(), r.Proto)
+		referer := r.Referer()
+		if referer == "" {
+			referer = "-"
+		}
+		userAgent := r.UserAgent()
+		if userAgent == "" {
+			userAgent = "-"
+		}
+
+		logLine := fmt.Sprintf(
+			`%s - - [%s] "%s" %d %d "%s" "%s"`,
+			remoteAddr,
+			timestamp,
+			requestLine,
+			status,
+			writer.bytes,
+			referer,
+			userAgent,
+		)
+		slog.Info(logLine)
+	})
 }
 
 type uiHandler struct {

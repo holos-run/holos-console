@@ -68,6 +68,10 @@ Follow up fixes:
 
 33. [x] Do not use anchors in URLs for navigation, switch to normal paths using the idiomatic way to handle client side routing in React.
 
+### Follow up tasks.
+
+34. [x] Log http requests using a standard format, e.g. when the index.html or other static assets are requested.
+
 ### Key Implementation Notes
 
 - **Directory Structure**: `ui/` contains frontend source, `console/ui/` contains built assets for embedding.
