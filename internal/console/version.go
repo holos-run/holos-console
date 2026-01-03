@@ -1,4 +1,4 @@
-package version
+package console
 
 import (
 	_ "embed"
@@ -6,11 +6,11 @@ import (
 )
 
 var (
-	//go:embed embedded/major
+	//go:embed version/major
 	major string
-	//go:embed embedded/minor
+	//go:embed version/minor
 	minor string
-	//go:embed embedded/patch
+	//go:embed version/patch
 	patch string
 
 	// GitDescribe is set by ldflags at build time.

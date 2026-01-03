@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/holos-run/holos-console/internal/cli"
-	"github.com/holos-run/holos-console/version"
+	"github.com/holos-run/holos-console/internal/console"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 func run() int {
 	// Handle version command early
 	if len(os.Args) >= 2 && os.Args[1] == "version" {
-		fmt.Println(version.GetVersion())
+		fmt.Println(console.GetVersion())
 		return 0
 	}
 

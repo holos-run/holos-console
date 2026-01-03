@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/holos-run/holos-console/internal/console"
-	"github.com/holos-run/holos-console/version"
 )
 
 var (
@@ -22,7 +21,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "holos-console",
 		Short:   "holos-console serves the Holos web console",
-		Version: version.GetVersion(),
+		Version: console.GetVersion(),
 		Args:    cobra.NoArgs,
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,

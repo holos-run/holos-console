@@ -4,7 +4,7 @@ PROJ=holos-console
 ORG_PATH=github.com/holos-run
 REPO_PATH=$(ORG_PATH)/$(PROJ)
 
-VERSION := $(shell cat version/embedded/major version/embedded/minor version/embedded/patch | xargs printf "%s.%s.%s")
+VERSION := $(shell cat internal/console/version/major internal/console/version/minor internal/console/version/patch | xargs printf "%s.%s.%s")
 BIN_NAME := holos-console
 
 GIT_COMMIT=$(shell git rev-parse HEAD)
@@ -13,7 +13,7 @@ GIT_DETAIL=$(shell git describe --tags HEAD 2>/dev/null || echo "dev")
 GIT_TREE_STATE=$(shell test -n "`git status --porcelain`" && echo "dirty" || echo "clean")
 BUILD_DATE=$(shell date -Iseconds)
 
-LD_FLAGS="-w -X ${ORG_PATH}/${PROJ}/version.GitDescribe=${GIT_DETAIL}${GIT_SUFFIX} -X ${ORG_PATH}/${PROJ}/version.GitCommit=${GIT_COMMIT} -X ${ORG_PATH}/${PROJ}/version.GitTreeState=${GIT_TREE_STATE} -X ${ORG_PATH}/${PROJ}/version.BuildDate=${BUILD_DATE}"
+LD_FLAGS="-w -X ${ORG_PATH}/${PROJ}/internal/console.GitDescribe=${GIT_DETAIL}${GIT_SUFFIX} -X ${ORG_PATH}/${PROJ}/internal/console.GitCommit=${GIT_COMMIT} -X ${ORG_PATH}/${PROJ}/internal/console.GitTreeState=${GIT_TREE_STATE} -X ${ORG_PATH}/${PROJ}/internal/console.BuildDate=${BUILD_DATE}"
 
 default: build
 
