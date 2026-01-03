@@ -1,6 +1,7 @@
 package console
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -10,11 +11,14 @@ import (
 	"crypto/x509/pkix"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"math/big"
+	"mime"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -89,23 +93,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
-	uiHandler := newUIHandler(uiContent)
-	mux.Handle("/ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/ui/") {
-			http.NotFound(w, r)
-			return
-		}
-
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/ui/")
-		if r2.URL.Path == "" {
-			r2.URL.Path = "/"
-		} else if !strings.HasPrefix(r2.URL.Path, "/") {
-			r2.URL.Path = "/" + r2.URL.Path
-		}
-
-		uiHandler.ServeHTTP(w, r2)
-	}))
+	mux.Handle("/ui/", newUIHandler(uiContent))
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -158,37 +146,82 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 type uiHandler struct {
-	fs         fs.FS
-	fileServer http.Handler
+	fs fs.FS
 }
 
 func newUIHandler(uiContent fs.FS) http.Handler {
-	return &uiHandler{
-		fs:         uiContent,
-		fileServer: http.FileServer(http.FS(uiContent)),
-	}
+	return &uiHandler{fs: uiContent}
 }
 
 func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	requestPath := strings.TrimPrefix(r.URL.Path, "/")
-	if requestPath == "" {
-		r.URL.Path = "/index.html"
-		h.fileServer.ServeHTTP(w, r)
+	if !strings.HasPrefix(r.URL.Path, "/ui/") {
+		http.NotFound(w, r)
 		return
 	}
 
-	file, err := h.fs.Open(requestPath)
-	if err == nil {
-		defer file.Close()
-		stat, statErr := file.Stat()
-		if statErr == nil && !stat.IsDir() {
-			h.fileServer.ServeHTTP(w, r)
-			return
-		}
+	relativePath := strings.TrimPrefix(r.URL.Path, "/ui/")
+	relativePath = strings.TrimPrefix(relativePath, "/")
+	if relativePath == "" {
+		h.serveIndex(w, r)
+		return
 	}
 
-	r.URL.Path = "/index.html"
-	h.fileServer.ServeHTTP(w, r)
+	if h.serveIfFile(w, r, relativePath) {
+		return
+	}
+
+	h.serveIndex(w, r)
+}
+
+func (h *uiHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	h.serveFile(w, r, "index.html")
+}
+
+func (h *uiHandler) serveIfFile(w http.ResponseWriter, r *http.Request, name string) bool {
+	file, err := h.fs.Open(name)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		return false
+	}
+
+	h.serveFileWithInfo(w, r, name, file, info)
+	return true
+}
+
+func (h *uiHandler) serveFile(w http.ResponseWriter, r *http.Request, name string) {
+	file, err := h.fs.Open(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
+	h.serveFileWithInfo(w, r, name, file, info)
+}
+
+func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, name string, file fs.File, info fs.FileInfo) {
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+
+	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
 }
 
 // tlsConfig returns the TLS configuration for the server.

@@ -43,26 +43,30 @@ Follow up fixes:
 
 20. [x] GetVersion is called twice when the version page loads.  Explain why and fix the problem.
 21. [x] Browsing directly to the go backend using https://localhost:8443/ui/ results in ERR_TOO_MANY_REDIRECTS fix this problem and explain why it happened in the commit message.
-22. [ ] TODO(jeff): Both of these fixes from Codex 5.2 seem wrong at first glance.  VersionInfo seems unnecessary to define and cache.
+22. [x] TODO(jeff): Both of these fixes from Codex 5.2 seem wrong at first glance.  VersionInfo seems unnecessary to define and cache.  Fixed by adding the SPA handler.
 
 ### Phase 4: Wire Up Go Generate and Embedding
 
-20. [ ] Create `ui/generate.go` with `//go:generate` directive to build the frontend.
-21. [ ] The generate script should: run `npm ci`, run `npm run build`, ensure output lands in `console/ui/`.
-22. [ ] Make the script idempotent (safe to run multiple times, handles missing node_modules).
-23. [ ] Update `console/console.go` to serve SPA with fallback to index.html for client-side routing.
-24. [ ] Ensure hard refresh works on any `/ui/*` path by serving index.html for non-file paths.
-25. [ ] Test full flow: `go generate ./...` then `make build` then `make run`.
-26. [ ] Commit: "Wire up frontend build to go generate with SPA fallback"
+20. [x] Create `ui/generate.go` with `//go:generate` directive to build the frontend.
+21. [x] The generate script should: run `npm ci`, run `npm run build`, ensure output lands in `console/ui/`.
+22. [x] Make the script idempotent (safe to run multiple times, handles missing node_modules).
+23. [x] Update `console/console.go` to serve SPA with fallback to index.html for client-side routing.
+24. [x] Ensure hard refresh works on any `/ui/*` path by serving index.html for non-file paths.
+25. [x] Test full flow: `go generate ./...` then `make build` then `make run`.
+26. [x] Commit: "Wire up frontend build to go generate with SPA fallback"
 
 ### Phase 5: Final Verification and Cleanup
 
-27. [ ] Verify `go generate ./...` is idempotent (running twice produces same result).
-28. [ ] Verify `make build` succeeds and binary serves the React app at `/ui/`.
-29. [ ] Verify hard refresh works on `/ui/` and any sub-paths.
-30. [ ] Verify the version RPC call works from the embedded frontend.
-31. [ ] Update CONTRIBUTING.md if needed with frontend development workflow.
-32. [ ] Final commit: "Complete frontend integration with ConnectRPC version display"
+27. [x] Verify `go generate ./...` is idempotent (running twice produces same result).
+28. [x] Verify `make build` succeeds and binary serves the React app at `/ui/`.
+29. [x] Verify hard refresh works on `/ui/` and any sub-paths.
+30. [x] Verify the version RPC call works from the embedded frontend.
+31. [x] Update CONTRIBUTING.md if needed with frontend development workflow.
+32. [x] Final commit: "Complete frontend integration with ConnectRPC version display"
+
+### Phase 6: Switch to ReactRouter avoiding anchors.
+
+33. [ ] Do not use anchors in URLs for navigation, switch to normal paths using the idiomatic way to handle client side routing in React.
 
 ### Key Implementation Notes
 
