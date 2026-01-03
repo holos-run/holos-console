@@ -62,6 +62,10 @@ lint: vet ## Run linters.
 tidy: ## Tidy go module.
 	go mod tidy
 
+.PHONY: tools
+tools: ## Install tool dependencies.
+	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
+
 .PHONY: test
 test: ## Run tests.
 	go test -race -coverprofile=coverage.out ./...
