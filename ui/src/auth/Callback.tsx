@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Typography, Alert } from '@mui/material'
-import { createUserManager } from './AuthProvider'
+import { getUserManager } from './userManager'
 
 /**
  * Callback component that handles the OIDC redirect after authentication.
@@ -9,7 +9,7 @@ import { createUserManager } from './AuthProvider'
  * This component:
  * 1. Processes the authorization code from the URL
  * 2. Exchanges it for tokens via the token endpoint
- * 3. Redirects to the home page on success
+ * 3. Redirects to the original page (from state.returnTo) or home on success
  */
 export function Callback() {
   const navigate = useNavigate()
@@ -18,10 +18,12 @@ export function Callback() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const userManager = createUserManager()
-        await userManager.signinRedirectCallback()
-        // Navigate to home page after successful login
-        navigate('/', { replace: true })
+        const userManager = getUserManager()
+        const user = await userManager.signinRedirectCallback()
+        // Navigate to returnTo from state, or default to home
+        const returnTo =
+          (user.state as { returnTo?: string } | undefined)?.returnTo ?? '/'
+        navigate(returnTo, { replace: true })
       } catch (err) {
         console.error('Callback error:', err)
         setError(err instanceof Error ? err.message : String(err))

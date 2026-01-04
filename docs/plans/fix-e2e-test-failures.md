@@ -210,7 +210,7 @@ Add new test describe block `Profile Page` with tests:
 ### Phase 5: Fix Post-Login Redirect and Auth State Issues
 - [x] 5.1: Create shared UserManager singleton in `ui/src/auth/userManager.ts`
 - [x] 5.2: Update AuthProvider to use shared UserManager
-- [ ] 5.3: Update Callback to use shared UserManager and read returnTo state
+- [x] 5.3: Update Callback to use shared UserManager and read returnTo state
 - [ ] 5.4: Update login() to accept and pass returnTo parameter
 - [ ] 5.5: Update ProfilePage to pass current path on login
 - [ ] 5.6: Update auth module exports
