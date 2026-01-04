@@ -207,13 +207,94 @@ Add new test describe block `Profile Page` with tests:
 ### Phase 4: Manual Verification (Optional)
 - [x] 4.1: Manual login flow verification via Profile page
 
-### Phase 5: Fix manual verification findings
+### Phase 5: Fix Post-Login Redirect and Auth State Issues
+- [ ] 5.1: Create shared UserManager singleton in `ui/src/auth/userManager.ts`
+- [ ] 5.2: Update AuthProvider to use shared UserManager
+- [ ] 5.3: Update Callback to use shared UserManager and read returnTo state
+- [ ] 5.4: Update login() to accept and pass returnTo parameter
+- [ ] 5.5: Update ProfilePage to pass current path on login
+- [ ] 5.6: Update auth module exports
+- [ ] 5.7: Update E2E tests for return URL behavior
 
-AGENT: Research the current code base and analyze the root cause of these issues, update this planning document with your findings, then replace this section with steps to resolve the issues.
+### Phase 5: Fix Post-Login Redirect and Auth State Issues (Details)
 
-- [ ] 5.1: Initial nav to profile page, then login at Dex redirects to the wrong location.  Want redirect back to the profile page.  Should be generalized to wherever the user signs in from.
-- [ ] 5.2: After logging into Dex, profile page still shows Login button.  Hard refresh required to see profile and get treated as logged in.  Want the profile page to use the auth id token immediately after logging in and being redirected.
+Two issues were identified during manual verification that prevent a smooth login experience.
 
+#### Issue 5.1: Wrong redirect location after Dex login
+
+**Problem:** After logging in at Dex from the Profile page, user is redirected to `/` (landing page) instead of back to `/profile`.
+
+**Root Cause:** In [ui/src/auth/Callback.tsx:24](ui/src/auth/Callback.tsx#L24), the callback handler hardcodes the redirect:
+```typescript
+navigate('/', { replace: true })
+```
+
+**Solution:** Use `oidc-client-ts`'s built-in state management to preserve the return URL:
+1. Before calling `login()`, store the current path in OIDC state via `signinRedirect({ state: { returnTo: location.pathname } })`
+2. After callback, read state from the user object and navigate to `state.returnTo` or default to `/`
+
+#### Issue 5.2: Profile page shows Login button after successful auth
+
+**Problem:** After Dex redirects back to the app post-login, the Profile page still shows the "Sign In" button instead of user info. A hard refresh is required to see the authenticated state.
+
+**Root Cause:** The `Callback` component creates a new `UserManager` instance via `createUserManager()` which is different from the `UserManager` in `AuthProvider`. When `signinRedirectCallback()` stores the user in sessionStorage, the AuthProvider's UserManager doesn't receive the `userLoaded` event because it's a different instance.
+
+**Solution:**
+1. Share a single UserManager instance between AuthProvider and Callback
+2. Export the UserManager from AuthProvider context or create a singleton
+3. When Callback completes, the shared UserManager fires `userLoaded` which AuthProvider already listens to
+
+#### 5.1 Create shared UserManager singleton
+
+**File:** `ui/src/auth/userManager.ts`
+
+Create a singleton UserManager:
+- Export `getUserManager()` function that creates and caches a single instance
+- Use lazy initialization (create on first call)
+
+#### 5.2 Update AuthProvider to use shared UserManager
+
+**File:** `ui/src/auth/AuthProvider.tsx`
+
+- Import and use `getUserManager()` instead of creating UserManager in useMemo
+- Remove `createUserManager()` export (replaced with singleton)
+
+#### 5.3 Update Callback to use shared UserManager
+
+**File:** `ui/src/auth/Callback.tsx`
+
+- Import and use `getUserManager()` instead of `createUserManager()`
+- After `signinRedirectCallback()`, read `user.state.returnTo` for redirect target
+- Navigate to `returnTo` or default to `/`
+
+#### 5.4 Update login() to preserve return URL
+
+**File:** `ui/src/auth/AuthProvider.tsx`
+
+- Modify `login()` to accept optional `returnTo` parameter
+- Pass `{ state: { returnTo } }` to `signinRedirect()`
+- Default `returnTo` to current `window.location.pathname`
+
+#### 5.5 Update ProfilePage to pass current path on login
+
+**File:** `ui/src/components/ProfilePage.tsx`
+
+- Use `useLocation()` hook to get current path
+- Pass `location.pathname` to `login()` call
+
+#### 5.6 Update auth module exports
+
+**File:** `ui/src/auth/index.ts`
+
+- Export `getUserManager` instead of `createUserManager`
+
+#### 5.7 Update E2E tests for return URL behavior
+
+**File:** `ui/e2e/auth.spec.ts`
+
+Update `should complete full login flow via profile page` test:
+- After login, verify user lands on `/ui/profile` (not `/ui/`)
+- Remove the conditional navigation to profile page (should land there automatically)
 
 ---
 
