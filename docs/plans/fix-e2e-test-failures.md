@@ -213,7 +213,7 @@ Add new test describe block `Profile Page` with tests:
 - [x] 5.3: Update Callback to use shared UserManager and read returnTo state
 - [x] 5.4: Update login() to accept and pass returnTo parameter
 - [x] 5.5: Update ProfilePage to pass current path on login
-- [ ] 5.6: Update auth module exports
+- [x] 5.6: Update auth module exports
 - [ ] 5.7: Update E2E tests for return URL behavior
 
 ### Phase 5: Fix Post-Login Redirect and Auth State Issues (Details)
