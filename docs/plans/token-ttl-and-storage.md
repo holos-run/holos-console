@@ -1006,7 +1006,7 @@ make run
 ### Phase 3: Frontend - BFF Mode Support
 - [x] 3.1: Add isBFFMode() detection function
 - [x] 3.2: Add BFF_ENDPOINTS constants
-- [ ] 3.3: Add /api/userinfo backend endpoint
+- [x] 3.3: Add /api/userinfo backend endpoint
 - [ ] 3.4: Update AuthProvider to support both modes
 - [ ] 3.5: Update login/logout for BFF mode
 

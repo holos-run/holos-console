@@ -206,6 +206,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		uiHandler.ServeHTTP(w, r)
 	})
 
+	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
+	mux.HandleFunc("/api/userinfo", handleUserInfo)
+
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -446,6 +449,25 @@ func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, na
 	}
 
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
+}
+
+// handleUserInfo returns user information from oauth2-proxy forwarded headers.
+// This endpoint is used by the frontend in BFF mode to get the current user.
+func handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	user := r.Header.Get("X-Forwarded-User")
+	email := r.Header.Get("X-Forwarded-Email")
+
+	if user == "" && email == "" {
+		// Not authenticated or not running behind oauth2-proxy
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"user":  user,
+		"email": email,
+	})
 }
 
 // tlsConfig returns the TLS configuration for the server.
