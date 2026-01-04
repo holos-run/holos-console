@@ -490,7 +490,7 @@ The issuer URL flows to:
 ### Phase 3: React SPA Updates
 - [x] 3.1: Add `oidc-client-ts` dependency
 - [x] 3.2: Create `ui/src/auth/` with AuthProvider, useAuth, config
-- [ ] 3.3: Update Vite proxy to forward `/dex/*` to backend
+- [x] 3.3: Update Vite proxy to forward `/dex/*` to backend
 - [ ] 3.4: Create callback route component
 
 ### Phase 4: Testing

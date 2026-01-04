@@ -46,6 +46,12 @@ export default defineConfig({
         secure: false,
         changeOrigin: true,
       },
+      // Proxy OIDC requests to the embedded Dex provider.
+      '/dex': {
+        target: backendUrl,
+        secure: false,
+        changeOrigin: true,
+      },
     },
   },
 })
