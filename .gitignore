@@ -39,3 +39,7 @@ bin/
 certs/tls.crt
 certs/tls.key
 console/ui/assets/index-*.js
+
+# Playwright
+ui/playwright-report/
+ui/test-results/
