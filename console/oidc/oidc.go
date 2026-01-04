@@ -90,15 +90,23 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		},
 	})
 
-	// Create Dex server
-	dexServer, err := server.NewServer(ctx, server.Config{
+	// Create Dex server config
+	serverConfig := server.Config{
 		Issuer:                 cfg.Issuer,
 		Storage:                store,
 		SkipApprovalScreen:     true,
 		Logger:                 logger,
 		SupportedResponseTypes: []string{"code"},
 		AllowedOrigins:         []string{"*"}, // Allow all origins for development
-	})
+	}
+
+	// Configure ID token lifetime if specified
+	if cfg.IDTokenTTL > 0 {
+		serverConfig.IDTokensValidFor = cfg.IDTokenTTL
+	}
+
+	// Create Dex server
+	dexServer, err := server.NewServer(ctx, serverConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dex server: %w", err)
 	}
