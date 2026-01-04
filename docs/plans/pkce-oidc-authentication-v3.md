@@ -471,9 +471,9 @@ The issuer URL flows to:
 
 ### Phase 1: Embedded OIDC Identity Provider
 - [x] 1.1a: Add `github.com/dexidp/dex` dependency
-- [ ] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
-- [ ] 1.2a: Create `console/oidc/config.go` with default credentials
-- [ ] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory
+- [x] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
+- [x] 1.2a: Create `console/oidc/config.go` with default credentials
+- [x] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory
 - [ ] 1.3: Wire OIDC provider routes in `console/console.go`
 - [ ] 1.4a: Add `--issuer` flag to `cli/cli.go`
 - [ ] 1.4b: Add `--client-id` flag to `cli/cli.go`
