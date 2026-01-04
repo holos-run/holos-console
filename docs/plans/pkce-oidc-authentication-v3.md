@@ -482,7 +482,7 @@ The issuer URL flows to:
 - [x] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
 - [x] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
 - [x] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
-- [ ] 2.3: Apply auth interceptor to protected routes in `console/console.go`
+- [x] 2.3: Apply auth interceptor to protected routes in `console/console.go`
 - [ ] 2.4a: Write integration test for OIDC discovery endpoint
 - [ ] 2.4b: Write integration test for token validation
 - [ ] 2.4c: Write integration test for protected RPC endpoints

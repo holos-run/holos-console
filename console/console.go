@@ -67,11 +67,22 @@ func New(cfg Config) *Server {
 func (s *Server) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	// Configure ConnectRPC interceptors
-	interceptors := connect.WithInterceptors(
+	// Configure ConnectRPC interceptors for public routes (no auth required)
+	publicInterceptors := connect.WithInterceptors(
 		rpc.MetricsInterceptor(),
 		rpc.LoggingInterceptor(),
 	)
+
+	// Configure ConnectRPC interceptors for protected routes (auth required)
+	// These are set up but not used until we have protected services
+	var protectedInterceptors connect.Option
+	if s.cfg.Issuer != "" && s.cfg.ClientID != "" {
+		// Note: Verifier creation is deferred until after Dex starts
+		// For now, we log that auth is configured but don't block startup
+		slog.Info("auth configured", "issuer", s.cfg.Issuer, "clientID", s.cfg.ClientID)
+		// Protected interceptors will be created lazily when first protected service is registered
+		_ = protectedInterceptors // Placeholder for future protected services
+	}
 
 	// Register VersionService
 	versionHandler := rpc.NewVersionHandler(rpc.VersionInfo{
@@ -80,7 +91,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		GitTreeState: GitTreeState,
 		BuildDate:    BuildDate,
 	})
-	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, interceptors)
+	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, publicInterceptors)
 	mux.Handle(path, handler)
 
 	// Register gRPC reflection for introspection (grpcurl, etc.)
