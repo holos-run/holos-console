@@ -58,6 +58,47 @@ as a sidecar to handle authentication in production deployments.
 6. oauth2-proxy forwards requests to holos-console with `X-Forwarded-User` headers
 7. The SPA never sees or manages tokens directly
 
+### Frontend Mode Detection
+
+The frontend must detect whether it is running in BFF mode (behind oauth2-proxy) or
+development mode (using oidc-client-ts directly). This changes how authentication works:
+
+| Mode | Token Management | Login/Logout | User Info |
+|------|------------------|--------------|-----------|
+| **BFF (Production)** | oauth2-proxy handles all tokens | Redirect to `/oauth2/start` and `/oauth2/sign_out` | Fetch from `/api/userinfo` endpoint |
+| **Development** | oidc-client-ts in browser | Use UserManager methods | From oidc-client-ts User object |
+
+#### HttpOnly Cookie Detection Limitation
+
+**Important:** The `_oauth2_proxy` session cookie is HttpOnly by default (and should remain
+so for security). This means **JavaScript cannot read the cookie** via `document.cookie`.
+
+The original plan proposed detecting BFF mode by checking for the `_oauth2_proxy` cookie:
+
+```typescript
+// This will NOT work if the cookie is HttpOnly (which it should be)
+function isBFFMode(): boolean {
+  return document.cookie.includes('_oauth2_proxy')
+}
+```
+
+**Alternative detection strategies:**
+
+1. **Backend endpoint approach (recommended):** The frontend calls `/api/userinfo` on load.
+   If the endpoint returns user data, we're in BFF mode with an active session. If it returns
+   401, we're either not authenticated or not in BFF mode.
+
+2. **Environment variable injection:** The backend injects a flag into the HTML (similar to
+   `__OIDC_CONFIG__`) indicating whether oauth2-proxy is expected.
+
+3. **Configuration-based:** A build-time or runtime configuration flag explicitly sets the mode.
+
+4. **Disable HttpOnly (not recommended):** oauth2-proxy supports `--cookie-httponly=false`,
+   but this weakens security and is not recommended.
+
+See [docs/research/httponly-cookies.md](../research/httponly-cookies.md) for detailed
+explanation of HttpOnly cookies and implications for frontend development.
+
 ### Session Storage Options
 
 oauth2-proxy supports two session storage backends:
