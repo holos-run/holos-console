@@ -1,5 +1,10 @@
 # Plan: PKCE OIDC Authentication System
 
+> **Status:** ABANDONED
+>
+> This plan has been replaced by [pkce-oidc-authentication-v3.md](pkce-oidc-authentication-v3.md)
+> which embeds Dex via its public API instead of using zitadel/oidc with build tags.
+
 ## Goal
 
 Implement a complete OIDC PKCE authentication system for holos-console with:
