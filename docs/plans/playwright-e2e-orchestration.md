@@ -108,8 +108,8 @@ export default defineConfig({
   webServer: [
     {
       // Go backend - must be built first
-      command: '../bin/holos-console --cert ../certs/tls.crt --key ../certs/tls.key',
-      url: 'https://localhost:8443/dex/.well-known/openid-configuration',
+      command: 'exec ../bin/holos-console --cert ../certs/tls.crt --key ../certs/tls.key',
+      url: 'https://localhost:8443/ui',
       timeout: 30_000,
       reuseExistingServer: !process.env.CI,
       ignoreHTTPSErrors: true,
@@ -232,15 +232,15 @@ This ensures signals reach the Go binary directly, not a shell wrapper.
 
 ### Phase 1: Basic Orchestration
 
-- [ ] 1.1: Update `playwright.config.ts` with `webServer` array
-- [ ] 1.2: Update Makefile `test-e2e` target to depend on `build`
-- [ ] 1.3: Test locally and verify cleanup
+- [x] 1.1: Update `playwright.config.ts` with `webServer` array
+- [x] 1.2: Update Makefile `test-e2e` target to depend on `build`
+- [x] 1.3: Test locally and verify cleanup
 
 ### Phase 2: Robustness
 
-- [ ] 2.1: Add `exec` prefix to commands if needed for signal handling
-- [ ] 2.2: Test Ctrl+C cleanup behavior
-- [ ] 2.3: Verify no orphan processes in various scenarios
+- [x] 2.1: Add `exec` prefix to commands if needed for signal handling
+- [x] 2.2: Test Ctrl+C cleanup behavior
+- [x] 2.3: Verify no orphan processes in various scenarios
 
 ### Phase 3: CI Verification
 
@@ -250,9 +250,9 @@ This ensures signals reach the Go binary directly, not a shell wrapper.
 
 ### Phase 4: Documentation
 
-- [ ] 4.1: Update CONTRIBUTING.md with new test workflow
-- [ ] 4.2: Remove manual server startup instructions from test files
-- [ ] 4.3: Document how to debug with servers running separately
+- [x] 4.1: Update CONTRIBUTING.md with new test workflow
+- [x] 4.2: Remove manual server startup instructions from test files
+- [x] 4.3: Document how to debug with servers running separately
 
 ## Success Criteria
 

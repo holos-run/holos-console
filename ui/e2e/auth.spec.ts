@@ -4,10 +4,7 @@ import { test, expect } from '@playwright/test'
  * E2E tests for OIDC authentication flow.
  *
  * These tests verify the full login flow using the embedded Dex OIDC provider.
- * They require both the Go backend and Vite dev server to be running:
- *
- *   Terminal 1: make run     (Go backend on https://localhost:8443)
- *   Terminal 2: make dev     (Vite dev server on https://localhost:5173)
+ * Run with: make test-e2e (automatically starts servers)
  *
  * Default credentials (configurable via env vars on the Go backend):
  *   Username: admin (HOLOS_DEX_INITIAL_ADMIN_USERNAME)
@@ -17,18 +14,6 @@ import { test, expect } from '@playwright/test'
 // Default credentials for embedded Dex OIDC provider
 const DEFAULT_USERNAME = 'admin'
 const DEFAULT_PASSWORD = 'verysecret'
-
-// Check if servers are available before running tests
-test.beforeAll(async ({ request }) => {
-  try {
-    const response = await request.get('/ui', { timeout: 5000 })
-    if (!response.ok()) {
-      test.skip(true, 'Servers not running - start with: make run && make dev')
-    }
-  } catch {
-    test.skip(true, 'Servers not running - start with: make run && make dev')
-  }
-})
 
 test.describe('Authentication', () => {
   test('should have landing page accessible', async ({ page }) => {
