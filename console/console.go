@@ -52,6 +52,15 @@ type Config struct {
 	// ClientID is the expected audience for tokens.
 	// Default: "holos-console"
 	ClientID string
+
+	// IDTokenTTL is the lifetime of ID tokens.
+	// Default: 15 minutes
+	IDTokenTTL time.Duration
+
+	// RefreshTokenTTL is the absolute lifetime of refresh tokens.
+	// After this duration, users must re-authenticate.
+	// Default: 12 hours
+	RefreshTokenTTL time.Duration
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.

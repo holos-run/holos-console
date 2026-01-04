@@ -994,7 +994,7 @@ make run
 
 ### Phase 1: Backend - Configurable Token TTLs
 - [x] 1.1: Add `--id-token-ttl` and `--refresh-token-ttl` flags to cli/cli.go
-- [ ] 1.2: Add TTL fields to console.Config struct
+- [x] 1.2: Add TTL fields to console.Config struct
 - [ ] 1.3: Parse duration strings and wire to config
 
 ### Phase 2: Backend - Configure Dex Token Lifetimes
