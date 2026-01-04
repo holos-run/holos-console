@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransportProvider } from '@connectrpc/connect-query'
@@ -29,15 +29,23 @@ function renderApp(initialEntry: string) {
 }
 
 describe('navigation', () => {
-  it('links the landing page without a trailing slash', () => {
+  it('links the landing page without a trailing slash', async () => {
     renderApp('/ui/version')
-    const landingLink = screen.getByRole('link', { name: 'Landing' })
-    expect(landingLink).toHaveAttribute('href', '/ui')
+    // Wait for AuthProvider async initialization to complete
+    await waitFor(() => {
+      const landingLink = screen.getByRole('link', { name: 'Landing' })
+      expect(landingLink).toHaveAttribute('href', '/ui')
+    })
   })
 
   it('navigates to the landing page via the landing link', async () => {
     const user = userEvent.setup()
     renderApp('/ui/version')
+
+    // Wait for AuthProvider async initialization to complete
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Landing' })).toBeInTheDocument()
+    })
 
     await user.click(screen.getByRole('link', { name: 'Landing' }))
 
