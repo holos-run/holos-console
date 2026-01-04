@@ -499,7 +499,7 @@ The issuer URL flows to:
 - [x] 4.2: Write Playwright E2E tests for login flow
 
 ### Phase 5: Documentation
-- [ ] 5.1: Update CONTRIBUTING.md with authentication workflow
+- [x] 5.1: Update CONTRIBUTING.md with authentication workflow
 - [ ] 5.2: Create docs/authentication.md
 - [ ] 5.3: Create docs/hostname-configuration.md (how hostname flows through stack)
 
