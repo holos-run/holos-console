@@ -202,7 +202,7 @@ Add new test describe block `Profile Page` with tests:
 - [x] 3.2: Create ProfilePage component in `ui/src/components/ProfilePage.tsx`
 - [x] 3.3: Add Profile navigation link to sidebar and route in `ui/src/App.tsx`
 - [x] 3.4: Export `useAuth` from `ui/src/auth/index.ts` (already exists)
-- [ ] 3.5: Add E2E tests for profile navigation and login flow in `ui/e2e/auth.spec.ts`
+- [x] 3.5: Add E2E tests for profile navigation and login flow in `ui/e2e/auth.spec.ts`
 
 ### Phase 4: Manual Verification (Optional)
 - [ ] 4.1: Manual login flow verification via Profile page
