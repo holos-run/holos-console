@@ -1,8 +1,8 @@
 # Plan: Playwright E2E Test Orchestration
 
-> **Status:** UNREVIEWED / UNAPPROVED
+> **Status:** APPROVED
 >
-> This plan has not been reviewed or approved for implementation.
+> This plan has been reviewed and approved for implementation.
 
 ## Overview
 
@@ -62,52 +62,19 @@ The current implementation:
 - `playwright.config.ts` has no `webServer` configuration
 - `make test-e2e` assumes servers are already running
 
-## Proposed Changes
+## Solution: Playwright webServer Configuration
 
-### Option A: Playwright webServer Configuration (Recommended)
+Use Playwright's native `webServer` array to manage both servers. This is the recommended approach because:
 
-Use Playwright's native `webServer` array to manage both servers.
-
-**Pros:**
 - Zero custom code for process management
 - Playwright handles SIGTERM/cleanup automatically
 - Built-in health checking via `url` option
 - Well-documented, battle-tested approach
 - Works in CI without modification
 
-**Cons:**
+Trade-offs:
 - Go backend must be built before tests run (add `make build` dependency)
-- Both servers start fresh each test run (slower than manual approach)
-
-### Option B: Custom Orchestration Script
-
-Create `scripts/test-e2e` that manages processes manually.
-
-**Pros:**
-- More control over startup sequence
-- Can add custom health checks
-- Could support server reuse between runs
-
-**Cons:**
-- More code to maintain
-- Must handle signal propagation manually
-- Risk of orphan processes if script crashes
-
-### Option C: Hybrid Approach
-
-Use Playwright `webServer` for Vite, but require Go backend to be pre-started.
-
-**Pros:**
-- Go backend can be debugged separately
-- Faster iteration on frontend-only changes
-
-**Cons:**
-- Still requires manual intervention for backend
-- Inconsistent experience between local and CI
-
-## Recommended Solution: Option A
-
-Playwright's `webServer` is designed exactly for this use case. The implementation is minimal and leverages well-tested code.
+- Both servers start fresh each test run (slower than manual approach, mitigated by `reuseExistingServer`)
 
 ### Implementation Details
 
@@ -287,7 +254,45 @@ This ensures signals reach the Go binary directly, not a shell wrapper.
 - [ ] 4.2: Remove manual server startup instructions from test files
 - [ ] 4.3: Document how to debug with servers running separately
 
-## Alternative: globalSetup/globalTeardown
+## Success Criteria
+
+1. `make test-e2e` works without manual server startup
+2. No orphan processes after test completion (normal or Ctrl+C)
+3. Tests still work with manually started servers (local dev)
+4. CI runs work without modification
+5. Claude Code can run `make test-e2e` as a single command
+
+---
+
+## Alternatives Considered
+
+### Custom Orchestration Script
+
+Create `scripts/test-e2e` that manages processes manually.
+
+**Why not chosen:**
+- More code to maintain
+- Must handle signal propagation manually
+- Risk of orphan processes if script crashes
+
+**Would provide:**
+- More control over startup sequence
+- Custom health checks
+- Server reuse between runs
+
+### Hybrid Approach
+
+Use Playwright `webServer` for Vite only, require Go backend to be pre-started.
+
+**Why not chosen:**
+- Still requires manual intervention for backend
+- Inconsistent experience between local and CI
+
+**Would provide:**
+- Go backend can be debugged separately
+- Faster iteration on frontend-only changes
+
+### globalSetup/globalTeardown
 
 If `webServer` proves insufficient, Playwright also supports `globalSetup` and `globalTeardown` scripts. These provide more control but require manual process management:
 
@@ -323,15 +328,7 @@ export default async function globalTeardown() {
 }
 ```
 
-This approach is more complex but provides ultimate control. Only use if `webServer` has issues.
-
-## Success Criteria
-
-1. `make test-e2e` works without manual server startup
-2. No orphan processes after test completion (normal or Ctrl+C)
-3. Tests still work with manually started servers (local dev)
-4. CI runs work without modification
-5. Claude Code can run `make test-e2e` as a single command
+**Why not chosen:** More complex and requires manual process management. Only consider if `webServer` has issues.
 
 ---
 
