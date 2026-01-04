@@ -481,7 +481,7 @@ The issuer URL flows to:
 ### Phase 2: JWT Validation
 - [x] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
 - [x] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
-- [ ] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
+- [x] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
 - [ ] 2.3: Apply auth interceptor to protected routes in `console/console.go`
 - [ ] 2.4a: Write integration test for OIDC discovery endpoint
 - [ ] 2.4b: Write integration test for token validation
