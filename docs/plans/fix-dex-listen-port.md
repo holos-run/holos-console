@@ -358,9 +358,9 @@ cd ui && npm run dev
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Backend - Derive Issuer from Listen Address
-- [ ] 1.1: Remove hardcoded default from --issuer flag
-- [ ] 1.2: Add deriveIssuer function to cli/cli.go
-- [ ] 1.3: Apply derivation in Run function
+- [x] 1.1: Remove hardcoded default from --issuer flag
+- [x] 1.2: Add deriveIssuer function to cli/cli.go
+- [x] 1.3: Apply derivation in Run function
 
 ### Phase 2: Backend - Inject OIDC Config into index.html
 - [ ] 2.1: Add OIDCConfig struct and helper functions
