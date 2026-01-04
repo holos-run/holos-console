@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -51,6 +52,27 @@ type Config struct {
 	// ClientID is the expected audience for tokens.
 	// Default: "holos-console"
 	ClientID string
+}
+
+// OIDCConfig is the OIDC configuration injected into the frontend.
+type OIDCConfig struct {
+	Authority             string `json:"authority"`
+	ClientID              string `json:"client_id"`
+	RedirectURI           string `json:"redirect_uri"`
+	PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
+}
+
+// deriveRedirectURI derives the redirect URI from the issuer URL.
+// Replaces /dex suffix with /ui/callback.
+func deriveRedirectURI(issuer string) string {
+	base := strings.TrimSuffix(issuer, "/dex")
+	return base + "/ui/callback"
+}
+
+// derivePostLogoutRedirectURI derives the post-logout redirect URI from the issuer URL.
+func derivePostLogoutRedirectURI(issuer string) string {
+	base := strings.TrimSuffix(issuer, "/dex")
+	return base + "/ui"
 }
 
 // Server represents the console HTTPS server.
@@ -134,7 +156,19 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
-	uiHandler := newUIHandler(uiContent)
+
+	// Create OIDC config for frontend injection
+	var oidcConfig *OIDCConfig
+	if s.cfg.Issuer != "" {
+		oidcConfig = &OIDCConfig{
+			Authority:             s.cfg.Issuer,
+			ClientID:              s.cfg.ClientID,
+			RedirectURI:           deriveRedirectURI(s.cfg.Issuer),
+			PostLogoutRedirectURI: derivePostLogoutRedirectURI(s.cfg.Issuer),
+		}
+	}
+
+	uiHandler := newUIHandler(uiContent, oidcConfig)
 
 	// Redirect / to /ui (canonical path without trailing slash)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -301,11 +335,12 @@ func logRequests(next http.Handler) http.Handler {
 }
 
 type uiHandler struct {
-	fs fs.FS
+	fs         fs.FS
+	oidcConfig *OIDCConfig
 }
 
-func newUIHandler(uiContent fs.FS) http.Handler {
-	return &uiHandler{fs: uiContent}
+func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) http.Handler {
+	return &uiHandler{fs: uiContent, oidcConfig: oidcConfig}
 }
 
 func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +369,25 @@ func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *uiHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
-	h.serveFile(w, r, "index.html")
+	// Read index.html
+	data, err := fs.ReadFile(h.fs, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Inject OIDC config if available
+	if h.oidcConfig != nil {
+		configJSON, err := json.Marshal(h.oidcConfig)
+		if err == nil {
+			script := fmt.Sprintf(`<script>window.__OIDC_CONFIG__=%s;</script>`, configJSON)
+			// Insert before </head>
+			data = bytes.Replace(data, []byte("</head>"), []byte(script+"</head>"), 1)
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
 }
 
 func (h *uiHandler) serveIfFile(w http.ResponseWriter, r *http.Request, name string) bool {

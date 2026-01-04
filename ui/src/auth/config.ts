@@ -20,12 +20,13 @@ declare global {
 }
 
 function getConfig(): OIDCConfig {
-  // Check for server-injected config (production)
+  // Config must be injected by server (production) or Vite plugin (development)
   if (window.__OIDC_CONFIG__) {
     return window.__OIDC_CONFIG__
   }
 
-  // Development defaults - assumes Vite dev server with proxy to backend
+  // Fallback for edge cases (should not happen in normal operation)
+  console.warn('OIDC config not injected, using origin-based fallback')
   const origin = window.location.origin
   return {
     authority: `${origin}/dex`,

@@ -5,6 +5,24 @@ import fs from 'fs'
 import path from 'path'
 
 const backendUrl = 'https://localhost:8443'
+
+// Derive OIDC config from backend URL for Vite dev server
+const oidcConfig = {
+  authority: `${backendUrl}/dex`,
+  client_id: 'holos-console',
+  redirect_uri: 'https://localhost:5173/ui/callback', // Vite dev server
+  post_logout_redirect_uri: 'https://localhost:5173/ui',
+}
+
+const injectOIDCConfig = (): Plugin => ({
+  name: 'inject-oidc-config',
+  apply: 'serve', // Only apply during dev server, not during build
+  transformIndexHtml(html) {
+    const script = `<script>window.__OIDC_CONFIG__=${JSON.stringify(oidcConfig)};</script>`
+    return html.replace('</head>', `${script}</head>`)
+  },
+})
+
 const uiCanonicalRedirect = (): Plugin => ({
   name: 'ui-canonical-redirect',
   configureServer(server) {
@@ -23,7 +41,7 @@ const uiCanonicalRedirect = (): Plugin => ({
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [uiCanonicalRedirect(), react()],
+  plugins: [injectOIDCConfig(), uiCanonicalRedirect(), react()],
   base: '/ui',
   test: {
     environment: 'jsdom',

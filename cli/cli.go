@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -53,10 +55,33 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&keyFile, "key", "", "TLS key file (auto-generated if empty)")
 
 	// OIDC flags
-	cmd.Flags().StringVar(&issuer, "issuer", "https://localhost:8443/dex", "OIDC issuer URL for token validation")
+	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
 	return cmd
+}
+
+// deriveIssuer returns the issuer URL based on the listen address.
+// If issuer is already set, returns it unchanged.
+// Otherwise, derives from listen address using https and /dex path.
+func deriveIssuer(listenAddr, issuer string) string {
+	if issuer != "" {
+		return issuer
+	}
+
+	// Parse listen address to extract host and port
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		// Fallback if parsing fails
+		return "https://localhost:8443/dex"
+	}
+
+	// Use localhost if host is empty or 0.0.0.0
+	if host == "" || host == "0.0.0.0" {
+		host = "localhost"
+	}
+
+	return fmt.Sprintf("https://%s:%s/dex", host, port)
 }
 
 // Run serves as the Cobra run function for the root command.
@@ -66,11 +91,14 @@ func Run(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
+	// Derive issuer from listen address if not explicitly set
+	derivedIssuer := deriveIssuer(listenAddr, issuer)
+
 	cfg := console.Config{
 		ListenAddr: listenAddr,
 		CertFile:   certFile,
 		KeyFile:    keyFile,
-		Issuer:     issuer,
+		Issuer:     derivedIssuer,
 		ClientID:   clientID,
 	}
 
