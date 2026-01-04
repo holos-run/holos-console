@@ -106,16 +106,87 @@ make test-e2e
 
 All 7 tests should pass.
 
-### Phase 3: Verify Manual Login Flow (Optional)
+### Phase 3: Add Profile Page with Login Navigation
 
-#### 3.1 Start servers and test login manually
+Add a Profile page to the frontend that triggers the OIDC login flow and displays user claims after authentication. This provides a manual verification mechanism for the login flow and improves the user experience.
+
+#### 3.1 Create useAuth hook
+
+**File:** `ui/src/auth/useAuth.ts`
+
+Create a hook to access the AuthContext:
+- Export `useAuth()` hook that returns `AuthContextValue`
+- Throw error if used outside AuthProvider
+
+#### 3.2 Create Profile page component
+
+**File:** `ui/src/components/ProfilePage.tsx`
+
+Create a Profile page that:
+- Uses `useAuth()` hook to get auth state
+- Shows "Loading..." while auth state is loading
+- If not authenticated: Shows a "Sign In" button that calls `login()`
+- If authenticated: Displays user profile information from OIDC claims:
+  - Name (from `user.profile.name`)
+  - Email (from `user.profile.email`)
+  - Subject (from `user.profile.sub`)
+  - Shows a "Sign Out" button that calls `logout()`
+
+Use MUI components consistent with existing pages (Card, CardContent, Typography, Button, etc.)
+
+#### 3.3 Add Profile navigation link to sidebar
+
+**File:** `ui/src/App.tsx`
+
+Update `MainLayout` component:
+- Add "Profile" link to the sidebar navigation (below "Version")
+- Add route for `/profile` that renders `<ProfilePage />`
+- Update `isProfilePage` detection for selected state
+
+#### 3.4 Export useAuth from auth module
+
+**File:** `ui/src/auth/index.ts`
+
+Add `useAuth` to the exports from the auth module.
+
+#### 3.5 Add E2E tests for profile navigation and login flow
+
+**File:** `ui/e2e/auth.spec.ts`
+
+Add new test describe block `Profile Page` with tests:
+
+1. `should show profile page with sign in button when not authenticated`
+   - Navigate to `/ui/profile`
+   - Verify "Sign In" button is visible
+   - Verify user info is NOT visible
+
+2. `should navigate to profile page from sidebar`
+   - Navigate to `/ui`
+   - Click "Profile" link in sidebar
+   - Verify URL is `/ui/profile`
+   - Verify profile page content loads
+
+3. `should complete full login flow via profile page`
+   - Navigate to `/ui/profile`
+   - Click "Sign In" button
+   - Wait for redirect to Dex login page
+   - Fill in credentials (admin/verysecret)
+   - Submit login form
+   - Wait for redirect back to app
+   - Verify profile page shows user info (name, email)
+   - Verify "Sign Out" button is visible
+
+### Phase 4: Manual Verification (Optional)
+
+#### 4.1 Start servers and test login manually
 
 1. Start backend: `make run`
 2. Start frontend: `cd ui && npm run dev`
 3. Open https://localhost:5173/ui
-4. Click login (if implemented in UI) or navigate directly to authorize endpoint
-5. Enter credentials: admin / verysecret
-6. Verify redirect back to /ui/callback with authorization code
+4. Click "Profile" in sidebar
+5. Click "Sign In" button
+6. Enter credentials: admin / verysecret
+7. Verify redirect back to profile page with user info displayed
 
 ## TODO (Implementation Checklist)
 
@@ -126,8 +197,15 @@ All 7 tests should pass.
 ### Phase 2: Run E2E Tests
 - [x] 2.1: Run `npm run test:e2e` and verify all 7 tests pass
 
-### Phase 3: Verification (Optional)
-- [ ] 3.1: Manual login flow verification (skipped - E2E tests provide sufficient coverage)
+### Phase 3: Add Profile Page with Login Navigation
+- [ ] 3.1: Create `useAuth` hook in `ui/src/auth/useAuth.ts`
+- [ ] 3.2: Create ProfilePage component in `ui/src/components/ProfilePage.tsx`
+- [ ] 3.3: Add Profile navigation link to sidebar and route in `ui/src/App.tsx`
+- [ ] 3.4: Export `useAuth` from `ui/src/auth/index.ts`
+- [ ] 3.5: Add E2E tests for profile navigation and login flow in `ui/e2e/auth.spec.ts`
+
+### Phase 4: Manual Verification (Optional)
+- [ ] 4.1: Manual login flow verification via Profile page
 
 ---
 
