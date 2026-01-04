@@ -6,8 +6,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { User, UserManager } from 'oidc-client-ts'
-import { getOIDCSettings } from './config'
+import { User } from 'oidc-client-ts'
+import { getUserManager } from './userManager'
 
 export interface AuthContextValue {
   // Current authenticated user, or null if not logged in
@@ -37,10 +37,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  // Create UserManager once
-  const userManager = useMemo(() => {
-    return new UserManager(getOIDCSettings())
-  }, [])
+  // Use shared UserManager singleton
+  const userManager = useMemo(() => getUserManager(), [])
 
   // Check for existing session on mount
   useEffect(() => {
@@ -128,9 +126,4 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-// Export UserManager for use in callback handler
-export function createUserManager() {
-  return new UserManager(getOIDCSettings())
 }
