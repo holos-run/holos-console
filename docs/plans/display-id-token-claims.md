@@ -1,8 +1,8 @@
 # Plan: Display ID Token Claims on Profile Page
 
-> **Status:** UNREVIEWED / UNAPPROVED
+> **Status:** APPROVED
 >
-> This plan is a draft. Do not implement until approved.
+> This plan has been reviewed and approved for implementation.
 
 ## Overview
 
@@ -157,8 +157,8 @@ No documentation changes required - this is a simple UI enhancement.
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Add Claims Display Component
-- [ ] 1.1: Add Accordion with claims JSON to ProfilePage.tsx
-- [ ] 1.2: Add required MUI imports (Accordion, ExpandMoreIcon)
+- [x] 1.1: Add Accordion with claims JSON to ProfilePage.tsx
+- [x] 1.2: Add required MUI imports (Accordion, ExpandMoreIcon)
 
 ### Phase 2: E2E Test with Screenshot
 - [ ] 2.1: Add E2E test case for claims display with screenshot
