@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -97,15 +98,27 @@ func Run(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
+	// Parse token TTL durations
+	idTTL, err := time.ParseDuration(idTokenTTL)
+	if err != nil {
+		return fmt.Errorf("invalid --id-token-ttl: %w", err)
+	}
+	refreshTTL, err := time.ParseDuration(refreshTokenTTL)
+	if err != nil {
+		return fmt.Errorf("invalid --refresh-token-ttl: %w", err)
+	}
+
 	// Derive issuer from listen address if not explicitly set
 	derivedIssuer := deriveIssuer(listenAddr, issuer)
 
 	cfg := console.Config{
-		ListenAddr: listenAddr,
-		CertFile:   certFile,
-		KeyFile:    keyFile,
-		Issuer:     derivedIssuer,
-		ClientID:   clientID,
+		ListenAddr:      listenAddr,
+		CertFile:        certFile,
+		KeyFile:         keyFile,
+		Issuer:          derivedIssuer,
+		ClientID:        clientID,
+		IDTokenTTL:      idTTL,
+		RefreshTokenTTL: refreshTTL,
 	}
 
 	server := console.New(cfg)
