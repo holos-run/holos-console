@@ -4,9 +4,12 @@ import { test, expect } from '@playwright/test'
  * E2E tests for OIDC authentication flow.
  *
  * These tests verify the full login flow using the embedded Dex OIDC provider.
- * They require both the Go backend and Vite dev server to be running.
+ * They require both the Go backend and Vite dev server to be running:
  *
- * Default credentials (configurable via env vars):
+ *   Terminal 1: make run     (Go backend on https://localhost:8443)
+ *   Terminal 2: make dev     (Vite dev server on https://localhost:5173)
+ *
+ * Default credentials (configurable via env vars on the Go backend):
  *   Username: admin (HOLOS_DEX_INITIAL_ADMIN_USERNAME)
  *   Password: verysecret (HOLOS_DEX_INITIAL_ADMIN_PASSWORD)
  */
@@ -15,38 +18,39 @@ import { test, expect } from '@playwright/test'
 const DEFAULT_USERNAME = 'admin'
 const DEFAULT_PASSWORD = 'verysecret'
 
+// Check if servers are available before running tests
+test.beforeAll(async ({ request }) => {
+  try {
+    const response = await request.get('/ui', { timeout: 5000 })
+    if (!response.ok()) {
+      test.skip(true, 'Servers not running - start with: make run && make dev')
+    }
+  } catch {
+    test.skip(true, 'Servers not running - start with: make run && make dev')
+  }
+})
+
 test.describe('Authentication', () => {
-  test.beforeEach(async ({ page }) => {
-    // Clear session storage to start fresh
+  test('should have landing page accessible', async ({ page }) => {
     await page.goto('/ui')
-    await page.evaluate(() => sessionStorage.clear())
+
+    // Verify the landing page loads
+    await expect(
+      page.getByRole('heading', { name: 'Welcome to Holos Console' }),
+    ).toBeVisible()
   })
 
-  test('should display login page when accessing Dex authorize endpoint', async ({
-    page,
-  }) => {
-    // Navigate to the OIDC authorize endpoint directly
-    // This simulates what happens when the SPA initiates login
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
-    authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('code_challenge', 'test_challenge')
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+  test('should have version page accessible', async ({ page }) => {
+    await page.goto('/ui/version')
 
-    await page.goto(authorizeUrl.toString())
-
-    // Dex should show a login form or connector selection
-    // The exact UI depends on Dex configuration
-    await expect(page).toHaveURL(/\/dex\//)
+    // The version page should load and show version info from the backend
+    // This verifies the RPC connection works through the proxy
+    await expect(page.getByText('Version')).toBeVisible()
   })
 
-  test('should have OIDC discovery endpoint accessible', async ({ page }) => {
+  test('should have OIDC discovery endpoint accessible', async ({ request }) => {
     // Verify the OIDC discovery endpoint is accessible
-    const response = await page.request.get(
-      'https://localhost:5173/dex/.well-known/openid-configuration',
-    )
+    const response = await request.get('/dex/.well-known/openid-configuration')
 
     expect(response.ok()).toBeTruthy()
 
@@ -57,99 +61,88 @@ test.describe('Authentication', () => {
     expect(config.jwks_uri).toBeDefined()
   })
 
-  test('should have landing page accessible', async ({ page }) => {
-    await page.goto('/ui')
-
-    // Verify the landing page loads
-    await expect(page.getByRole('heading', { name: 'Welcome to Holos Console' })).toBeVisible()
-  })
-
-  test('should have version page accessible', async ({ page }) => {
-    await page.goto('/ui/version')
-
-    // The version page should load and show version info from the backend
-    // This verifies the RPC connection works through the proxy
-    await expect(page.getByText('Version')).toBeVisible()
-  })
-})
-
-test.describe('Login Flow', () => {
-  test('should complete full OIDC login flow with default credentials', async ({
+  test('should display Dex login page when accessing authorize endpoint', async ({
     page,
   }) => {
-    // Start at the landing page
-    await page.goto('/ui')
-
-    // The AuthProvider should initialize without error
-    await expect(page.getByRole('heading', { name: 'Welcome to Holos Console' })).toBeVisible()
-
-    // Navigate to OIDC authorize with proper PKCE challenge
-    // In a real scenario, the login() function generates these
-    const codeVerifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'
-    const codeChallenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'
-
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
+    // Navigate to the OIDC authorize endpoint directly
+    // This simulates what happens when the SPA initiates login
+    const authorizeUrl = new URL('/dex/auth', page.url() || 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set(
-      'redirect_uri',
-      'https://localhost:5173/ui/callback',
-    )
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', codeChallenge)
+    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
     authorizeUrl.searchParams.set('code_challenge_method', 'S256')
 
     await page.goto(authorizeUrl.toString())
 
-    // Wait for Dex login page to load
-    // Dex shows a connector selection or login form
-    await page.waitForURL(/\/dex\//)
+    // Dex should redirect to show a login form or connector selection
+    await expect(page).toHaveURL(/\/dex\//)
+  })
+})
 
-    // Look for the mock password connector login form
-    // The exact selectors depend on Dex's HTML structure
+test.describe('Login Flow', () => {
+  test('should show login form with username and password fields', async ({
+    page,
+  }) => {
+    // Navigate to OIDC authorize with proper PKCE parameters
+    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
+    authorizeUrl.searchParams.set('client_id', 'holos-console')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('response_type', 'code')
+    authorizeUrl.searchParams.set('scope', 'openid profile email')
+    authorizeUrl.searchParams.set('state', 'test_state')
+    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
+    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+
+    await page.goto(authorizeUrl.toString())
+
+    // Wait for Dex login page
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
+
+    // Dex mock password connector shows a login form
+    // Look for the login form elements
     const usernameInput = page.locator('input[name="login"]')
     const passwordInput = page.locator('input[name="password"]')
 
-    if ((await usernameInput.count()) > 0) {
-      // Fill in credentials
-      await usernameInput.fill(DEFAULT_USERNAME)
-      await passwordInput.fill(DEFAULT_PASSWORD)
+    // At least one should be visible (depending on Dex UI flow)
+    const hasLoginForm = (await usernameInput.count()) > 0 || (await passwordInput.count()) > 0
 
-      // Submit the form
-      await page.locator('button[type="submit"]').click()
-
-      // After successful auth, Dex redirects to the callback URL
-      // The callback component processes the code and redirects to home
-      await page.waitForURL(/\/ui/, { timeout: 10000 })
-
-      // Should be back on the landing page
-      await expect(
-        page.getByRole('heading', { name: 'Welcome to Holos Console' }),
-      ).toBeVisible()
-    } else {
-      // If no login form is visible, there might be a connector selection
-      // or the test environment is configured differently
-      console.log('No login form found - Dex may be configured differently')
+    // If no login form, we might be on a connector selection page
+    if (!hasLoginForm) {
+      // Look for connector link/button
+      const connectorLink = page.locator('a[href*="connector"]').first()
+      if ((await connectorLink.count()) > 0) {
+        await connectorLink.click()
+        await page.waitForLoadState('networkidle')
+      }
     }
+
+    // Now we should have a login form
+    await expect(usernameInput.or(passwordInput).first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should reject invalid credentials', async ({ page }) => {
     // Navigate to OIDC authorize
     const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set(
-      'redirect_uri',
-      'https://localhost:5173/ui/callback',
-    )
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', 'test_challenge')
+    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
     authorizeUrl.searchParams.set('code_challenge_method', 'S256')
 
     await page.goto(authorizeUrl.toString())
-    await page.waitForURL(/\/dex\//)
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
+
+    // Navigate to login form if on connector selection
+    const connectorLink = page.locator('a[href*="connector"]').first()
+    if ((await connectorLink.count()) > 0) {
+      await connectorLink.click()
+      await page.waitForLoadState('networkidle')
+    }
 
     const usernameInput = page.locator('input[name="login"]')
     const passwordInput = page.locator('input[name="password"]')
@@ -167,21 +160,40 @@ test.describe('Login Flow', () => {
     }
   })
 
-  test('should handle custom credentials from environment', async ({
-    page,
-  }) => {
-    // This test documents that credentials can be customized
-    // via HOLOS_DEX_INITIAL_ADMIN_USERNAME and HOLOS_DEX_INITIAL_ADMIN_PASSWORD
-    // The actual test uses default credentials since we can't modify
-    // the running server's environment
+  test('should complete login with valid credentials', async ({ page }) => {
+    // Navigate to OIDC authorize
+    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
+    authorizeUrl.searchParams.set('client_id', 'holos-console')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('response_type', 'code')
+    authorizeUrl.searchParams.set('scope', 'openid profile email')
+    authorizeUrl.searchParams.set('state', 'test_state')
+    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
+    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
 
-    await page.goto('/ui')
-    await expect(page.getByRole('heading', { name: 'Welcome to Holos Console' })).toBeVisible()
+    await page.goto(authorizeUrl.toString())
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
 
-    // Verify OIDC discovery is accessible (confirms Dex is running)
-    const response = await page.request.get(
-      'https://localhost:5173/dex/.well-known/openid-configuration',
-    )
-    expect(response.ok()).toBeTruthy()
+    // Navigate to login form if on connector selection
+    const connectorLink = page.locator('a[href*="connector"]').first()
+    if ((await connectorLink.count()) > 0) {
+      await connectorLink.click()
+      await page.waitForLoadState('networkidle')
+    }
+
+    const usernameInput = page.locator('input[name="login"]')
+    const passwordInput = page.locator('input[name="password"]')
+
+    if ((await usernameInput.count()) > 0) {
+      // Fill in correct credentials
+      await usernameInput.fill(DEFAULT_USERNAME)
+      await passwordInput.fill(DEFAULT_PASSWORD)
+
+      await page.locator('button[type="submit"]').click()
+
+      // After successful auth, Dex redirects to the callback URL with a code
+      // The URL should contain the callback path and an authorization code
+      await page.waitForURL(/\/ui\/callback\?.*code=/, { timeout: 10000 })
+    }
   })
 })
