@@ -1016,7 +1016,7 @@ make run
 - [x] 4.3: Add /auth-debug route and navigation link
 
 ### Phase 5: Testing
-- [ ] 5.1: Add unit tests for TTL duration parsing
+- [x] 5.1: Add unit tests for TTL duration parsing
 - [ ] 5.2: Manual E2E verification - Token expiration with short TTL
 - [ ] 5.3: Manual E2E verification - Auth debug page (development mode)
 - [ ] 5.4: Manual E2E verification - BFF mode (with oauth2-proxy)
