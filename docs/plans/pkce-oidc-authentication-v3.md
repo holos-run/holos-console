@@ -491,7 +491,7 @@ The issuer URL flows to:
 - [x] 3.1: Add `oidc-client-ts` dependency
 - [x] 3.2: Create `ui/src/auth/` with AuthProvider, useAuth, config
 - [x] 3.3: Update Vite proxy to forward `/dex/*` to backend
-- [ ] 3.4: Create callback route component
+- [x] 3.4: Create callback route component
 
 ### Phase 4: Testing
 - [x] 4.1a: Write unit tests for `console/oidc/config.go`
