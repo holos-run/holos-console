@@ -105,6 +105,21 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		serverConfig.IDTokensValidFor = cfg.IDTokenTTL
 	}
 
+	// Configure refresh token policy with absolute lifetime if specified
+	if cfg.RefreshTokenTTL > 0 {
+		refreshPolicy, err := server.NewRefreshTokenPolicy(
+			logger,
+			true,                          // rotation enabled
+			"",                            // validIfNotUsedFor (empty = no limit)
+			cfg.RefreshTokenTTL.String(),  // absoluteLifetime
+			"3s",                          // reuseInterval (handle network retries)
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create refresh token policy: %w", err)
+		}
+		serverConfig.RefreshTokenPolicy = refreshPolicy
+	}
+
 	// Create Dex server
 	dexServer, err := server.NewServer(ctx, serverConfig)
 	if err != nil {

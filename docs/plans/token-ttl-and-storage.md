@@ -1000,7 +1000,7 @@ make run
 ### Phase 2: Backend - Configure Dex Token Lifetimes
 - [x] 2.1: Add TTL fields to oidc.Config struct
 - [x] 2.2: Configure Dex server.Config with IDTokensValidFor
-- [ ] 2.3: Create RefreshTokenPolicy with absolute lifetime
+- [x] 2.3: Create RefreshTokenPolicy with absolute lifetime
 - [ ] 2.4: Wire TTL config from console.Serve to oidc.NewHandler
 
 ### Phase 3: Frontend - BFF Mode Support
