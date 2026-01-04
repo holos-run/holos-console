@@ -211,7 +211,7 @@ Add new test describe block `Profile Page` with tests:
 - [x] 5.1: Create shared UserManager singleton in `ui/src/auth/userManager.ts`
 - [x] 5.2: Update AuthProvider to use shared UserManager
 - [x] 5.3: Update Callback to use shared UserManager and read returnTo state
-- [ ] 5.4: Update login() to accept and pass returnTo parameter
+- [x] 5.4: Update login() to accept and pass returnTo parameter
 - [ ] 5.5: Update ProfilePage to pass current path on login
 - [ ] 5.6: Update auth module exports
 - [ ] 5.7: Update E2E tests for return URL behavior

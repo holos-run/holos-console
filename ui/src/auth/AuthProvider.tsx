@@ -18,8 +18,8 @@ export interface AuthContextValue {
   error: Error | null
   // True if user is authenticated
   isAuthenticated: boolean
-  // Redirect to login page
-  login: () => Promise<void>
+  // Redirect to login page. Optional returnTo path for post-login redirect.
+  login: (returnTo?: string) => Promise<void>
   // Log out and redirect
   logout: () => Promise<void>
   // Get the current access token (for API calls)
@@ -86,16 +86,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [userManager])
 
-  const login = useCallback(async () => {
-    try {
-      setError(null)
-      await userManager.signinRedirect()
-    } catch (err) {
-      console.error('Login error:', err)
-      setError(err instanceof Error ? err : new Error(String(err)))
-      throw err
-    }
-  }, [userManager])
+  const login = useCallback(
+    async (returnTo?: string) => {
+      try {
+        setError(null)
+        // Pass returnTo in state so Callback can redirect back after auth
+        const targetPath = returnTo ?? window.location.pathname
+        await userManager.signinRedirect({ state: { returnTo: targetPath } })
+      } catch (err) {
+        console.error('Login error:', err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        throw err
+      }
+    },
+    [userManager],
+  )
 
   const logout = useCallback(async () => {
     try {
