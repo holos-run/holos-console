@@ -470,7 +470,7 @@ The issuer URL flows to:
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Embedded OIDC Identity Provider
-- [ ] 1.1a: Add `github.com/dexidp/dex` dependency
+- [x] 1.1a: Add `github.com/dexidp/dex` dependency
 - [ ] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
 - [ ] 1.2a: Create `console/oidc/config.go` with default credentials
 - [ ] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory

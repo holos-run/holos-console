@@ -1,12 +1,13 @@
 module github.com/holos-run/holos-console
 
-go 1.24.2
+go 1.25.0
 
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
 	filippo.io/mkcert v1.4.4
 	github.com/bufbuild/buf v1.62.1
+	github.com/dexidp/dex v0.0.0-20250829100637-2dce75009acf
 	github.com/fullstorydev/grpcurl v1.9.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
@@ -46,6 +47,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.18.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
+	github.com/dexidp/dex v0.0.0-20250829100637-2dce75009acf // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/cli v29.1.3+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
