@@ -6,10 +6,12 @@
 
 ## Overview
 
-When the server is started on a non-default port (e.g., `--listen :4443`), the OIDC sign-in flow fails because the `--issuer` flag defaults to `https://localhost:8443/dex` regardless of the listen address. This causes a mismatch between:
+When the server is started on a non-default port (e.g., `--listen :4443`), the OIDC sign-in flow fails because:
 
-1. The frontend's OIDC authority URL (derived from `window.location.origin`)
-2. The backend's Dex issuer configuration
+1. The `--issuer` flag defaults to `https://localhost:8443/dex` regardless of the listen address
+2. The frontend derives its OIDC authority from `window.location.origin`, which doesn't account for explicit `--issuer` values or external identity providers
+
+This plan fixes both the backend default and ensures the frontend uses the backend's configured issuer value.
 
 ## Problem Analysis
 
@@ -26,6 +28,16 @@ When the server is started on a non-default port (e.g., `--listen :4443`), the O
    ```
 3. **Dex issuer** ([console/oidc/oidc.go:84-86](console/oidc/oidc.go#L84-L86)): Uses the `--issuer` value verbatim
 
+### Why window.location.origin Is Insufficient
+
+The frontend's use of `window.location.origin` fails in these scenarios:
+
+1. **Non-default port**: Running `--listen :4443` but issuer defaults to port 8443
+2. **Reverse proxy**: External URL is `https://console.example.com` but server listens on `:8443`
+3. **External IDP**: Using `--issuer https://auth.example.com/dex` to point to an external identity provider
+
+The frontend must use the actual issuer value configured on the backend, not derive it from the browser's URL.
+
 ### Failure Scenario
 
 ```bash
@@ -33,51 +45,52 @@ When the server is started on a non-default port (e.g., `--listen :4443`), the O
 ```
 
 - Server listens on port 4443
+- Dex issuer defaults to `https://localhost:8443/dex` (wrong!)
 - User opens `https://localhost:4443/ui/profile`
 - Frontend calculates authority as `https://localhost:4443/dex`
-- Dex is configured with issuer `https://localhost:8443/dex`
-- OIDC discovery URL mismatch causes redirect to wrong port
-
-### Production Context
-
-In production, the server may run behind a reverse proxy (e.g., Kubernetes Ingress, nginx). The external URL (`https://console.example.com`) differs from the internal listen address (`:8443`). The `--issuer` flag must be explicitly set to the external URL in this case.
+- Mismatch between frontend authority and Dex issuer causes OIDC failures
 
 ## Goal
 
-1. When `--issuer` is not specified, derive it from `--listen` address
-2. When `--issuer` is explicitly specified, use that value (supports reverse proxy deployments)
-3. Frontend continues to use `window.location.origin` - no changes needed on frontend
+1. Backend: Derive `--issuer` from `--listen` address when not explicitly specified
+2. Frontend: Use the backend's configured issuer value via server-injected config
+3. Dev mode: Vite injects config based on its proxy target, preserving HMR
 
 ## Design Decisions
 
 | Topic | Decision | Rationale |
 | ----- | -------- | --------- |
-| Default issuer | Derive from `--listen` | Match frontend behavior that uses `window.location.origin` |
-| Explicit issuer | User-provided value wins | Required for reverse proxy/production deployments |
+| Config injection | `<script>` tag before `</head>` | Sets `window.__OIDC_CONFIG__` before app loads; no async fetch needed |
+| Default issuer | Derive from `--listen` | Sensible default for local development |
+| Explicit issuer | User-provided value wins | Required for reverse proxy and external IDP deployments |
+| Redirect URIs | Derive from issuer | Replace `/dex` with `/ui/callback` for consistency |
+| Vite dev mode | Plugin injects config from `backendUrl` | Preserves HMR; Vite controls HTML, not backend |
 | Port parsing | Use `net.SplitHostPort` | Handle various listen formats (`:8443`, `0.0.0.0:8443`, `localhost:8443`) |
-| Default host | `localhost` | When listen is `:port` format, use localhost as host |
-| Scheme | Always `https` | Server always uses TLS |
 
 ## Changes Required
 
 ### Modify (Existing Files)
 
-- [cli/cli.go](cli/cli.go) - Remove default value from `--issuer`, add logic to derive issuer from listen address
+- [cli/cli.go](cli/cli.go) - Remove default from `--issuer`, add derivation logic
+- [console/console.go](console/console.go) - Inject OIDC config into index.html when serving
+- [ui/vite.config.ts](ui/vite.config.ts) - Add plugin to inject OIDC config in dev mode
+- [ui/src/auth/config.ts](ui/src/auth/config.ts) - Simplify to always use injected config (remove origin fallback)
 
 ### Add (New Files)
 
-None required (all changes in cli.go)
+None required.
 
 ## Implementation
 
-### Phase 1: Update CLI Flag Handling
+### Phase 1: Backend - Derive Issuer from Listen Address
 
 #### 1.1 Remove hardcoded default from --issuer flag
 
 Change the `--issuer` flag definition to have an empty default:
 
 ```go
-cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex)")
+cmd.Flags().StringVar(&issuer, "issuer", "",
+    "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 ```
 
 #### 1.2 Add issuer derivation logic
@@ -111,27 +124,159 @@ func deriveIssuer(listenAddr, issuer string) string {
 
 #### 1.3 Apply derivation in Run function
 
-Update the `Run` function to derive the issuer:
+Update the `Run` function to derive the issuer before creating config.
+
+### Phase 2: Backend - Inject OIDC Config into index.html
+
+#### 2.1 Add OIDCConfig struct and JSON generation
+
+Add to `console/console.go`:
 
 ```go
-func Run(cmd *cobra.Command, args []string) error {
-    // ... existing code ...
+// OIDCConfig is the OIDC configuration injected into the frontend.
+type OIDCConfig struct {
+    Authority             string `json:"authority"`
+    ClientID              string `json:"client_id"`
+    RedirectURI           string `json:"redirect_uri"`
+    PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
+}
 
-    cfg := console.Config{
-        ListenAddr: listenAddr,
-        CertFile:   certFile,
-        KeyFile:    keyFile,
-        Issuer:     deriveIssuer(listenAddr, issuer),
-        ClientID:   clientID,
-    }
+// deriveRedirectURI derives the redirect URI from the issuer URL.
+// Replaces /dex suffix with /ui/callback.
+func deriveRedirectURI(issuer string) string {
+    base := strings.TrimSuffix(issuer, "/dex")
+    return base + "/ui/callback"
+}
 
-    // ... rest of function ...
+// derivePostLogoutRedirectURI derives the post-logout redirect URI from the issuer URL.
+func derivePostLogoutRedirectURI(issuer string) string {
+    base := strings.TrimSuffix(issuer, "/dex")
+    return base + "/ui"
 }
 ```
 
-### Phase 2: Testing
+#### 2.2 Modify uiHandler to inject config
 
-#### 2.1 Add unit tests for deriveIssuer
+Update the `uiHandler` struct to hold the OIDC config and inject it when serving index.html:
+
+```go
+type uiHandler struct {
+    fs         fs.FS
+    oidcConfig *OIDCConfig
+}
+
+func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) http.Handler {
+    return &uiHandler{fs: uiContent, oidcConfig: oidcConfig}
+}
+
+func (h *uiHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+    // Read index.html
+    data, err := fs.ReadFile(h.fs, "index.html")
+    if err != nil {
+        http.NotFound(w, r)
+        return
+    }
+
+    // Inject OIDC config if available
+    if h.oidcConfig != nil {
+        configJSON, err := json.Marshal(h.oidcConfig)
+        if err == nil {
+            script := fmt.Sprintf(`<script>window.__OIDC_CONFIG__=%s;</script>`, configJSON)
+            // Insert before </head>
+            data = bytes.Replace(data, []byte("</head>"), []byte(script+"</head>"), 1)
+        }
+    }
+
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    w.Write(data)
+}
+```
+
+#### 2.3 Wire OIDC config in Serve method
+
+Update the `Serve` method to create and pass the OIDC config:
+
+```go
+// Create OIDC config for frontend injection
+oidcConfig := &OIDCConfig{
+    Authority:             s.cfg.Issuer,
+    ClientID:              s.cfg.ClientID,
+    RedirectURI:           deriveRedirectURI(s.cfg.Issuer),
+    PostLogoutRedirectURI: derivePostLogoutRedirectURI(s.cfg.Issuer),
+}
+
+uiHandler := newUIHandler(uiContent, oidcConfig)
+```
+
+### Phase 3: Frontend - Simplify Config to Use Injected Values
+
+#### 3.1 Update config.ts to require injected config
+
+Update [ui/src/auth/config.ts](ui/src/auth/config.ts) to require the injected config and remove the `window.location.origin` fallback:
+
+```typescript
+function getConfig(): OIDCConfig {
+  // Config must be injected by server (production) or Vite plugin (development)
+  if (window.__OIDC_CONFIG__) {
+    return window.__OIDC_CONFIG__
+  }
+
+  // Fallback for edge cases (should not happen in normal operation)
+  console.warn('OIDC config not injected, using origin-based fallback')
+  const origin = window.location.origin
+  return {
+    authority: `${origin}/dex`,
+    client_id: 'holos-console',
+    redirect_uri: `${origin}/ui/callback`,
+    post_logout_redirect_uri: `${origin}/ui`,
+  }
+}
+```
+
+### Phase 4: Vite Dev Server - Inject Config via Plugin
+
+#### 4.1 Create Vite plugin to inject OIDC config
+
+Update [ui/vite.config.ts](ui/vite.config.ts) to add a plugin that injects the OIDC config in development mode:
+
+```typescript
+const backendUrl = 'https://localhost:8443'
+
+// Derive OIDC config from backend URL
+const oidcConfig = {
+  authority: `${backendUrl}/dex`,
+  client_id: 'holos-console',
+  redirect_uri: 'https://localhost:5173/ui/callback',  // Vite dev server
+  post_logout_redirect_uri: 'https://localhost:5173/ui',
+}
+
+const injectOIDCConfig = (): Plugin => ({
+  name: 'inject-oidc-config',
+  transformIndexHtml(html) {
+    const script = `<script>window.__OIDC_CONFIG__=${JSON.stringify(oidcConfig)};</script>`
+    return html.replace('</head>', `${script}</head>`)
+  },
+})
+
+export default defineConfig({
+  plugins: [injectOIDCConfig(), uiCanonicalRedirect(), react()],
+  // ... rest of config
+})
+```
+
+This approach:
+- Derives the OIDC authority from `backendUrl` (same variable used for proxy config)
+- Uses Vite's dev server URL for redirect URIs (port 5173)
+- Preserves HMR because Vite controls the HTML transformation
+- Keeps the backend proxy working for `/dex` requests
+
+#### 4.2 Update backend redirect URIs to include Vite dev server
+
+The backend already includes the Vite dev server redirect URI in the allowed list ([console/console.go:110-114](console/console.go#L110-L114)). No changes needed.
+
+### Phase 5: Testing
+
+#### 5.1 Add unit tests for deriveIssuer
 
 Add test cases in `cli/cli_test.go`:
 
@@ -179,47 +324,59 @@ func TestDeriveIssuer(t *testing.T) {
 }
 ```
 
-#### 2.2 Manual E2E verification
-
-Test the fix manually:
+#### 5.2 Manual E2E verification - non-default port
 
 ```bash
-# Start server on non-default port
+# Build and run on non-default port
+make build
 ./bin/holos-console --cert certs/tls.crt --key certs/tls.key --listen :4443
 
 # Verify log shows correct issuer
 # Should see: "issuer": "https://localhost:4443/dex"
 
-# Open https://localhost:4443/ui/profile and sign in
-# Should redirect to Dex at port 4443, not 8443
+# Open https://localhost:4443/ui/profile
+# View page source - should see injected __OIDC_CONFIG__ with port 4443
+# Sign in should work correctly
 ```
 
-### Phase 3: Documentation
+#### 5.3 Manual E2E verification - Vite dev mode
 
-#### 3.1 Update help text
+```bash
+# Terminal 1: Start backend on default port
+make run
 
-Update the `--issuer` flag help text to clarify the default behavior:
+# Terminal 2: Start Vite dev server
+cd ui && npm run dev
 
-```go
-cmd.Flags().StringVar(&issuer, "issuer", "",
-    "OIDC issuer URL for token validation. Defaults to https://localhost:<port>/dex based on --listen address. Set explicitly for reverse proxy deployments.")
+# Open https://localhost:5173/ui/profile
+# View page source - should see injected __OIDC_CONFIG__
+# Sign in should work (Vite proxies /dex to backend)
 ```
 
 ---
 
 ## TODO (Implementation Checklist)
 
-### Phase 1: Update CLI Flag Handling
+### Phase 1: Backend - Derive Issuer from Listen Address
 - [ ] 1.1: Remove hardcoded default from --issuer flag
-- [ ] 1.2: Add deriveIssuer function
+- [ ] 1.2: Add deriveIssuer function to cli/cli.go
 - [ ] 1.3: Apply derivation in Run function
 
-### Phase 2: Testing
-- [ ] 2.1: Add unit tests for deriveIssuer
-- [ ] 2.2: Manual E2E verification
+### Phase 2: Backend - Inject OIDC Config into index.html
+- [ ] 2.1: Add OIDCConfig struct and helper functions
+- [ ] 2.2: Modify uiHandler to inject config into index.html
+- [ ] 2.3: Wire OIDC config creation in Serve method
 
-### Phase 3: Documentation
-- [ ] 3.1: Update --issuer flag help text
+### Phase 3: Frontend - Simplify Config
+- [ ] 3.1: Update config.ts to expect injected config (keep fallback with warning)
+
+### Phase 4: Vite Dev Server - Inject Config
+- [ ] 4.1: Add injectOIDCConfig plugin to vite.config.ts
+
+### Phase 5: Testing
+- [ ] 5.1: Add unit tests for deriveIssuer
+- [ ] 5.2: Manual E2E verification - non-default port
+- [ ] 5.3: Manual E2E verification - Vite dev mode
 
 ---
 
@@ -231,16 +388,20 @@ After implementation, verify with:
 # Build
 make build
 
-# Test on non-default port
+# Test 1: Non-default port (production mode)
 ./bin/holos-console --cert certs/tls.crt --key certs/tls.key --listen :4443
-
-# Check logs for correct issuer URL
 # Open https://localhost:4443/ui/profile
-# Sign in should work without port mismatch
+# Sign in should work
 
-# Test explicit issuer still works
-./bin/holos-console --cert certs/tls.crt --key certs/tls.key --listen :4443 --issuer https://external.example.com/dex
-# Logs should show the explicit issuer URL
+# Test 2: Explicit issuer
+./bin/holos-console --cert certs/tls.crt --key certs/tls.key --listen :4443 --issuer https://localhost:4443/dex
+# Should behave same as Test 1
+
+# Test 3: Vite dev mode
+make run  # Backend on :8443
+cd ui && npm run dev  # Vite on :5173
+# Open https://localhost:5173/ui/profile
+# Sign in should work (proxied through Vite)
 ```
 
 Run unit tests:
@@ -250,20 +411,27 @@ make test
 
 ## Security Considerations
 
-- No new attack surface - this only changes how the default issuer is computed
-- Explicit `--issuer` flag continues to work for production deployments with reverse proxies
+- OIDC config is not sensitive (public client, no secrets)
+- Injected config is derived from server-side values, not user input
 - Token validation continues to use the configured issuer URL
+- No XSS risk - config is JSON-encoded and injected as literal object
 
 ## Alternatives Considered
 
-### Alternative 1: Inject issuer into frontend at runtime
+### Alternative 1: Fetch config from API endpoint
 
-Instead of deriving the issuer on the backend, the server could inject the issuer URL into the HTML served to the frontend (via `window.__OIDC_CONFIG__`).
+Add a `/api/config` endpoint that returns OIDC config, frontend fetches on startup.
 
-**Rejected:** The current frontend behavior of using `window.location.origin` is correct and simple. The problem is the backend's hardcoded default, not the frontend's discovery mechanism.
+**Rejected:** Adds latency to app startup. Script injection is synchronous and simpler.
 
-### Alternative 2: Always require explicit --issuer flag
+### Alternative 2: Environment variables for Vite
 
-Remove the default entirely and require users to specify `--issuer` in all cases.
+Use `VITE_OIDC_AUTHORITY` env var to configure Vite.
 
-**Rejected:** Poor developer experience. The common case (local development) should work without extra flags.
+**Rejected:** Requires coordinating env vars between Go and Vite. Deriving from `backendUrl` is more maintainable since it's already used for proxy config.
+
+### Alternative 3: Keep window.location.origin fallback as primary
+
+Only inject config for explicit `--issuer` values.
+
+**Rejected:** Doesn't solve the non-default port case. The injected config approach is more robust and handles all scenarios consistently.
