@@ -17,7 +17,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  // Use list reporter for console output (CI-friendly)
+  // HTML reporter opens a browser which blocks non-interactive execution
+  reporter: 'list',
   use: {
     // Base URL for the Vite dev server (proxies to Go backend)
     baseURL: 'https://localhost:5173',
