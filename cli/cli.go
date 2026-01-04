@@ -13,11 +13,13 @@ import (
 )
 
 var (
-	listenAddr string
-	certFile   string
-	keyFile    string
-	issuer     string
-	clientID   string
+	listenAddr      string
+	certFile        string
+	keyFile         string
+	issuer          string
+	clientID        string
+	idTokenTTL      string
+	refreshTokenTTL string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -57,6 +59,10 @@ func Command() *cobra.Command {
 	// OIDC flags
 	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
+
+	// Token TTL flags
+	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
+	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
 
 	return cmd
 }

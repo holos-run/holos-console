@@ -993,7 +993,7 @@ make run
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Backend - Configurable Token TTLs
-- [ ] 1.1: Add `--id-token-ttl` and `--refresh-token-ttl` flags to cli/cli.go
+- [x] 1.1: Add `--id-token-ttl` and `--refresh-token-ttl` flags to cli/cli.go
 - [ ] 1.2: Add TTL fields to console.Config struct
 - [ ] 1.3: Parse duration strings and wire to config
 
