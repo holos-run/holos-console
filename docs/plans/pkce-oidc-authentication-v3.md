@@ -483,9 +483,9 @@ The issuer URL flows to:
 - [x] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
 - [x] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
 - [x] 2.3: Apply auth interceptor to protected routes in `console/console.go`
-- [ ] 2.4a: Write integration test for OIDC discovery endpoint
-- [ ] 2.4b: Write integration test for token validation
-- [ ] 2.4c: Write integration test for protected RPC endpoints
+- [x] 2.4a: Write integration test for OIDC discovery endpoint
+- [x] 2.4b: Write integration test for token validation
+- [x] 2.4c: Write integration test for protected RPC endpoints
 
 ### Phase 3: React SPA Updates
 - [ ] 3.1: Add `oidc-client-ts` dependency
@@ -494,8 +494,8 @@ The issuer URL flows to:
 - [ ] 3.4: Create callback route component
 
 ### Phase 4: Testing
-- [ ] 4.1a: Write unit tests for `console/oidc/config.go`
-- [ ] 4.1b: Write integration tests for `console/oidc/oidc.go`
+- [x] 4.1a: Write unit tests for `console/oidc/config.go`
+- [x] 4.1b: Write integration tests for `console/oidc/oidc.go`
 - [ ] 4.2: Write Playwright E2E tests for login flow
 
 ### Phase 5: Documentation
