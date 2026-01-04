@@ -496,7 +496,7 @@ The issuer URL flows to:
 ### Phase 4: Testing
 - [x] 4.1a: Write unit tests for `console/oidc/config.go`
 - [x] 4.1b: Write integration tests for `console/oidc/oidc.go`
-- [ ] 4.2: Write Playwright E2E tests for login flow
+- [x] 4.2: Write Playwright E2E tests for login flow
 
 ### Phase 5: Documentation
 - [ ] 5.1: Update CONTRIBUTING.md with authentication workflow
