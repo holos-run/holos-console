@@ -368,7 +368,7 @@ cd ui && npm run dev
 - [x] 2.3: Wire OIDC config creation in Serve method
 
 ### Phase 3: Frontend - Simplify Config
-- [ ] 3.1: Update config.ts to expect injected config (keep fallback with warning)
+- [x] 3.1: Update config.ts to expect injected config (keep fallback with warning)
 
 ### Phase 4: Vite Dev Server - Inject Config
 - [ ] 4.1: Add injectOIDCConfig plugin to vite.config.ts
