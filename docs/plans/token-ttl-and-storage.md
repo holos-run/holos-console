@@ -48,6 +48,115 @@ This plan addresses three related authentication issues:
 - No indication when silent refresh occurs
 - Debugging token issues requires browser dev tools
 
+## State of the Art: SPA Authentication in 2025
+
+This section provides context for security review by summarizing current industry standards, IETF recommendations, and how comparable internal developer tools handle authentication.
+
+### IETF Standards and OAuth 2.1
+
+The IETF's [OAuth 2.0 for Browser-Based Applications](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) (draft-26, December 2025) and [RFC 9700: Best Current Practice for OAuth 2.0 Security](https://datatracker.ietf.org/doc/rfc9700/) (January 2025) establish the current standards:
+
+1. **PKCE is mandatory**: OAuth 2.1 requires PKCE for all clients, not just public ones. The Implicit Flow is deprecated.
+
+2. **Three recommended architectures** (ranked by security):
+   - **Backend For Frontend (BFF)**: Most secure. Backend acts as confidential OAuth client, manages all tokens server-side, exposes only HttpOnly session cookie to browser.
+   - **Token-Mediating Backend**: Backend obtains tokens as confidential client but passes access tokens to frontend.
+   - **Browser-based OAuth Client**: Least secure. Frontend handles OAuth directly (our current approach).
+
+3. **Token storage warnings**: The IETF explicitly warns that "localStorage does not protect against unauthorized access from malicious JavaScript" and that "none of these client-side storage solutions prevent attackers from obtaining fresh tokens by running new OAuth flows themselves."
+
+### The BFF Pattern Recommendation
+
+The IETF's current recommendation is to delegate all authentication logic to a server-side Backend-For-Frontend:
+
+> "While implementing OAuth logic directly in the browser was once considered acceptable, this is no longer recommended. Storing any authentication state in the browser (such as access tokens) has proven to be inherently risky."
+
+The BFF pattern works by:
+- Backend acts as a confidential OAuth client (can hold client secrets)
+- Backend manages access/refresh tokens in server-side session storage
+- Frontend only receives an HttpOnly, Secure, SameSite cookie
+- Backend proxies API requests, attaching tokens server-side
+
+**Trade-offs:**
+- Requires additional backend infrastructure and session management
+- Cookie-based sessions introduce CSRF attack surface (requires anti-CSRF tokens)
+- More complex deployment (session storage like Redis needed for horizontal scaling)
+- Significantly more secure against XSS token theft
+
+### What Comparable Tools Do
+
+| Tool | Architecture | Token Storage | Multi-Tab Behavior |
+|------|--------------|---------------|-------------------|
+| **ArgoCD** | JWT tokens | Cookie (24h expiry) | Shared via cookie |
+| **Backstage** | OAuth + BFF hybrid | Refresh token in HttpOnly cookie, access token in memory | Shared session via /refresh endpoint |
+| **Kubernetes Dashboard** | OAuth2-Proxy (BFF) | Cookie-based session | Shared via cookie |
+| **Harbor** | OIDC + cookie session | Server-side session | Shared via cookie |
+| **Grafana** | Cookie session or JWT | Configurable | Cookie: shared; JWT: configurable |
+| **Retool/Appsmith/ToolJet** | Server-side session | HttpOnly cookies | Shared via cookie |
+
+**Key observations:**
+
+1. **Most internal developer tools use cookie-based sessions**, not localStorage/sessionStorage for tokens. This is because:
+   - Cookies are automatically shared across tabs
+   - HttpOnly cookies are inaccessible to JavaScript (XSS protection)
+   - Server-side session allows immediate revocation
+
+2. **ArgoCD** uses JWT tokens with 24-hour expiry stored in cookies, providing cross-tab access while keeping tokens out of JavaScript-accessible storage.
+
+3. **Backstage** uses a hybrid approach: refresh tokens in HttpOnly cookies (secure), access tokens handed to frontend via postMessage (for API calls), with a /refresh endpoint to restore sessions in new tabs.
+
+4. **Kubernetes Dashboard** commonly uses OAuth2-Proxy, which implements the BFF pattern with cookie-based sessions.
+
+### localStorage vs sessionStorage vs Cookies
+
+| Storage | XSS Vulnerable | Cross-Tab | Persists After Close | CSRF Risk |
+|---------|---------------|-----------|---------------------|-----------|
+| localStorage | Yes | Yes | Yes | No |
+| sessionStorage | Yes | **No** | No | No |
+| Cookie (HttpOnly) | **No** | Yes | Configurable | Yes |
+| Cookie (non-HttpOnly) | Yes | Yes | Configurable | Yes |
+
+**Security implications:**
+- Both localStorage and sessionStorage are equally vulnerable to XSS
+- The security difference is persistence (localStorage survives browser close)
+- HttpOnly cookies are the only browser storage mechanism inaccessible to JavaScript
+- Cookie-based approaches require CSRF protection
+
+### Why This Plan Chooses localStorage (Not BFF)
+
+The BFF pattern is the most secure option, but this plan proposes localStorage for pragmatic reasons:
+
+1. **Scope**: Implementing BFF requires significant architectural changes (session management, proxying, CSRF protection) beyond the scope of this issue.
+
+2. **Mitigation through TTLs**: Short-lived tokens (15 minutes) with refresh token rotation limit the exposure window. If tokens are stolen via XSS, they expire quickly.
+
+3. **Internal tool context**: holos-console is an internal developer tool, not a public-facing application. The threat model differs from consumer applications.
+
+4. **Comparable to peers**: ArgoCD also stores tokens accessible to JavaScript (in cookies without HttpOnly for the JWT payload), accepting similar trade-offs.
+
+### Recommendation for Future Enhancement
+
+For organizations with stricter security requirements, a future enhancement could implement the BFF pattern:
+
+1. Add server-side session management with HttpOnly cookies
+2. Proxy API requests through the backend, attaching tokens server-side
+3. Implement CSRF protection (SameSite=Strict + anti-CSRF tokens)
+4. Remove tokens from browser-accessible storage entirely
+
+This would align with IETF's recommended architecture for browser-based applications.
+
+### References
+
+- [IETF OAuth 2.0 for Browser-Based Applications (draft-26)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps)
+- [RFC 9700: Best Current Practice for OAuth 2.0 Security](https://datatracker.ietf.org/doc/rfc9700/)
+- [Duende: Securing SPAs using the BFF Pattern](https://blog.duendesoftware.com/posts/20210326_bff/)
+- [Curity: SPA Best Practices](https://curity.io/resources/learn/spa-best-practices/)
+- [Auth0: The Backend for Frontend Pattern](https://auth0.com/blog/the-backend-for-frontend-pattern-bff/)
+- [ArgoCD Security Documentation](https://argo-cd.readthedocs.io/en/stable/operator-manual/security/)
+- [Backstage Authentication](https://backstage.io/docs/auth/)
+
+---
+
 ## Goals
 
 1. Enable cross-tab token sharing while maintaining security
