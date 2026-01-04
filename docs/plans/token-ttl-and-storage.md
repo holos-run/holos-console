@@ -1007,11 +1007,11 @@ make run
 - [x] 3.1: Add isBFFMode() detection function
 - [x] 3.2: Add BFF_ENDPOINTS constants
 - [x] 3.3: Add /api/userinfo backend endpoint
-- [ ] 3.4: Update AuthProvider to support both modes
-- [ ] 3.5: Update login/logout for BFF mode
+- [x] 3.4: Update AuthProvider to support both modes
+- [x] 3.5: Update login/logout for BFF mode
 
 ### Phase 4: Frontend - Auth Debug Page
-- [ ] 4.1: Extend AuthContext with BFF mode and refresh status
+- [x] 4.1: Extend AuthContext with BFF mode and refresh status
 - [ ] 4.2: Create AuthDebugPage component with dual-mode support
 - [ ] 4.3: Add /auth-debug route and navigation link
 
