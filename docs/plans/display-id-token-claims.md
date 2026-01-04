@@ -16,13 +16,13 @@ When a user is authenticated, the Profile page will show:
 
 ## Design Decisions
 
-| Topic | Decision | Rationale |
-|-------|----------|-----------|
-| Display location | Bottom of Profile page | Non-intrusive; primary profile info remains prominent |
-| Format | Pretty-printed JSON | Human-readable; shows all claims including custom ones |
-| UI component | MUI Accordion (collapsible) | Clean UI; collapsed by default to not overwhelm users |
-| Data source | `user.profile` from oidc-client-ts | Contains all ID token claims merged with userinfo response |
-| Styling | Monospace font, syntax highlighting | Developer-friendly for debugging token contents |
+| Topic            | Decision                            | Rationale                                                  |
+| ---------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Display location | Bottom of Profile page              | Non-intrusive; primary profile info remains prominent      |
+| Format           | Pretty-printed JSON                 | Human-readable; shows all claims including custom ones     |
+| UI component     | MUI Accordion (collapsible)         | Clean UI; collapsed by default to not overwhelm users      |
+| Data source      | `user.profile` from oidc-client-ts  | Contains all ID token claims merged with userinfo response |
+| Styling          | Monospace font, syntax highlighting | Developer-friendly for debugging token contents            |
 
 ## Current State
 
@@ -161,8 +161,8 @@ No documentation changes required - this is a simple UI enhancement.
 - [x] 1.2: Add required MUI imports (Accordion, ExpandMoreIcon)
 
 ### Phase 2: E2E Test with Screenshot
-- [ ] 2.1: Add E2E test case for claims display with screenshot
-- [ ] 2.2: Create e2e/screenshots directory (if needed)
+- [x] 2.1: Add E2E test case for claims display with screenshot
+- [x] 2.2: Create e2e/screenshots directory (if needed)
 
 ---
 
