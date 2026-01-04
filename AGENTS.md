@@ -10,7 +10,7 @@ When implementing a plan from `docs/plans/`:
 
 1. **Mark steps complete in the plan file** - Before committing, update the plan's checklist to mark completed steps (change `- [ ]` to `- [x]`). Include the plan file in the commit.
 
-2. **Include step identifiers in commit messages** - Use the step identifier (e.g., 1.1, 1.2, 2.1) in the first line of commit messages to track progress.
+2. **Include step identifiers in commit messages** - Put the step identifier (e.g., 1.1, 1.2, 2.1) at the END of the first line in parentheses.
 
 Example workflow:
 ```bash
@@ -18,7 +18,7 @@ Example workflow:
 # 2. Edit docs/plans/my-plan.md to mark step 1.1 as [x]
 # 3. Commit both the implementation and the updated plan
 git add src/file.ts docs/plans/my-plan.md
-git commit -m "1.1: Add webServer configuration to playwright.config.ts
+git commit -m "Add webServer configuration to playwright.config.ts (1.1)
 
 Configure Playwright to automatically start Go backend and Vite dev
 server before running E2E tests."
