@@ -1,7 +1,9 @@
 import { Card, CardContent, Typography, Stack, Box, Button } from '@mui/material'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../auth'
 
 export function ProfilePage() {
+  const location = useLocation()
   const { user, isLoading, isAuthenticated, login, logout } = useAuth()
 
   if (isLoading) {
@@ -24,7 +26,7 @@ export function ProfilePage() {
           <Typography variant="body2" sx={{ mb: 2 }}>
             Sign in to view your profile.
           </Typography>
-          <Button variant="contained" onClick={() => login()}>
+          <Button variant="contained" onClick={() => login(location.pathname)}>
             Sign In
           </Button>
         </CardContent>
