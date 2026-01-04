@@ -237,16 +237,10 @@ test.describe('Profile Page', () => {
     // Submit login form
     await page.locator('button[type="submit"]').click()
 
-    // Wait for redirect back to app (callback handles token exchange)
-    // After callback, the app should redirect to the profile page or landing
-    await page.waitForURL(/\/ui\//, { timeout: 15000 })
+    // Wait for redirect back to profile page (returnTo state preserves the path)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Navigate to profile page if not already there
-    if (!page.url().includes('/profile')) {
-      await page.goto('/ui/profile')
-    }
-
-    // Verify profile page shows user info
+    // Verify profile page shows user info (no navigation needed - should land here)
     await expect(page.getByText('Name')).toBeVisible({ timeout: 5000 })
     await expect(page.getByText('Email')).toBeVisible()
 
