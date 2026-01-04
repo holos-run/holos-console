@@ -5,13 +5,14 @@ import fs from 'fs'
 import path from 'path'
 
 const backendUrl = 'https://localhost:8443'
-const uiTrailingSlashRedirect = (): Plugin => ({
-  name: 'ui-trailing-slash-redirect',
+const uiCanonicalRedirect = (): Plugin => ({
+  name: 'ui-canonical-redirect',
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
-      if (req.url === '/ui') {
+      // Redirect /ui/ to /ui (canonical path without trailing slash)
+      if (req.url === '/ui/') {
         res.statusCode = 301
-        res.setHeader('Location', '/ui/')
+        res.setHeader('Location', '/ui')
         res.end()
         return
       }
@@ -22,8 +23,8 @@ const uiTrailingSlashRedirect = (): Plugin => ({
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [uiTrailingSlashRedirect(), react()],
-  base: '/ui/',
+  plugins: [uiCanonicalRedirect(), react()],
+  base: '/ui',
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

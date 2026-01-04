@@ -29,10 +29,10 @@ function renderApp(initialEntry: string) {
 }
 
 describe('navigation', () => {
-  it('links the landing page with a trailing slash', () => {
+  it('links the landing page without a trailing slash', () => {
     renderApp('/ui/version')
     const landingLink = screen.getByRole('link', { name: 'Landing' })
-    expect(landingLink).toHaveAttribute('href', '/ui/')
+    expect(landingLink).toHaveAttribute('href', '/ui')
   })
 
   it('navigates to the landing page via the landing link', async () => {

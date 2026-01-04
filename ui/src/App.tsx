@@ -17,8 +17,6 @@ import {
   Navigate,
   Route,
   Routes,
-  useHref,
-  useLinkClickHandler,
   useLocation,
 } from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
@@ -32,11 +30,6 @@ const theme = createTheme({
 function App() {
   const location = useLocation()
   const isVersionPage = location.pathname.startsWith('/version')
-  const landingHref = useHref('/')
-  const landingClick = useLinkClickHandler('/')
-  const landingHrefWithSlash = landingHref.endsWith('/')
-    ? landingHref
-    : `${landingHref}/`
 
   return (
     <ThemeProvider theme={theme}>
@@ -60,9 +53,8 @@ function App() {
           <Divider />
           <List sx={{ px: 1 }}>
             <ListItemButton
-              component="a"
-              href={landingHrefWithSlash}
-              onClick={landingClick}
+              component={Link}
+              to="/"
               selected={!isVersionPage}
             >
               <ListItemText primary="Landing" />

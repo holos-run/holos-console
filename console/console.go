@@ -80,30 +80,37 @@ func (s *Server) Serve(ctx context.Context) error {
 	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectAlphaPath, reflectAlphaHandler)
 
-	// Redirect / to /ui/
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/ui/", http.StatusFound)
-			return
-		}
-		http.NotFound(w, r)
-	})
-
-	// Redirect /ui to /ui/
-	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/ui" {
-			http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
-			return
-		}
-		http.NotFound(w, r)
-	})
-
-	// Serve embedded UI files at /ui/
+	// Prepare embedded UI files
 	uiContent, err := fs.Sub(uiFS, "ui")
 	if err != nil {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
-	mux.Handle("/ui/", newUIHandler(uiContent))
+	uiHandler := newUIHandler(uiContent)
+
+	// Redirect / to /ui (canonical path without trailing slash)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/ui", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	// Serve UI at /ui (canonical path without trailing slash)
+	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		// Serve index.html for the canonical /ui path
+		uiHandler.ServeHTTP(w, r)
+	})
+
+	// Redirect /ui/ to /ui, serve SPA for deeper paths
+	mux.HandleFunc("/ui/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ui/" {
+			http.Redirect(w, r, "/ui", http.StatusMovedPermanently)
+			return
+		}
+		// Handle SPA routes under /ui/
+		uiHandler.ServeHTTP(w, r)
+	})
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -253,13 +260,18 @@ func newUIHandler(uiContent fs.FS) http.Handler {
 }
 
 func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle both /ui (canonical) and /ui/* paths
+	if r.URL.Path == "/ui" {
+		h.serveIndex(w, r)
+		return
+	}
+
 	if !strings.HasPrefix(r.URL.Path, "/ui/") {
 		http.NotFound(w, r)
 		return
 	}
 
 	relativePath := strings.TrimPrefix(r.URL.Path, "/ui/")
-	relativePath = strings.TrimPrefix(relativePath, "/")
 	if relativePath == "" {
 		h.serveIndex(w, r)
 		return
