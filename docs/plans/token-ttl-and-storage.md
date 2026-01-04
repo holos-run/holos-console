@@ -1013,7 +1013,7 @@ make run
 ### Phase 4: Frontend - Auth Debug Page
 - [x] 4.1: Extend AuthContext with BFF mode and refresh status
 - [x] 4.2: Create AuthDebugPage component with dual-mode support
-- [ ] 4.3: Add /auth-debug route and navigation link
+- [x] 4.3: Add /auth-debug route and navigation link
 
 ### Phase 5: Testing
 - [ ] 5.1: Add unit tests for TTL duration parsing
