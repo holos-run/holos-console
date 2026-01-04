@@ -1,5 +1,6 @@
-export { AuthProvider, AuthContext, createUserManager } from './AuthProvider'
+export { AuthProvider, AuthContext } from './AuthProvider'
 export type { AuthContextValue } from './AuthProvider'
 export { useAuth } from './useAuth'
+export { getUserManager } from './userManager'
 export { getOIDCSettings } from './config'
 export { Callback } from './Callback'

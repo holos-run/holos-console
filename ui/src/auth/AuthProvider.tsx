@@ -6,8 +6,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { User, UserManager } from 'oidc-client-ts'
-import { getOIDCSettings } from './config'
+import { User } from 'oidc-client-ts'
+import { getUserManager } from './userManager'
 
 export interface AuthContextValue {
   // Current authenticated user, or null if not logged in
@@ -18,8 +18,8 @@ export interface AuthContextValue {
   error: Error | null
   // True if user is authenticated
   isAuthenticated: boolean
-  // Redirect to login page
-  login: () => Promise<void>
+  // Redirect to login page. Optional returnTo path for post-login redirect.
+  login: (returnTo?: string) => Promise<void>
   // Log out and redirect
   logout: () => Promise<void>
   // Get the current access token (for API calls)
@@ -37,10 +37,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  // Create UserManager once
-  const userManager = useMemo(() => {
-    return new UserManager(getOIDCSettings())
-  }, [])
+  // Use shared UserManager singleton
+  const userManager = useMemo(() => getUserManager(), [])
 
   // Check for existing session on mount
   useEffect(() => {
@@ -88,16 +86,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [userManager])
 
-  const login = useCallback(async () => {
-    try {
-      setError(null)
-      await userManager.signinRedirect()
-    } catch (err) {
-      console.error('Login error:', err)
-      setError(err instanceof Error ? err : new Error(String(err)))
-      throw err
-    }
-  }, [userManager])
+  const login = useCallback(
+    async (returnTo?: string) => {
+      try {
+        setError(null)
+        // Pass returnTo in state so Callback can redirect back after auth
+        const targetPath = returnTo ?? window.location.pathname
+        await userManager.signinRedirect({ state: { returnTo: targetPath } })
+      } catch (err) {
+        console.error('Login error:', err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        throw err
+      }
+    },
+    [userManager],
+  )
 
   const logout = useCallback(async () => {
     try {
@@ -128,9 +131,4 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-// Export UserManager for use in callback handler
-export function createUserManager() {
-  return new UserManager(getOIDCSettings())
 }

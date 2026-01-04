@@ -20,6 +20,7 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
+import { ProfilePage } from './components/ProfilePage'
 import { AuthProvider, Callback } from './auth'
 
 const theme = createTheme({
@@ -31,6 +32,7 @@ const theme = createTheme({
 function MainLayout() {
   const location = useLocation()
   const isVersionPage = location.pathname.startsWith('/version')
+  const isProfilePage = location.pathname.startsWith('/profile')
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -51,7 +53,11 @@ function MainLayout() {
         </Box>
         <Divider />
         <List sx={{ px: 1 }}>
-          <ListItemButton component={Link} to="/" selected={!isVersionPage}>
+          <ListItemButton
+            component={Link}
+            to="/"
+            selected={!isVersionPage && !isProfilePage}
+          >
             <ListItemText primary="Landing" />
           </ListItemButton>
           <ListItemButton
@@ -60,6 +66,13 @@ function MainLayout() {
             selected={isVersionPage}
           >
             <ListItemText primary="Version" />
+          </ListItemButton>
+          <ListItemButton
+            component={Link}
+            to="/profile"
+            selected={isProfilePage}
+          >
+            <ListItemText primary="Profile" />
           </ListItemButton>
         </List>
       </Box>
@@ -87,6 +100,7 @@ function MainLayout() {
               }
             />
             <Route path="/version" element={<VersionCard />} />
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Stack>

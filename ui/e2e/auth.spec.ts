@@ -182,3 +182,69 @@ test.describe('Login Flow', () => {
     }
   })
 })
+
+test.describe('Profile Page', () => {
+  test('should show profile page with sign in button when not authenticated', async ({
+    page,
+  }) => {
+    await page.goto('/ui/profile')
+
+    // Verify Sign In button is visible
+    await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible()
+
+    // Verify user info is NOT visible (no Name/Email/Subject fields)
+    await expect(page.getByText('Name', { exact: true })).not.toBeVisible()
+    await expect(page.getByText('Email', { exact: true })).not.toBeVisible()
+  })
+
+  test('should navigate to profile page from sidebar', async ({ page }) => {
+    await page.goto('/ui')
+
+    // Click Profile link in sidebar
+    await page.getByRole('link', { name: 'Profile' }).click()
+
+    // Verify URL is /ui/profile
+    await expect(page).toHaveURL(/\/ui\/profile/)
+
+    // Verify profile page content loads
+    await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible()
+  })
+
+  test('should complete full login flow via profile page', async ({ page }) => {
+    await page.goto('/ui/profile')
+
+    // Click Sign In button
+    await page.getByRole('button', { name: 'Sign In' }).click()
+
+    // Wait for redirect to Dex login page
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
+
+    // Navigate to login form if on connector selection
+    const connectorLink = page.locator('a[href*="connector"]').first()
+    if ((await connectorLink.count()) > 0) {
+      await connectorLink.click()
+      await page.waitForLoadState('networkidle')
+    }
+
+    // Fill in credentials
+    const usernameInput = page.locator('input[name="login"]')
+    const passwordInput = page.locator('input[name="password"]')
+
+    await expect(usernameInput).toBeVisible({ timeout: 5000 })
+    await usernameInput.fill(DEFAULT_USERNAME)
+    await passwordInput.fill(DEFAULT_PASSWORD)
+
+    // Submit login form
+    await page.locator('button[type="submit"]').click()
+
+    // Wait for redirect back to profile page (returnTo state preserves the path)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Verify profile page shows user info (no navigation needed - should land here)
+    await expect(page.getByText('Name')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Email')).toBeVisible()
+
+    // Verify Sign Out button is visible
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+  })
+})
