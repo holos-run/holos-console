@@ -10,13 +10,13 @@ This plan addresses 5 failing E2E tests discovered when running `make test-e2e`.
 
 ## Test Failures Summary
 
-| Test | Failure | Root Cause |
-|------|---------|------------|
-| `should have landing page accessible` | Page shows 404 | Vite proxy misconfiguration |
-| `should have version page accessible` | Page shows 404 | Vite proxy misconfiguration |
-| `should have OIDC discovery endpoint accessible` | 404 response | Dex path routing bug |
-| `should display Dex login page when accessing authorize endpoint` | Invalid URL | Same Dex path routing bug |
-| `should show login form with username and password fields` | No login form found | Same Dex path routing bug |
+| Test                                                              | Failure             | Root Cause                  |
+| ----------------------------------------------------------------- | ------------------- | --------------------------- |
+| `should have landing page accessible`                             | Page shows 404      | Vite proxy misconfiguration |
+| `should have version page accessible`                             | Page shows 404      | Vite proxy misconfiguration |
+| `should have OIDC discovery endpoint accessible`                  | 404 response        | Dex path routing bug        |
+| `should display Dex login page when accessing authorize endpoint` | Invalid URL         | Same Dex path routing bug   |
+| `should show login form with username and password fields`        | No login form found | Same Dex path routing bug   |
 
 Two tests pass:
 - `should reject invalid credentials` - Passes because the test logic handles missing login forms gracefully
@@ -205,7 +205,15 @@ Add new test describe block `Profile Page` with tests:
 - [x] 3.5: Add E2E tests for profile navigation and login flow in `ui/e2e/auth.spec.ts`
 
 ### Phase 4: Manual Verification (Optional)
-- [ ] 4.1: Manual login flow verification via Profile page
+- [x] 4.1: Manual login flow verification via Profile page
+
+### Phase 5: Fix manual verification findings
+
+AGENT: Research the current code base and analyze the root cause of these issues, update this planning document with your findings, then replace this section with steps to resolve the issues.
+
+- [ ] 5.1: Initial nav to profile page, then login at Dex redirects to the wrong location.  Want redirect back to the profile page.  Should be generalized to wherever the user signs in from.
+- [ ] 5.2: After logging into Dex, profile page still shows Login button.  Hard refresh required to see profile and get treated as logged in.  Want the profile page to use the auth id token immediately after logging in and being redirected.
+
 
 ---
 
