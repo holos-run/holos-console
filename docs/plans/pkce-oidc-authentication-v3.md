@@ -479,7 +479,7 @@ The issuer URL flows to:
 - [x] 1.4b: Add `--client-id` flag to `cli/cli.go`
 
 ### Phase 2: JWT Validation
-- [ ] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
+- [x] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
 - [ ] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
 - [ ] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
 - [ ] 2.3: Apply auth interceptor to protected routes in `console/console.go`
