@@ -371,7 +371,7 @@ cd ui && npm run dev
 - [x] 3.1: Update config.ts to expect injected config (keep fallback with warning)
 
 ### Phase 4: Vite Dev Server - Inject Config
-- [ ] 4.1: Add injectOIDCConfig plugin to vite.config.ts
+- [x] 4.1: Add injectOIDCConfig plugin to vite.config.ts
 
 ### Phase 5: Testing
 - [ ] 5.1: Add unit tests for deriveIssuer
