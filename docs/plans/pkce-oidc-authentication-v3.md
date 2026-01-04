@@ -500,7 +500,7 @@ The issuer URL flows to:
 
 ### Phase 5: Documentation
 - [x] 5.1: Update CONTRIBUTING.md with authentication workflow
-- [ ] 5.2: Create docs/authentication.md
+- [x] 5.2: Create docs/authentication.md
 - [ ] 5.3: Create docs/hostname-configuration.md (how hostname flows through stack)
 
 ---
