@@ -16,6 +16,7 @@ const oidcConfig = {
 
 const injectOIDCConfig = (): Plugin => ({
   name: 'inject-oidc-config',
+  apply: 'serve', // Only apply during dev server, not during build
   transformIndexHtml(html) {
     const script = `<script>window.__OIDC_CONFIG__=${JSON.stringify(oidcConfig)};</script>`
     return html.replace('</head>', `${script}</head>`)

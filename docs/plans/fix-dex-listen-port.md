@@ -1,9 +1,8 @@
 # Plan: Fix Dex Issuer Port Mismatch
 
-> **Status:** IMPLEMENTED (with issue)
+> **Status:** IMPLEMENTED
 >
-> Implementation complete but Phase 6 required to fix duplicate config injection.
-> Manual E2E verification pending (steps 5.2 and 5.3).
+> Implementation complete. Manual E2E verification pending (steps 5.2 and 5.3).
 
 ## Overview
 
@@ -435,7 +434,7 @@ After implementing this fix:
 - [ ] 5.3: Manual E2E verification - Vite dev mode
 
 ### Phase 6: Fix Duplicate OIDC Config Injection
-- [ ] 6.1: Modify injectOIDCConfig plugin to only run in dev mode
+- [x] 6.1: Modify injectOIDCConfig plugin to only run in dev mode
 
 ---
 
