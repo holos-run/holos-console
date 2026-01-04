@@ -374,7 +374,7 @@ cd ui && npm run dev
 - [x] 4.1: Add injectOIDCConfig plugin to vite.config.ts
 
 ### Phase 5: Testing
-- [ ] 5.1: Add unit tests for deriveIssuer
+- [x] 5.1: Add unit tests for deriveIssuer
 - [ ] 5.2: Manual E2E verification - non-default port
 - [ ] 5.3: Manual E2E verification - Vite dev mode
 
