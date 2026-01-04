@@ -1004,8 +1004,8 @@ make run
 - [x] 2.4: Wire TTL config from console.Serve to oidc.NewHandler
 
 ### Phase 3: Frontend - BFF Mode Support
-- [ ] 3.1: Add isBFFMode() detection function
-- [ ] 3.2: Add BFF_ENDPOINTS constants
+- [x] 3.1: Add isBFFMode() detection function
+- [x] 3.2: Add BFF_ENDPOINTS constants
 - [ ] 3.3: Add /api/userinfo backend endpoint
 - [ ] 3.4: Update AuthProvider to support both modes
 - [ ] 3.5: Update login/logout for BFF mode
