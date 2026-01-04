@@ -363,9 +363,9 @@ cd ui && npm run dev
 - [x] 1.3: Apply derivation in Run function
 
 ### Phase 2: Backend - Inject OIDC Config into index.html
-- [ ] 2.1: Add OIDCConfig struct and helper functions
-- [ ] 2.2: Modify uiHandler to inject config into index.html
-- [ ] 2.3: Wire OIDC config creation in Serve method
+- [x] 2.1: Add OIDCConfig struct and helper functions
+- [x] 2.2: Modify uiHandler to inject config into index.html
+- [x] 2.3: Wire OIDC config creation in Serve method
 
 ### Phase 3: Frontend - Simplify Config
 - [ ] 3.1: Update config.ts to expect injected config (keep fallback with warning)
