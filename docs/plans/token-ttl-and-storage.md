@@ -1,36 +1,29 @@
-# Plan: Token TTL Configuration and Cross-Tab Storage
+# Plan: Token TTL Configuration and Production BFF Mode
 
 > **Status:** UNREVIEWED / UNAPPROVED
 >
 > Do not implement until reviewed and approved.
 
+## Related ADRs
+
+- [ADR 002: BFF Architecture with oauth2-proxy](../adrs/002-bff-architecture-oauth2-proxy.md) - Production authentication architecture
+- [ADR 003: Use sessionStorage for Local Development](../adrs/003-session-storage-for-development.md) - Development token storage decision
+
 ## Overview
 
-This plan addresses three related authentication issues:
+This plan addresses authentication configuration for Holos Console:
 
-1. **Cross-tab token sharing**: Tokens stored in sessionStorage are not accessible from other tabs, forcing users to re-authenticate when opening new tabs.
-2. **Token TTL configuration**: ID tokens and access tokens default to 24 hours, which is too long for production. Need configurable short-lived tokens (15 minutes default) with 12-hour refresh token maximum lifetime.
-3. **Auth debugging page**: Add a debug page showing token expiration countdown, last refresh status, and manual refresh trigger.
+1. **Token TTL configuration**: ID tokens and access tokens default to 24 hours, which is too long for production. Need configurable short-lived tokens (15 minutes default) with 12-hour refresh token maximum lifetime.
+2. **Auth debugging page**: Add a debug page showing token expiration countdown, last refresh status, and manual refresh trigger.
+3. **Production BFF mode**: Configure the frontend to work with oauth2-proxy as a BFF sidecar in production, where the proxy handles authentication via cookies.
+
+### What This Plan Does NOT Do
+
+Per ADR 003, this plan explicitly does **not** change the frontend token storage from sessionStorage to localStorage. The multi-tab authentication issue is solved in production by the BFF architecture (oauth2-proxy handles sessions via cookies), and the minor inconvenience in local development is accepted.
 
 ## Problem Analysis
 
-### 1. Cross-Tab Token Isolation
-
-**Current Behavior:**
-- [ui/src/auth/config.ts:55](ui/src/auth/config.ts#L55): Uses `sessionStorage` for token storage
-- sessionStorage is isolated per tab/window - data is not shared between tabs
-- Opening a new tab requires re-authentication
-
-**Why sessionStorage was chosen:**
-- Clears when browser closes (security benefit)
-- Survives page refreshes within the same tab
-- No persistent tokens on disk
-
-**The tradeoff:**
-- localStorage enables cross-tab access but persists after browser close
-- sessionStorage isolates tabs but requires re-authentication per tab
-
-### 2. Token TTL Too Long
+### 1. Token TTL Too Long
 
 **Current Behavior:**
 - [console/oidc/oidc.go:84-91](console/oidc/oidc.go#L84-L91): Creates Dex server with default settings
@@ -41,12 +34,24 @@ This plan addresses three related authentication issues:
 - ID/Access tokens: 15 minutes (configurable down to seconds for testing)
 - Refresh token absolute lifetime: 12 hours (forces daily re-authentication)
 
-### 3. No Auth Debugging Visibility
+### 2. No Auth Debugging Visibility
 
 **Current Behavior:**
 - No visibility into token expiration time
 - No indication when silent refresh occurs
 - Debugging token issues requires browser dev tools
+
+### 3. Production Deployment Needs BFF Mode
+
+**Current Behavior:**
+- Frontend uses oidc-client-ts to manage OIDC flow directly
+- Tokens stored in sessionStorage (vulnerable to XSS)
+- No support for oauth2-proxy sidecar pattern
+
+**Production requirements:**
+- Support oauth2-proxy as authentication proxy
+- Frontend should detect when running behind oauth2-proxy
+- Disable oidc-client-ts token management when BFF handles auth
 
 ## State of the Art: SPA Authentication in 2025
 
@@ -61,7 +66,7 @@ The IETF's [OAuth 2.0 for Browser-Based Applications](https://datatracker.ietf.o
 2. **Three recommended architectures** (ranked by security):
    - **Backend For Frontend (BFF)**: Most secure. Backend acts as confidential OAuth client, manages all tokens server-side, exposes only HttpOnly session cookie to browser.
    - **Token-Mediating Backend**: Backend obtains tokens as confidential client but passes access tokens to frontend.
-   - **Browser-based OAuth Client**: Least secure. Frontend handles OAuth directly (our current approach).
+   - **Browser-based OAuth Client**: Least secure. Frontend handles OAuth directly (our development approach).
 
 3. **Token storage warnings**: The IETF explicitly warns that "localStorage does not protect against unauthorized access from malicious JavaScript" and that "none of these client-side storage solutions prevent attackers from obtaining fresh tokens by running new OAuth flows themselves."
 
@@ -122,28 +127,22 @@ The BFF pattern works by:
 - HttpOnly cookies are the only browser storage mechanism inaccessible to JavaScript
 - Cookie-based approaches require CSRF protection
 
-### Why This Plan Chooses localStorage (Not BFF)
+### Holos Console Architecture Decision
 
-The BFF pattern is the most secure option, but this plan proposes localStorage for pragmatic reasons:
+Per ADR 002, Holos Console uses the **BFF pattern with oauth2-proxy** in production:
 
-1. **Scope**: Implementing BFF requires significant architectural changes (session management, proxying, CSRF protection) beyond the scope of this issue.
+- **Production**: oauth2-proxy sidecar handles all authentication
+  - Tokens stored server-side (in cookies or Redis)
+  - Frontend receives HttpOnly session cookie
+  - oidc-client-ts is bypassed entirely
+  - Multi-tab works automatically via shared cookie
 
-2. **Mitigation through TTLs**: Short-lived tokens (15 minutes) with refresh token rotation limit the exposure window. If tokens are stolen via XSS, they expire quickly.
+- **Development**: Direct OIDC with embedded Dex
+  - oidc-client-ts manages tokens in sessionStorage
+  - Per-tab sessions (minor inconvenience, per ADR 003)
+  - Simple setup with `make run`
 
-3. **Internal tool context**: holos-console is an internal developer tool, not a public-facing application. The threat model differs from consumer applications.
-
-4. **Comparable to peers**: ArgoCD also stores tokens accessible to JavaScript (in cookies without HttpOnly for the JWT payload), accepting similar trade-offs.
-
-### Recommendation for Future Enhancement
-
-For organizations with stricter security requirements, a future enhancement could implement the BFF pattern:
-
-1. Add server-side session management with HttpOnly cookies
-2. Proxy API requests through the backend, attaching tokens server-side
-3. Implement CSRF protection (SameSite=Strict + anti-CSRF tokens)
-4. Remove tokens from browser-accessible storage entirely
-
-This would align with IETF's recommended architecture for browser-based applications.
+This provides production-grade security while maintaining simple local development.
 
 ### References
 
@@ -159,22 +158,22 @@ This would align with IETF's recommended architecture for browser-based applicat
 
 ## Goals
 
-1. Enable cross-tab token sharing while maintaining security
-2. Configure production-appropriate token lifetimes with dev/test flexibility
-3. Provide auth debugging page for development and troubleshooting
+1. Configure production-appropriate token lifetimes with dev/test flexibility
+2. Provide auth debugging page for development and troubleshooting
+3. Support oauth2-proxy BFF mode in production deployments
 
 ## Design Decisions
 
 | Topic | Decision | Rationale |
 | ----- | -------- | --------- |
-| Cross-tab storage | Switch from sessionStorage to localStorage | Required for cross-tab sharing; oidc-client-ts default is sessionStorage but localStorage is widely used |
-| Cross-tab events | Use storage events for sync | The `storage` event fires when localStorage changes in other tabs; simpler than BroadcastChannel |
+| Token storage | Keep sessionStorage (no change) | Per ADR 003: Production uses BFF; development inconvenience is acceptable |
 | ID token TTL default | 15 minutes | Industry standard for short-lived access tokens |
 | ID token TTL flag | `--id-token-ttl` | Allow testing with very short TTLs (e.g., 30s) |
 | Refresh token max | 12 hours | Forces re-authentication at least daily |
 | Refresh token flag | `--refresh-token-ttl` | Configure refresh token absolute lifetime |
 | Debug page location | `/auth-debug` route | Separate from profile, focused on token internals |
 | Debug page nav | Sidebar link | Consistent with existing navigation pattern |
+| BFF detection | Check for `_oauth2_proxy` cookie | Standard oauth2-proxy session cookie name |
 
 ## Changes Required
 
@@ -183,8 +182,8 @@ This would align with IETF's recommended architecture for browser-based applicat
 - [cli/cli.go](cli/cli.go) - Add `--id-token-ttl` and `--refresh-token-ttl` flags
 - [console/console.go](console/console.go) - Pass TTL config to OIDC handler
 - [console/oidc/oidc.go](console/oidc/oidc.go) - Configure Dex server with TTL settings and RefreshTokenPolicy
-- [ui/src/auth/config.ts](ui/src/auth/config.ts) - Switch from sessionStorage to localStorage
-- [ui/src/auth/AuthProvider.tsx](ui/src/auth/AuthProvider.tsx) - Add storage event listener for cross-tab sync, expose refresh trigger and status
+- [ui/src/auth/AuthProvider.tsx](ui/src/auth/AuthProvider.tsx) - Add BFF mode detection, expose refresh trigger and status
+- [ui/src/auth/config.ts](ui/src/auth/config.ts) - Add BFF mode configuration
 - [ui/src/App.tsx](ui/src/App.tsx) - Add route and nav link for auth debug page
 
 ### Add (New Files)
@@ -337,42 +336,224 @@ oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
 })
 ```
 
-### Phase 3: Frontend - Switch to localStorage for Cross-Tab Sharing
+### Phase 3: Frontend - BFF Mode Support
 
-#### 3.1 Change storage from sessionStorage to localStorage
+This phase adds support for running behind oauth2-proxy in production. When in BFF mode, oidc-client-ts is bypassed and authentication is handled entirely by the proxy's session cookies.
 
-Update [ui/src/auth/config.ts:55](ui/src/auth/config.ts#L55):
+#### 3.1 Understanding oauth2-proxy Integration
+
+When oauth2-proxy is deployed as a sidecar:
+
+1. **All requests go through oauth2-proxy first**
+2. **Unauthenticated users** are redirected to `/oauth2/start` → OIDC provider → `/oauth2/callback`
+3. **Authenticated users** have an `_oauth2_proxy` session cookie
+4. **oauth2-proxy forwards headers** to upstream (holos-console):
+   - `X-Forwarded-User`: User's email or subject
+   - `X-Forwarded-Email`: User's email
+   - `X-Forwarded-Access-Token`: Access token (if configured)
+
+The frontend doesn't need to manage tokens at all - it just needs to:
+- Detect it's running in BFF mode
+- Read user info from a backend endpoint that exposes forwarded headers
+- Redirect to `/oauth2/sign_out` for logout
+
+#### 3.2 Does oidc-client-ts Support BFF Mode?
+
+**Short answer: No, but that's okay.**
+
+oidc-client-ts is designed for browser-based OAuth clients where the frontend manages the OIDC flow. It doesn't have a "BFF mode" because in true BFF architecture, the frontend doesn't interact with the OIDC provider at all.
+
+**Our approach:** Conditionally bypass oidc-client-ts entirely when running in BFF mode:
 
 ```typescript
-// Use localStorage to enable cross-tab token sharing
-// Note: Tokens persist until browser clears localStorage, but refresh tokens
-// have absolute lifetime configured on the server
-userStore: new WebStorageStateStore({ store: window.localStorage }),
+// Detect BFF mode by checking for oauth2-proxy cookie
+function isBFFMode(): boolean {
+  return document.cookie.includes('_oauth2_proxy')
+}
 ```
 
-#### 3.2 Add cross-tab storage event listener
+#### 3.3 Add BFF mode detection to config
 
-Update [ui/src/auth/AuthProvider.tsx](ui/src/auth/AuthProvider.tsx) to sync state across tabs:
+Update [ui/src/auth/config.ts](ui/src/auth/config.ts):
 
 ```typescript
-// Listen for storage events from other tabs
-useEffect(() => {
-  const handleStorageChange = async (event: StorageEvent) => {
-    // oidc-client-ts stores user data with a key containing the authority and client_id
-    if (event.key?.includes('oidc.user:')) {
-      // User state changed in another tab - reload user
-      const currentUser = await userManager.getUser()
-      if (currentUser && !currentUser.expired) {
-        setUser(currentUser)
-      } else {
-        setUser(null)
+// Check if running behind oauth2-proxy (BFF mode)
+export function isBFFMode(): boolean {
+  // oauth2-proxy sets this cookie when user is authenticated
+  return document.cookie.includes('_oauth2_proxy')
+}
+
+// BFF mode endpoints (oauth2-proxy standard paths)
+export const BFF_ENDPOINTS = {
+  // Initiate login - redirects to OIDC provider
+  login: '/oauth2/start',
+  // Logout - clears session and optionally redirects to OIDC logout
+  logout: '/oauth2/sign_out',
+  // Get user info from forwarded headers (requires backend endpoint)
+  userInfo: '/api/userinfo',
+}
+```
+
+#### 3.4 Add userinfo endpoint to backend
+
+Add a simple endpoint that returns the forwarded user headers. This allows the frontend to get user info without managing tokens.
+
+Add to [console/console.go](console/console.go):
+
+```go
+// handleUserInfo returns user information from oauth2-proxy forwarded headers.
+// This endpoint is used by the frontend in BFF mode to get the current user.
+func handleUserInfo(w http.ResponseWriter, r *http.Request) {
+    user := r.Header.Get("X-Forwarded-User")
+    email := r.Header.Get("X-Forwarded-Email")
+
+    if user == "" && email == "" {
+        // Not authenticated or not running behind oauth2-proxy
+        http.Error(w, "Not authenticated", http.StatusUnauthorized)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{
+        "user":  user,
+        "email": email,
+    })
+}
+
+// Register in Serve():
+mux.HandleFunc("/api/userinfo", handleUserInfo)
+```
+
+#### 3.5 Update AuthProvider for BFF mode
+
+Update [ui/src/auth/AuthProvider.tsx](ui/src/auth/AuthProvider.tsx) to support both modes:
+
+```typescript
+import { isBFFMode, BFF_ENDPOINTS } from './config'
+
+// BFF mode user type (simpler than oidc-client-ts User)
+interface BFFUser {
+  user: string
+  email: string
+}
+
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(null)
+  const [bffUser, setBffUser] = useState<BFFUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [isBFF] = useState(() => isBFFMode())
+
+  // Use shared UserManager singleton (only in non-BFF mode)
+  const userManager = useMemo(() => isBFF ? null : getUserManager(), [isBFF])
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        if (isBFF) {
+          // BFF mode: check /api/userinfo
+          const response = await fetch(BFF_ENDPOINTS.userInfo, {
+            credentials: 'include', // Include cookies
+          })
+          if (response.ok) {
+            const data = await response.json()
+            setBffUser(data)
+          }
+        } else {
+          // Development mode: use oidc-client-ts
+          const existingUser = await userManager!.getUser()
+          if (existingUser && !existingUser.expired) {
+            setUser(existingUser)
+          }
+        }
+      } catch (err) {
+        console.error('Error checking auth state:', err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+      } finally {
+        setIsLoading(false)
       }
     }
+
+    checkAuth()
+  }, [isBFF, userManager])
+
+  // Login handler
+  const login = useCallback(async (returnTo?: string) => {
+    if (isBFF) {
+      // BFF mode: redirect to oauth2-proxy login endpoint
+      const returnUrl = returnTo ?? window.location.pathname
+      window.location.href = `${BFF_ENDPOINTS.login}?rd=${encodeURIComponent(returnUrl)}`
+    } else {
+      // Development mode: use oidc-client-ts
+      const targetPath = returnTo ?? window.location.pathname
+      await userManager!.signinRedirect({ state: { returnTo: targetPath } })
+    }
+  }, [isBFF, userManager])
+
+  // Logout handler
+  const logout = useCallback(async () => {
+    if (isBFF) {
+      // BFF mode: redirect to oauth2-proxy logout endpoint
+      window.location.href = BFF_ENDPOINTS.logout
+    } else {
+      // Development mode: use oidc-client-ts
+      await userManager!.signoutRedirect()
+    }
+  }, [isBFF, userManager])
+
+  // ... rest of the component, handling both user types
+
+  const isAuthenticated = isBFF ? !!bffUser : (!!user && !user.expired)
+
+  // ... context value and provider
+}
+```
+
+#### 3.6 Handle BFF mode in AuthDebugPage
+
+The auth debug page should show different information in BFF mode:
+
+```typescript
+export function AuthDebugPage() {
+  const { user, bffUser, isBFF, isAuthenticated } = useAuth()
+
+  if (isBFF) {
+    // BFF mode: show cookie-based session info
+    return (
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            BFF Mode Active
+          </Typography>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Authentication is handled by oauth2-proxy. Token refresh happens
+            automatically via the proxy's session management.
+          </Alert>
+          {bffUser && (
+            <>
+              <Typography variant="subtitle2" color="text.secondary">
+                User
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2, fontFamily: 'monospace' }}>
+                {bffUser.user}
+              </Typography>
+              <Typography variant="subtitle2" color="text.secondary">
+                Email
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                {bffUser.email}
+              </Typography>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
 
-  window.addEventListener('storage', handleStorageChange)
-  return () => window.removeEventListener('storage', handleStorageChange)
-}, [userManager])
+  // Development mode: show token details (existing implementation)
+  // ...
+}
 ```
 
 ### Phase 4: Frontend - Auth Debug Page
@@ -385,10 +566,16 @@ Update [ui/src/auth/AuthProvider.tsx](ui/src/auth/AuthProvider.tsx):
 export interface AuthContextValue {
   // ... existing fields ...
 
-  // Trigger manual token refresh
+  // True if running in BFF mode (behind oauth2-proxy)
+  isBFF: boolean
+
+  // BFF mode user info (null in development mode)
+  bffUser: BFFUser | null
+
+  // Trigger manual token refresh (development mode only)
   refreshTokens: () => Promise<void>
 
-  // Last silent renew result
+  // Last silent renew result (development mode only)
   lastRefreshStatus: 'idle' | 'success' | 'error'
   lastRefreshTime: Date | null
   lastRefreshError: Error | null
@@ -403,9 +590,15 @@ const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
 const [lastRefreshError, setLastRefreshError] = useState<Error | null>(null)
 
 const refreshTokens = useCallback(async () => {
+  if (isBFF) {
+    // BFF mode: no manual refresh needed, proxy handles it
+    console.warn('Manual refresh not available in BFF mode')
+    return
+  }
+
   try {
     setLastRefreshStatus('idle')
-    const refreshedUser = await userManager.signinSilent()
+    const refreshedUser = await userManager!.signinSilent()
     setUser(refreshedUser)
     setLastRefreshStatus('success')
     setLastRefreshTime(new Date())
@@ -416,7 +609,7 @@ const refreshTokens = useCallback(async () => {
     setLastRefreshError(err instanceof Error ? err : new Error(String(err)))
     throw err
   }
-}, [userManager])
+}, [isBFF, userManager])
 
 // Update silent renew handlers to track status
 const handleUserLoaded = (loadedUser: User) => {
@@ -459,6 +652,8 @@ import { useAuth } from '../auth'
 export function AuthDebugPage() {
   const {
     user,
+    bffUser,
+    isBFF,
     isAuthenticated,
     refreshTokens,
     lastRefreshStatus,
@@ -470,9 +665,9 @@ export function AuthDebugPage() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Calculate time remaining on ID token
+  // Calculate time remaining on ID token (development mode only)
   useEffect(() => {
-    if (!user?.expires_at) {
+    if (isBFF || !user?.expires_at) {
       setTimeRemaining(null)
       return
     }
@@ -486,7 +681,7 @@ export function AuthDebugPage() {
     updateTimeRemaining()
     const interval = setInterval(updateTimeRemaining, 1000)
     return () => clearInterval(interval)
-  }, [user?.expires_at])
+  }, [isBFF, user?.expires_at])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -499,13 +694,57 @@ export function AuthDebugPage() {
     }
   }
 
+  // BFF Mode UI
+  if (isBFF) {
+    return (
+      <Stack spacing={3}>
+        <Card variant="outlined">
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="h5">Auth Debug</Typography>
+              <Chip label="BFF Mode" color="info" size="small" />
+            </Stack>
+
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Authentication is handled by oauth2-proxy. Tokens are managed
+              server-side and are not accessible to the frontend.
+            </Alert>
+
+            {isAuthenticated && bffUser ? (
+              <>
+                <Typography variant="subtitle2" color="text.secondary">
+                  User
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 2, fontFamily: 'monospace' }}>
+                  {bffUser.user}
+                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Email
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  {bffUser.email}
+                </Typography>
+              </>
+            ) : (
+              <Button variant="contained" onClick={() => login()}>
+                Sign In
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </Stack>
+    )
+  }
+
+  // Development Mode UI
   if (!isAuthenticated) {
     return (
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h5" gutterBottom>
-            Auth Debug
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h5">Auth Debug</Typography>
+            <Chip label="Development Mode" color="warning" size="small" />
+          </Stack>
           <Typography color="text.secondary" paragraph>
             Sign in to view token information.
           </Typography>
@@ -532,9 +771,10 @@ export function AuthDebugPage() {
     <Stack spacing={3}>
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h5" gutterBottom>
-            ID Token Status
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h5">ID Token Status</Typography>
+            <Chip label="Development Mode" color="warning" size="small" />
+          </Stack>
 
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -705,7 +945,7 @@ func TestTTLParsing(t *testing.T) {
 }
 ```
 
-#### 5.2 Manual E2E verification - Token expiration
+#### 5.2 Manual E2E verification - Token expiration (development mode)
 
 ```bash
 # Build and run with short TTL for testing
@@ -715,26 +955,13 @@ make build
 
 # Open https://localhost:8443/ui/auth-debug
 # Verify:
+# - Shows "Development Mode" chip
 # - Countdown timer shows ~30s after login
 # - Token refreshes automatically before expiration
 # - After 2 minutes, refresh fails and user must re-authenticate
 ```
 
-#### 5.3 Manual E2E verification - Cross-tab sync
-
-```bash
-make run
-
-# Open https://localhost:8443/ui/profile in Tab 1
-# Sign in
-# Open https://localhost:8443/ui/profile in Tab 2
-# Verify: Tab 2 is already authenticated (no login required)
-
-# Click logout in Tab 1
-# Verify: Tab 2 also shows logged out state
-```
-
-#### 5.4 Manual E2E verification - Debug page
+#### 5.3 Manual E2E verification - Debug page
 
 ```bash
 make run
@@ -745,6 +972,20 @@ make run
 # - After login, shows countdown timer
 # - "Refresh Now" button triggers token refresh
 # - Last refresh status updates after refresh
+```
+
+#### 5.4 Manual E2E verification - BFF mode (requires oauth2-proxy setup)
+
+```bash
+# This requires deploying holos-console behind oauth2-proxy
+# See deployment documentation for oauth2-proxy configuration
+
+# Open https://your-deployment/ui/auth-debug
+# Verify:
+# - Shows "BFF Mode" chip
+# - Shows user info from X-Forwarded-* headers
+# - No token countdown (tokens managed by proxy)
+# - Logout redirects to /oauth2/sign_out
 ```
 
 ---
@@ -762,74 +1003,61 @@ make run
 - [ ] 2.3: Create RefreshTokenPolicy with absolute lifetime
 - [ ] 2.4: Wire TTL config from console.Serve to oidc.NewHandler
 
-### Phase 3: Frontend - Cross-Tab Token Storage
-- [ ] 3.1: Switch userStore from sessionStorage to localStorage
-- [ ] 3.2: Add storage event listener for cross-tab state sync
+### Phase 3: Frontend - BFF Mode Support
+- [ ] 3.1: Add isBFFMode() detection function
+- [ ] 3.2: Add BFF_ENDPOINTS constants
+- [ ] 3.3: Add /api/userinfo backend endpoint
+- [ ] 3.4: Update AuthProvider to support both modes
+- [ ] 3.5: Update login/logout for BFF mode
 
 ### Phase 4: Frontend - Auth Debug Page
-- [ ] 4.1: Extend AuthContext with refresh status and manual refresh
-- [ ] 4.2: Create AuthDebugPage component with countdown timer
+- [ ] 4.1: Extend AuthContext with BFF mode and refresh status
+- [ ] 4.2: Create AuthDebugPage component with dual-mode support
 - [ ] 4.3: Add /auth-debug route and navigation link
 
 ### Phase 5: Testing
 - [ ] 5.1: Add unit tests for TTL duration parsing
 - [ ] 5.2: Manual E2E verification - Token expiration with short TTL
-- [ ] 5.3: Manual E2E verification - Cross-tab token sync
-- [ ] 5.4: Manual E2E verification - Auth debug page functionality
+- [ ] 5.3: Manual E2E verification - Auth debug page (development mode)
+- [ ] 5.4: Manual E2E verification - BFF mode (with oauth2-proxy)
 
 ---
 
 ## Security Considerations
-
-### localStorage vs sessionStorage
-
-Switching to localStorage means tokens persist until explicitly cleared or the browser clears storage. However:
-
-1. **Short-lived tokens**: 15-minute ID tokens limit exposure window
-2. **Refresh token lifetime**: 12-hour absolute lifetime forces daily re-authentication
-3. **XSS risk**: Same as sessionStorage - any XSS can access both
-4. **CSRF**: Not applicable - tokens are in storage, not cookies
-
-The tradeoff is acceptable because:
-- Token lifetimes provide time-bound access control
-- Cross-tab UX benefit is significant for multi-tab workflows
-- Security boundary (XSS) is unchanged from sessionStorage
 
 ### Token TTL Defaults
 
 - 15-minute ID tokens: Industry standard, balances UX and security
 - 12-hour refresh tokens: Ensures daily re-authentication, limits persistent access
 
+### Development Mode (sessionStorage)
+
+- Tokens stored in sessionStorage, cleared when browser closes
+- Vulnerable to XSS (same as localStorage)
+- Acceptable for local development on trusted machines
+- Per ADR 003: Multi-tab inconvenience is accepted
+
+### Production Mode (BFF with oauth2-proxy)
+
+- Tokens never exposed to browser JavaScript
+- HttpOnly session cookie managed by oauth2-proxy
+- CSRF protection handled by oauth2-proxy
+- Session can be immediately revoked server-side
+- Aligns with IETF BFF recommendation
+
 ### Debug Page
 
-- Only exposes information already available in browser dev tools
+- Only exposes information already available in browser dev tools (development mode)
+- In BFF mode, only shows forwarded headers (user/email)
 - Useful for troubleshooting without requiring dev tool access
-- No sensitive data beyond what's in the existing token
-
-## Alternatives Considered
-
-### Alternative 1: BroadcastChannel API for cross-tab sync
-
-Use BroadcastChannel to explicitly communicate between tabs.
-
-**Rejected:** Storage events are simpler and work with oidc-client-ts's existing localStorage support. BroadcastChannel adds complexity without clear benefit.
-
-### Alternative 2: Keep sessionStorage with login-on-demand
-
-Keep sessionStorage but detect when a tab needs auth and trigger silent signin.
-
-**Rejected:** Silent signin requires the auth session to still be valid at the IdP. With 12-hour refresh token lifetime, this approach would still require re-authentication, negating the UX benefit.
-
-### Alternative 3: Service Worker for token management
-
-Use a Service Worker to manage tokens and share across tabs.
-
-**Rejected:** Significantly more complex. Service Worker lifecycle management adds edge cases. localStorage provides the same cross-tab capability with simpler implementation.
 
 ## References
 
+- [ADR 002: BFF Architecture with oauth2-proxy](../adrs/002-bff-architecture-oauth2-proxy.md)
+- [ADR 003: Use sessionStorage for Local Development](../adrs/003-session-storage-for-development.md)
+- [oauth2-proxy Documentation](https://oauth2-proxy.github.io/oauth2-proxy/)
+- [oauth2-proxy Session Storage](https://oauth2-proxy.github.io/oauth2-proxy/configuration/session_storage/)
 - [oidc-client-ts UserManagerSettings](https://authts.github.io/oidc-client-ts/interfaces/UserManagerSettings.html)
 - [Dex Token Configuration](https://dexidp.io/docs/configuration/tokens/)
 - [Dex RefreshTokenPolicy PR](https://github.com/dexidp/dex/pull/1846)
 - [Dex server.Config](https://pkg.go.dev/github.com/dexidp/dex/server)
-- [oidc-client-ts Cross-Tab Issue](https://github.com/IdentityModel/oidc-client-js/issues/830)
