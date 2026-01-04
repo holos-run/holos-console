@@ -1,8 +1,8 @@
 # Plan: Token TTL Configuration and Production BFF Mode
 
-> **Status:** UNREVIEWED / UNAPPROVED
+> **Status:** REVIEWED / APPROVED
 >
-> Do not implement until reviewed and approved.
+> Ready for implementation.
 
 ## Related ADRs
 
