@@ -14,6 +14,8 @@ var (
 	listenAddr string
 	certFile   string
 	keyFile    string
+	issuer     string
+	clientID   string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -50,6 +52,10 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&certFile, "cert", "", "TLS certificate file (auto-generated if empty)")
 	cmd.Flags().StringVar(&keyFile, "key", "", "TLS key file (auto-generated if empty)")
 
+	// OIDC flags
+	cmd.Flags().StringVar(&issuer, "issuer", "https://localhost:8443/dex", "OIDC issuer URL for token validation")
+	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
+
 	return cmd
 }
 
@@ -64,6 +70,8 @@ func Run(cmd *cobra.Command, args []string) error {
 		ListenAddr: listenAddr,
 		CertFile:   certFile,
 		KeyFile:    keyFile,
+		Issuer:     issuer,
+		ClientID:   clientID,
 	}
 
 	server := console.New(cfg)

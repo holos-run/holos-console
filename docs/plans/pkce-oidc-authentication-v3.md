@@ -470,38 +470,38 @@ The issuer URL flows to:
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Embedded OIDC Identity Provider
-- [ ] 1.1a: Add `github.com/dexidp/dex` dependency
-- [ ] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
-- [ ] 1.2a: Create `console/oidc/config.go` with default credentials
-- [ ] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory
-- [ ] 1.3: Wire OIDC provider routes in `console/console.go`
-- [ ] 1.4a: Add `--issuer` flag to `cli/cli.go`
-- [ ] 1.4b: Add `--client-id` flag to `cli/cli.go`
+- [x] 1.1a: Add `github.com/dexidp/dex` dependency
+- [x] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
+- [x] 1.2a: Create `console/oidc/config.go` with default credentials
+- [x] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory
+- [x] 1.3: Wire OIDC provider routes in `console/console.go`
+- [x] 1.4a: Add `--issuer` flag to `cli/cli.go`
+- [x] 1.4b: Add `--client-id` flag to `cli/cli.go`
 
 ### Phase 2: JWT Validation
-- [ ] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
-- [ ] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
-- [ ] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
-- [ ] 2.3: Apply auth interceptor to protected routes in `console/console.go`
-- [ ] 2.4a: Write integration test for OIDC discovery endpoint
-- [ ] 2.4b: Write integration test for token validation
-- [ ] 2.4c: Write integration test for protected RPC endpoints
+- [x] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
+- [x] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
+- [x] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
+- [x] 2.3: Apply auth interceptor to protected routes in `console/console.go`
+- [x] 2.4a: Write integration test for OIDC discovery endpoint
+- [x] 2.4b: Write integration test for token validation
+- [x] 2.4c: Write integration test for protected RPC endpoints
 
 ### Phase 3: React SPA Updates
-- [ ] 3.1: Add `oidc-client-ts` dependency
-- [ ] 3.2: Create `ui/src/auth/` with AuthProvider, useAuth, config
-- [ ] 3.3: Update Vite proxy to forward `/dex/*` to backend
-- [ ] 3.4: Create callback route component
+- [x] 3.1: Add `oidc-client-ts` dependency
+- [x] 3.2: Create `ui/src/auth/` with AuthProvider, useAuth, config
+- [x] 3.3: Update Vite proxy to forward `/dex/*` to backend
+- [x] 3.4: Create callback route component
 
 ### Phase 4: Testing
-- [ ] 4.1a: Write unit tests for `console/oidc/config.go`
-- [ ] 4.1b: Write integration tests for `console/oidc/oidc.go`
-- [ ] 4.2: Write Playwright E2E tests for login flow
+- [x] 4.1a: Write unit tests for `console/oidc/config.go`
+- [x] 4.1b: Write integration tests for `console/oidc/oidc.go`
+- [x] 4.2: Write Playwright E2E tests for login flow
 
 ### Phase 5: Documentation
-- [ ] 5.1: Update CONTRIBUTING.md with authentication workflow
-- [ ] 5.2: Create docs/authentication.md
-- [ ] 5.3: Create docs/hostname-configuration.md (how hostname flows through stack)
+- [x] 5.1: Update CONTRIBUTING.md with authentication workflow
+- [x] 5.2: Create docs/authentication.md
+- [x] 5.3: Create docs/hostname-configuration.md (how hostname flows through stack)
 
 ---
 

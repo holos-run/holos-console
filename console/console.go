@@ -29,6 +29,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -41,6 +42,15 @@ type Config struct {
 	ListenAddr string
 	CertFile   string
 	KeyFile    string
+
+	// Issuer is the OIDC issuer URL for token validation.
+	// This also determines the embedded Dex issuer URL.
+	// Example: "https://localhost:8443/dex"
+	Issuer string
+
+	// ClientID is the expected audience for tokens.
+	// Default: "holos-console"
+	ClientID string
 }
 
 // Server represents the console HTTPS server.
@@ -57,11 +67,22 @@ func New(cfg Config) *Server {
 func (s *Server) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	// Configure ConnectRPC interceptors
-	interceptors := connect.WithInterceptors(
+	// Configure ConnectRPC interceptors for public routes (no auth required)
+	publicInterceptors := connect.WithInterceptors(
 		rpc.MetricsInterceptor(),
 		rpc.LoggingInterceptor(),
 	)
+
+	// Configure ConnectRPC interceptors for protected routes (auth required)
+	// These are set up but not used until we have protected services
+	var protectedInterceptors connect.Option
+	if s.cfg.Issuer != "" && s.cfg.ClientID != "" {
+		// Note: Verifier creation is deferred until after Dex starts
+		// For now, we log that auth is configured but don't block startup
+		slog.Info("auth configured", "issuer", s.cfg.Issuer, "clientID", s.cfg.ClientID)
+		// Protected interceptors will be created lazily when first protected service is registered
+		_ = protectedInterceptors // Placeholder for future protected services
+	}
 
 	// Register VersionService
 	versionHandler := rpc.NewVersionHandler(rpc.VersionInfo{
@@ -70,7 +91,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		GitTreeState: GitTreeState,
 		BuildDate:    BuildDate,
 	})
-	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, interceptors)
+	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, publicInterceptors)
 	mux.Handle(path, handler)
 
 	// Register gRPC reflection for introspection (grpcurl, etc.)
@@ -79,6 +100,34 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.Handle(reflectPath, reflectHandler)
 	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectAlphaPath, reflectAlphaHandler)
+
+	// Initialize embedded OIDC identity provider (Dex)
+	if s.cfg.Issuer != "" {
+		// Derive redirect URI from issuer (same host, /ui/callback path)
+		redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/ui/callback"
+
+		// Also allow Vite dev server redirect URI for local development
+		redirectURIs := []string{redirectURI}
+		viteRedirectURI := "https://localhost:5173/ui/callback"
+		if redirectURI != viteRedirectURI {
+			redirectURIs = append(redirectURIs, viteRedirectURI)
+		}
+
+		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
+			Issuer:       s.cfg.Issuer,
+			ClientID:     s.cfg.ClientID,
+			RedirectURIs: redirectURIs,
+			Logger:       slog.Default(),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create OIDC handler: %w", err)
+		}
+
+		// Mount Dex at /dex/ - Dex handles the full path internally since issuer includes /dex
+		mux.Handle("/dex/", oidcHandler)
+
+		slog.Info("embedded OIDC provider mounted", "path", "/dex/", "issuer", s.cfg.Issuer)
+	}
 
 	// Prepare embedded UI files
 	uiContent, err := fs.Sub(uiFS, "ui")

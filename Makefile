@@ -81,6 +81,10 @@ test-go: ## Run Go tests.
 test-ui: ## Run UI tests.
 	cd ui && npm test -- --run
 
+.PHONY: test-e2e
+test-e2e: build ## Run Playwright E2E tests (orchestrates servers automatically).
+	cd ui && npm run test:e2e
+
 .PHONY: coverage
 coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out

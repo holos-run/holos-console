@@ -29,6 +29,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     globals: true,
+    exclude: ['**/node_modules/**', '**/e2e/**'],
   },
   build: {
     outDir: path.resolve(__dirname, '../console/ui'),
@@ -42,6 +43,12 @@ export default defineConfig({
     proxy: {
       // Proxy ConnectRPC requests to the Go backend.
       '^/holos\\.console\\.v1\\..*': {
+        target: backendUrl,
+        secure: false,
+        changeOrigin: true,
+      },
+      // Proxy OIDC requests to the embedded Dex provider.
+      '/dex': {
         target: backendUrl,
         secure: false,
         changeOrigin: true,

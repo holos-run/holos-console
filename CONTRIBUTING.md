@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.24.2 or later
+- Go 1.25.0 or later
 - Node.js 18+ and npm for frontend development
 - [mkcert](https://github.com/FiloSottile/mkcert) for local TLS certificates
 - [grpcurl](https://github.com/fullstorydev/grpcurl) for testing RPC endpoints
@@ -98,6 +98,75 @@ This runs `go generate ./...` which invokes buf via the directive in [generate.g
 make test           # Run tests
 make rpc-version    # Test version RPC with grpcurl
 ```
+
+### E2E Testing
+
+E2E tests use Playwright. The test runner automatically starts and stops both servers:
+
+```bash
+make test-e2e
+```
+
+This command:
+1. Builds the Go binary
+2. Starts the Go backend on https://localhost:8443
+3. Starts the Vite dev server on https://localhost:5173
+4. Runs all Playwright tests
+5. Cleans up both servers when tests finish
+
+#### Debugging with Manual Servers
+
+For debugging, you can start the servers manually and reuse them across test runs:
+
+```bash
+# Terminal 1: Start Go backend
+make run
+
+# Terminal 2: Start Vite dev server
+make dev
+
+# Terminal 3: Run E2E tests (reuses existing servers)
+cd ui && npm run test:e2e
+```
+
+The `reuseExistingServer` option detects when servers are already running and skips starting new ones. This is useful for iterating on tests quickly or debugging specific failures.
+
+## Authentication
+
+The console uses an embedded OIDC identity provider (Dex) for development and testing.
+
+### Default Credentials
+
+For local development, use these credentials to log in:
+
+- **Username:** `admin`
+- **Password:** `verysecret`
+
+### Customizing Credentials
+
+Override the default credentials via environment variables:
+
+```bash
+export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
+export HOLOS_DEX_INITIAL_ADMIN_PASSWORD=mypassword
+make run
+```
+
+### Using an External Identity Provider
+
+For production, point to an external OIDC provider:
+
+```bash
+./holos-console \
+  --issuer=https://dex.example.com \
+  --client-id=holos-console \
+  --cert-file=server.crt \
+  --key-file=server.key
+```
+
+The embedded Dex provider still runs but is ignored when `--issuer` points to an external URL.
+
+See [docs/authentication.md](docs/authentication.md) for detailed documentation.
 
 ## Commit Messages
 
