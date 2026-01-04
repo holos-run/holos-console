@@ -145,10 +145,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 
 		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
-			Issuer:       s.cfg.Issuer,
-			ClientID:     s.cfg.ClientID,
-			RedirectURIs: redirectURIs,
-			Logger:       slog.Default(),
+			Issuer:          s.cfg.Issuer,
+			ClientID:        s.cfg.ClientID,
+			RedirectURIs:    redirectURIs,
+			Logger:          slog.Default(),
+			IDTokenTTL:      s.cfg.IDTokenTTL,
+			RefreshTokenTTL: s.cfg.RefreshTokenTTL,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create OIDC handler: %w", err)
