@@ -998,7 +998,7 @@ make run
 - [x] 1.3: Parse duration strings and wire to config
 
 ### Phase 2: Backend - Configure Dex Token Lifetimes
-- [ ] 2.1: Add TTL fields to oidc.Config struct
+- [x] 2.1: Add TTL fields to oidc.Config struct
 - [ ] 2.2: Configure Dex server.Config with IDTokensValidFor
 - [ ] 2.3: Create RefreshTokenPolicy with absolute lifetime
 - [ ] 2.4: Wire TTL config from console.Serve to oidc.NewHandler

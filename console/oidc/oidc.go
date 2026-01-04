@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/server"
@@ -27,6 +28,15 @@ type Config struct {
 
 	// Logger for operations.
 	Logger *slog.Logger
+
+	// IDTokenTTL is the lifetime of ID tokens.
+	// Default: 15 minutes
+	IDTokenTTL time.Duration
+
+	// RefreshTokenTTL is the absolute lifetime of refresh tokens.
+	// After this duration, users must re-authenticate.
+	// Default: 12 hours
+	RefreshTokenTTL time.Duration
 }
 
 // NewHandler creates an http.Handler for the embedded OIDC identity provider.
