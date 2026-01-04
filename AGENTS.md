@@ -4,6 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 
+## Implementing Plans
+
+When implementing a plan from `docs/plans/`, include the step identifier (e.g., 1.1, 1.2, 2.1) in the first line of commit messages to track progress against the plan checklist.
+
+Example:
+```
+1.1: Add webServer configuration to playwright.config.ts
+
+Configure Playwright to automatically start Go backend and Vite dev
+server before running E2E tests.
+```
+
 ## Build Commands
 
 ```bash
