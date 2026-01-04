@@ -1,4 +1,15 @@
-import { Card, CardContent, Typography, Stack, Box, Button } from '@mui/material'
+import {
+  Card,
+  CardContent,
+  Typography,
+  Stack,
+  Box,
+  Button,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+} from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '../auth'
 
@@ -69,6 +80,27 @@ export function ProfilePage() {
             </Button>
           </Box>
         </Stack>
+        <Accordion sx={{ mt: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">ID Token Claims</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box
+              component="pre"
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: '0.75rem',
+                backgroundColor: 'grey.100',
+                p: 2,
+                borderRadius: 1,
+                overflow: 'auto',
+                maxHeight: 400,
+              }}
+            >
+              {JSON.stringify(user?.profile, null, 2)}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
       </CardContent>
     </Card>
   )

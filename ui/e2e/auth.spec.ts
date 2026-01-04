@@ -247,4 +247,52 @@ test.describe('Profile Page', () => {
     // Verify Sign Out button is visible
     await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
   })
+
+  test('should display ID token claims in expandable section', async ({ page }) => {
+    // Navigate to profile page and login
+    await page.goto('/ui/profile')
+    await page.getByRole('button', { name: 'Sign In' }).click()
+
+    // Wait for redirect to Dex login page
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
+
+    // Navigate to login form if on connector selection
+    const connectorLink = page.locator('a[href*="connector"]').first()
+    if ((await connectorLink.count()) > 0) {
+      await connectorLink.click()
+      await page.waitForLoadState('networkidle')
+    }
+
+    // Fill in credentials
+    const usernameInput = page.locator('input[name="login"]')
+    const passwordInput = page.locator('input[name="password"]')
+
+    await expect(usernameInput).toBeVisible({ timeout: 5000 })
+    await usernameInput.fill(DEFAULT_USERNAME)
+    await passwordInput.fill(DEFAULT_PASSWORD)
+
+    // Submit login form
+    await page.locator('button[type="submit"]').click()
+
+    // Wait for redirect back to profile page
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Verify profile page loaded with user info
+    await expect(page.getByText('Name')).toBeVisible({ timeout: 5000 })
+
+    // Expand the ID Token Claims accordion
+    await page.getByText('ID Token Claims').click()
+
+    // Verify JSON content is visible with expected claims
+    const claimsJson = page.locator('pre')
+    await expect(claimsJson).toBeVisible()
+    await expect(claimsJson).toContainText('"sub"')
+    await expect(claimsJson).toContainText('"iss"')
+
+    // Take screenshot for visual verification
+    await page.screenshot({
+      path: 'e2e/screenshots/profile-claims.png',
+      fullPage: true,
+    })
+  })
 })
