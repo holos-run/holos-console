@@ -1,4 +1,5 @@
-import { UserManagerSettings, WebStorageStateStore } from 'oidc-client-ts'
+import type { UserManagerSettings } from 'oidc-client-ts'
+import { WebStorageStateStore } from 'oidc-client-ts'
 
 // OIDC configuration for the holos-console SPA.
 // Uses the embedded Dex OIDC provider by default.

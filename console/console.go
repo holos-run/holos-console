@@ -106,18 +106,25 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Derive redirect URI from issuer (same host, /ui/callback path)
 		redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/ui/callback"
 
+		// Also allow Vite dev server redirect URI for local development
+		redirectURIs := []string{redirectURI}
+		viteRedirectURI := "https://localhost:5173/ui/callback"
+		if redirectURI != viteRedirectURI {
+			redirectURIs = append(redirectURIs, viteRedirectURI)
+		}
+
 		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
 			Issuer:       s.cfg.Issuer,
 			ClientID:     s.cfg.ClientID,
-			RedirectURIs: []string{redirectURI},
+			RedirectURIs: redirectURIs,
 			Logger:       slog.Default(),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create OIDC handler: %w", err)
 		}
 
-		// Mount Dex at /dex/ - strip the prefix so Dex sees paths starting from /
-		mux.Handle("/dex/", http.StripPrefix("/dex", oidcHandler))
+		// Mount Dex at /dex/ - Dex handles the full path internally since issuer includes /dex
+		mux.Handle("/dex/", oidcHandler)
 
 		slog.Info("embedded OIDC provider mounted", "path", "/dex/", "issuer", s.cfg.Issuer)
 	}

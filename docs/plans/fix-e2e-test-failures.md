@@ -1,8 +1,8 @@
 # Plan: Fix E2E Test Failures
 
-> **Status:** UNREVIEWED / UNAPPROVED
+> **Status:** APPROVED
 >
-> This plan has not been reviewed or approved. Do not implement until approved.
+> This plan has been reviewed and approved for implementation.
 
 ## Overview
 
@@ -120,14 +120,14 @@ All 7 tests should pass.
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Fix Dex Path Routing
-- [ ] 1.1: Remove `http.StripPrefix` from Dex handler mount in `console/console.go`
-- [ ] 1.2: Verify Dex discovery endpoint works with `curl`
+- [x] 1.1: Remove `http.StripPrefix` from Dex handler mount in `console/console.go`
+- [x] 1.2: Verify Dex discovery endpoint works with `curl`
 
 ### Phase 2: Run E2E Tests
-- [ ] 2.1: Run `make test-e2e` and verify all 7 tests pass
+- [x] 2.1: Run `npm run test:e2e` and verify all 7 tests pass
 
 ### Phase 3: Verification (Optional)
-- [ ] 3.1: Manual login flow verification
+- [ ] 3.1: Manual login flow verification (skipped - E2E tests provide sufficient coverage)
 
 ---
 

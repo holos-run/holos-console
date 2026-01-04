@@ -30,7 +30,7 @@ test.describe('Authentication', () => {
 
     // The version page should load and show version info from the backend
     // This verifies the RPC connection works through the proxy
-    await expect(page.getByText('Version')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Server Version' })).toBeVisible()
   })
 
   test('should have OIDC discovery endpoint accessible', async ({ request }) => {
@@ -51,7 +51,7 @@ test.describe('Authentication', () => {
   }) => {
     // Navigate to the OIDC authorize endpoint directly
     // This simulates what happens when the SPA initiates login
-    const authorizeUrl = new URL('/dex/auth', page.url() || 'https://localhost:5173')
+    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
     authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
     authorizeUrl.searchParams.set('response_type', 'code')
