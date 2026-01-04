@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,11 +14,13 @@ import (
 )
 
 var (
-	listenAddr string
-	certFile   string
-	keyFile    string
-	issuer     string
-	clientID   string
+	listenAddr      string
+	certFile        string
+	keyFile         string
+	issuer          string
+	clientID        string
+	idTokenTTL      string
+	refreshTokenTTL string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -58,6 +61,10 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
+	// Token TTL flags
+	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
+	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
+
 	return cmd
 }
 
@@ -91,15 +98,27 @@ func Run(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
+	// Parse token TTL durations
+	idTTL, err := time.ParseDuration(idTokenTTL)
+	if err != nil {
+		return fmt.Errorf("invalid --id-token-ttl: %w", err)
+	}
+	refreshTTL, err := time.ParseDuration(refreshTokenTTL)
+	if err != nil {
+		return fmt.Errorf("invalid --refresh-token-ttl: %w", err)
+	}
+
 	// Derive issuer from listen address if not explicitly set
 	derivedIssuer := deriveIssuer(listenAddr, issuer)
 
 	cfg := console.Config{
-		ListenAddr: listenAddr,
-		CertFile:   certFile,
-		KeyFile:    keyFile,
-		Issuer:     derivedIssuer,
-		ClientID:   clientID,
+		ListenAddr:      listenAddr,
+		CertFile:        certFile,
+		KeyFile:         keyFile,
+		Issuer:          derivedIssuer,
+		ClientID:        clientID,
+		IDTokenTTL:      idTTL,
+		RefreshTokenTTL: refreshTTL,
 	}
 
 	server := console.New(cfg)

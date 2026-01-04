@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/server"
@@ -27,6 +28,15 @@ type Config struct {
 
 	// Logger for operations.
 	Logger *slog.Logger
+
+	// IDTokenTTL is the lifetime of ID tokens.
+	// Default: 15 minutes
+	IDTokenTTL time.Duration
+
+	// RefreshTokenTTL is the absolute lifetime of refresh tokens.
+	// After this duration, users must re-authenticate.
+	// Default: 12 hours
+	RefreshTokenTTL time.Duration
 }
 
 // NewHandler creates an http.Handler for the embedded OIDC identity provider.
@@ -80,15 +90,38 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		},
 	})
 
-	// Create Dex server
-	dexServer, err := server.NewServer(ctx, server.Config{
+	// Create Dex server config
+	serverConfig := server.Config{
 		Issuer:                 cfg.Issuer,
 		Storage:                store,
 		SkipApprovalScreen:     true,
 		Logger:                 logger,
 		SupportedResponseTypes: []string{"code"},
 		AllowedOrigins:         []string{"*"}, // Allow all origins for development
-	})
+	}
+
+	// Configure ID token lifetime if specified
+	if cfg.IDTokenTTL > 0 {
+		serverConfig.IDTokensValidFor = cfg.IDTokenTTL
+	}
+
+	// Configure refresh token policy with absolute lifetime if specified
+	if cfg.RefreshTokenTTL > 0 {
+		refreshPolicy, err := server.NewRefreshTokenPolicy(
+			logger,
+			true,                          // rotation enabled
+			"",                            // validIfNotUsedFor (empty = no limit)
+			cfg.RefreshTokenTTL.String(),  // absoluteLifetime
+			"3s",                          // reuseInterval (handle network retries)
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create refresh token policy: %w", err)
+		}
+		serverConfig.RefreshTokenPolicy = refreshPolicy
+	}
+
+	// Create Dex server
+	dexServer, err := server.NewServer(ctx, serverConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dex server: %w", err)
 	}

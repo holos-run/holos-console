@@ -1,6 +1,6 @@
 export { AuthProvider, AuthContext } from './AuthProvider'
-export type { AuthContextValue } from './AuthProvider'
+export type { AuthContextValue, BFFUser } from './AuthProvider'
 export { useAuth } from './useAuth'
 export { getUserManager } from './userManager'
-export { getOIDCSettings } from './config'
+export { getOIDCSettings, isBFFMode, BFF_ENDPOINTS } from './config'
 export { Callback } from './Callback'

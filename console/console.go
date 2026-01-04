@@ -52,6 +52,15 @@ type Config struct {
 	// ClientID is the expected audience for tokens.
 	// Default: "holos-console"
 	ClientID string
+
+	// IDTokenTTL is the lifetime of ID tokens.
+	// Default: 15 minutes
+	IDTokenTTL time.Duration
+
+	// RefreshTokenTTL is the absolute lifetime of refresh tokens.
+	// After this duration, users must re-authenticate.
+	// Default: 12 hours
+	RefreshTokenTTL time.Duration
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -136,10 +145,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 
 		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
-			Issuer:       s.cfg.Issuer,
-			ClientID:     s.cfg.ClientID,
-			RedirectURIs: redirectURIs,
-			Logger:       slog.Default(),
+			Issuer:          s.cfg.Issuer,
+			ClientID:        s.cfg.ClientID,
+			RedirectURIs:    redirectURIs,
+			Logger:          slog.Default(),
+			IDTokenTTL:      s.cfg.IDTokenTTL,
+			RefreshTokenTTL: s.cfg.RefreshTokenTTL,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create OIDC handler: %w", err)
@@ -194,6 +205,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Handle SPA routes under /ui/
 		uiHandler.ServeHTTP(w, r)
 	})
+
+	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
+	mux.HandleFunc("/api/userinfo", handleUserInfo)
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -435,6 +449,25 @@ func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, na
 	}
 
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
+}
+
+// handleUserInfo returns user information from oauth2-proxy forwarded headers.
+// This endpoint is used by the frontend in BFF mode to get the current user.
+func handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	user := r.Header.Get("X-Forwarded-User")
+	email := r.Header.Get("X-Forwarded-Email")
+
+	if user == "" && email == "" {
+		// Not authenticated or not running behind oauth2-proxy
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"user":  user,
+		"email": email,
+	})
 }
 
 // tlsConfig returns the TLS configuration for the server.
