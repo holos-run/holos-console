@@ -24,7 +24,7 @@ We now embed Dex directly into the holos-console executable for all builds. This
 | Build separation | None | Single binary for all environments; users choose IDP at runtime |
 | Default password | `HOLOS_DEX_INITIAL_ADMIN_PASSWORD` env var, default `verysecret` | Simple override mechanism; const in single location |
 | Auth configuration | `--issuer` flag configures JWT validation only | Decouples auth validation from embedded IDP |
-| JWT validation | `coreos/go-oidc/v3` + custom interceptor | Already implemented in current codebase |
+| JWT validation | `coreos/go-oidc/v3` + custom interceptor | Well-maintained, minimal code to maintain |
 
 ## Architecture
 
@@ -228,7 +228,7 @@ HOLOS_DEX_INITIAL_ADMIN_PASSWORD=mysecret ./holos-console --cert-file=... --key-
 ./holos-console --issuer=https://dex.example.com --client-id=holos-console
 ```
 
-## File Structure
+## File Structure (After Implementation)
 
 ```
 console/
@@ -236,53 +236,57 @@ console/
 │   ├── oidc.go         # Embedded OIDC identity provider (Dex) initialization
 │   ├── config.go       # Default credentials, env var handling
 │   └── oidc_test.go    # OIDC provider integration tests
-├── auth.go             # OIDC verifier (existing, unchanged)
-├── console.go          # Wire OIDC provider routes
+├── auth.go             # OIDC verifier setup (NEW)
+├── console.go          # Wire OIDC provider routes (MODIFIED)
 └── rpc/
-    ├── auth.go         # JWT interceptor (existing, unchanged)
-    └── claims.go       # Claims context (existing, unchanged)
+    ├── auth.go         # JWT interceptor (NEW)
+    ├── claims.go       # Claims context (NEW)
+    ├── version.go      # (existing)
+    ├── metrics.go      # (existing)
+    └── logging.go      # (existing)
 ```
 
-## Changes from Current Implementation
+## Current Implementation State
 
-### Remove
-- `internal/devoidc/` - Custom zitadel/oidc provider (replaced by Dex)
-- `console/devmode.go` - Build-tag conditional routes (no longer needed)
-- `console/devmode_prod.go` - Build-tag prod stubs (no longer needed)
-- Build tags for dev/prod separation (single binary now)
-- `build-dev` and `run-dev` Makefile targets (single build mode now)
+The codebase currently has:
+- `console/console.go` - HTTP server with UI and RPC handlers
+- `console/rpc/version.go`, `metrics.go`, `logging.go` - Existing RPC infrastructure
+- `cli/cli.go` - Cobra CLI with `--listen`, `--cert`, `--key` flags
 
-### Keep (Unchanged)
+The codebase does **not** have:
+- Any authentication or OIDC code
+- `--issuer` or `--client-id` flags
+- JWT validation interceptors
+- Embedded identity provider
+
+## Changes Required
+
+### Add (New Files)
+- `console/oidc/config.go` - Default credentials, env var handling
+- `console/oidc/oidc.go` - Embedded OIDC identity provider (Dex)
 - `console/auth.go` - OIDC verifier setup
 - `console/rpc/auth.go` - JWT interceptor
 - `console/rpc/claims.go` - Claims context helpers
 
-### Add
-- `console/oidc/` - Embedded OIDC identity provider (Dex)
+### Modify (Existing Files)
+- `console/console.go` - Wire OIDC provider routes, apply auth interceptors
+- `cli/cli.go` - Add `--issuer` and `--client-id` flags
 
 ## Dependencies
 
 ### Add
 ```
-github.com/dexidp/dex v2.41.1  # Or latest stable
+github.com/dexidp/dex v2.41.1    # Or latest stable - embedded OIDC provider
+github.com/coreos/go-oidc/v3     # JWT validation
 ```
 
-### Keep
-```
-github.com/coreos/go-oidc/v3   # Already in use for JWT validation
-```
+## Phase 1: Embedded OIDC Identity Provider
 
-### Remove
-```
-github.com/zitadel/oidc/v3     # Replaced by embedded Dex
-```
-
-## Phase 1: Embedded Dex Setup
-
-### 1.1 Add Dex dependency
+### 1.1 Add dependencies
 
 ```bash
 go get github.com/dexidp/dex@latest
+go get github.com/coreos/go-oidc/v3
 ```
 
 ### 1.2 Create console/oidc package
@@ -305,33 +309,47 @@ Update `console/console.go`:
 - Mount at `/dex/` path (configurable)
 - Provider handles its own discovery at `/dex/.well-known/openid-configuration`
 
-### 1.4 Remove old implementation
+### 1.4 Add CLI flags
 
-Delete:
-- `internal/devoidc/` directory
-- `console/devmode.go`
-- `console/devmode_prod.go`
-- `build-dev` and `run-dev` Makefile targets
+Update `cli/cli.go`:
+- Add `--issuer` flag (default: embedded OIDC provider URL)
+- Add `--client-id` flag (default: `holos-console`)
+- Pass these to `console.Config`
 
-### 1.5 Update default issuer
+## Phase 2: JWT Validation
 
-Update CLI:
-- Default `--issuer` to embedded OIDC provider URL
-- Document that embedded provider always runs
+### 2.1 Create OIDC verifier
 
-## Phase 2: Verify Existing Auth Works
+Create `console/auth.go`:
+- `NewIDTokenVerifier(ctx, issuer, clientID)` factory
+- Fetch OIDC discovery from issuer URL
+- Return `*oidc.IDTokenVerifier`
 
-The current auth implementation should work unchanged:
-- `console/auth.go` creates verifier from `--issuer`
-- `console/rpc/auth.go` validates tokens
-- Only the issuer URL changes (now points to embedded Dex by default)
+### 2.2 Create auth interceptor
 
-### 2.1 Integration test
+Create `console/rpc/auth.go`:
+- `AuthInterceptor(verifier)` - Requires valid bearer token
+- `OptionalAuthInterceptor(verifier)` - Validates if present, allows unauthenticated
+
+Create `console/rpc/claims.go`:
+- `Claims` struct with `Sub`, `Email`, `Name`, `Groups`
+- `ContextWithClaims(ctx, claims)` - Store claims in context
+- `ClaimsFromContext(ctx)` - Retrieve claims from context
+
+### 2.3 Apply interceptor to routes
+
+Update `console/console.go`:
+- Create OIDC verifier when issuer is configured
+- Apply auth interceptor to protected RPC handlers
+- VersionService remains public (no auth required)
+
+### 2.4 Integration tests
 
 Test that:
 - Embedded Dex serves discovery document
 - Token obtained from Dex validates correctly
 - Protected RPC endpoints accept Dex-issued tokens
+- Unauthenticated requests are rejected
 
 ## Phase 3: React SPA Integration
 
@@ -388,7 +406,7 @@ Document how the hostname and port flow through the entire stack. Written for co
 
 Document the flow:
 
-1. **CLI Entry Point** (`cmd/holos-console/main.go`)
+1. **CLI Entry Point** (`cli/cli.go`)
    - `--issuer` flag (e.g., `https://console.example.com/dex`)
    - `--listen` flag for HTTP server bind address (e.g., `:8443`)
    - The issuer URL determines the external hostname; listen address is internal
@@ -441,7 +459,7 @@ The issuer URL flows to:
 - SPA will use `https://myhost.local:9443/dex` for auth
 
 **Key files to understand:**
-- `cli/root.go` - Flag definitions
+- `cli/cli.go` - Flag definitions
 - `console/console.go` - URL parsing and handler setup
 - `console/oidc/oidc.go` - Dex configuration
 - `ui/src/auth/config.ts` - Frontend config reading
@@ -452,23 +470,28 @@ The issuer URL flows to:
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Embedded OIDC Identity Provider
-- [ ] 1.1: Add `github.com/dexidp/dex` dependency
+- [ ] 1.1a: Add `github.com/dexidp/dex` dependency
+- [ ] 1.1b: Add `github.com/coreos/go-oidc/v3` dependency
 - [ ] 1.2a: Create `console/oidc/config.go` with default credentials
 - [ ] 1.2b: Create `console/oidc/oidc.go` with `NewHandler()` factory
 - [ ] 1.3: Wire OIDC provider routes in `console/console.go`
-- [ ] 1.4a: Delete `internal/devoidc/` directory
-- [ ] 1.4b: Delete `console/devmode.go` and `console/devmode_prod.go`
-- [ ] 1.4c: Remove `build-dev` and `run-dev` Makefile targets
-- [ ] 1.5: Update `--issuer` default to embedded OIDC provider URL
+- [ ] 1.4a: Add `--issuer` flag to `cli/cli.go`
+- [ ] 1.4b: Add `--client-id` flag to `cli/cli.go`
 
-### Phase 2: Verify Auth Integration
-- [ ] 2.1a: Write integration test for OIDC discovery endpoint
-- [ ] 2.1b: Write integration test for token validation
-- [ ] 2.1c: Verify protected RPC endpoints work with tokens
+### Phase 2: JWT Validation
+- [ ] 2.1: Create `console/auth.go` with `NewIDTokenVerifier()`
+- [ ] 2.2a: Create `console/rpc/claims.go` with Claims struct and context helpers
+- [ ] 2.2b: Create `console/rpc/auth.go` with `AuthInterceptor()`
+- [ ] 2.3: Apply auth interceptor to protected routes in `console/console.go`
+- [ ] 2.4a: Write integration test for OIDC discovery endpoint
+- [ ] 2.4b: Write integration test for token validation
+- [ ] 2.4c: Write integration test for protected RPC endpoints
 
 ### Phase 3: React SPA Updates
-- [ ] 3.1: Update frontend OIDC config to use `/dex` issuer
-- [ ] 3.2: Update Vite proxy to forward `/dex/*` to backend
+- [ ] 3.1: Add `oidc-client-ts` dependency
+- [ ] 3.2: Create `ui/src/auth/` with AuthProvider, useAuth, config
+- [ ] 3.3: Update Vite proxy to forward `/dex/*` to backend
+- [ ] 3.4: Create callback route component
 
 ### Phase 4: Testing
 - [ ] 4.1a: Write unit tests for `console/oidc/config.go`
