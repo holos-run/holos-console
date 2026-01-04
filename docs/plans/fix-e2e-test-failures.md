@@ -198,8 +198,8 @@ Add new test describe block `Profile Page` with tests:
 - [x] 2.1: Run `npm run test:e2e` and verify all 7 tests pass
 
 ### Phase 3: Add Profile Page with Login Navigation
-- [ ] 3.1: Create `useAuth` hook in `ui/src/auth/useAuth.ts`
-- [ ] 3.2: Create ProfilePage component in `ui/src/components/ProfilePage.tsx`
+- [x] 3.1: Create `useAuth` hook in `ui/src/auth/useAuth.ts` (already exists)
+- [x] 3.2: Create ProfilePage component in `ui/src/components/ProfilePage.tsx`
 - [ ] 3.3: Add Profile navigation link to sidebar and route in `ui/src/App.tsx`
 - [ ] 3.4: Export `useAuth` from `ui/src/auth/index.ts`
 - [ ] 3.5: Add E2E tests for profile navigation and login flow in `ui/e2e/auth.spec.ts`
