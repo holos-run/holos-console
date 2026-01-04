@@ -1,8 +1,9 @@
 # Plan: Fix Dex Issuer Port Mismatch
 
-> **Status:** IMPLEMENTED
+> **Status:** IMPLEMENTED (with issue)
 >
-> Implementation complete. Manual E2E verification pending (steps 5.2 and 5.3).
+> Implementation complete but Phase 6 required to fix duplicate config injection.
+> Manual E2E verification pending (steps 5.2 and 5.3).
 
 ## Overview
 
@@ -353,6 +354,61 @@ cd ui && npm run dev
 # Sign in should work (Vite proxies /dex to backend)
 ```
 
+### Phase 6: Fix Duplicate OIDC Config Injection
+
+#### Problem
+
+Manual testing revealed that the Vite `injectOIDCConfig` plugin runs during both:
+1. `npm run dev` - Vite development server (intended)
+2. `npm run build` - Production build (unintended)
+
+This causes the OIDC config to be embedded in the production `index.html` that gets compiled into the Go executable. When the Go server serves this file, it adds a second `<script>window.__OIDC_CONFIG__=...</script>` tag, resulting in duplicate config injection.
+
+The first script (from Vite build) contains hardcoded Vite dev server values (`localhost:5173`), while the second (from Go server) contains the correct runtime values. While the second script wins (variables are overwritten), having duplicate scripts is confusing and wasteful.
+
+#### 6.1 Modify injectOIDCConfig plugin to only run in dev mode
+
+Update [ui/vite.config.ts](ui/vite.config.ts) to use Vite's `apply` option to restrict the plugin to serve mode only:
+
+```typescript
+const injectOIDCConfig = (): Plugin => ({
+  name: 'inject-oidc-config',
+  apply: 'serve',  // Only apply during dev server, not during build
+  transformIndexHtml(html) {
+    const script = `<script>window.__OIDC_CONFIG__=${JSON.stringify(oidcConfig)};</script>`
+    return html.replace('</head>', `${script}</head>`)
+  },
+})
+```
+
+The `apply: 'serve'` option tells Vite to only use this plugin when running the development server (`npm run dev`), not when building for production (`npm run build`).
+
+#### Verification
+
+After implementing this fix:
+
+1. **Production build should not contain OIDC config:**
+   ```bash
+   cd ui && npm run build
+   grep "__OIDC_CONFIG__" ../console/ui/index.html
+   # Should return nothing (no match)
+   ```
+
+2. **Dev server should still inject config:**
+   ```bash
+   cd ui && npm run dev
+   # Open https://localhost:5173/ui
+   # View page source - should see __OIDC_CONFIG__ script
+   ```
+
+3. **Production server should inject config at runtime:**
+   ```bash
+   make build
+   ./bin/holos-console --cert certs/tls.crt --key certs/tls.key --listen :4443
+   # Open https://localhost:4443/ui
+   # View page source - should see single __OIDC_CONFIG__ script with port 4443
+   ```
+
 ---
 
 ## TODO (Implementation Checklist)
@@ -377,6 +433,9 @@ cd ui && npm run dev
 - [x] 5.1: Add unit tests for deriveIssuer
 - [ ] 5.2: Manual E2E verification - non-default port
 - [ ] 5.3: Manual E2E verification - Vite dev mode
+
+### Phase 6: Fix Duplicate OIDC Config Injection
+- [ ] 6.1: Modify injectOIDCConfig plugin to only run in dev mode
 
 ---
 
