@@ -7,6 +7,52 @@
 - [mkcert](https://github.com/FiloSottile/mkcert) for local TLS certificates
 - [grpcurl](https://github.com/fullstorydev/grpcurl) for testing RPC endpoints
 
+## Setting Up a Debian 13 (Trixie) VM
+
+A fresh Debian 13 VM requires additional packages for development. Install them in this order:
+
+### 1. Install Build Tools (Required for Go Race Detector)
+
+Go tests run with `CGO_ENABLED=1` for race detection, which requires a C compiler:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential
+```
+
+### 2. Install mkcert for TLS Certificates
+
+```bash
+sudo apt-get install -y mkcert
+```
+
+### 3. Generate TLS Certificates
+
+```bash
+make certs
+```
+
+### 4. Install Frontend Dependencies
+
+```bash
+cd ui && npm install
+cd ..
+```
+
+### 5. Install Go Tool Dependencies
+
+```bash
+make tools
+```
+
+### 6. Verify Setup
+
+```bash
+make test
+```
+
+All tests should pass after completing these steps.
+
 ## Getting Started
 
 Clone the repository and install tool dependencies:
