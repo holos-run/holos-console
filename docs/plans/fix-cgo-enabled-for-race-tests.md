@@ -1,6 +1,6 @@
 # Plan: Fix CGO_ENABLED for Race Detector Tests
 
-> **Status:** PROPOSED
+> **Status:** IMPLEMENTED
 >
 > This plan addresses the `make test` failure when CGO is disabled.
 
@@ -127,7 +127,7 @@ Expected: All Go and UI tests pass without the CGO_ENABLED error.
 ## TODO (Implementation Checklist)
 
 ### Phase 1: Fix Makefile
-- [ ] 1.1: Add `CGO_ENABLED=1` prefix to `go test` command in `test-go` target
+- [x] 1.1: Add `CGO_ENABLED=1` prefix to `go test` command in `test-go` target
 
 ### Phase 2: Verify Fix
-- [ ] 2.1: Run `make test` and verify all tests pass
+- [x] 2.1: Run `make test` and verify all tests pass

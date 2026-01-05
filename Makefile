@@ -75,7 +75,7 @@ test: test-go test-ui ## Run tests.
 
 .PHONY: test-go
 test-go: ## Run Go tests.
-	go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
+	CGO_ENABLED=1 go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
 .PHONY: test-ui
 test-ui: ## Run UI tests.
