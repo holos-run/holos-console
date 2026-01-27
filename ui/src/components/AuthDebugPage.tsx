@@ -32,7 +32,7 @@ export function AuthDebugPage() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Calculate time remaining on ID token (development mode only)
+  // Calculate time remaining on ID token
   useEffect(() => {
     if (isBFF || !user?.expires_at) {
       setTimeRemaining(null)
@@ -125,15 +125,12 @@ export function AuthDebugPage() {
     )
   }
 
-  // Development Mode - Not Authenticated
+  // Not Authenticated
   if (!isAuthenticated) {
     return (
       <Card variant="outlined">
         <CardContent>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="h6">Auth Debug</Typography>
-            <Chip label="Development Mode" color="warning" size="small" />
-          </Stack>
+          <Typography variant="h6" sx={{ mb: 2 }}>Auth Debug</Typography>
           <Typography color="text.secondary" paragraph>
             Sign in to view token information.
           </Typography>
@@ -145,7 +142,7 @@ export function AuthDebugPage() {
     )
   }
 
-  // Development Mode - Authenticated
+  // Authenticated
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -162,10 +159,7 @@ export function AuthDebugPage() {
     <Stack spacing={3}>
       <Card variant="outlined">
         <CardContent>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="h6">ID Token Status</Typography>
-            <Chip label="Development Mode" color="warning" size="small" />
-          </Stack>
+          <Typography variant="h6" sx={{ mb: 2 }}>ID Token Status</Typography>
 
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
