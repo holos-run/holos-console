@@ -336,5 +336,12 @@ test.describe('Profile Page', () => {
     await expect(claimsJson).toBeVisible()
     await expect(claimsJson).toContainText('"groups"')
     await expect(claimsJson).toContainText('"owner"')
+
+    // Wait for accordion animation to complete then take screenshot
+    await page.waitForTimeout(300)
+    await page.screenshot({
+      path: 'e2e/screenshots/groups-claims.png',
+      fullPage: true,
+    })
   })
 })
