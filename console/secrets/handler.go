@@ -3,6 +3,7 @@ package secrets
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"connectrpc.com/connect"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -51,8 +52,11 @@ func (h *Handler) GetSecret(
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := CheckAccess(claims.Groups, allowedGroups); err != nil {
+		logAuditDenied(ctx, claims, req.Msg.Name, allowedGroups)
 		return nil, err
 	}
+
+	logAuditAllowed(ctx, claims, req.Msg.Name)
 
 	return connect.NewResponse(&consolev1.GetSecretResponse{
 		Data: secret.Data,
@@ -74,4 +78,27 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// logAuditAllowed logs a successful secret access.
+func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
+	slog.InfoContext(ctx, "secret access granted",
+		slog.String("action", "secret_access"),
+		slog.String("secret", secret),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+		slog.Any("groups", claims.Groups),
+	)
+}
+
+// logAuditDenied logs a denied secret access.
+func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string, allowedGroups []string) {
+	slog.WarnContext(ctx, "secret access denied",
+		slog.String("action", "secret_access_denied"),
+		slog.String("secret", secret),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+		slog.Any("user_groups", claims.Groups),
+		slog.Any("allowed_groups", allowedGroups),
+	)
 }
