@@ -117,7 +117,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 
 .PHONY: docker-build
 docker-build: ## Build container image for current platform.
-	docker build -t $(DOCKER_REPO):$(IMAGE_TAG) .
+	docker build --load -t $(DOCKER_REPO):$(IMAGE_TAG) .
 	docker tag $(DOCKER_REPO):$(IMAGE_TAG) $(DOCKER_REPO):latest
 
 .PHONY: docker-buildx
