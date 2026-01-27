@@ -240,12 +240,12 @@ test.describe('Profile Page', () => {
     // Wait for redirect back to profile page (returnTo state preserves the path)
     await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Verify profile page shows user info (no navigation needed - should land here)
-    await expect(page.getByText('Name')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Email')).toBeVisible()
+    // Verify profile page shows user info - wait for Sign Out button which confirms auth
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
 
-    // Verify Sign Out button is visible
-    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+    // Verify user info labels are visible (use exact match to avoid matching JSON)
+    await expect(page.getByText('Name', { exact: true })).toBeVisible()
+    await expect(page.getByText('Email', { exact: true })).toBeVisible()
   })
 
   test('should display ID token claims in expandable section', async ({ page }) => {
@@ -277,8 +277,8 @@ test.describe('Profile Page', () => {
     // Wait for redirect back to profile page
     await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Verify profile page loaded with user info
-    await expect(page.getByText('Name')).toBeVisible({ timeout: 5000 })
+    // Verify profile page loaded - wait for Sign Out button which confirms auth
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
 
     // Expand the ID Token Claims accordion
     await page.getByText('ID Token Claims').click()

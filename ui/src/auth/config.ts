@@ -75,9 +75,10 @@ export function getOIDCSettings(): UserManagerSettings {
     // PKCE is required for public clients (SPAs)
     response_type: 'code',
 
-    // Request openid, profile, and offline_access scopes
+    // Request openid, profile, email, groups, and offline_access scopes
+    // groups scope requests group memberships from the identity provider
     // offline_access requests a refresh token for silent renewal without iframes
-    scope: 'openid profile email offline_access',
+    scope: 'openid profile email groups offline_access',
 
     // Use session storage to survive page refreshes but not browser restarts
     userStore: new WebStorageStateStore({ store: window.sessionStorage }),
