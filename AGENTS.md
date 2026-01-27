@@ -4,6 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 
+## Before Committing
+
+**IMPORTANT:** Always run `make generate` before committing changes. This command:
+1. Regenerates protobuf code (Go and TypeScript)
+2. Rebuilds the UI (runs `npm run build` which includes TypeScript type checking)
+
+If `make generate` fails, fix the errors before committing. Common issues:
+- TypeScript type errors in test mocks (cast mock responses with `as unknown as ...`)
+- Missing protobuf imports after adding new message types
+
 ## Implementing Plans
 
 When implementing a plan from `docs/plans/`:
