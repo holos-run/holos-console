@@ -1,0 +1,90 @@
+name: Container
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git ref to build (e.g., refs/tags/v1.2.3, refs/heads/main)'
+        required: true
+        type: string
+
+jobs:
+  buildx:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Set tag from trigger event
+        id: opts
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=${{ inputs.git_ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${GITHUB_REF}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.opts.outputs.ref }}
+
+      - name: SHA
+        id: sha
+        run: echo "sha=$(/usr/bin/git log -1 --format='%H')" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Fetch tags
+        run: git fetch --prune --unshallow --tags
+
+      - name: Set Tags
+        id: tags
+        run: |
+          echo "detail=$(/usr/bin/git describe --tags HEAD)" >> $GITHUB_OUTPUT
+          echo "suffix=$(test -n "$(git status --porcelain)" && echo '-dirty' || echo '')" >> $GITHUB_OUTPUT
+          echo "tag=$(/usr/bin/git describe --tags HEAD)$(test -n "$(git status --porcelain)" && echo '-dirty' || echo '')" >> $GITHUB_OUTPUT
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container images
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/holos-run/holos-console:${{ steps.tags.outputs.tag }}
+            ghcr.io/holos-run/holos-console:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}
+
+      - name: Setup Cosign to sign container images
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign with GitHub OIDC Token
+        env:
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: |
+          cosign sign --yes ghcr.io/holos-run/holos-console:${{ steps.tags.outputs.tag }}@${DIGEST}
+          cosign sign --yes ghcr.io/holos-run/holos-console:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}@${DIGEST}
+
+    outputs:
+      tag: ${{ steps.tags.outputs.tag }}
+      detail: ${{ steps.tags.outputs.detail }}

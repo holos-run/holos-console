@@ -69,6 +69,7 @@ type OIDCConfig struct {
 	ClientID              string `json:"client_id"`
 	RedirectURI           string `json:"redirect_uri"`
 	PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
+	SilentRedirectURI     string `json:"silent_redirect_uri"`
 }
 
 // deriveRedirectURI derives the redirect URI from the issuer URL.
@@ -82,6 +83,13 @@ func deriveRedirectURI(issuer string) string {
 func derivePostLogoutRedirectURI(issuer string) string {
 	base := strings.TrimSuffix(issuer, "/dex")
 	return base + "/ui"
+}
+
+// deriveSilentRedirectURI derives the silent redirect URI from the issuer URL.
+// Used by oidc-client-ts for iframe-based silent token renewal.
+func deriveSilentRedirectURI(issuer string) string {
+	base := strings.TrimSuffix(issuer, "/dex")
+	return base + "/ui/silent-callback.html"
 }
 
 // Server represents the console HTTPS server.
@@ -135,13 +143,16 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Initialize embedded OIDC identity provider (Dex)
 	if s.cfg.Issuer != "" {
 		// Derive redirect URI from issuer (same host, /ui/callback path)
-		redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/ui/callback"
+		baseURI := strings.TrimSuffix(s.cfg.Issuer, "/dex")
+		redirectURI := baseURI + "/ui/callback"
+		silentRedirectURI := baseURI + "/ui/silent-callback.html"
 
-		// Also allow Vite dev server redirect URI for local development
-		redirectURIs := []string{redirectURI}
+		// Also allow Vite dev server redirect URIs for local development
+		redirectURIs := []string{redirectURI, silentRedirectURI}
 		viteRedirectURI := "https://localhost:5173/ui/callback"
+		viteSilentRedirectURI := "https://localhost:5173/ui/silent-callback.html"
 		if redirectURI != viteRedirectURI {
-			redirectURIs = append(redirectURIs, viteRedirectURI)
+			redirectURIs = append(redirectURIs, viteRedirectURI, viteSilentRedirectURI)
 		}
 
 		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
@@ -176,6 +187,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			ClientID:              s.cfg.ClientID,
 			RedirectURI:           deriveRedirectURI(s.cfg.Issuer),
 			PostLogoutRedirectURI: derivePostLogoutRedirectURI(s.cfg.Issuer),
+			SilentRedirectURI:     deriveSilentRedirectURI(s.cfg.Issuer),
 		}
 	}
 

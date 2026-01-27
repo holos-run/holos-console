@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: holos-console
+  namespace: holos-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: holos-console
+  template:
+    metadata:
+      labels:
+        app: holos-console
+    spec:
+      serviceAccountName: holos-console
+      containers:
+        - name: holos-console
+          image: ghcr.io/holos-run/holos-console:latest
+          args:
+            - --listen=:8443
+          ports:
+            - name: https
+              containerPort: 8443
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
