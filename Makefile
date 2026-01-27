@@ -109,6 +109,25 @@ dev: ## Start the Vite dev server for frontend development.
 rpc-version: ## Get server version via gRPC.
 	./scripts/rpc-version
 
+# Container image configuration
+DOCKER_REPO ?= ghcr.io/holos-run/holos-console
+GIT_SHA := $(shell git rev-parse --short HEAD)
+IMAGE_TAG ?= $(VERSION)-$(GIT_SHA)
+PLATFORMS ?= linux/amd64,linux/arm64
+
+.PHONY: docker-build
+docker-build: ## Build container image for current platform.
+	docker build --load -t $(DOCKER_REPO):$(IMAGE_TAG) .
+	docker tag $(DOCKER_REPO):$(IMAGE_TAG) $(DOCKER_REPO):latest
+
+.PHONY: docker-buildx
+docker-buildx: ## Build multi-platform container images (amd64, arm64).
+	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest .
+
+.PHONY: docker-push
+docker-push: ## Build and push multi-platform container images.
+	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest --push .
+
 .PHONY: help
 help: ## Display this help menu.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
