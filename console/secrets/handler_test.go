@@ -401,19 +401,17 @@ func TestHandler_AuditLogging(t *testing.T) {
 }
 
 func TestHandler_DummySecret(t *testing.T) {
-	t.Run("returns dummy secret when HOLOS_MODE=dev and user in admin group", func(t *testing.T) {
-		// Given: HOLOS_MODE=dev, request for secret named "dummy-secret"
-		t.Setenv("HOLOS_MODE", "dev")
-
+	t.Run("returns dummy secret when user in owner group", func(t *testing.T) {
+		// Given: request for secret named "dummy-secret"
 		fakeClient := fake.NewClientset() // No secrets in K8s
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient)
 
-		// User in admin group
+		// User in owner group (matches Dex connector default)
 		claims := &rpc.Claims{
 			Sub:    "user-123",
-			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Email:  "admin",
+			Groups: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -442,15 +440,13 @@ func TestHandler_DummySecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns PermissionDenied for dummy secret when user not in admin group", func(t *testing.T) {
-		// Given: HOLOS_MODE=dev, request for "dummy-secret"
-		t.Setenv("HOLOS_MODE", "dev")
-
+	t.Run("returns PermissionDenied for dummy secret when user not in owner group", func(t *testing.T) {
+		// Given: request for "dummy-secret"
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient)
 
-		// User NOT in admin group
+		// User NOT in owner group
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
@@ -478,51 +474,14 @@ func TestHandler_DummySecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns NotFound for dummy-secret when HOLOS_MODE != dev", func(t *testing.T) {
-		// Given: HOLOS_MODE=production (or unset), request for "dummy-secret"
-		t.Setenv("HOLOS_MODE", "production")
-
-		fakeClient := fake.NewClientset() // No secrets in K8s
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
-		handler := NewHandler(k8sClient)
-
-		claims := &rpc.Claims{
-			Sub:    "user-123",
-			Email:  "user@example.com",
-			Groups: []string{"admin"},
-		}
-		ctx := rpc.ContextWithClaims(context.Background(), claims)
-
-		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: DummySecretName,
-		})
-
-		// When: GetSecret RPC is called
-		_, err := handler.GetSecret(ctx, req)
-
-		// Then: Returns NotFound (falls through to K8s lookup)
-		if err == nil {
-			t.Fatal("expected NotFound error, got nil")
-		}
-		connectErr, ok := err.(*connect.Error)
-		if !ok {
-			t.Fatalf("expected *connect.Error, got %T", err)
-		}
-		if connectErr.Code() != connect.CodeNotFound {
-			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
-		}
-	})
-
-	t.Run("real secrets still work in dev mode", func(t *testing.T) {
-		// Given: HOLOS_MODE=dev, request for real secret "real-secret" that exists in K8s
-		t.Setenv("HOLOS_MODE", "dev")
-
+	t.Run("real K8s secrets work alongside dummy secret", func(t *testing.T) {
+		// Given: request for real secret "real-secret" that exists in K8s
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "real-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin"]`,
+					AllowedGroupsAnnotation: `["owner"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -535,8 +494,8 @@ func TestHandler_DummySecret(t *testing.T) {
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
-			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Email:  "admin",
+			Groups: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 

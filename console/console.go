@@ -20,7 +20,6 @@ import (
 	"mime"
 	"net"
 	"net/http"
-	"os"
 	"path"
 	"strings"
 	"time"
@@ -492,12 +491,8 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDebugOIDC returns debug information about OIDC configuration.
-// This endpoint is only available when HOLOS_MODE=dev.
+// Useful for troubleshooting OIDC issues like missing groups claims.
 func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string) {
-	if os.Getenv("HOLOS_MODE") != "dev" {
-		http.Error(w, "Debug endpoint only available in dev mode", http.StatusForbidden)
-		return
-	}
 
 	// Fetch the OIDC discovery document
 	discoveryURL := issuer + "/.well-known/openid-configuration"

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -79,12 +78,10 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	}), nil
 }
 
-// dummySecret returns an in-memory secret for development testing.
-// Returns nil if dummy secrets are not enabled or name doesn't match.
+// dummySecret returns an in-memory secret for development and testing.
+// Returns nil if name doesn't match DummySecretName.
+// This allows testing RBAC without requiring a Kubernetes cluster.
 func (h *Handler) dummySecret(name string) *corev1.Secret {
-	if os.Getenv("HOLOS_MODE") != "dev" {
-		return nil
-	}
 	if name != DummySecretName {
 		return nil
 	}
@@ -93,7 +90,7 @@ func (h *Handler) dummySecret(name string) *corev1.Secret {
 			Name:      DummySecretName,
 			Namespace: "holos-console",
 			Annotations: map[string]string{
-				AllowedGroupsAnnotation: `["admin"]`,
+				AllowedGroupsAnnotation: `["owner"]`,
 			},
 		},
 		Data: map[string][]byte{

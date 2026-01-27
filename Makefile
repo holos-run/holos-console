@@ -98,8 +98,8 @@ certs: ## Generate TLS certificates using mkcert.
 	./scripts/certs
 
 .PHONY: run
-run: build ## Run the server with generated certificates (dev mode).
-	HOLOS_MODE=dev ./bin/$(BIN_NAME) --cert certs/tls.crt --key certs/tls.key
+run: build ## Run the server with generated certificates.
+	./bin/$(BIN_NAME) --cert certs/tls.crt --key certs/tls.key
 
 .PHONY: dev
 dev: ## Start the Vite dev server for frontend development.
