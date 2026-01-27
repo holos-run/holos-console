@@ -74,6 +74,16 @@ export function ProfilePage() {
             </Typography>
             <Typography variant="body1">{user?.profile.sub}</Typography>
           </Box>
+          <Box>
+            <Typography variant="overline" display="block">
+              Groups
+            </Typography>
+            <Typography variant="body1">
+              {(user?.profile.groups as string[] | undefined)?.length
+                ? (user?.profile.groups as string[]).join(', ')
+                : 'None'}
+            </Typography>
+          </Box>
           <Box sx={{ pt: 1 }}>
             <Button variant="outlined" onClick={() => logout()}>
               Sign Out
