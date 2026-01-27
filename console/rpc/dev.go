@@ -15,7 +15,8 @@ func InjectDevGroups(claims *Claims) {
 		return
 	}
 	// Admin user gets owner group for dev testing
-	if claims.Email == "admin@example.com" {
+	// Check for both "admin" (from embedded Dex connector) and "admin@example.com"
+	if claims.Email == "admin" || claims.Email == "admin@example.com" {
 		claims.Groups = append(claims.Groups, "owner")
 	}
 }

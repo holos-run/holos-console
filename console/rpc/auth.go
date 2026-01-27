@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -72,8 +74,28 @@ func extractAndVerifyToken(ctx context.Context, req connect.AnyRequest, verifier
 		claims.Sub = idToken.Subject
 	}
 
+	// Debug logging for groups claim investigation
+	if os.Getenv("HOLOS_MODE") == "dev" {
+		slog.Debug("token claims before dev groups injection",
+			"sub", claims.Sub,
+			"email", claims.Email,
+			"groups", claims.Groups,
+			"groups_count", len(claims.Groups),
+		)
+	}
+
 	// Inject dev groups if in dev mode
 	InjectDevGroups(&claims)
+
+	// Debug logging after injection
+	if os.Getenv("HOLOS_MODE") == "dev" {
+		slog.Debug("token claims after dev groups injection",
+			"sub", claims.Sub,
+			"email", claims.Email,
+			"groups", claims.Groups,
+			"groups_count", len(claims.Groups),
+		)
+	}
 
 	return &claims, nil
 }

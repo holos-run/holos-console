@@ -20,6 +20,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -220,6 +221,14 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
 	mux.HandleFunc("/api/userinfo", handleUserInfo)
+
+	// Debug endpoint for OIDC investigation (dev mode only)
+	if s.cfg.Issuer != "" {
+		issuer := s.cfg.Issuer
+		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
+			handleDebugOIDC(w, r, issuer)
+		})
+	}
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -480,6 +489,50 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		"user":  user,
 		"email": email,
 	})
+}
+
+// handleDebugOIDC returns debug information about OIDC configuration.
+// This endpoint is only available when HOLOS_MODE=dev.
+func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string) {
+	if os.Getenv("HOLOS_MODE") != "dev" {
+		http.Error(w, "Debug endpoint only available in dev mode", http.StatusForbidden)
+		return
+	}
+
+	// Fetch the OIDC discovery document
+	discoveryURL := issuer + "/.well-known/openid-configuration"
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	resp, err := client.Get(discoveryURL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch discovery document: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	var discovery map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse discovery document: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Add debug information
+	debugInfo := map[string]interface{}{
+		"discovery":        discovery,
+		"configured_issuer": issuer,
+		"notes": map[string]string{
+			"scopes_supported": "Check if 'groups' is in scopes_supported. If not, Dex may not include groups in ID tokens.",
+			"investigation":    "See holos-garage/Holos Garage/Holos/plans/holos-console-groups-claim-investigation.md",
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(debugInfo)
 }
 
 // tlsConfig returns the TLS configuration for the server.
