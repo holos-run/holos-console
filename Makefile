@@ -109,6 +109,21 @@ dev: ## Start the Vite dev server for frontend development.
 rpc-version: ## Get server version via gRPC.
 	./scripts/rpc-version
 
+# Container image configuration
+DOCKER_REPO ?= ghcr.io/holos-run/holos-console
+GIT_SHA := $(shell git rev-parse --short HEAD)
+IMAGE_TAG ?= $(VERSION)-$(GIT_SHA)
+
+.PHONY: docker-build
+docker-build: ## Build container image.
+	docker build -t $(DOCKER_REPO):$(IMAGE_TAG) .
+	docker tag $(DOCKER_REPO):$(IMAGE_TAG) $(DOCKER_REPO):latest
+
+.PHONY: docker-push
+docker-push: docker-build ## Build and push container image.
+	docker push $(DOCKER_REPO):$(IMAGE_TAG)
+	docker push $(DOCKER_REPO):latest
+
 .PHONY: help
 help: ## Display this help menu.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
