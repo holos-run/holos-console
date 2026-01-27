@@ -295,4 +295,46 @@ test.describe('Profile Page', () => {
       fullPage: true,
     })
   })
+
+  test('should include groups claim in ID token', async ({ page }) => {
+    // Navigate to profile page and login
+    await page.goto('/ui/profile')
+    await page.getByRole('button', { name: 'Sign In' }).click()
+
+    // Wait for redirect to Dex login page
+    await page.waitForURL(/\/dex\//, { timeout: 5000 })
+
+    // Navigate to login form if on connector selection
+    const connectorLink = page.locator('a[href*="connector"]').first()
+    if ((await connectorLink.count()) > 0) {
+      await connectorLink.click()
+      await page.waitForLoadState('networkidle')
+    }
+
+    // Fill in credentials
+    const usernameInput = page.locator('input[name="login"]')
+    const passwordInput = page.locator('input[name="password"]')
+
+    await expect(usernameInput).toBeVisible({ timeout: 5000 })
+    await usernameInput.fill(DEFAULT_USERNAME)
+    await passwordInput.fill(DEFAULT_PASSWORD)
+
+    // Submit login form
+    await page.locator('button[type="submit"]').click()
+
+    // Wait for redirect back to profile page
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Verify profile page loaded - wait for Sign Out button which confirms auth
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
+
+    // Expand the ID Token Claims accordion to see raw claims
+    await page.getByText('ID Token Claims').click()
+
+    // Verify the groups claim exists in the ID token with "owner" group
+    const claimsJson = page.locator('pre')
+    await expect(claimsJson).toBeVisible()
+    await expect(claimsJson).toContainText('"groups"')
+    await expect(claimsJson).toContainText('"owner"')
+  })
 })
