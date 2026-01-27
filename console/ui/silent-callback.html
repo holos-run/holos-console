@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Silent Callback</title>
+</head>
+<body>
+  <script>
+    // This page handles the silent token renewal callback from oidc-client-ts.
+    // It runs inside a hidden iframe and communicates with the parent window.
+    // The parent window's UserManager will handle the response.
+
+    // oidc-client-ts expects us to call signinSilentCallback() or use the
+    // default behavior where the parent window reads the URL fragment/query.
+    // The simplest approach is to do nothing - oidc-client-ts will read the
+    // response from the iframe's URL automatically.
+
+    // For debugging, log any errors
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('error')) {
+      console.error('Silent callback error:', params.get('error'), params.get('error_description'));
+    }
+  </script>
+</body>
+</html>
