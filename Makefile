@@ -113,20 +113,16 @@ rpc-version: ## Get server version via gRPC.
 DOCKER_REPO ?= ghcr.io/holos-run/holos-console
 GIT_SHA := $(shell git rev-parse --short HEAD)
 IMAGE_TAG ?= $(VERSION)-$(GIT_SHA)
-PLATFORMS ?= linux/amd64,linux/arm64
 
 .PHONY: docker-build
-docker-build: ## Build container image for current platform.
-	docker build --load -t $(DOCKER_REPO):$(IMAGE_TAG) .
+docker-build: ## Build container image.
+	docker build -t $(DOCKER_REPO):$(IMAGE_TAG) .
 	docker tag $(DOCKER_REPO):$(IMAGE_TAG) $(DOCKER_REPO):latest
 
-.PHONY: docker-buildx
-docker-buildx: ## Build multi-platform container images (amd64, arm64).
-	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest .
-
 .PHONY: docker-push
-docker-push: ## Build and push multi-platform container images.
-	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest --push .
+docker-push: docker-build ## Build and push container image.
+	docker push $(DOCKER_REPO):$(IMAGE_TAG)
+	docker push $(DOCKER_REPO):latest
 
 .PHONY: help
 help: ## Display this help menu.
