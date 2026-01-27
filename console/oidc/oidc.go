@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/server"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/memory"
@@ -37,6 +36,14 @@ type Config struct {
 	// After this duration, users must re-authenticate.
 	// Default: 12 hours
 	RefreshTokenTTL time.Duration
+}
+
+func init() {
+	// Register our custom password connector with Dex.
+	// This connector supports groups, unlike the built-in mockPassword connector.
+	server.ConnectorsConfig["holosPassword"] = func() server.ConnectorConfig {
+		return new(PasswordConnectorConfig)
+	}
 }
 
 // NewHandler creates an http.Handler for the embedded OIDC identity provider.
@@ -71,20 +78,21 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		},
 	})
 
-	// Configure mock password connector
-	connectorConfig, err := json.Marshal(mock.PasswordConfig{
+	// Configure password connector with groups support
+	connectorConfig, err := json.Marshal(PasswordConnectorConfig{
 		Username: GetUsername(),
 		Password: GetPassword(),
+		Groups:   []string{"owner"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal connector config: %w", err)
 	}
 
-	// Add mock password connector
+	// Add password connector with groups support
 	store = storage.WithStaticConnectors(store, []storage.Connector{
 		{
-			ID:     "mock",
-			Type:   "mockPassword",
+			ID:     "holos",
+			Type:   "holosPassword",
 			Name:   "Development Login",
 			Config: connectorConfig,
 		},
@@ -109,10 +117,10 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 	if cfg.RefreshTokenTTL > 0 {
 		refreshPolicy, err := server.NewRefreshTokenPolicy(
 			logger,
-			true,                          // rotation enabled
-			"",                            // validIfNotUsedFor (empty = no limit)
-			cfg.RefreshTokenTTL.String(),  // absoluteLifetime
-			"3s",                          // reuseInterval (handle network retries)
+			true,                         // rotation enabled
+			"",                           // validIfNotUsedFor (empty = no limit)
+			cfg.RefreshTokenTTL.String(), // absoluteLifetime
+			"3s",                         // reuseInterval (handle network retries)
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create refresh token policy: %w", err)

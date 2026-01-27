@@ -105,6 +105,14 @@ export function AuthDebugPage() {
                     {bffUser.email}
                   </Typography>
                 </Box>
+                <Box>
+                  <Typography variant="overline" display="block">
+                    Groups
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                    {bffUser.groups?.length ? bffUser.groups.join(', ') : 'None'}
+                  </Typography>
+                </Box>
               </Stack>
             ) : (
               <Button variant="contained" onClick={() => login(location.pathname)}>
@@ -272,6 +280,17 @@ export function AuthDebugPage() {
               </Typography>
               <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
                 {user?.token_type ?? 'N/A'}
+              </Typography>
+            </Box>
+
+            <Box>
+              <Typography variant="overline" display="block">
+                Groups
+              </Typography>
+              <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                {(user?.profile?.groups as string[] | undefined)?.length
+                  ? (user?.profile?.groups as string[]).join(', ')
+                  : 'None'}
               </Typography>
             </Box>
           </Stack>

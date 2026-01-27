@@ -14,6 +14,7 @@ import { isBFFMode, BFF_ENDPOINTS } from './config'
 export interface BFFUser {
   user: string
   email: string
+  groups?: string[]
 }
 
 export interface AuthContextValue {
