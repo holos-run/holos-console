@@ -98,13 +98,14 @@ describe('SecretPage', () => {
       })
 
       // Mock successful response with secret data
+      // Cast to unknown to satisfy protobuf Message type requirements in mocks
       mockGetSecret.mockResolvedValue({
         data: {
           username: new TextEncoder().encode('admin'),
           password: new TextEncoder().encode('secret123'),
           'api-key': new TextEncoder().encode('key-12345'),
         },
-      })
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
 
       renderSecretPage(authValue, 'my-secret')
 
@@ -129,7 +130,7 @@ describe('SecretPage', () => {
 
       mockGetSecret.mockResolvedValue({
         data: {},
-      })
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
 
       renderSecretPage(authValue, 'empty-secret')
 
@@ -227,7 +228,7 @@ describe('SecretPage', () => {
         getAccessToken: vi.fn(() => 'test-token'),
       })
 
-      mockGetSecret.mockResolvedValue({ data: {} })
+      mockGetSecret.mockResolvedValue({ data: {} } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
 
       renderSecretPage(authValue, 'specific-secret-name')
 
@@ -251,7 +252,7 @@ describe('SecretPage', () => {
         getAccessToken: vi.fn(() => 'my-test-token'),
       })
 
-      mockGetSecret.mockResolvedValue({ data: {} })
+      mockGetSecret.mockResolvedValue({ data: {} } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
 
       renderSecretPage(authValue, 'test-secret')
 
