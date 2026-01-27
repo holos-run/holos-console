@@ -44,33 +44,22 @@ type passwordConnector struct {
 func (p *passwordConnector) Close() error { return nil }
 
 func (p *passwordConnector) Login(ctx context.Context, s connector.Scopes, username, password string) (identity connector.Identity, validPassword bool, err error) {
-	// Log scope information for debugging groups claim issues
-	p.logger.Info("connector login attempt",
-		"username", username,
-		"scopes.Groups", s.Groups,
-		"scopes.OfflineAccess", s.OfflineAccess,
-		"configured_groups", p.groups,
-	)
-
 	if username == p.username && password == p.password {
 		identity := connector.Identity{
 			UserID:        "0-385-28089-0",
 			Username:      p.username,
 			Email:         p.username,
 			EmailVerified: true,
+			Groups:        p.groups,
 		}
-		// Always return groups - Dex should include them in token when groups scope is requested
-		// The connector.Scopes.Groups indicates if the client requested groups
-		identity.Groups = p.groups
-		p.logger.Info("connector login success",
-			"userID", identity.UserID,
+		p.logger.Debug("connector login success",
 			"email", identity.Email,
 			"groups", identity.Groups,
 			"scopes.Groups", s.Groups,
 		)
 		return identity, true, nil
 	}
-	p.logger.Info("connector login failed", "username", username)
+	p.logger.Debug("connector login failed", "username", username)
 	return identity, false, nil
 }
 
