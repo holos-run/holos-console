@@ -4,14 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"connectrpc.com/connect"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
+
+// DummySecretName is the name of the in-memory dummy secret for development testing.
+const DummySecretName = "dummy-secret"
 
 // Handler implements the SecretsService.
 type Handler struct {
@@ -40,27 +46,62 @@ func (h *Handler) GetSecret(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
+	// Check for dummy secret first (dev mode only)
+	if secret := h.dummySecret(req.Msg.Name); secret != nil {
+		return h.returnSecret(ctx, claims, secret)
+	}
+
 	// Get secret from Kubernetes
 	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
+	return h.returnSecret(ctx, claims, secret)
+}
+
+// returnSecret checks RBAC and returns the secret data.
+func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
 	// Check RBAC
 	allowedGroups, err := GetAllowedGroups(secret)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := CheckAccess(claims.Groups, allowedGroups); err != nil {
-		logAuditDenied(ctx, claims, req.Msg.Name, allowedGroups)
+		logAuditDenied(ctx, claims, secret.Name, allowedGroups)
 		return nil, err
 	}
 
-	logAuditAllowed(ctx, claims, req.Msg.Name)
+	logAuditAllowed(ctx, claims, secret.Name)
 
 	return connect.NewResponse(&consolev1.GetSecretResponse{
 		Data: secret.Data,
 	}), nil
+}
+
+// dummySecret returns an in-memory secret for development testing.
+// Returns nil if dummy secrets are not enabled or name doesn't match.
+func (h *Handler) dummySecret(name string) *corev1.Secret {
+	if os.Getenv("HOLOS_MODE") != "dev" {
+		return nil
+	}
+	if name != DummySecretName {
+		return nil
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      DummySecretName,
+			Namespace: "holos-console",
+			Annotations: map[string]string{
+				AllowedGroupsAnnotation: `["admin"]`,
+			},
+		},
+		Data: map[string][]byte{
+			"username": []byte("dummy-user"),
+			"password": []byte("dummy-password"),
+			"api-key":  []byte("dummy-api-key-12345"),
+		},
+	}
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.
