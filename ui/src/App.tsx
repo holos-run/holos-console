@@ -22,6 +22,7 @@ import {
 import { VersionCard } from './components/VersionCard'
 import { ProfilePage } from './components/ProfilePage'
 import { AuthDebugPage } from './components/AuthDebugPage'
+import { SecretPage } from './components/SecretPage'
 import { AuthProvider, Callback } from './auth'
 
 const theme = createTheme({
@@ -35,6 +36,7 @@ function MainLayout() {
   const isVersionPage = location.pathname.startsWith('/version')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isAuthDebugPage = location.pathname.startsWith('/auth-debug')
+  const isSecretsPage = location.pathname.startsWith('/secrets')
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -58,7 +60,7 @@ function MainLayout() {
           <ListItemButton
             component={Link}
             to="/"
-            selected={!isVersionPage && !isProfilePage && !isAuthDebugPage}
+            selected={!isVersionPage && !isProfilePage && !isAuthDebugPage && !isSecretsPage}
           >
             <ListItemText primary="Landing" />
           </ListItemButton>
@@ -82,6 +84,13 @@ function MainLayout() {
             selected={isAuthDebugPage}
           >
             <ListItemText primary="Auth Debug" />
+          </ListItemButton>
+          <ListItemButton
+            component={Link}
+            to="/secrets/dummy-secret"
+            selected={isSecretsPage}
+          >
+            <ListItemText primary="Secrets" />
           </ListItemButton>
         </List>
       </Box>
@@ -111,6 +120,7 @@ function MainLayout() {
             <Route path="/version" element={<VersionCard />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/auth-debug" element={<AuthDebugPage />} />
+            <Route path="/secrets/:name" element={<SecretPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Stack>
