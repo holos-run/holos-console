@@ -72,5 +72,8 @@ func extractAndVerifyToken(ctx context.Context, req connect.AnyRequest, verifier
 		claims.Sub = idToken.Subject
 	}
 
+	// Inject dev groups if in dev mode
+	InjectDevGroups(&claims)
+
 	return &claims, nil
 }
