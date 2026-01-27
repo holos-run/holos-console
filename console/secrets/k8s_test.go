@@ -23,7 +23,7 @@ func TestGetSecret(t *testing.T) {
 				"password": []byte("secret123"),
 			},
 		}
-		fakeClient := fake.NewSimpleClientset(secret)
+		fakeClient := fake.NewClientset(secret)
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: GetSecret("my-secret") is called
@@ -46,7 +46,7 @@ func TestGetSecret(t *testing.T) {
 
 	t.Run("returns NotFound error for non-existent secret", func(t *testing.T) {
 		// Given: Secret "missing" does not exist
-		fakeClient := fake.NewSimpleClientset()
+		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: GetSecret("missing") is called
