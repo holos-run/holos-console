@@ -399,3 +399,163 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 	})
 }
+
+func TestHandler_DummySecret(t *testing.T) {
+	t.Run("returns dummy secret when HOLOS_MODE=dev and user in admin group", func(t *testing.T) {
+		// Given: HOLOS_MODE=dev, request for secret named "dummy-secret"
+		t.Setenv("HOLOS_MODE", "dev")
+
+		fakeClient := fake.NewClientset() // No secrets in K8s
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		// User in admin group
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"admin"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRequest{
+			Name: DummySecretName,
+		})
+
+		// When: GetSecret RPC is called
+		resp, err := handler.GetSecret(ctx, req)
+
+		// Then: Returns in-memory dummy secret data
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp == nil {
+			t.Fatal("expected response, got nil")
+		}
+		if string(resp.Msg.Data["username"]) != "dummy-user" {
+			t.Errorf("expected username 'dummy-user', got %q", string(resp.Msg.Data["username"]))
+		}
+		if string(resp.Msg.Data["password"]) != "dummy-password" {
+			t.Errorf("expected password 'dummy-password', got %q", string(resp.Msg.Data["password"]))
+		}
+		if string(resp.Msg.Data["api-key"]) != "dummy-api-key-12345" {
+			t.Errorf("expected api-key 'dummy-api-key-12345', got %q", string(resp.Msg.Data["api-key"]))
+		}
+	})
+
+	t.Run("returns PermissionDenied for dummy secret when user not in admin group", func(t *testing.T) {
+		// Given: HOLOS_MODE=dev, request for "dummy-secret"
+		t.Setenv("HOLOS_MODE", "dev")
+
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		// User NOT in admin group
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"developers"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRequest{
+			Name: DummySecretName,
+		})
+
+		// When: GetSecret RPC is called
+		_, err := handler.GetSecret(ctx, req)
+
+		// Then: Returns PermissionDenied
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns NotFound for dummy-secret when HOLOS_MODE != dev", func(t *testing.T) {
+		// Given: HOLOS_MODE=production (or unset), request for "dummy-secret"
+		t.Setenv("HOLOS_MODE", "production")
+
+		fakeClient := fake.NewClientset() // No secrets in K8s
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"admin"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRequest{
+			Name: DummySecretName,
+		})
+
+		// When: GetSecret RPC is called
+		_, err := handler.GetSecret(ctx, req)
+
+		// Then: Returns NotFound (falls through to K8s lookup)
+		if err == nil {
+			t.Fatal("expected NotFound error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("real secrets still work in dev mode", func(t *testing.T) {
+		// Given: HOLOS_MODE=dev, request for real secret "real-secret" that exists in K8s
+		t.Setenv("HOLOS_MODE", "dev")
+
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "real-secret",
+				Namespace: "test-namespace",
+				Annotations: map[string]string{
+					AllowedGroupsAnnotation: `["admin"]`,
+				},
+			},
+			Data: map[string][]byte{
+				"real-key": []byte("real-value"),
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"admin"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRequest{
+			Name: "real-secret",
+		})
+
+		// When: GetSecret RPC is called
+		resp, err := handler.GetSecret(ctx, req)
+
+		// Then: Returns the real secret from K8s
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp == nil {
+			t.Fatal("expected response, got nil")
+		}
+		if string(resp.Msg.Data["real-key"]) != "real-value" {
+			t.Errorf("expected real-key 'real-value', got %q", string(resp.Msg.Data["real-key"]))
+		}
+	})
+}
