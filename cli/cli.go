@@ -21,6 +21,7 @@ var (
 	clientID        string
 	idTokenTTL      string
 	refreshTokenTTL string
+	namespace       string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -64,6 +65,9 @@ func Command() *cobra.Command {
 	// Token TTL flags
 	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
 	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
+
+	// Kubernetes flags
+	cmd.Flags().StringVar(&namespace, "namespace", "holos-console", "Kubernetes namespace for secrets")
 
 	return cmd
 }
@@ -119,6 +123,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		ClientID:        clientID,
 		IDTokenTTL:      idTTL,
 		RefreshTokenTTL: refreshTTL,
+		Namespace:       namespace,
 	}
 
 	server := console.New(cfg)

@@ -32,6 +32,7 @@ import (
 
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
@@ -61,6 +62,10 @@ type Config struct {
 	// After this duration, users must re-authenticate.
 	// Default: 12 hours
 	RefreshTokenTTL time.Duration
+
+	// Namespace is the Kubernetes namespace for secrets.
+	// Default: "holos-console"
+	Namespace string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -113,14 +118,19 @@ func (s *Server) Serve(ctx context.Context) error {
 	)
 
 	// Configure ConnectRPC interceptors for protected routes (auth required)
-	// These are set up but not used until we have protected services
+	// Note: The auth interceptor uses lazy verifier initialization since Dex
+	// isn't running yet when we create the interceptor.
 	var protectedInterceptors connect.Option
 	if s.cfg.Issuer != "" && s.cfg.ClientID != "" {
-		// Note: Verifier creation is deferred until after Dex starts
-		// For now, we log that auth is configured but don't block startup
 		slog.Info("auth configured", "issuer", s.cfg.Issuer, "clientID", s.cfg.ClientID)
-		// Protected interceptors will be created lazily when first protected service is registered
-		_ = protectedInterceptors // Placeholder for future protected services
+		protectedInterceptors = connect.WithInterceptors(
+			rpc.MetricsInterceptor(),
+			rpc.LoggingInterceptor(),
+			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID),
+		)
+	} else {
+		// Fallback to public interceptors if auth not configured
+		protectedInterceptors = publicInterceptors
 	}
 
 	// Register VersionService
@@ -133,8 +143,34 @@ func (s *Server) Serve(ctx context.Context) error {
 	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, publicInterceptors)
 	mux.Handle(path, handler)
 
+	// Initialize Kubernetes client for secrets (may be nil if no cluster available)
+	k8sClientset, err := secrets.NewClientset()
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	var secretsK8s *secrets.K8sClient
+	if k8sClientset != nil {
+		namespace := s.cfg.Namespace
+		if namespace == "" {
+			namespace = "holos-console"
+		}
+		secretsK8s = secrets.NewK8sClient(k8sClientset, namespace)
+		slog.Info("kubernetes client initialized", "namespace", namespace)
+	} else {
+		slog.Info("no kubernetes config available, using dummy-secret only")
+	}
+
+	// Register SecretsService (protected - requires auth)
+	secretsHandler := secrets.NewHandler(secretsK8s)
+	secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
+	mux.Handle(secretsPath, secretsHTTPHandler)
+
 	// Register gRPC reflection for introspection (grpcurl, etc.)
-	reflector := grpcreflect.NewStaticReflector(consolev1connect.VersionServiceName)
+	reflector := grpcreflect.NewStaticReflector(
+		consolev1connect.VersionServiceName,
+		consolev1connect.SecretsServiceName,
+	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
 	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
