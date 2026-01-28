@@ -25,3 +25,7 @@
    ```
    verysecret
    ```
+
+## Configuration
+
+The server reads Kubernetes secrets from the namespace specified by the `--namespace` flag. The default namespace is `holos-console`.
