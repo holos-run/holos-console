@@ -205,8 +205,13 @@ type SecretMetadata struct {
 	// accessible indicates whether the current user has permission to read this secret.
 	Accessible bool `protobuf:"varint,2,opt,name=accessible,proto3" json:"accessible,omitempty"`
 	// allowed_groups contains the groups that have permission to read this secret.
-	// Populated regardless of whether the user has access, to show in the UI.
+	// Deprecated: Use allowed_roles instead.
+	//
+	// Deprecated: Marked as deprecated in holos/console/v1/secrets.proto.
 	AllowedGroups []string `protobuf:"bytes,3,rep,name=allowed_groups,json=allowedGroups,proto3" json:"allowed_groups,omitempty"`
+	// allowed_roles contains the roles that have permission to read this secret.
+	// Populated regardless of whether the user has access, to show in the UI.
+	AllowedRoles  []string `protobuf:"bytes,4,rep,name=allowed_roles,json=allowedRoles,proto3" json:"allowed_roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -255,9 +260,17 @@ func (x *SecretMetadata) GetAccessible() bool {
 	return false
 }
 
+// Deprecated: Marked as deprecated in holos/console/v1/secrets.proto.
 func (x *SecretMetadata) GetAllowedGroups() []string {
 	if x != nil {
 		return x.AllowedGroups
+	}
+	return nil
+}
+
+func (x *SecretMetadata) GetAllowedRoles() []string {
+	if x != nil {
+		return x.AllowedRoles
 	}
 	return nil
 }
@@ -276,13 +289,14 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
 	"\x12ListSecretsRequest\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"k\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\x94\x01\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"accessible\x18\x02 \x01(\bR\n" +
-	"accessible\x12%\n" +
-	"\x0eallowed_groups\x18\x03 \x03(\tR\rallowedGroups2\xc2\x01\n" +
+	"accessible\x12)\n" +
+	"\x0eallowed_groups\x18\x03 \x03(\tB\x02\x18\x01R\rallowedGroups\x12#\n" +
+	"\rallowed_roles\x18\x04 \x03(\tR\fallowedRoles2\xc2\x01\n" +
 	"\x0eSecretsService\x12Z\n" +
 	"\vListSecrets\x12$.holos.console.v1.ListSecretsRequest\x1a%.holos.console.v1.ListSecretsResponse\x12T\n" +
 	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"

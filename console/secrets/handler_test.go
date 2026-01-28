@@ -55,13 +55,13 @@ func (h *testLogHandler) findRecord(action string) *slog.Record {
 
 func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns secret data for authorized user", func(t *testing.T) {
-		// Given: Authenticated user in allowed-groups, secret exists
+		// Given: Authenticated user in allowed-roles, secret exists
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin","readers"]`,
+					AllowedRolesAnnotation: `["viewer","editor"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -73,11 +73,11 @@ func TestHandler_GetSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient)
 
-		// Create authenticated context with matching group
+		// Create authenticated context with matching role group
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"readers"},
+			Groups: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -138,13 +138,13 @@ func TestHandler_GetSecret(t *testing.T) {
 	})
 
 	t.Run("returns PermissionDenied for unauthorized user", func(t *testing.T) {
-		// Given: Authenticated user NOT in allowed-groups
+		// Given: Authenticated user NOT in allowed-roles
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin","ops"]`,
+					AllowedRolesAnnotation: `["owner","editor"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -155,7 +155,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient)
 
-		// Create authenticated context with non-matching group
+		// Create authenticated context with non-matching role group
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
@@ -258,7 +258,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin"]`,
+					AllowedRolesAnnotation: `["owner"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -278,7 +278,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Groups: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -332,7 +332,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin","ops"]`,
+					AllowedRolesAnnotation: `["owner","editor"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -408,7 +408,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				Name:      "multi-key-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["owner"]`,
+					AllowedRolesAnnotation: `["owner"]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -465,7 +465,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin"]`,
+					AllowedRolesAnnotation: `["owner"]`,
 				},
 			},
 		}
@@ -474,7 +474,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "unlabeled-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin"]`,
+					AllowedRolesAnnotation: `["owner"]`,
 				},
 			},
 		}
@@ -485,7 +485,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Groups: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -510,8 +510,8 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if !resp.Msg.Secrets[0].Accessible {
 			t.Error("expected secret to be accessible")
 		}
-		if len(resp.Msg.Secrets[0].AllowedGroups) != 1 || resp.Msg.Secrets[0].AllowedGroups[0] != "admin" {
-			t.Errorf("expected allowed_groups=['admin'], got %v", resp.Msg.Secrets[0].AllowedGroups)
+		if len(resp.Msg.Secrets[0].AllowedRoles) != 1 || resp.Msg.Secrets[0].AllowedRoles[0] != "owner" {
+			t.Errorf("expected allowed_roles=['owner'], got %v", resp.Msg.Secrets[0].AllowedRoles)
 		}
 	})
 
@@ -525,7 +525,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["readers"]`,
+					AllowedRolesAnnotation: `["viewer"]`,
 				},
 			},
 		}
@@ -537,7 +537,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin"]`,
+					AllowedRolesAnnotation: `["owner"]`,
 				},
 			},
 		}
@@ -548,7 +548,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"readers"},
+			Groups: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -582,8 +582,8 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if !accessible.Accessible {
 			t.Error("expected accessible-secret to be accessible")
 		}
-		if len(accessible.AllowedGroups) != 1 || accessible.AllowedGroups[0] != "readers" {
-			t.Errorf("expected allowed_groups=['readers'], got %v", accessible.AllowedGroups)
+		if len(accessible.AllowedRoles) != 1 || accessible.AllowedRoles[0] != "viewer" {
+			t.Errorf("expected allowed_roles=['viewer'], got %v", accessible.AllowedRoles)
 		}
 
 		if inaccessible == nil {
@@ -592,8 +592,8 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if inaccessible.Accessible {
 			t.Error("expected inaccessible-secret to not be accessible")
 		}
-		if len(inaccessible.AllowedGroups) != 1 || inaccessible.AllowedGroups[0] != "admin" {
-			t.Errorf("expected allowed_groups=['admin'], got %v", inaccessible.AllowedGroups)
+		if len(inaccessible.AllowedRoles) != 1 || inaccessible.AllowedRoles[0] != "owner" {
+			t.Errorf("expected allowed_roles=['owner'], got %v", inaccessible.AllowedRoles)
 		}
 	})
 

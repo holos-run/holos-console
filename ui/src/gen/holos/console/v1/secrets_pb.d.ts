@@ -109,11 +109,20 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
 
   /**
    * allowed_groups contains the groups that have permission to read this secret.
-   * Populated regardless of whether the user has access, to show in the UI.
+   * Deprecated: Use allowed_roles instead.
    *
-   * @generated from field: repeated string allowed_groups = 3;
+   * @generated from field: repeated string allowed_groups = 3 [deprecated = true];
+   * @deprecated
    */
   allowedGroups: string[];
+
+  /**
+   * allowed_roles contains the roles that have permission to read this secret.
+   * Populated regardless of whether the user has access, to show in the UI.
+   *
+   * @generated from field: repeated string allowed_roles = 4;
+   */
+  allowedRoles: string[];
 };
 
 /**

@@ -5,9 +5,23 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"github.com/holos-run/holos-console/console/rbac"
 )
 
+// CheckReadAccess verifies that the user has permission to read secrets.
+// Uses role-based access control with the PERMISSION_SECRETS_READ permission.
+func CheckReadAccess(userGroups, allowedRoles []string) error {
+	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsRead)
+}
+
+// CheckListAccess verifies that the user has permission to list secrets.
+// Uses role-based access control with the PERMISSION_SECRETS_LIST permission.
+func CheckListAccess(userGroups, allowedRoles []string) error {
+	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsList)
+}
+
 // CheckAccess verifies that the user has at least one group in common with the allowed groups.
+// Deprecated: Use CheckReadAccess or CheckListAccess instead.
 // Returns nil if access is granted, or a PermissionDenied error otherwise.
 func CheckAccess(userGroups, allowedGroups []string) error {
 	for _, ug := range userGroups {

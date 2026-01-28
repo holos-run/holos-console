@@ -7,6 +7,67 @@ import (
 	"connectrpc.com/connect"
 )
 
+func TestCheckReadAccess(t *testing.T) {
+	t.Run("allows read access for viewer role", func(t *testing.T) {
+		userGroups := []string{"viewer"}
+		allowedRoles := []string{"viewer"}
+
+		err := CheckReadAccess(userGroups, allowedRoles)
+		if err != nil {
+			t.Errorf("expected nil error (access granted), got %v", err)
+		}
+	})
+
+	t.Run("allows read access for owner role", func(t *testing.T) {
+		userGroups := []string{"owner"}
+		allowedRoles := []string{"viewer"}
+
+		err := CheckReadAccess(userGroups, allowedRoles)
+		if err != nil {
+			t.Errorf("expected nil error (access granted for owner), got %v", err)
+		}
+	})
+
+	t.Run("denies read access for non-matching role", func(t *testing.T) {
+		userGroups := []string{"developers"}
+		allowedRoles := []string{"viewer", "editor"}
+
+		err := CheckReadAccess(userGroups, allowedRoles)
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+}
+
+func TestCheckListAccess(t *testing.T) {
+	t.Run("allows list access for viewer role", func(t *testing.T) {
+		userGroups := []string{"viewer"}
+		allowedRoles := []string{"viewer"}
+
+		err := CheckListAccess(userGroups, allowedRoles)
+		if err != nil {
+			t.Errorf("expected nil error (access granted), got %v", err)
+		}
+	})
+
+	t.Run("denies list access for non-matching role", func(t *testing.T) {
+		userGroups := []string{"developers"}
+		allowedRoles := []string{"viewer"}
+
+		err := CheckListAccess(userGroups, allowedRoles)
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+	})
+}
+
 func TestCheckAccess(t *testing.T) {
 	t.Run("allows access when user has matching group", func(t *testing.T) {
 		// Given: User groups ["developers", "readers"], allowed ["admin", "readers"]

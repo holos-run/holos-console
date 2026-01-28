@@ -18,10 +18,10 @@ holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange)
 │  │                  │      │                                  │ │
 │  │  /dex/*          │      │  /ui/*          (React SPA)      │ │
 │  │                  │      │  /api/*         (ConnectRPC)     │ │
-│  │  Mock Password   │      │  /metrics       (Prometheus)     │ │
-│  │  Connector with  │      │                                  │ │
-│  │  configurable    │      │  JWT Validation via              │ │
-│  │  credentials     │      │  --issuer (any OIDC provider)    │ │
+│  │  Auto-Login      │      │  /metrics       (Prometheus)     │ │
+│  │  Connector       │      │                                  │ │
+│  │  (no credentials │      │  JWT Validation via              │ │
+│  │   required)      │      │  --issuer (any OIDC provider)    │ │
 │  └──────────────────┘      └──────────────────────────────────┘ │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -37,20 +37,24 @@ The embedded Dex OIDC provider runs at `/dex/*` and provides:
 - **User Info**: `/dex/userinfo`
 - **JWKS**: `/dex/keys`
 
-### Default Credentials
+### Development Auto-Login
 
-For local development, use:
+> **IMPORTANT**: The embedded Dex server performs **no authentication** for development convenience. Users are automatically logged in without entering credentials when they click "Login".
 
-- **Username**: `admin`
-- **Password**: `verysecret`
+The auto-login connector:
+- Immediately authenticates users without showing a login form
+- Assigns the configured username (default: `admin`)
+- Assigns the user to the `owner` group (full permissions)
+- Is intended for **local development only**
 
-### Customizing Credentials
+For production deployments, configure an external OIDC provider with proper authentication.
 
-Override via environment variables before starting the server:
+### Customizing the Auto-Login Username
+
+Override via environment variable before starting the server:
 
 ```bash
 export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
-export HOLOS_DEX_INITIAL_ADMIN_PASSWORD=mypassword
 ./holos-console --cert-file=... --key-file=...
 ```
 
@@ -59,7 +63,7 @@ export HOLOS_DEX_INITIAL_ADMIN_PASSWORD=mypassword
 1. **User clicks Login** - React SPA calls `login()` from `useAuth()` hook
 2. **PKCE Challenge Generated** - oidc-client-ts generates code verifier and challenge
 3. **Redirect to Dex** - Browser redirects to `/dex/auth` with PKCE parameters
-4. **User Authenticates** - Dex displays login form, user enters credentials
+4. **Auto-Login** - Embedded Dex immediately authenticates user (no form displayed)
 5. **Authorization Code Returned** - Dex redirects to `/ui/callback` with code
 6. **Token Exchange** - Callback component exchanges code for tokens via `/dex/token`
 7. **Session Established** - Tokens stored in session storage, user redirected to app
@@ -172,15 +176,6 @@ Tokens are stored in session storage (not local storage) by default:
 The auth provider automatically renews tokens before expiration using silent refresh.
 
 ## Troubleshooting
-
-### "Invalid credentials" on login
-
-Verify you're using the correct credentials. Default is `admin` / `verysecret`. Check if environment variables override the defaults:
-
-```bash
-echo $HOLOS_DEX_INITIAL_ADMIN_USERNAME
-echo $HOLOS_DEX_INITIAL_ADMIN_PASSWORD
-```
 
 ### "OIDC discovery failed"
 

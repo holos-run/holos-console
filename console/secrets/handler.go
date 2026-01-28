@@ -46,19 +46,19 @@ func (h *Handler) ListSecrets(
 	var secrets []*consolev1.SecretMetadata
 	var accessibleCount int
 	for _, secret := range secretList.Items {
-		allowedGroups, err := GetAllowedGroups(&secret)
+		allowedRoles, err := GetAllowedRoles(&secret)
 		if err != nil {
 			// Skip secrets with invalid annotations
 			continue
 		}
-		accessible := CheckAccess(claims.Groups, allowedGroups) == nil
+		accessible := CheckListAccess(claims.Groups, allowedRoles) == nil
 		if accessible {
 			accessibleCount++
 		}
 		secrets = append(secrets, &consolev1.SecretMetadata{
-			Name:          secret.Name,
-			Accessible:    accessible,
-			AllowedGroups: allowedGroups,
+			Name:         secret.Name,
+			Accessible:   accessible,
+			AllowedRoles: allowedRoles,
 		})
 	}
 
@@ -103,12 +103,12 @@ func (h *Handler) GetSecret(
 // returnSecret checks RBAC and returns the secret data.
 func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
 	// Check RBAC
-	allowedGroups, err := GetAllowedGroups(secret)
+	allowedRoles, err := GetAllowedRoles(secret)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckAccess(claims.Groups, allowedGroups); err != nil {
-		logAuditDenied(ctx, claims, secret.Name, allowedGroups)
+	if err := CheckReadAccess(claims.Groups, allowedRoles); err != nil {
+		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
 		return nil, err
 	}
 
@@ -148,13 +148,13 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 }
 
 // logAuditDenied logs a denied secret access.
-func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string, allowedGroups []string) {
+func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string, allowedRoles []string) {
 	slog.WarnContext(ctx, "secret access denied",
 		slog.String("action", "secret_access_denied"),
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 		slog.Any("user_groups", claims.Groups),
-		slog.Any("allowed_groups", allowedGroups),
+		slog.Any("allowed_roles", allowedRoles),
 	)
 }
