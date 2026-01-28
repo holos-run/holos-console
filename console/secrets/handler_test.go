@@ -455,7 +455,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 }
 
 func TestHandler_ListSecrets(t *testing.T) {
-	t.Run("returns only secrets with console label that user can access", func(t *testing.T) {
+	t.Run("returns only secrets with console label", func(t *testing.T) {
 		// Given: Multiple secrets, some with console label, some without
 		secretWithLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -494,7 +494,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		// When: ListSecrets RPC is called
 		resp, err := handler.ListSecrets(ctx, req)
 
-		// Then: Returns only the labeled secret
+		// Then: Returns only the labeled secret with accessibility info
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -507,9 +507,15 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if resp.Msg.Secrets[0].Name != "labeled-secret" {
 			t.Errorf("expected 'labeled-secret', got %q", resp.Msg.Secrets[0].Name)
 		}
+		if !resp.Msg.Secrets[0].Accessible {
+			t.Error("expected secret to be accessible")
+		}
+		if len(resp.Msg.Secrets[0].AllowedGroups) != 1 || resp.Msg.Secrets[0].AllowedGroups[0] != "admin" {
+			t.Errorf("expected allowed_groups=['admin'], got %v", resp.Msg.Secrets[0].AllowedGroups)
+		}
 	})
 
-	t.Run("filters out secrets user cannot access", func(t *testing.T) {
+	t.Run("returns all secrets with accessibility info", func(t *testing.T) {
 		// Given: Two labeled secrets, user can only access one
 		accessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -551,15 +557,43 @@ func TestHandler_ListSecrets(t *testing.T) {
 		// When: ListSecrets RPC is called
 		resp, err := handler.ListSecrets(ctx, req)
 
-		// Then: Returns only the accessible secret
+		// Then: Returns both secrets with accessibility info
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Msg.Secrets) != 1 {
-			t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+		if len(resp.Msg.Secrets) != 2 {
+			t.Fatalf("expected 2 secrets, got %d", len(resp.Msg.Secrets))
 		}
-		if resp.Msg.Secrets[0].Name != "accessible-secret" {
-			t.Errorf("expected 'accessible-secret', got %q", resp.Msg.Secrets[0].Name)
+
+		// Find each secret and verify accessibility
+		var accessible, inaccessible *consolev1.SecretMetadata
+		for _, s := range resp.Msg.Secrets {
+			switch s.Name {
+			case "accessible-secret":
+				accessible = s
+			case "inaccessible-secret":
+				inaccessible = s
+			}
+		}
+
+		if accessible == nil {
+			t.Fatal("expected to find 'accessible-secret'")
+		}
+		if !accessible.Accessible {
+			t.Error("expected accessible-secret to be accessible")
+		}
+		if len(accessible.AllowedGroups) != 1 || accessible.AllowedGroups[0] != "readers" {
+			t.Errorf("expected allowed_groups=['readers'], got %v", accessible.AllowedGroups)
+		}
+
+		if inaccessible == nil {
+			t.Fatal("expected to find 'inaccessible-secret'")
+		}
+		if inaccessible.Accessible {
+			t.Error("expected inaccessible-secret to not be accessible")
+		}
+		if len(inaccessible.AllowedGroups) != 1 || inaccessible.AllowedGroups[0] != "admin" {
+			t.Errorf("expected allowed_groups=['admin'], got %v", inaccessible.AllowedGroups)
 		}
 	})
 

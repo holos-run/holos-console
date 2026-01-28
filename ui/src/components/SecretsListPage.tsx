@@ -8,9 +8,13 @@ import {
   Alert,
   CircularProgress,
   List,
+  ListItem,
   ListItemButton,
   ListItemText,
+  Tooltip,
+  Chip,
 } from '@mui/material'
+import LockIcon from '@mui/icons-material/Lock'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
@@ -99,13 +103,37 @@ export function SecretsListPage() {
         ) : (
           <List>
             {secrets.map((secret) => (
-              <ListItemButton
+              <ListItem
                 key={secret.name}
-                component={RouterLink}
-                to={`/secrets/${secret.name}`}
+                disablePadding
+                secondaryAction={
+                  !secret.accessible && (
+                    <Tooltip
+                      title={
+                        secret.allowedGroups.length > 0
+                          ? `Access restricted to: ${secret.allowedGroups.join(', ')}`
+                          : 'No groups have access to this secret'
+                      }
+                    >
+                      <Chip
+                        icon={<LockIcon />}
+                        label="No access"
+                        size="small"
+                        color="default"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  )
+                }
               >
-                <ListItemText primary={secret.name} />
-              </ListItemButton>
+                <ListItemButton
+                  component={RouterLink}
+                  to={`/secrets/${secret.name}`}
+                  disabled={!secret.accessible}
+                >
+                  <ListItemText primary={secret.name} />
+                </ListItemButton>
+              </ListItem>
             ))}
           </List>
         )}

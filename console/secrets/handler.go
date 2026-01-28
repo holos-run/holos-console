@@ -25,7 +25,7 @@ func NewHandler(k8s *K8sClient) *Handler {
 	return &Handler{k8s: k8s}
 }
 
-// ListSecrets returns secrets the user has access to.
+// ListSecrets returns all secrets with accessibility info for the current user.
 func (h *Handler) ListSecrets(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListSecretsRequest],
@@ -42,30 +42,36 @@ func (h *Handler) ListSecrets(
 		return nil, mapK8sError(err)
 	}
 
-	// Filter to secrets user can access
-	var accessibleSecrets []*consolev1.SecretMetadata
+	// Build list with accessibility info for each secret
+	var secrets []*consolev1.SecretMetadata
+	var accessibleCount int
 	for _, secret := range secretList.Items {
 		allowedGroups, err := GetAllowedGroups(&secret)
 		if err != nil {
 			// Skip secrets with invalid annotations
 			continue
 		}
-		if CheckAccess(claims.Groups, allowedGroups) == nil {
-			accessibleSecrets = append(accessibleSecrets, &consolev1.SecretMetadata{
-				Name: secret.Name,
-			})
+		accessible := CheckAccess(claims.Groups, allowedGroups) == nil
+		if accessible {
+			accessibleCount++
 		}
+		secrets = append(secrets, &consolev1.SecretMetadata{
+			Name:          secret.Name,
+			Accessible:    accessible,
+			AllowedGroups: allowedGroups,
+		})
 	}
 
 	slog.InfoContext(ctx, "secrets listed",
 		slog.String("action", "secrets_list"),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
-		slog.Int("count", len(accessibleSecrets)),
+		slog.Int("total", len(secrets)),
+		slog.Int("accessible", accessibleCount),
 	)
 
 	return connect.NewResponse(&consolev1.ListSecretsResponse{
-		Secrets: accessibleSecrets,
+		Secrets: secrets,
 	}), nil
 }
 

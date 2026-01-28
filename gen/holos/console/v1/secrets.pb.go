@@ -151,10 +151,10 @@ func (*ListSecretsRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{2}
 }
 
-// ListSecretsResponse contains the list of secrets the user can access.
+// ListSecretsResponse contains the list of secrets in the namespace.
 type ListSecretsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// secrets contains metadata about each accessible secret.
+	// secrets contains metadata about each secret.
 	Secrets       []*SecretMetadata `protobuf:"bytes,1,rep,name=secrets,proto3" json:"secrets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -201,7 +201,12 @@ func (x *ListSecretsResponse) GetSecrets() []*SecretMetadata {
 type SecretMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name is the name of the secret.
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// accessible indicates whether the current user has permission to read this secret.
+	Accessible bool `protobuf:"varint,2,opt,name=accessible,proto3" json:"accessible,omitempty"`
+	// allowed_groups contains the groups that have permission to read this secret.
+	// Populated regardless of whether the user has access, to show in the UI.
+	AllowedGroups []string `protobuf:"bytes,3,rep,name=allowed_groups,json=allowedGroups,proto3" json:"allowed_groups,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -243,6 +248,20 @@ func (x *SecretMetadata) GetName() string {
 	return ""
 }
 
+func (x *SecretMetadata) GetAccessible() bool {
+	if x != nil {
+		return x.Accessible
+	}
+	return false
+}
+
+func (x *SecretMetadata) GetAllowedGroups() []string {
+	if x != nil {
+		return x.AllowedGroups
+	}
+	return nil
+}
+
 var File_holos_console_v1_secrets_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_secrets_proto_rawDesc = "" +
@@ -257,9 +276,13 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
 	"\x12ListSecretsRequest\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"$\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"k\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name2\xc2\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"accessible\x18\x02 \x01(\bR\n" +
+	"accessible\x12%\n" +
+	"\x0eallowed_groups\x18\x03 \x03(\tR\rallowedGroups2\xc2\x01\n" +
 	"\x0eSecretsService\x12Z\n" +
 	"\vListSecrets\x12$.holos.console.v1.ListSecretsRequest\x1a%.holos.console.v1.ListSecretsResponse\x12T\n" +
 	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"

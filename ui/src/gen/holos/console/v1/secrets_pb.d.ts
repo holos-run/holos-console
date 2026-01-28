@@ -68,13 +68,13 @@ export declare type ListSecretsRequest = Message<"holos.console.v1.ListSecretsRe
 export declare const ListSecretsRequestSchema: GenMessage<ListSecretsRequest>;
 
 /**
- * ListSecretsResponse contains the list of secrets the user can access.
+ * ListSecretsResponse contains the list of secrets in the namespace.
  *
  * @generated from message holos.console.v1.ListSecretsResponse
  */
 export declare type ListSecretsResponse = Message<"holos.console.v1.ListSecretsResponse"> & {
   /**
-   * secrets contains metadata about each accessible secret.
+   * secrets contains metadata about each secret.
    *
    * @generated from field: repeated holos.console.v1.SecretMetadata secrets = 1;
    */
@@ -99,6 +99,21 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * accessible indicates whether the current user has permission to read this secret.
+   *
+   * @generated from field: bool accessible = 2;
+   */
+  accessible: boolean;
+
+  /**
+   * allowed_groups contains the groups that have permission to read this secret.
+   * Populated regardless of whether the user has access, to show in the UI.
+   *
+   * @generated from field: repeated string allowed_groups = 3;
+   */
+  allowedGroups: string[];
 };
 
 /**
@@ -114,9 +129,9 @@ export declare const SecretMetadataSchema: GenMessage<SecretMetadata>;
  */
 export declare const SecretsService: GenService<{
   /**
-   * ListSecrets returns secrets the user has access to in the current namespace.
-   * Only returns secrets with the holos.run/console.holos.run label.
-   * Filters results to secrets where the user is in allowed-groups.
+   * ListSecrets returns all secrets in the current namespace with console label.
+   * Only returns secrets with the app.kubernetes.io/managed-by=console.holos.run label.
+   * Each secret includes accessibility info and allowed groups for the UI.
    * Requires authentication via Authorization: Bearer <id_token> header.
    *
    * @generated from rpc holos.console.v1.SecretsService.ListSecrets

@@ -15,9 +15,9 @@ export const SecretsService = {
   typeName: "holos.console.v1.SecretsService",
   methods: {
     /**
-     * ListSecrets returns secrets the user has access to in the current namespace.
-     * Only returns secrets with the holos.run/console.holos.run label.
-     * Filters results to secrets where the user is in allowed-groups.
+     * ListSecrets returns all secrets in the current namespace with console label.
+     * Only returns secrets with the app.kubernetes.io/managed-by=console.holos.run label.
+     * Each secret includes accessibility info and allowed groups for the UI.
      * Requires authentication via Authorization: Bearer <id_token> header.
      *
      * @generated from rpc holos.console.v1.SecretsService.ListSecrets
