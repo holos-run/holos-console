@@ -29,3 +29,5 @@
 ## Configuration
 
 The server reads Kubernetes secrets from the namespace specified by the `--namespace` flag. The default namespace is `holos-console`.
+
+Secrets must have the label `app.kubernetes.io/managed-by=console.holos.run` to appear in the UI.
