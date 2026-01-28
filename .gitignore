@@ -43,3 +43,6 @@ console/ui/assets/index-*.js
 # Playwright
 ui/playwright-report/
 ui/test-results/
+
+## Debug bins
+cmd/__*
