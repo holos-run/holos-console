@@ -400,92 +400,21 @@ func TestHandler_AuditLogging(t *testing.T) {
 	})
 }
 
-func TestHandler_DummySecret(t *testing.T) {
-	t.Run("returns dummy secret when user in owner group", func(t *testing.T) {
-		// Given: request for secret named "dummy-secret"
-		fakeClient := fake.NewClientset() // No secrets in K8s
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
-		handler := NewHandler(k8sClient)
-
-		// User in owner group (matches Dex connector default)
-		claims := &rpc.Claims{
-			Sub:    "user-123",
-			Email:  "admin",
-			Groups: []string{"owner"},
-		}
-		ctx := rpc.ContextWithClaims(context.Background(), claims)
-
-		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: DummySecretName,
-		})
-
-		// When: GetSecret RPC is called
-		resp, err := handler.GetSecret(ctx, req)
-
-		// Then: Returns in-memory dummy secret data
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if resp == nil {
-			t.Fatal("expected response, got nil")
-		}
-		if string(resp.Msg.Data["username"]) != "dummy-user" {
-			t.Errorf("expected username 'dummy-user', got %q", string(resp.Msg.Data["username"]))
-		}
-		if string(resp.Msg.Data["password"]) != "dummy-password" {
-			t.Errorf("expected password 'dummy-password', got %q", string(resp.Msg.Data["password"]))
-		}
-		if string(resp.Msg.Data["api-key"]) != "dummy-api-key-12345" {
-			t.Errorf("expected api-key 'dummy-api-key-12345', got %q", string(resp.Msg.Data["api-key"]))
-		}
-	})
-
-	t.Run("returns PermissionDenied for dummy secret when user not in owner group", func(t *testing.T) {
-		// Given: request for "dummy-secret"
-		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
-		handler := NewHandler(k8sClient)
-
-		// User NOT in owner group
-		claims := &rpc.Claims{
-			Sub:    "user-123",
-			Email:  "user@example.com",
-			Groups: []string{"developers"},
-		}
-		ctx := rpc.ContextWithClaims(context.Background(), claims)
-
-		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: DummySecretName,
-		})
-
-		// When: GetSecret RPC is called
-		_, err := handler.GetSecret(ctx, req)
-
-		// Then: Returns PermissionDenied
-		if err == nil {
-			t.Fatal("expected PermissionDenied error, got nil")
-		}
-		connectErr, ok := err.(*connect.Error)
-		if !ok {
-			t.Fatalf("expected *connect.Error, got %T", err)
-		}
-		if connectErr.Code() != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
-		}
-	})
-
-	t.Run("real K8s secrets work alongside dummy secret", func(t *testing.T) {
-		// Given: request for real secret "real-secret" that exists in K8s
+func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
+	t.Run("returns secret with multiple data keys", func(t *testing.T) {
+		// Given: secret with multiple data keys
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "real-secret",
+				Name:      "multi-key-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
 					AllowedGroupsAnnotation: `["owner"]`,
 				},
 			},
 			Data: map[string][]byte{
-				"real-key": []byte("real-value"),
+				"username": []byte("test-user"),
+				"password": []byte("test-password"),
+				"api-key":  []byte("test-api-key-12345"),
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
@@ -500,21 +429,27 @@ func TestHandler_DummySecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "real-secret",
+			Name: "multi-key-secret",
 		})
 
 		// When: GetSecret RPC is called
 		resp, err := handler.GetSecret(ctx, req)
 
-		// Then: Returns the real secret from K8s
+		// Then: Returns all secret data keys
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if resp == nil {
 			t.Fatal("expected response, got nil")
 		}
-		if string(resp.Msg.Data["real-key"]) != "real-value" {
-			t.Errorf("expected real-key 'real-value', got %q", string(resp.Msg.Data["real-key"]))
+		if string(resp.Msg.Data["username"]) != "test-user" {
+			t.Errorf("expected username 'test-user', got %q", string(resp.Msg.Data["username"]))
+		}
+		if string(resp.Msg.Data["password"]) != "test-password" {
+			t.Errorf("expected password 'test-password', got %q", string(resp.Msg.Data["password"]))
+		}
+		if string(resp.Msg.Data["api-key"]) != "test-api-key-12345" {
+			t.Errorf("expected api-key 'test-api-key-12345', got %q", string(resp.Msg.Data["api-key"]))
 		}
 	})
 }

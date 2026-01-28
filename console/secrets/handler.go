@@ -8,15 +8,11 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
-
-// DummySecretName is the name of the in-memory dummy secret for development testing.
-const DummySecretName = "dummy-secret"
 
 // Handler implements the SecretsService.
 type Handler struct {
@@ -45,11 +41,6 @@ func (h *Handler) GetSecret(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Check for dummy secret first (dev mode only)
-	if secret := h.dummySecret(req.Msg.Name); secret != nil {
-		return h.returnSecret(ctx, claims, secret)
-	}
-
 	// Get secret from Kubernetes
 	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
 	if err != nil {
@@ -76,29 +67,6 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	return connect.NewResponse(&consolev1.GetSecretResponse{
 		Data: secret.Data,
 	}), nil
-}
-
-// dummySecret returns an in-memory secret for development and testing.
-// Returns nil if name doesn't match DummySecretName.
-// This allows testing RBAC without requiring a Kubernetes cluster.
-func (h *Handler) dummySecret(name string) *corev1.Secret {
-	if name != DummySecretName {
-		return nil
-	}
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      DummySecretName,
-			Namespace: "holos-console",
-			Annotations: map[string]string{
-				AllowedGroupsAnnotation: `["owner"]`,
-			},
-		},
-		Data: map[string][]byte{
-			"username": []byte("dummy-user"),
-			"password": []byte("dummy-password"),
-			"api-key":  []byte("dummy-api-key-12345"),
-		},
-	}
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.
