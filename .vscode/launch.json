@@ -9,8 +9,9 @@
       "program": "${workspaceFolder}/cmd",
       "cwd": "${workspaceFolder}",
       "args": [
+        "--log-level=debug",
         "--cert=certs/tls.crt",
-        "--key=certs/tls.key"
+        "--key=certs/tls.key",
       ],
       "showLog": true,
       "env": {

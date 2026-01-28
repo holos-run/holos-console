@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,6 +23,7 @@ var (
 	idTokenTTL      string
 	refreshTokenTTL string
 	namespace       string
+	logLevel        string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -37,8 +39,12 @@ func Command() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			level, err := parseLogLevel(logLevel)
+			if err != nil {
+				return err
+			}
 			logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-				Level: slog.LevelInfo,
+				Level: level,
 			}))
 			slog.SetDefault(logger)
 			return nil
@@ -69,6 +75,9 @@ func Command() *cobra.Command {
 	// Kubernetes flags
 	cmd.Flags().StringVar(&namespace, "namespace", "holos-console", "Kubernetes namespace for secrets")
 
+	// Logging flags
+	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+
 	return cmd
 }
 
@@ -93,6 +102,22 @@ func deriveIssuer(listenAddr, issuer string) string {
 	}
 
 	return fmt.Sprintf("https://%s:%s/dex", host, port)
+}
+
+// parseLogLevel converts a string log level to slog.Level.
+func parseLogLevel(level string) (slog.Level, error) {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("invalid log level %q: must be debug, info, warn, or error", level)
+	}
 }
 
 // Run serves as the Cobra run function for the root command.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,10 @@ func NewK8sClient(client kubernetes.Interface, namespace string) *K8sClient {
 
 // GetSecret retrieves a secret by name from the configured namespace.
 func (c *K8sClient) GetSecret(ctx context.Context, name string) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "getting secret from kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
 	return c.client.CoreV1().Secrets(c.namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
