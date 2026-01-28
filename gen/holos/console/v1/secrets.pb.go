@@ -114,6 +114,135 @@ func (x *GetSecretResponse) GetData() map[string][]byte {
 	return nil
 }
 
+// ListSecretsRequest contains optional filters for listing secrets.
+type ListSecretsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSecretsRequest) Reset() {
+	*x = ListSecretsRequest{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSecretsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSecretsRequest) ProtoMessage() {}
+
+func (x *ListSecretsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSecretsRequest.ProtoReflect.Descriptor instead.
+func (*ListSecretsRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{2}
+}
+
+// ListSecretsResponse contains the list of secrets the user can access.
+type ListSecretsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// secrets contains metadata about each accessible secret.
+	Secrets       []*SecretMetadata `protobuf:"bytes,1,rep,name=secrets,proto3" json:"secrets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSecretsResponse) Reset() {
+	*x = ListSecretsResponse{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSecretsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSecretsResponse) ProtoMessage() {}
+
+func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSecretsResponse.ProtoReflect.Descriptor instead.
+func (*ListSecretsResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListSecretsResponse) GetSecrets() []*SecretMetadata {
+	if x != nil {
+		return x.Secrets
+	}
+	return nil
+}
+
+// SecretMetadata contains non-sensitive information about a secret.
+type SecretMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the secret.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SecretMetadata) Reset() {
+	*x = SecretMetadata{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SecretMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SecretMetadata) ProtoMessage() {}
+
+func (x *SecretMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SecretMetadata.ProtoReflect.Descriptor instead.
+func (*SecretMetadata) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SecretMetadata) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 var File_holos_console_v1_secrets_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_secrets_proto_rawDesc = "" +
@@ -125,8 +254,14 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x03(\v2-.holos.console.v1.GetSecretResponse.DataEntryR\x04data\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x012f\n" +
-	"\x0eSecretsService\x12T\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
+	"\x12ListSecretsRequest\"Q\n" +
+	"\x13ListSecretsResponse\x12:\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"$\n" +
+	"\x0eSecretMetadata\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name2\xc2\x01\n" +
+	"\x0eSecretsService\x12Z\n" +
+	"\vListSecrets\x12$.holos.console.v1.ListSecretsRequest\x1a%.holos.console.v1.ListSecretsResponse\x12T\n" +
 	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
@@ -141,21 +276,27 @@ func file_holos_console_v1_secrets_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_secrets_proto_rawDescData
 }
 
-var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_holos_console_v1_secrets_proto_goTypes = []any{
-	(*GetSecretRequest)(nil),  // 0: holos.console.v1.GetSecretRequest
-	(*GetSecretResponse)(nil), // 1: holos.console.v1.GetSecretResponse
-	nil,                       // 2: holos.console.v1.GetSecretResponse.DataEntry
+	(*GetSecretRequest)(nil),    // 0: holos.console.v1.GetSecretRequest
+	(*GetSecretResponse)(nil),   // 1: holos.console.v1.GetSecretResponse
+	(*ListSecretsRequest)(nil),  // 2: holos.console.v1.ListSecretsRequest
+	(*ListSecretsResponse)(nil), // 3: holos.console.v1.ListSecretsResponse
+	(*SecretMetadata)(nil),      // 4: holos.console.v1.SecretMetadata
+	nil,                         // 5: holos.console.v1.GetSecretResponse.DataEntry
 }
 var file_holos_console_v1_secrets_proto_depIdxs = []int32{
-	2, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
-	0, // 1: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
-	1, // 2: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
+	4, // 1: holos.console.v1.ListSecretsResponse.secrets:type_name -> holos.console.v1.SecretMetadata
+	2, // 2: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
+	0, // 3: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
+	3, // 4: holos.console.v1.SecretsService.ListSecrets:output_type -> holos.console.v1.ListSecretsResponse
+	1, // 5: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_secrets_proto_init() }
@@ -169,7 +310,7 @@ func file_holos_console_v1_secrets_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_secrets_proto_rawDesc), len(file_holos_console_v1_secrets_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

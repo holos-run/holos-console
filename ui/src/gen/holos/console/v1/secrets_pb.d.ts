@@ -52,11 +52,80 @@ export declare type GetSecretResponse = Message<"holos.console.v1.GetSecretRespo
 export declare const GetSecretResponseSchema: GenMessage<GetSecretResponse>;
 
 /**
+ * ListSecretsRequest contains optional filters for listing secrets.
+ *
+ * Reserved for future filtering options.
+ *
+ * @generated from message holos.console.v1.ListSecretsRequest
+ */
+export declare type ListSecretsRequest = Message<"holos.console.v1.ListSecretsRequest"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.ListSecretsRequest.
+ * Use `create(ListSecretsRequestSchema)` to create a new message.
+ */
+export declare const ListSecretsRequestSchema: GenMessage<ListSecretsRequest>;
+
+/**
+ * ListSecretsResponse contains the list of secrets the user can access.
+ *
+ * @generated from message holos.console.v1.ListSecretsResponse
+ */
+export declare type ListSecretsResponse = Message<"holos.console.v1.ListSecretsResponse"> & {
+  /**
+   * secrets contains metadata about each accessible secret.
+   *
+   * @generated from field: repeated holos.console.v1.SecretMetadata secrets = 1;
+   */
+  secrets: SecretMetadata[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListSecretsResponse.
+ * Use `create(ListSecretsResponseSchema)` to create a new message.
+ */
+export declare const ListSecretsResponseSchema: GenMessage<ListSecretsResponse>;
+
+/**
+ * SecretMetadata contains non-sensitive information about a secret.
+ *
+ * @generated from message holos.console.v1.SecretMetadata
+ */
+export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> & {
+  /**
+   * name is the name of the secret.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.SecretMetadata.
+ * Use `create(SecretMetadataSchema)` to create a new message.
+ */
+export declare const SecretMetadataSchema: GenMessage<SecretMetadata>;
+
+/**
  * SecretsService provides access to Kubernetes secrets with RBAC.
  *
  * @generated from service holos.console.v1.SecretsService
  */
 export declare const SecretsService: GenService<{
+  /**
+   * ListSecrets returns secrets the user has access to in the current namespace.
+   * Only returns secrets with the holos.run/console.holos.run label.
+   * Filters results to secrets where the user is in allowed-groups.
+   * Requires authentication via Authorization: Bearer <id_token> header.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.ListSecrets
+   */
+  listSecrets: {
+    methodKind: "unary";
+    input: typeof ListSecretsRequestSchema;
+    output: typeof ListSecretsResponseSchema;
+  },
   /**
    * GetSecret retrieves a secret by name from the current namespace.
    * Requires authentication via Authorization: Bearer <id_token> header.

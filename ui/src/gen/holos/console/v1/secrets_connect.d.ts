@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetSecretRequest, GetSecretResponse } from "./secrets_pb.js";
+import { GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -14,6 +14,20 @@ import { MethodKind } from "@bufbuild/protobuf";
 export declare const SecretsService: {
   readonly typeName: "holos.console.v1.SecretsService",
   readonly methods: {
+    /**
+     * ListSecrets returns secrets the user has access to in the current namespace.
+     * Only returns secrets with the holos.run/console.holos.run label.
+     * Filters results to secrets where the user is in allowed-groups.
+     * Requires authentication via Authorization: Bearer <id_token> header.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.ListSecrets
+     */
+    readonly listSecrets: {
+      readonly name: "ListSecrets",
+      readonly I: typeof ListSecretsRequest,
+      readonly O: typeof ListSecretsResponse,
+      readonly kind: MethodKind.Unary,
+    },
     /**
      * GetSecret retrieves a secret by name from the current namespace.
      * Requires authentication via Authorization: Bearer <id_token> header.

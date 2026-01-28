@@ -33,6 +33,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// SecretsServiceListSecretsProcedure is the fully-qualified name of the SecretsService's
+	// ListSecrets RPC.
+	SecretsServiceListSecretsProcedure = "/holos.console.v1.SecretsService/ListSecrets"
 	// SecretsServiceGetSecretProcedure is the fully-qualified name of the SecretsService's GetSecret
 	// RPC.
 	SecretsServiceGetSecretProcedure = "/holos.console.v1.SecretsService/GetSecret"
@@ -40,6 +43,11 @@ const (
 
 // SecretsServiceClient is a client for the holos.console.v1.SecretsService service.
 type SecretsServiceClient interface {
+	// ListSecrets returns secrets the user has access to in the current namespace.
+	// Only returns secrets with the holos.run/console.holos.run label.
+	// Filters results to secrets where the user is in allowed-groups.
+	// Requires authentication via Authorization: Bearer <id_token> header.
+	ListSecrets(context.Context, *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// GetSecret retrieves a secret by name from the current namespace.
 	// Requires authentication via Authorization: Bearer <id_token> header.
 	// Returns PermissionDenied if user is not in the secret's allowed-groups.
@@ -57,6 +65,12 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 	baseURL = strings.TrimRight(baseURL, "/")
 	secretsServiceMethods := v1.File_holos_console_v1_secrets_proto.Services().ByName("SecretsService").Methods()
 	return &secretsServiceClient{
+		listSecrets: connect.NewClient[v1.ListSecretsRequest, v1.ListSecretsResponse](
+			httpClient,
+			baseURL+SecretsServiceListSecretsProcedure,
+			connect.WithSchema(secretsServiceMethods.ByName("ListSecrets")),
+			connect.WithClientOptions(opts...),
+		),
 		getSecret: connect.NewClient[v1.GetSecretRequest, v1.GetSecretResponse](
 			httpClient,
 			baseURL+SecretsServiceGetSecretProcedure,
@@ -68,7 +82,13 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // secretsServiceClient implements SecretsServiceClient.
 type secretsServiceClient struct {
-	getSecret *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
+	listSecrets *connect.Client[v1.ListSecretsRequest, v1.ListSecretsResponse]
+	getSecret   *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
+}
+
+// ListSecrets calls holos.console.v1.SecretsService.ListSecrets.
+func (c *secretsServiceClient) ListSecrets(ctx context.Context, req *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return c.listSecrets.CallUnary(ctx, req)
 }
 
 // GetSecret calls holos.console.v1.SecretsService.GetSecret.
@@ -78,6 +98,11 @@ func (c *secretsServiceClient) GetSecret(ctx context.Context, req *connect.Reque
 
 // SecretsServiceHandler is an implementation of the holos.console.v1.SecretsService service.
 type SecretsServiceHandler interface {
+	// ListSecrets returns secrets the user has access to in the current namespace.
+	// Only returns secrets with the holos.run/console.holos.run label.
+	// Filters results to secrets where the user is in allowed-groups.
+	// Requires authentication via Authorization: Bearer <id_token> header.
+	ListSecrets(context.Context, *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// GetSecret retrieves a secret by name from the current namespace.
 	// Requires authentication via Authorization: Bearer <id_token> header.
 	// Returns PermissionDenied if user is not in the secret's allowed-groups.
@@ -91,6 +116,12 @@ type SecretsServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	secretsServiceMethods := v1.File_holos_console_v1_secrets_proto.Services().ByName("SecretsService").Methods()
+	secretsServiceListSecretsHandler := connect.NewUnaryHandler(
+		SecretsServiceListSecretsProcedure,
+		svc.ListSecrets,
+		connect.WithSchema(secretsServiceMethods.ByName("ListSecrets")),
+		connect.WithHandlerOptions(opts...),
+	)
 	secretsServiceGetSecretHandler := connect.NewUnaryHandler(
 		SecretsServiceGetSecretProcedure,
 		svc.GetSecret,
@@ -99,6 +130,8 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 	)
 	return "/holos.console.v1.SecretsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case SecretsServiceListSecretsProcedure:
+			secretsServiceListSecretsHandler.ServeHTTP(w, r)
 		case SecretsServiceGetSecretProcedure:
 			secretsServiceGetSecretHandler.ServeHTTP(w, r)
 		default:
@@ -109,6 +142,10 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 
 // UnimplementedSecretsServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedSecretsServiceHandler struct{}
+
+func (UnimplementedSecretsServiceHandler) ListSecrets(context.Context, *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.ListSecrets is not implemented"))
+}
 
 func (UnimplementedSecretsServiceHandler) GetSecret(context.Context, *connect.Request[v1.GetSecretRequest]) (*connect.Response[v1.GetSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.GetSecret is not implemented"))

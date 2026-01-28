@@ -25,6 +25,50 @@ func NewHandler(k8s *K8sClient) *Handler {
 	return &Handler{k8s: k8s}
 }
 
+// ListSecrets returns secrets the user has access to.
+func (h *Handler) ListSecrets(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListSecretsRequest],
+) (*connect.Response[consolev1.ListSecretsResponse], error) {
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// List secrets from Kubernetes with console label
+	secretList, err := h.k8s.ListSecrets(ctx)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Filter to secrets user can access
+	var accessibleSecrets []*consolev1.SecretMetadata
+	for _, secret := range secretList.Items {
+		allowedGroups, err := GetAllowedGroups(&secret)
+		if err != nil {
+			// Skip secrets with invalid annotations
+			continue
+		}
+		if CheckAccess(claims.Groups, allowedGroups) == nil {
+			accessibleSecrets = append(accessibleSecrets, &consolev1.SecretMetadata{
+				Name: secret.Name,
+			})
+		}
+	}
+
+	slog.InfoContext(ctx, "secrets listed",
+		slog.String("action", "secrets_list"),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+		slog.Int("count", len(accessibleSecrets)),
+	)
+
+	return connect.NewResponse(&consolev1.ListSecretsResponse{
+		Secrets: accessibleSecrets,
+	}), nil
+}
+
 // GetSecret retrieves a secret by name with RBAC authorization.
 func (h *Handler) GetSecret(
 	ctx context.Context,

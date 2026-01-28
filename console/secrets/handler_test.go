@@ -453,3 +453,171 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		}
 	})
 }
+
+func TestHandler_ListSecrets(t *testing.T) {
+	t.Run("returns only secrets with console label that user can access", func(t *testing.T) {
+		// Given: Multiple secrets, some with console label, some without
+		secretWithLabel := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "labeled-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedGroupsAnnotation: `["admin"]`,
+				},
+			},
+		}
+		secretWithoutLabel := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unlabeled-secret",
+				Namespace: "test-namespace",
+				Annotations: map[string]string{
+					AllowedGroupsAnnotation: `["admin"]`,
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secretWithLabel, secretWithoutLabel)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"admin"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+
+		// When: ListSecrets RPC is called
+		resp, err := handler.ListSecrets(ctx, req)
+
+		// Then: Returns only the labeled secret
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp == nil {
+			t.Fatal("expected response, got nil")
+		}
+		if len(resp.Msg.Secrets) != 1 {
+			t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+		}
+		if resp.Msg.Secrets[0].Name != "labeled-secret" {
+			t.Errorf("expected 'labeled-secret', got %q", resp.Msg.Secrets[0].Name)
+		}
+	})
+
+	t.Run("filters out secrets user cannot access", func(t *testing.T) {
+		// Given: Two labeled secrets, user can only access one
+		accessibleSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "accessible-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedGroupsAnnotation: `["readers"]`,
+				},
+			},
+		}
+		inaccessibleSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "inaccessible-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedGroupsAnnotation: `["admin"]`,
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(accessibleSecret, inaccessibleSecret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"readers"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+
+		// When: ListSecrets RPC is called
+		resp, err := handler.ListSecrets(ctx, req)
+
+		// Then: Returns only the accessible secret
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Secrets) != 1 {
+			t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+		}
+		if resp.Msg.Secrets[0].Name != "accessible-secret" {
+			t.Errorf("expected 'accessible-secret', got %q", resp.Msg.Secrets[0].Name)
+		}
+	})
+
+	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
+		// Given: Request without claims in context
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+
+		// When: ListSecrets RPC is called
+		_, err := handler.ListSecrets(ctx, req)
+
+		// Then: Returns Unauthenticated error
+		if err == nil {
+			t.Fatal("expected Unauthenticated error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns empty list when no secrets match", func(t *testing.T) {
+		// Given: No secrets with console label
+		secretWithoutLabel := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unlabeled-secret",
+				Namespace: "test-namespace",
+			},
+		}
+		fakeClient := fake.NewClientset(secretWithoutLabel)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"admin"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+
+		// When: ListSecrets RPC is called
+		resp, err := handler.ListSecrets(ctx, req)
+
+		// Then: Returns empty list
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Secrets) != 0 {
+			t.Errorf("expected 0 secrets, got %d", len(resp.Msg.Secrets))
+		}
+	})
+}

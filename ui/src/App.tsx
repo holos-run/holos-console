@@ -22,6 +22,7 @@ import {
 import { VersionCard } from './components/VersionCard'
 import { ProfilePage } from './components/ProfilePage'
 import { AuthDebugPage } from './components/AuthDebugPage'
+import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
 import { AuthProvider, Callback } from './auth'
 
@@ -87,7 +88,7 @@ function MainLayout() {
           </ListItemButton>
           <ListItemButton
             component={Link}
-            to="/secrets/dummy-secret"
+            to="/secrets"
             selected={isSecretsPage}
           >
             <ListItemText primary="Secrets" />
@@ -120,6 +121,7 @@ function MainLayout() {
             <Route path="/version" element={<VersionCard />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/auth-debug" element={<AuthDebugPage />} />
+            <Route path="/secrets" element={<SecretsListPage />} />
             <Route path="/secrets/:name" element={<SecretPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

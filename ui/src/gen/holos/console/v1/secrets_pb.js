@@ -8,7 +8,7 @@ import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2
  * Describes the file holos/console/v1/secrets.proto.
  */
 export const file_holos_console_v1_secrets = /*@__PURE__*/
-  fileDesc("Ch5ob2xvcy9jb25zb2xlL3YxL3NlY3JldHMucHJvdG8SEGhvbG9zLmNvbnNvbGUudjEiIAoQR2V0U2VjcmV0UmVxdWVzdBIMCgRuYW1lGAEgASgJIn0KEUdldFNlY3JldFJlc3BvbnNlEjsKBGRhdGEYASADKAsyLS5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlc3BvbnNlLkRhdGFFbnRyeRorCglEYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ATJmCg5TZWNyZXRzU2VydmljZRJUCglHZXRTZWNyZXQSIi5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlcXVlc3QaIy5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlc3BvbnNlQkNaQWdpdGh1Yi5jb20vaG9sb3MtcnVuL2hvbG9zLWNvbnNvbGUvZ2VuL2hvbG9zL2NvbnNvbGUvdjE7Y29uc29sZXYxYgZwcm90bzM");
+  fileDesc("Ch5ob2xvcy9jb25zb2xlL3YxL3NlY3JldHMucHJvdG8SEGhvbG9zLmNvbnNvbGUudjEiIAoQR2V0U2VjcmV0UmVxdWVzdBIMCgRuYW1lGAEgASgJIn0KEUdldFNlY3JldFJlc3BvbnNlEjsKBGRhdGEYASADKAsyLS5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlc3BvbnNlLkRhdGFFbnRyeRorCglEYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ASIUChJMaXN0U2VjcmV0c1JlcXVlc3QiSAoTTGlzdFNlY3JldHNSZXNwb25zZRIxCgdzZWNyZXRzGAEgAygLMiAuaG9sb3MuY29uc29sZS52MS5TZWNyZXRNZXRhZGF0YSIeCg5TZWNyZXRNZXRhZGF0YRIMCgRuYW1lGAEgASgJMsIBCg5TZWNyZXRzU2VydmljZRJaCgtMaXN0U2VjcmV0cxIkLmhvbG9zLmNvbnNvbGUudjEuTGlzdFNlY3JldHNSZXF1ZXN0GiUuaG9sb3MuY29uc29sZS52MS5MaXN0U2VjcmV0c1Jlc3BvbnNlElQKCUdldFNlY3JldBIiLmhvbG9zLmNvbnNvbGUudjEuR2V0U2VjcmV0UmVxdWVzdBojLmhvbG9zLmNvbnNvbGUudjEuR2V0U2VjcmV0UmVzcG9uc2VCQ1pBZ2l0aHViLmNvbS9ob2xvcy1ydW4vaG9sb3MtY29uc29sZS9nZW4vaG9sb3MvY29uc29sZS92MTtjb25zb2xldjFiBnByb3RvMw");
 
 /**
  * Describes the message holos.console.v1.GetSecretRequest.
@@ -23,6 +23,27 @@ export const GetSecretRequestSchema = /*@__PURE__*/
  */
 export const GetSecretResponseSchema = /*@__PURE__*/
   messageDesc(file_holos_console_v1_secrets, 1);
+
+/**
+ * Describes the message holos.console.v1.ListSecretsRequest.
+ * Use `create(ListSecretsRequestSchema)` to create a new message.
+ */
+export const ListSecretsRequestSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 2);
+
+/**
+ * Describes the message holos.console.v1.ListSecretsResponse.
+ * Use `create(ListSecretsResponseSchema)` to create a new message.
+ */
+export const ListSecretsResponseSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 3);
+
+/**
+ * Describes the message holos.console.v1.SecretMetadata.
+ * Use `create(SecretMetadataSchema)` to create a new message.
+ */
+export const SecretMetadataSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 4);
 
 /**
  * SecretsService provides access to Kubernetes secrets with RBAC.
