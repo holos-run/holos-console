@@ -42,6 +42,9 @@ const (
 	// SecretsServiceUpdateSecretProcedure is the fully-qualified name of the SecretsService's
 	// UpdateSecret RPC.
 	SecretsServiceUpdateSecretProcedure = "/holos.console.v1.SecretsService/UpdateSecret"
+	// SecretsServiceCreateSecretProcedure is the fully-qualified name of the SecretsService's
+	// CreateSecret RPC.
+	SecretsServiceCreateSecretProcedure = "/holos.console.v1.SecretsService/CreateSecret"
 )
 
 // SecretsServiceClient is a client for the holos.console.v1.SecretsService service.
@@ -59,6 +62,9 @@ type SecretsServiceClient interface {
 	// Requires authentication and PERMISSION_SECRETS_WRITE.
 	// Only operates on secrets with the console managed-by label.
 	UpdateSecret(context.Context, *connect.Request[v1.UpdateSecretRequest]) (*connect.Response[v1.UpdateSecretResponse], error)
+	// CreateSecret creates a new secret with the console managed-by label.
+	// Requires authentication and PERMISSION_SECRETS_WRITE.
+	CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error)
 }
 
 // NewSecretsServiceClient constructs a client for the holos.console.v1.SecretsService service. By
@@ -90,6 +96,12 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(secretsServiceMethods.ByName("UpdateSecret")),
 			connect.WithClientOptions(opts...),
 		),
+		createSecret: connect.NewClient[v1.CreateSecretRequest, v1.CreateSecretResponse](
+			httpClient,
+			baseURL+SecretsServiceCreateSecretProcedure,
+			connect.WithSchema(secretsServiceMethods.ByName("CreateSecret")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -98,6 +110,7 @@ type secretsServiceClient struct {
 	listSecrets  *connect.Client[v1.ListSecretsRequest, v1.ListSecretsResponse]
 	getSecret    *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
 	updateSecret *connect.Client[v1.UpdateSecretRequest, v1.UpdateSecretResponse]
+	createSecret *connect.Client[v1.CreateSecretRequest, v1.CreateSecretResponse]
 }
 
 // ListSecrets calls holos.console.v1.SecretsService.ListSecrets.
@@ -115,6 +128,11 @@ func (c *secretsServiceClient) UpdateSecret(ctx context.Context, req *connect.Re
 	return c.updateSecret.CallUnary(ctx, req)
 }
 
+// CreateSecret calls holos.console.v1.SecretsService.CreateSecret.
+func (c *secretsServiceClient) CreateSecret(ctx context.Context, req *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error) {
+	return c.createSecret.CallUnary(ctx, req)
+}
+
 // SecretsServiceHandler is an implementation of the holos.console.v1.SecretsService service.
 type SecretsServiceHandler interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
@@ -130,6 +148,9 @@ type SecretsServiceHandler interface {
 	// Requires authentication and PERMISSION_SECRETS_WRITE.
 	// Only operates on secrets with the console managed-by label.
 	UpdateSecret(context.Context, *connect.Request[v1.UpdateSecretRequest]) (*connect.Response[v1.UpdateSecretResponse], error)
+	// CreateSecret creates a new secret with the console managed-by label.
+	// Requires authentication and PERMISSION_SECRETS_WRITE.
+	CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error)
 }
 
 // NewSecretsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -157,6 +178,12 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 		connect.WithSchema(secretsServiceMethods.ByName("UpdateSecret")),
 		connect.WithHandlerOptions(opts...),
 	)
+	secretsServiceCreateSecretHandler := connect.NewUnaryHandler(
+		SecretsServiceCreateSecretProcedure,
+		svc.CreateSecret,
+		connect.WithSchema(secretsServiceMethods.ByName("CreateSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.SecretsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SecretsServiceListSecretsProcedure:
@@ -165,6 +192,8 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 			secretsServiceGetSecretHandler.ServeHTTP(w, r)
 		case SecretsServiceUpdateSecretProcedure:
 			secretsServiceUpdateSecretHandler.ServeHTTP(w, r)
+		case SecretsServiceCreateSecretProcedure:
+			secretsServiceCreateSecretHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -184,4 +213,8 @@ func (UnimplementedSecretsServiceHandler) GetSecret(context.Context, *connect.Re
 
 func (UnimplementedSecretsServiceHandler) UpdateSecret(context.Context, *connect.Request[v1.UpdateSecretRequest]) (*connect.Response[v1.UpdateSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.UpdateSecret is not implemented"))
+}
+
+func (UnimplementedSecretsServiceHandler) CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.CreateSecret is not implemented"))
 }

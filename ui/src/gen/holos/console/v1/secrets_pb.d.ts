@@ -130,6 +130,61 @@ export declare type UpdateSecretResponse = Message<"holos.console.v1.UpdateSecre
 export declare const UpdateSecretResponseSchema: GenMessage<UpdateSecretResponse>;
 
 /**
+ * CreateSecretRequest contains the new secret's name, data, and access control.
+ *
+ * @generated from message holos.console.v1.CreateSecretRequest
+ */
+export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecretRequest"> & {
+  /**
+   * name is the name of the secret to create.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * data contains the secret key-value pairs.
+   * Values are the raw secret bytes (not base64 encoded).
+   *
+   * @generated from field: map<string, bytes> data = 2;
+   */
+  data: { [key: string]: Uint8Array };
+
+  /**
+   * allowed_roles specifies which roles can access this secret.
+   *
+   * @generated from field: repeated string allowed_roles = 3;
+   */
+  allowedRoles: string[];
+};
+
+/**
+ * Describes the message holos.console.v1.CreateSecretRequest.
+ * Use `create(CreateSecretRequestSchema)` to create a new message.
+ */
+export declare const CreateSecretRequestSchema: GenMessage<CreateSecretRequest>;
+
+/**
+ * CreateSecretResponse contains the name of the created secret.
+ *
+ * @generated from message holos.console.v1.CreateSecretResponse
+ */
+export declare type CreateSecretResponse = Message<"holos.console.v1.CreateSecretResponse"> & {
+  /**
+   * name is the name of the created secret.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CreateSecretResponse.
+ * Use `create(CreateSecretResponseSchema)` to create a new message.
+ */
+export declare const CreateSecretResponseSchema: GenMessage<CreateSecretResponse>;
+
+/**
  * SecretMetadata contains non-sensitive information about a secret.
  *
  * @generated from message holos.console.v1.SecretMetadata
@@ -215,6 +270,17 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof UpdateSecretRequestSchema;
     output: typeof UpdateSecretResponseSchema;
+  },
+  /**
+   * CreateSecret creates a new secret with the console managed-by label.
+   * Requires authentication and PERMISSION_SECRETS_WRITE.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.CreateSecret
+   */
+  createSecret: {
+    methodKind: "unary";
+    input: typeof CreateSecretRequestSchema;
+    output: typeof CreateSecretResponseSchema;
   },
 }>;
 

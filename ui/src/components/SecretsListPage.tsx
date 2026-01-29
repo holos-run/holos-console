@@ -6,11 +6,22 @@ import {
   Typography,
   Box,
   Alert,
+  Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  Checkbox,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
+  Snackbar,
+  Stack,
+  TextField,
   Tooltip,
   Chip,
 } from '@mui/material'
@@ -26,6 +37,15 @@ export function SecretsListPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  // Create dialog state
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [createData, setCreateData] = useState('')
+  const [createRoles, setCreateRoles] = useState<string[]>(['editor'])
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createSuccess, setCreateSuccess] = useState(false)
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -34,34 +54,102 @@ export function SecretsListPage() {
   }, [authLoading, isAuthenticated, login])
 
   // Fetch secrets list when authenticated
-  useEffect(() => {
+  const fetchSecrets = async () => {
     if (!isAuthenticated) return
+    setIsLoading(true)
+    setError(null)
 
-    const fetchSecrets = async () => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const token = getAccessToken()
-        const response = await secretsClient.listSecrets(
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+    try {
+      const token = getAccessToken()
+      const response = await secretsClient.listSecrets(
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
           },
-        )
+        },
+      )
 
-        setSecrets(response.secrets)
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)))
-      } finally {
-        setIsLoading(false)
-      }
+      setSecrets(response.secrets)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchSecrets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, getAccessToken])
+
+  const handleCreateOpen = () => {
+    setCreateName('')
+    setCreateData('')
+    setCreateRoles(['editor'])
+    setCreateError(null)
+    setCreateOpen(true)
+  }
+
+  const handleCreateClose = () => {
+    setCreateOpen(false)
+  }
+
+  const handleRoleToggle = (role: string) => {
+    setCreateRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    )
+  }
+
+  const handleCreate = async () => {
+    if (!createName.trim()) {
+      setCreateError('Secret name is required')
+      return
+    }
+    if (createRoles.length === 0) {
+      setCreateError('At least one role is required')
+      return
     }
 
-    fetchSecrets()
-  }, [isAuthenticated, getAccessToken])
+    setIsCreating(true)
+    setCreateError(null)
+
+    try {
+      const token = getAccessToken()
+      const encoder = new TextEncoder()
+      const data: Record<string, Uint8Array> = {}
+      for (const line of createData.split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed === '' || trimmed.startsWith('#')) continue
+        const eqIndex = trimmed.indexOf('=')
+        if (eqIndex === -1) continue
+        const key = trimmed.slice(0, eqIndex)
+        const value = trimmed.slice(eqIndex + 1)
+        data[key] = encoder.encode(value)
+      }
+
+      await secretsClient.createSecret(
+        {
+          name: createName.trim(),
+          data,
+          allowedRoles: createRoles,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+
+      setCreateOpen(false)
+      setCreateSuccess(true)
+      fetchSecrets()
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsCreating(false)
+    }
+  }
 
   // Show loading while checking auth or fetching secrets
   if (authLoading || (isAuthenticated && isLoading)) {
@@ -90,54 +178,125 @@ export function SecretsListPage() {
 
   // Show secrets list
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Secrets
-        </Typography>
-        {secrets.length === 0 ? (
-          <Typography color="text.secondary">
-            No secrets available. Secrets must have the label{' '}
-            <code>app.kubernetes.io/managed-by=console.holos.run</code> to appear here.
-          </Typography>
-        ) : (
-          <List>
-            {secrets.map((secret) => (
-              <ListItem
-                key={secret.name}
-                disablePadding
-                secondaryAction={
-                  !secret.accessible && (
-                    <Tooltip
-                      title={
-                        secret.allowedGroups.length > 0
-                          ? `Access restricted to: ${secret.allowedGroups.join(', ')}`
-                          : 'No groups have access to this secret'
-                      }
-                    >
-                      <Chip
-                        icon={<LockIcon />}
-                        label="No access"
-                        size="small"
-                        color="default"
-                        variant="outlined"
-                      />
-                    </Tooltip>
-                  )
-                }
-              >
-                <ListItemButton
-                  component={RouterLink}
-                  to={`/secrets/${secret.name}`}
-                  disabled={!secret.accessible}
+    <>
+      <Card variant="outlined">
+        <CardContent>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="h6">Secrets</Typography>
+            <Button variant="contained" size="small" onClick={handleCreateOpen}>
+              Create Secret
+            </Button>
+          </Stack>
+          {secrets.length === 0 ? (
+            <Typography color="text.secondary">
+              No secrets available. Secrets must have the label{' '}
+              <code>app.kubernetes.io/managed-by=console.holos.run</code> to appear here.
+            </Typography>
+          ) : (
+            <List>
+              {secrets.map((secret) => (
+                <ListItem
+                  key={secret.name}
+                  disablePadding
+                  secondaryAction={
+                    !secret.accessible && (
+                      <Tooltip
+                        title={
+                          secret.allowedGroups.length > 0
+                            ? `Access restricted to: ${secret.allowedGroups.join(', ')}`
+                            : 'No groups have access to this secret'
+                        }
+                      >
+                        <Chip
+                          icon={<LockIcon />}
+                          label="No access"
+                          size="small"
+                          color="default"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    )
+                  }
                 >
-                  <ListItemText primary={secret.name} />
-                </ListItemButton>
-              </ListItem>
+                  <ListItemButton
+                    component={RouterLink}
+                    to={`/secrets/${secret.name}`}
+                    disabled={!secret.accessible}
+                  >
+                    <ListItemText primary={secret.name} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Secret</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Name"
+            fullWidth
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            placeholder="my-secret"
+            helperText="Lowercase alphanumeric and hyphens only"
+          />
+          <TextField
+            margin="dense"
+            label="Data (env format)"
+            fullWidth
+            multiline
+            minRows={4}
+            value={createData}
+            onChange={(e) => setCreateData(e.target.value)}
+            placeholder={'KEY=value\nANOTHER_KEY=another-value'}
+            slotProps={{
+              input: {
+                sx: { fontFamily: 'monospace' },
+              },
+            }}
+          />
+          <FormControl component="fieldset" sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Allowed Roles
+            </Typography>
+            {['viewer', 'editor', 'owner'].map((role) => (
+              <FormControlLabel
+                key={role}
+                control={
+                  <Checkbox
+                    checked={createRoles.includes(role)}
+                    onChange={() => handleRoleToggle(role)}
+                  />
+                }
+                label={role.charAt(0).toUpperCase() + role.slice(1)}
+              />
             ))}
-          </List>
-        )}
-      </CardContent>
-    </Card>
+          </FormControl>
+          {createError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {createError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCreateClose}>Cancel</Button>
+          <Button onClick={handleCreate} variant="contained" disabled={isCreating}>
+            {isCreating ? 'Creating...' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={createSuccess}
+        autoHideDuration={3000}
+        onClose={() => setCreateSuccess(false)}
+        message="Secret created successfully"
+      />
+    </>
   )
 }

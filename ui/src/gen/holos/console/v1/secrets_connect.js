@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
+import { CreateSecretRequest, CreateSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -52,6 +52,18 @@ export const SecretsService = {
       name: "UpdateSecret",
       I: UpdateSecretRequest,
       O: UpdateSecretResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * CreateSecret creates a new secret with the console managed-by label.
+     * Requires authentication and PERMISSION_SECRETS_WRITE.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.CreateSecret
+     */
+    createSecret: {
+      name: "CreateSecret",
+      I: CreateSecretRequest,
+      O: CreateSecretResponse,
       kind: MethodKind.Unary,
     },
   }
