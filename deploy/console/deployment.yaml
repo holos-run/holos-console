@@ -18,10 +18,24 @@ spec:
         - name: holos-console
           image: ghcr.io/holos-run/holos-console:latest
           args:
-            - --listen=:8443
+            - --plain-http
+            - --listen=:8080
+            - --issuer=https://holos.localhost/dex
           ports:
-            - name: https
-              containerPort: 8443
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
           resources:
             requests:
               cpu: 10m

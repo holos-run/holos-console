@@ -10,6 +10,7 @@ func TestDeriveIssuer(t *testing.T) {
 		name       string
 		listenAddr string
 		issuer     string
+		plainHTTP  bool
 		want       string
 	}{
 		{
@@ -36,10 +37,24 @@ func TestDeriveIssuer(t *testing.T) {
 			issuer:     "",
 			want:       "https://localhost:8443/dex",
 		},
+		{
+			name:       "plain http derive",
+			listenAddr: ":8080",
+			issuer:     "",
+			plainHTTP:  true,
+			want:       "http://localhost:8080/dex",
+		},
+		{
+			name:       "plain http explicit issuer unchanged",
+			listenAddr: ":8080",
+			issuer:     "https://holos.example.com/dex",
+			plainHTTP:  true,
+			want:       "https://holos.example.com/dex",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := deriveIssuer(tt.listenAddr, tt.issuer)
+			got := deriveIssuer(tt.listenAddr, tt.issuer, tt.plainHTTP)
 			if got != tt.want {
 				t.Errorf("deriveIssuer() = %v, want %v", got, tt.want)
 			}

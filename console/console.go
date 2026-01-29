@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -44,6 +45,10 @@ type Config struct {
 	ListenAddr string
 	CertFile   string
 	KeyFile    string
+
+	// PlainHTTP disables TLS, listening on plain HTTP instead.
+	// Use when running behind a TLS-terminating ingress or gateway.
+	PlainHTTP bool
 
 	// Issuer is the OIDC issuer URL for token validation.
 	// This also determines the embedded Dex issuer URL.
@@ -97,9 +102,10 @@ func deriveSilentRedirectURI(issuer string) string {
 	return base + "/ui/silent-callback.html"
 }
 
-// Server represents the console HTTPS server.
+// Server represents the console server.
 type Server struct {
-	cfg Config
+	cfg   Config
+	ready atomic.Bool
 }
 
 // New creates a new Server with the given configuration.
@@ -110,6 +116,23 @@ func New(cfg Config) *Server {
 // Serve starts the HTTPS server and blocks until the context is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
+
+	// Health check endpoints for Kubernetes probes
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "ok")
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		if s.ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, "ok")
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, "not ready")
+		}
+	})
 
 	// Configure ConnectRPC interceptors for public routes (no auth required)
 	publicInterceptors := connect.WithInterceptors(
@@ -280,23 +303,34 @@ func (s *Server) Serve(ctx context.Context) error {
 		},
 	}
 
-	// Configure TLS
-	tlsConfig, err := s.tlsConfig()
-	if err != nil {
-		return fmt.Errorf("failed to configure TLS: %w", err)
+	// Configure TLS (skipped for plain HTTP)
+	if !s.cfg.PlainHTTP {
+		tlsConfig, err := s.tlsConfig()
+		if err != nil {
+			return fmt.Errorf("failed to configure TLS: %w", err)
+		}
+		server.TLSConfig = tlsConfig
 	}
-	server.TLSConfig = tlsConfig
+
+	// Mark server as ready before starting the listener
+	s.ready.Store(true)
 
 	// Start server
-	slog.Info("starting server", "addr", s.cfg.ListenAddr)
+	scheme := "https"
+	if s.cfg.PlainHTTP {
+		scheme = "http"
+	}
+	slog.Info("starting server", "addr", s.cfg.ListenAddr, "scheme", scheme)
 
 	errCh := make(chan error, 1)
 	go func() {
-		if s.cfg.CertFile != "" && s.cfg.KeyFile != "" {
+		if s.cfg.PlainHTTP {
+			errCh <- server.ListenAndServe()
+		} else if s.cfg.CertFile != "" && s.cfg.KeyFile != "" {
 			errCh <- server.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
 		} else {
 			// Use auto-generated certificate
-			listener, err := tls.Listen("tcp", s.cfg.ListenAddr, tlsConfig)
+			listener, err := tls.Listen("tcp", s.cfg.ListenAddr, server.TLSConfig)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to create TLS listener: %w", err)
 				return
