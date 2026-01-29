@@ -10,12 +10,14 @@ vi.mock('../client', () => ({
   secretsClient: {
     listSecrets: vi.fn(),
     createSecret: vi.fn(),
+    deleteSecret: vi.fn(),
   },
 }))
 
 import { secretsClient } from '../client'
 const mockListSecrets = vi.mocked(secretsClient.listSecrets)
 const mockCreateSecret = vi.mocked(secretsClient.createSecret)
+const mockDeleteSecret = vi.mocked(secretsClient.deleteSecret)
 
 function createMockUser(profile: Record<string, unknown>): User {
   return {
@@ -210,6 +212,94 @@ describe('SecretsListPage', () => {
 
       // createSecret should not be called
       expect(mockCreateSecret).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('delete secret', () => {
+    it('shows delete icon on accessible secrets', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/delete my-secret/i)).toBeInTheDocument()
+      })
+    })
+
+    it('opens confirmation dialog on delete click', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/delete my-secret/i)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText(/delete my-secret/i))
+
+      expect(screen.getByText(/are you sure/i)).toBeInTheDocument()
+    })
+
+    it('calls deleteSecret RPC on confirm', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      mockDeleteSecret.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof secretsClient.deleteSecret>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/delete my-secret/i)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText(/delete my-secret/i))
+
+      // Find the Delete button in the dialog
+      const dialogDeleteButton = screen.getAllByRole('button', { name: /delete/i }).find(
+        (btn) => btn.closest('[role="dialog"]'),
+      )
+      fireEvent.click(dialogDeleteButton!)
+
+      await waitFor(() => {
+        expect(mockDeleteSecret).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: 'Bearer test-token',
+            }),
+          }),
+        )
+      })
     })
   })
 })

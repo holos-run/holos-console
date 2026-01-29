@@ -185,6 +185,40 @@ export declare type CreateSecretResponse = Message<"holos.console.v1.CreateSecre
 export declare const CreateSecretResponseSchema: GenMessage<CreateSecretResponse>;
 
 /**
+ * DeleteSecretRequest contains the name of the secret to delete.
+ *
+ * @generated from message holos.console.v1.DeleteSecretRequest
+ */
+export declare type DeleteSecretRequest = Message<"holos.console.v1.DeleteSecretRequest"> & {
+  /**
+   * name is the name of the secret to delete.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretRequest.
+ * Use `create(DeleteSecretRequestSchema)` to create a new message.
+ */
+export declare const DeleteSecretRequestSchema: GenMessage<DeleteSecretRequest>;
+
+/**
+ * DeleteSecretResponse is empty on success.
+ *
+ * @generated from message holos.console.v1.DeleteSecretResponse
+ */
+export declare type DeleteSecretResponse = Message<"holos.console.v1.DeleteSecretResponse"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretResponse.
+ * Use `create(DeleteSecretResponseSchema)` to create a new message.
+ */
+export declare const DeleteSecretResponseSchema: GenMessage<DeleteSecretResponse>;
+
+/**
  * SecretMetadata contains non-sensitive information about a secret.
  *
  * @generated from message holos.console.v1.SecretMetadata
@@ -281,6 +315,18 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof CreateSecretRequestSchema;
     output: typeof CreateSecretResponseSchema;
+  },
+  /**
+   * DeleteSecret deletes a secret by name.
+   * Requires authentication and PERMISSION_SECRETS_DELETE.
+   * Only operates on secrets with the console managed-by label.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.DeleteSecret
+   */
+  deleteSecret: {
+    methodKind: "unary";
+    input: typeof DeleteSecretRequestSchema;
+    output: typeof DeleteSecretResponseSchema;
   },
 }>;
 

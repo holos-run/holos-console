@@ -45,6 +45,9 @@ const (
 	// SecretsServiceCreateSecretProcedure is the fully-qualified name of the SecretsService's
 	// CreateSecret RPC.
 	SecretsServiceCreateSecretProcedure = "/holos.console.v1.SecretsService/CreateSecret"
+	// SecretsServiceDeleteSecretProcedure is the fully-qualified name of the SecretsService's
+	// DeleteSecret RPC.
+	SecretsServiceDeleteSecretProcedure = "/holos.console.v1.SecretsService/DeleteSecret"
 )
 
 // SecretsServiceClient is a client for the holos.console.v1.SecretsService service.
@@ -65,6 +68,10 @@ type SecretsServiceClient interface {
 	// CreateSecret creates a new secret with the console managed-by label.
 	// Requires authentication and PERMISSION_SECRETS_WRITE.
 	CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error)
+	// DeleteSecret deletes a secret by name.
+	// Requires authentication and PERMISSION_SECRETS_DELETE.
+	// Only operates on secrets with the console managed-by label.
+	DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error)
 }
 
 // NewSecretsServiceClient constructs a client for the holos.console.v1.SecretsService service. By
@@ -102,6 +109,12 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(secretsServiceMethods.ByName("CreateSecret")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteSecret: connect.NewClient[v1.DeleteSecretRequest, v1.DeleteSecretResponse](
+			httpClient,
+			baseURL+SecretsServiceDeleteSecretProcedure,
+			connect.WithSchema(secretsServiceMethods.ByName("DeleteSecret")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -111,6 +124,7 @@ type secretsServiceClient struct {
 	getSecret    *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
 	updateSecret *connect.Client[v1.UpdateSecretRequest, v1.UpdateSecretResponse]
 	createSecret *connect.Client[v1.CreateSecretRequest, v1.CreateSecretResponse]
+	deleteSecret *connect.Client[v1.DeleteSecretRequest, v1.DeleteSecretResponse]
 }
 
 // ListSecrets calls holos.console.v1.SecretsService.ListSecrets.
@@ -133,6 +147,11 @@ func (c *secretsServiceClient) CreateSecret(ctx context.Context, req *connect.Re
 	return c.createSecret.CallUnary(ctx, req)
 }
 
+// DeleteSecret calls holos.console.v1.SecretsService.DeleteSecret.
+func (c *secretsServiceClient) DeleteSecret(ctx context.Context, req *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error) {
+	return c.deleteSecret.CallUnary(ctx, req)
+}
+
 // SecretsServiceHandler is an implementation of the holos.console.v1.SecretsService service.
 type SecretsServiceHandler interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
@@ -151,6 +170,10 @@ type SecretsServiceHandler interface {
 	// CreateSecret creates a new secret with the console managed-by label.
 	// Requires authentication and PERMISSION_SECRETS_WRITE.
 	CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error)
+	// DeleteSecret deletes a secret by name.
+	// Requires authentication and PERMISSION_SECRETS_DELETE.
+	// Only operates on secrets with the console managed-by label.
+	DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error)
 }
 
 // NewSecretsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -184,6 +207,12 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 		connect.WithSchema(secretsServiceMethods.ByName("CreateSecret")),
 		connect.WithHandlerOptions(opts...),
 	)
+	secretsServiceDeleteSecretHandler := connect.NewUnaryHandler(
+		SecretsServiceDeleteSecretProcedure,
+		svc.DeleteSecret,
+		connect.WithSchema(secretsServiceMethods.ByName("DeleteSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.SecretsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SecretsServiceListSecretsProcedure:
@@ -194,6 +223,8 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 			secretsServiceUpdateSecretHandler.ServeHTTP(w, r)
 		case SecretsServiceCreateSecretProcedure:
 			secretsServiceCreateSecretHandler.ServeHTTP(w, r)
+		case SecretsServiceDeleteSecretProcedure:
+			secretsServiceDeleteSecretHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -217,4 +248,8 @@ func (UnimplementedSecretsServiceHandler) UpdateSecret(context.Context, *connect
 
 func (UnimplementedSecretsServiceHandler) CreateSecret(context.Context, *connect.Request[v1.CreateSecretRequest]) (*connect.Response[v1.CreateSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.CreateSecret is not implemented"))
+}
+
+func (UnimplementedSecretsServiceHandler) DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.DeleteSecret is not implemented"))
 }

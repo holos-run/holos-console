@@ -11,10 +11,12 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   FormControl,
   FormControlLabel,
   Checkbox,
+  IconButton,
   List,
   ListItem,
   ListItemButton,
@@ -26,6 +28,7 @@ import {
   Chip,
 } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
+import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
@@ -45,6 +48,13 @@ export function SecretsListPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createSuccess, setCreateSuccess] = useState(false)
+
+  // Delete state
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteSuccess, setDeleteSuccess] = useState(false)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -82,6 +92,38 @@ export function SecretsListPage() {
     fetchSecrets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, getAccessToken])
+
+  const handleDeleteOpen = (name: string) => {
+    setDeleteTarget(name)
+    setDeleteError(null)
+    setDeleteOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    setDeleteError(null)
+
+    try {
+      const token = getAccessToken()
+      await secretsClient.deleteSecret(
+        { name: deleteTarget },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+      setDeleteOpen(false)
+      setDeleteTarget(null)
+      setDeleteSuccess(true)
+      fetchSecrets()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const handleCreateOpen = () => {
     setCreateName('')
@@ -199,7 +241,7 @@ export function SecretsListPage() {
                   key={secret.name}
                   disablePadding
                   secondaryAction={
-                    !secret.accessible && (
+                    !secret.accessible ? (
                       <Tooltip
                         title={
                           secret.allowedGroups.length > 0
@@ -215,6 +257,15 @@ export function SecretsListPage() {
                           variant="outlined"
                         />
                       </Tooltip>
+                    ) : (
+                      <IconButton
+                        edge="end"
+                        aria-label={`delete ${secret.name}`}
+                        onClick={() => handleDeleteOpen(secret.name)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     )
                   }
                 >
@@ -291,11 +342,37 @@ export function SecretsListPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <DialogTitle>Delete Secret</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete secret &quot;{deleteTarget}&quot;? This action cannot be undone.
+          </DialogContentText>
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
         open={createSuccess}
         autoHideDuration={3000}
         onClose={() => setCreateSuccess(false)}
         message="Secret created successfully"
+      />
+      <Snackbar
+        open={deleteSuccess}
+        autoHideDuration={3000}
+        onClose={() => setDeleteSuccess(false)}
+        message="Secret deleted successfully"
       />
     </>
   )

@@ -195,6 +195,71 @@ func TestCreateSecret(t *testing.T) {
 	})
 }
 
+func TestDeleteSecret(t *testing.T) {
+	t.Run("deletes managed secret", func(t *testing.T) {
+		// Given: Managed secret exists
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		// When: DeleteSecret is called
+		err := k8sClient.DeleteSecret(context.Background(), "my-secret")
+
+		// Then: No error
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// Verify secret is gone
+		_, err = k8sClient.GetSecret(context.Background(), "my-secret")
+		if !errors.IsNotFound(err) {
+			t.Errorf("expected NotFound after delete, got %v", err)
+		}
+	})
+
+	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		err := k8sClient.DeleteSecret(context.Background(), "missing")
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.IsNotFound(err) {
+			t.Errorf("expected NotFound error, got %v", err)
+		}
+	})
+
+	t.Run("returns error for secret without managed-by label", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unmanaged-secret",
+				Namespace: "test-namespace",
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		err := k8sClient.DeleteSecret(context.Background(), "unmanaged-secret")
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "not managed by") {
+			t.Errorf("expected managed-by error, got %v", err)
+		}
+	})
+}
+
 func TestGetAllowedGroups(t *testing.T) {
 	t.Run("parses allowed-groups annotation", func(t *testing.T) {
 		// Given: Secret with annotation holos.run/allowed-groups: ["admin","ops"]

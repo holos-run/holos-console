@@ -100,6 +100,60 @@ func (h *Handler) GetSecret(
 	return h.returnSecret(ctx, claims, secret)
 }
 
+// DeleteSecret deletes a secret with RBAC authorization.
+func (h *Handler) DeleteSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.DeleteSecretRequest],
+) (*connect.Response[consolev1.DeleteSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get existing secret to check RBAC
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC for delete access
+	allowedRoles, err := GetAllowedRoles(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := CheckDeleteAccess(claims.Groups, allowedRoles); err != nil {
+		slog.WarnContext(ctx, "secret delete denied",
+			slog.String("action", "secret_delete_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+			slog.Any("user_groups", claims.Groups),
+			slog.Any("allowed_roles", allowedRoles),
+		)
+		return nil, err
+	}
+
+	// Perform the delete
+	if err := h.k8s.DeleteSecret(ctx, req.Msg.Name); err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret deleted",
+		slog.String("action", "secret_delete"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.DeleteSecretResponse{}), nil
+}
+
 // CreateSecret creates a new secret with RBAC authorization.
 // Since the secret doesn't exist yet, authorization is checked against the user's own roles.
 func (h *Handler) CreateSecret(

@@ -20,6 +20,12 @@ func CheckWriteAccess(userGroups, allowedRoles []string) error {
 	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsWrite)
 }
 
+// CheckDeleteAccess verifies that the user has permission to delete secrets.
+// Uses role-based access control with the PERMISSION_SECRETS_DELETE permission.
+func CheckDeleteAccess(userGroups, allowedRoles []string) error {
+	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsDelete)
+}
+
 // CheckListAccess verifies that the user has permission to list secrets.
 // Uses role-based access control with the PERMISSION_SECRETS_LIST permission.
 func CheckListAccess(userGroups, allowedRoles []string) error {

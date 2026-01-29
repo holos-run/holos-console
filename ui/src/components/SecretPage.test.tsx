@@ -10,12 +10,14 @@ vi.mock('../client', () => ({
   secretsClient: {
     getSecret: vi.fn(),
     updateSecret: vi.fn(),
+    deleteSecret: vi.fn(),
   },
 }))
 
 import { secretsClient } from '../client'
 const mockGetSecret = vi.mocked(secretsClient.getSecret)
 const mockUpdateSecret = vi.mocked(secretsClient.updateSecret)
+const mockDeleteSecret = vi.mocked(secretsClient.deleteSecret)
 
 // Helper to create a mock User with profile
 function createMockUser(profile: Record<string, unknown>): User {
@@ -372,6 +374,121 @@ describe('SecretPage', () => {
 
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'key=new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/permission denied/i)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('delete functionality', () => {
+    it('shows Delete button when secret is loaded', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+      })
+    })
+
+    it('opens confirmation dialog on Delete click', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      expect(screen.getByText(/are you sure/i)).toBeInTheDocument()
+    })
+
+    it('calls deleteSecret RPC on confirm', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockDeleteSecret.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof secretsClient.deleteSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument()
+      })
+
+      // Click delete to open dialog
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      // Confirm in dialog - the dialog has its own Delete button
+      const dialogDeleteButton = screen.getAllByRole('button', { name: /delete/i }).find(
+        (btn) => btn.closest('[role="dialog"]'),
+      )
+      expect(dialogDeleteButton).toBeDefined()
+      fireEvent.click(dialogDeleteButton!)
+
+      await waitFor(() => {
+        expect(mockDeleteSecret).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: 'Bearer test-token',
+            }),
+          }),
+        )
+      })
+    })
+
+    it('shows error on delete failure', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockDeleteSecret.mockRejectedValue(new Error('permission denied'))
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      const dialogDeleteButton = screen.getAllByRole('button', { name: /delete/i }).find(
+        (btn) => btn.closest('[role="dialog"]'),
+      )
+      fireEvent.click(dialogDeleteButton!)
 
       await waitFor(() => {
         expect(screen.getByText(/permission denied/i)).toBeInTheDocument()

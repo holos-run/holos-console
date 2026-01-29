@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateSecretRequest, CreateSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
+import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -64,6 +64,19 @@ export declare const SecretsService: {
       readonly name: "CreateSecret",
       readonly I: typeof CreateSecretRequest,
       readonly O: typeof CreateSecretResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * DeleteSecret deletes a secret by name.
+     * Requires authentication and PERMISSION_SECRETS_DELETE.
+     * Only operates on secrets with the console managed-by label.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.DeleteSecret
+     */
+    readonly deleteSecret: {
+      readonly name: "DeleteSecret",
+      readonly I: typeof DeleteSecretRequest,
+      readonly O: typeof DeleteSecretResponse,
       readonly kind: MethodKind.Unary,
     },
   }
