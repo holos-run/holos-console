@@ -14,6 +14,12 @@ func CheckReadAccess(userGroups, allowedRoles []string) error {
 	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsRead)
 }
 
+// CheckWriteAccess verifies that the user has permission to write secrets.
+// Uses role-based access control with the PERMISSION_SECRETS_WRITE permission.
+func CheckWriteAccess(userGroups, allowedRoles []string) error {
+	return rbac.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsWrite)
+}
+
 // CheckListAccess verifies that the user has permission to list secrets.
 // Uses role-based access control with the PERMISSION_SECRETS_LIST permission.
 func CheckListAccess(userGroups, allowedRoles []string) error {

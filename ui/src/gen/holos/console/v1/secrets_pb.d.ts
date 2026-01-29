@@ -88,6 +88,48 @@ export declare type ListSecretsResponse = Message<"holos.console.v1.ListSecretsR
 export declare const ListSecretsResponseSchema: GenMessage<ListSecretsResponse>;
 
 /**
+ * UpdateSecretRequest contains the name and replacement data for a secret.
+ *
+ * @generated from message holos.console.v1.UpdateSecretRequest
+ */
+export declare type UpdateSecretRequest = Message<"holos.console.v1.UpdateSecretRequest"> & {
+  /**
+   * name is the name of the secret to update.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * data replaces the entire secret data map.
+   * Values are the raw secret bytes (not base64 encoded).
+   *
+   * @generated from field: map<string, bytes> data = 2;
+   */
+  data: { [key: string]: Uint8Array };
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSecretRequest.
+ * Use `create(UpdateSecretRequestSchema)` to create a new message.
+ */
+export declare const UpdateSecretRequestSchema: GenMessage<UpdateSecretRequest>;
+
+/**
+ * UpdateSecretResponse is empty on success.
+ *
+ * @generated from message holos.console.v1.UpdateSecretResponse
+ */
+export declare type UpdateSecretResponse = Message<"holos.console.v1.UpdateSecretResponse"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSecretResponse.
+ * Use `create(UpdateSecretResponseSchema)` to create a new message.
+ */
+export declare const UpdateSecretResponseSchema: GenMessage<UpdateSecretResponse>;
+
+/**
  * SecretMetadata contains non-sensitive information about a secret.
  *
  * @generated from message holos.console.v1.SecretMetadata
@@ -161,6 +203,18 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof GetSecretRequestSchema;
     output: typeof GetSecretResponseSchema;
+  },
+  /**
+   * UpdateSecret replaces the data of an existing secret.
+   * Requires authentication and PERMISSION_SECRETS_WRITE.
+   * Only operates on secrets with the console managed-by label.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.UpdateSecret
+   */
+  updateSecret: {
+    methodKind: "unary";
+    input: typeof UpdateSecretRequestSchema;
+    output: typeof UpdateSecretResponseSchema;
   },
 }>;
 

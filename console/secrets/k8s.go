@@ -56,6 +56,24 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 	})
 }
 
+// UpdateSecret replaces the data of an existing secret.
+// Returns FailedPrecondition if the secret does not have the console managed-by label.
+func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "updating secret in kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	secret, err := c.GetSecret(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
+		return nil, fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
+	}
+	secret.Data = data
+	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+}
+
 // GetAllowedRoles parses the holos.run/allowed-roles annotation from a secret.
 // Falls back to holos.run/allowed-groups if the new annotation is not present.
 // Returns an empty slice if both annotations are missing.

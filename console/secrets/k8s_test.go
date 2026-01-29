@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -58,6 +59,86 @@ func TestGetSecret(t *testing.T) {
 		}
 		if !errors.IsNotFound(err) {
 			t.Errorf("expected NotFound error, got %v", err)
+		}
+	})
+}
+
+func TestUpdateSecret(t *testing.T) {
+	t.Run("replaces secret data", func(t *testing.T) {
+		// Given: Managed secret with original data
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+			},
+			Data: map[string][]byte{
+				"old-key": []byte("old-value"),
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		// When: UpdateSecret is called with new data
+		newData := map[string][]byte{
+			"new-key": []byte("new-value"),
+		}
+		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", newData)
+
+		// Then: Returns updated secret with new data
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if string(result.Data["new-key"]) != "new-value" {
+			t.Errorf("expected new-key='new-value', got %q", string(result.Data["new-key"]))
+		}
+		if _, ok := result.Data["old-key"]; ok {
+			t.Error("expected old-key to be removed")
+		}
+	})
+
+	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
+		// Given: No secrets exist
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		// When: UpdateSecret is called
+		_, err := k8sClient.UpdateSecret(context.Background(), "missing", map[string][]byte{"k": []byte("v")})
+
+		// Then: Returns NotFound error
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.IsNotFound(err) {
+			t.Errorf("expected NotFound error, got %v", err)
+		}
+	})
+
+	t.Run("returns error for secret without managed-by label", func(t *testing.T) {
+		// Given: Secret without managed-by label
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unmanaged-secret",
+				Namespace: "test-namespace",
+			},
+			Data: map[string][]byte{
+				"key": []byte("value"),
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		// When: UpdateSecret is called
+		_, err := k8sClient.UpdateSecret(context.Background(), "unmanaged-secret", map[string][]byte{"k": []byte("v")})
+
+		// Then: Returns error about managed-by label
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "not managed by") {
+			t.Errorf("expected managed-by error, got %v", err)
 		}
 	})
 }

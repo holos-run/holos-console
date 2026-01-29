@@ -7,7 +7,10 @@ import {
   Box,
   TextField,
   Alert,
+  Button,
   CircularProgress,
+  Snackbar,
+  Stack,
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
@@ -19,13 +22,35 @@ function formatAsEnvFile(data: Record<string, Uint8Array>): string {
     .join('\n')
 }
 
+// Parse env file format back to key-value map
+function parseEnvFile(text: string): Record<string, Uint8Array> {
+  const encoder = new TextEncoder()
+  const result: Record<string, Uint8Array> = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed === '' || trimmed.startsWith('#')) continue
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex === -1) continue
+    const key = trimmed.slice(0, eqIndex)
+    const value = trimmed.slice(eqIndex + 1)
+    result[key] = encoder.encode(value)
+  }
+  return result
+}
+
 export function SecretPage() {
   const { name } = useParams<{ name: string }>()
   const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
   const [secretData, setSecretData] = useState<string>('')
+  const [originalData, setOriginalData] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const isDirty = secretData !== originalData
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -56,6 +81,7 @@ export function SecretPage() {
         // Convert response data to env format
         const envContent = formatAsEnvFile(response.data as Record<string, Uint8Array>)
         setSecretData(envContent)
+        setOriginalData(envContent)
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)))
       } finally {
@@ -65,6 +91,32 @@ export function SecretPage() {
 
     fetchSecret()
   }, [isAuthenticated, name, getAccessToken])
+
+  const handleSave = async () => {
+    if (!name || !isDirty) return
+    setIsSaving(true)
+    setSaveError(null)
+    setSaveSuccess(false)
+
+    try {
+      const token = getAccessToken()
+      const data = parseEnvFile(secretData)
+      await secretsClient.updateSecret(
+        { name, data },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+      setOriginalData(secretData)
+      setSaveSuccess(true)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   // Show loading while checking auth or fetching secret
   if (authLoading || (isAuthenticated && isLoading)) {
@@ -115,13 +167,33 @@ export function SecretPage() {
           multiline
           fullWidth
           value={secretData}
+          onChange={(e) => setSecretData(e.target.value)}
           slotProps={{
             input: {
-              readOnly: true,
               sx: { fontFamily: 'monospace' },
             },
           }}
           minRows={4}
+        />
+        {saveError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {saveError}
+          </Alert>
+        )}
+        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
+        </Stack>
+        <Snackbar
+          open={saveSuccess}
+          autoHideDuration={3000}
+          onClose={() => setSaveSuccess(false)}
+          message="Secret saved successfully"
         />
       </CardContent>
     </Card>

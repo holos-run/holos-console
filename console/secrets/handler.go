@@ -100,6 +100,62 @@ func (h *Handler) GetSecret(
 	return h.returnSecret(ctx, claims, secret)
 }
 
+// UpdateSecret replaces the data of an existing secret with RBAC authorization.
+func (h *Handler) UpdateSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.UpdateSecretRequest],
+) (*connect.Response[consolev1.UpdateSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+	if len(req.Msg.Data) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret data is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get existing secret to check RBAC
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC for write access
+	allowedRoles, err := GetAllowedRoles(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := CheckWriteAccess(claims.Groups, allowedRoles); err != nil {
+		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
+		slog.WarnContext(ctx, "secret update denied",
+			slog.String("action", "secret_update_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	// Perform the update
+	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, req.Msg.Data); err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret updated",
+		slog.String("action", "secret_update"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.UpdateSecretResponse{}), nil
+}
+
 // returnSecret checks RBAC and returns the secret data.
 func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
 	// Check RBAC

@@ -400,6 +400,335 @@ func TestHandler_AuditLogging(t *testing.T) {
 	})
 }
 
+func TestHandler_UpdateSecret(t *testing.T) {
+	t.Run("returns success for authorized editor", func(t *testing.T) {
+		// Given: Managed secret with editor access, user is editor
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedRolesAnnotation: `["editor"]`,
+				},
+			},
+			Data: map[string][]byte{
+				"old-key": []byte("old-value"),
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{
+				"new-key": []byte("new-value"),
+			},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns success
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
+		// Given: Request without claims
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns Unauthenticated
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns PermissionDenied for viewer", func(t *testing.T) {
+		// Given: Secret allows editor, user is only viewer
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedRolesAnnotation: `["editor"]`,
+				},
+			},
+			Data: map[string][]byte{"k": []byte("v")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns PermissionDenied
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
+		// Given: Secret does not exist
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "missing",
+			Data: map[string][]byte{"k": []byte("v")},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns NotFound
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
+		// Given: Request with empty name
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "",
+			Data: map[string][]byte{"k": []byte("v")},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns InvalidArgument
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns InvalidArgument for empty data", func(t *testing.T) {
+		// Given: Request with empty data
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{},
+		})
+
+		// When: UpdateSecret RPC is called
+		_, err := handler.UpdateSecret(ctx, req)
+
+		// Then: Returns InvalidArgument
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+		}
+	})
+}
+
+func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
+	t.Run("logs secret_update on success", func(t *testing.T) {
+		// Given: Successful update setup
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedRolesAnnotation: `["editor"]`,
+				},
+			},
+			Data: map[string][]byte{"k": []byte("v")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{"new-key": []byte("new-value")},
+		})
+
+		// When: UpdateSecret succeeds
+		_, err := handler.UpdateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// Then: Logs action=secret_update
+		record := logHandler.findRecord("secret_update")
+		if record == nil {
+			t.Fatal("expected log record with action='secret_update', got none")
+		}
+		if record.Level != slog.LevelInfo {
+			t.Errorf("expected Info level, got %v", record.Level)
+		}
+	})
+
+	t.Run("logs secret_update_denied on RBAC failure", func(t *testing.T) {
+		// Given: User lacks write permission
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					AllowedRolesAnnotation: `["owner"]`,
+				},
+			},
+			Data: map[string][]byte{"k": []byte("v")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient)
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:    "user-456",
+			Email:  "other@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name: "my-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+		})
+
+		// When: UpdateSecret is denied
+		_, err := handler.UpdateSecret(ctx, req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		// Then: Logs action=secret_update_denied
+		record := logHandler.findRecord("secret_update_denied")
+		if record == nil {
+			t.Fatal("expected log record with action='secret_update_denied', got none")
+		}
+		if record.Level != slog.LevelWarn {
+			t.Errorf("expected Warn level, got %v", record.Level)
+		}
+	})
+}
+
 func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 	t.Run("returns secret with multiple data keys", func(t *testing.T) {
 		// Given: secret with multiple data keys

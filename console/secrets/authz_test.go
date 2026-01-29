@@ -46,6 +46,45 @@ func TestCheckReadAccess(t *testing.T) {
 	})
 }
 
+func TestCheckWriteAccess(t *testing.T) {
+	t.Run("allows write access for editor role", func(t *testing.T) {
+		userGroups := []string{"editor"}
+		allowedRoles := []string{"editor"}
+
+		err := CheckWriteAccess(userGroups, allowedRoles)
+		if err != nil {
+			t.Errorf("expected nil error (access granted), got %v", err)
+		}
+	})
+
+	t.Run("allows write access for owner role", func(t *testing.T) {
+		userGroups := []string{"owner"}
+		allowedRoles := []string{"editor"}
+
+		err := CheckWriteAccess(userGroups, allowedRoles)
+		if err != nil {
+			t.Errorf("expected nil error (access granted for owner), got %v", err)
+		}
+	})
+
+	t.Run("denies write access for viewer role", func(t *testing.T) {
+		userGroups := []string{"viewer"}
+		allowedRoles := []string{"editor"}
+
+		err := CheckWriteAccess(userGroups, allowedRoles)
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+}
+
 func TestCheckListAccess(t *testing.T) {
 	t.Run("allows list access for viewer role", func(t *testing.T) {
 		userGroups := []string{"viewer"}
