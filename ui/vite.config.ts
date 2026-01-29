@@ -55,10 +55,12 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    https: {
-      cert: fs.readFileSync(path.resolve(__dirname, '../certs/tls.crt')),
-      key: fs.readFileSync(path.resolve(__dirname, '../certs/tls.key')),
-    },
+    https: fs.existsSync(path.resolve(__dirname, '../certs/tls.crt'))
+      ? {
+          cert: fs.readFileSync(path.resolve(__dirname, '../certs/tls.crt')),
+          key: fs.readFileSync(path.resolve(__dirname, '../certs/tls.key')),
+        }
+      : undefined,
     proxy: {
       // Proxy ConnectRPC requests to the Go backend.
       '^/holos\\.console\\.v1\\..*': {
