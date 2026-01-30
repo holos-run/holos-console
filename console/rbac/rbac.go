@@ -139,47 +139,6 @@ func (gm *GroupMapping) MapGroupsToRoles(groups []string) []Role {
 	return roles
 }
 
-// CheckAccess verifies that the user has at least one role that grants the required permission.
-// This is the method form that uses the configured group mapping.
-func (gm *GroupMapping) CheckAccess(userGroups, allowedRoles []string, permission Permission) error {
-	// Map user groups to roles
-	userRoles := gm.MapGroupsToRoles(userGroups)
-
-	// Find the minimum required role level from allowed roles
-	minLevel := -1
-	for _, r := range allowedRoles {
-		role := gm.MapGroupToRole(r)
-		if role != RoleUnspecified {
-			level := roleLevel[role]
-			if minLevel < 0 || level < minLevel {
-				minLevel = level
-			}
-		}
-	}
-
-	// If no valid allowed roles, deny access
-	if minLevel < 0 {
-		return connect.NewError(
-			connect.CodePermissionDenied,
-			fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
-				strings.Join(allowedRoles, " ")),
-		)
-	}
-
-	// Check if any user role is at or above the minimum level AND has the required permission
-	for _, userRole := range userRoles {
-		if roleLevel[userRole] >= minLevel && HasPermission(userRole, permission) {
-			return nil
-		}
-	}
-
-	return connect.NewError(
-		connect.CodePermissionDenied,
-		fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
-			strings.Join(allowedRoles, " ")),
-	)
-}
-
 // RoleFromString converts a role name string to a Role constant using case-insensitive matching.
 // Returns RoleUnspecified for unknown or empty strings.
 func RoleFromString(s string) Role {
@@ -195,13 +154,12 @@ func RoleFromString(s string) Role {
 	}
 }
 
-// CheckAccessSharing verifies access using per-user sharing, per-group sharing,
-// and legacy allowed-roles. The highest role found across all three sources is used.
+// CheckAccessSharing verifies access using per-user and per-group sharing grants.
+// The highest role found across both sources is used to determine access.
 //
 // Evaluation order:
 //  1. Check shareUsers for userEmail (case-insensitive)
 //  2. Check shareGroups for any of userGroups (case-insensitive)
-//  3. Legacy: check allowedRoles via GroupMapping.CheckAccess
 //
 // Returns nil if access is granted, or a PermissionDenied error otherwise.
 func (gm *GroupMapping) CheckAccessSharing(
@@ -209,7 +167,6 @@ func (gm *GroupMapping) CheckAccessSharing(
 	userGroups []string,
 	shareUsers map[string]string,
 	shareGroups map[string]string,
-	allowedRoles []string,
 	permission Permission,
 ) error {
 	bestLevel := -1
@@ -242,13 +199,6 @@ func (gm *GroupMapping) CheckAccessSharing(
 		}
 	}
 
-	// 3. Legacy fallback: check allowedRoles via existing mechanism
-	if len(allowedRoles) > 0 {
-		if gm.CheckAccess(userGroups, allowedRoles, permission) == nil {
-			return nil
-		}
-	}
-
 	// Evaluate best role from sharing sources
 	if bestLevel > 0 {
 		// Find the Role with this level
@@ -267,22 +217,6 @@ func (gm *GroupMapping) CheckAccessSharing(
 	)
 }
 
-// defaultMapping is the package-level default GroupMapping using built-in group names.
-var defaultMapping = NewGroupMapping(nil, nil, nil)
-
-// MapGroupToRole maps a group name to a Role using case-insensitive matching.
-// Returns RoleUnspecified for unknown groups.
-// Uses the default group mapping (viewer, editor, owner).
-func MapGroupToRole(group string) Role {
-	return defaultMapping.MapGroupToRole(group)
-}
-
-// MapGroupsToRoles maps a slice of group names to roles, filtering out unknown groups.
-// Uses the default group mapping.
-func MapGroupsToRoles(groups []string) []Role {
-	return defaultMapping.MapGroupsToRoles(groups)
-}
-
 // roleLevel defines the hierarchy level of each role for comparison.
 // Higher values indicate more privileged roles.
 var roleLevel = map[Role]int{
@@ -290,53 +224,4 @@ var roleLevel = map[Role]int{
 	RoleViewer:      1,
 	RoleEditor:      2,
 	RoleOwner:       3,
-}
-
-// CheckAccess verifies that the user has at least one role that grants the required permission.
-// userGroups are the groups the user belongs to.
-// allowedRoles are the roles that are allowed to access the resource.
-// permission is the specific permission required.
-// Returns nil if access is granted, or a PermissionDenied error otherwise.
-//
-// Access is granted if the user has a role with the required permission AND
-// their role is at or above the minimum required role level.
-// For example, if a secret allows "viewer" role, then viewers, editors, and owners
-// can all access it (assuming they have the required permission).
-func CheckAccess(userGroups, allowedRoles []string, permission Permission) error {
-	// Map user groups to roles
-	userRoles := MapGroupsToRoles(userGroups)
-
-	// Find the minimum required role level from allowed roles
-	minLevel := -1
-	for _, r := range allowedRoles {
-		role := MapGroupToRole(r)
-		if role != RoleUnspecified {
-			level := roleLevel[role]
-			if minLevel < 0 || level < minLevel {
-				minLevel = level
-			}
-		}
-	}
-
-	// If no valid allowed roles, deny access
-	if minLevel < 0 {
-		return connect.NewError(
-			connect.CodePermissionDenied,
-			fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
-				strings.Join(allowedRoles, " ")),
-		)
-	}
-
-	// Check if any user role is at or above the minimum level AND has the required permission
-	for _, userRole := range userRoles {
-		if roleLevel[userRole] >= minLevel && HasPermission(userRole, permission) {
-			return nil
-		}
-	}
-
-	return connect.NewError(
-		connect.CodePermissionDenied,
-		fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
-			strings.Join(allowedRoles, " ")),
-	)
 }

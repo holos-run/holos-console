@@ -13,9 +13,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormControl,
-  FormControlLabel,
-  Checkbox,
   IconButton,
   List,
   ListItem,
@@ -31,6 +28,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
+import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
 
 export function SecretsListPage() {
@@ -44,7 +42,6 @@ export function SecretsListPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createData, setCreateData] = useState('')
-  const [createRoles, setCreateRoles] = useState<string[]>(['editor'])
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createSuccess, setCreateSuccess] = useState(false)
@@ -128,7 +125,6 @@ export function SecretsListPage() {
   const handleCreateOpen = () => {
     setCreateName('')
     setCreateData('')
-    setCreateRoles(['editor'])
     setCreateError(null)
     setCreateOpen(true)
   }
@@ -137,19 +133,9 @@ export function SecretsListPage() {
     setCreateOpen(false)
   }
 
-  const handleRoleToggle = (role: string) => {
-    setCreateRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    )
-  }
-
   const handleCreate = async () => {
     if (!createName.trim()) {
       setCreateError('Secret name is required')
-      return
-    }
-    if (createRoles.length === 0) {
-      setCreateError('At least one role is required')
       return
     }
 
@@ -174,7 +160,7 @@ export function SecretsListPage() {
         {
           name: createName.trim(),
           data,
-          allowedRoles: createRoles,
+          userGrants: [{ principal: 'creator@placeholder', role: Role.OWNER }],
         },
         {
           headers: {
@@ -242,13 +228,8 @@ export function SecretsListPage() {
                   disablePadding
                   secondaryAction={
                     !secret.accessible ? (
-                      <Tooltip
-                        title={
-                          secret.allowedGroups.length > 0
-                            ? `Access restricted to: ${secret.allowedGroups.join(', ')}`
-                            : 'No groups have access to this secret'
-                        }
-                      >
+                      <Tooltip title="You do not have access to this secret">
+
                         <Chip
                           icon={<LockIcon />}
                           label="No access"
@@ -311,23 +292,9 @@ export function SecretsListPage() {
               },
             }}
           />
-          <FormControl component="fieldset" sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Allowed Roles
-            </Typography>
-            {['viewer', 'editor', 'owner'].map((role) => (
-              <FormControlLabel
-                key={role}
-                control={
-                  <Checkbox
-                    checked={createRoles.includes(role)}
-                    onChange={() => handleRoleToggle(role)}
-                  />
-                }
-                label={role.charAt(0).toUpperCase() + role.slice(1)}
-              />
-            ))}
-          </FormControl>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            You will be added as the Owner of this secret.
+          </Typography>
           {createError && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {createError}

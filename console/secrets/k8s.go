@@ -11,13 +11,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// AllowedRolesAnnotation is the annotation key for allowed roles on a secret.
-const AllowedRolesAnnotation = "holos.run/allowed-roles"
-
-// AllowedGroupsAnnotation is the annotation key for allowed groups on a secret.
-// Deprecated: Use AllowedRolesAnnotation instead.
-const AllowedGroupsAnnotation = "holos.run/allowed-groups"
-
 // ShareUsersAnnotation is the annotation key for per-user sharing grants.
 // Value is a JSON object mapping email address → role name.
 const ShareUsersAnnotation = "holos.run/share-users"
@@ -64,15 +57,19 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 	})
 }
 
-// CreateSecret creates a new secret with the console managed-by label.
-func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, allowedRoles []string) (*corev1.Secret, error) {
+// CreateSecret creates a new secret with the console managed-by label and sharing grants.
+func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups map[string]string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "creating secret in kubernetes",
 		slog.String("namespace", c.namespace),
 		slog.String("name", name),
 	)
-	rolesJSON, err := json.Marshal(allowedRoles)
+	usersJSON, err := json.Marshal(shareUsers)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling allowed roles: %w", err)
+		return nil, fmt.Errorf("marshaling share-users: %w", err)
+	}
+	groupsJSON, err := json.Marshal(shareGroups)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -82,7 +79,8 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 				ManagedByLabel: ManagedByValue,
 			},
 			Annotations: map[string]string{
-				AllowedRolesAnnotation: string(rolesJSON),
+				ShareUsersAnnotation:  string(usersJSON),
+				ShareGroupsAnnotation: string(groupsJSON),
 			},
 		},
 		Data: data,
@@ -155,36 +153,6 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, 
 	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
-// GetAllowedRoles parses the holos.run/allowed-roles annotation from a secret.
-// Falls back to holos.run/allowed-groups if the new annotation is not present.
-// Returns an empty slice if both annotations are missing.
-// Returns an error if the annotation contains invalid JSON.
-func GetAllowedRoles(secret *corev1.Secret) ([]string, error) {
-	if secret.Annotations == nil {
-		return []string{}, nil
-	}
-
-	// Prefer the new allowed-roles annotation
-	if value, ok := secret.Annotations[AllowedRolesAnnotation]; ok {
-		var roles []string
-		if err := json.Unmarshal([]byte(value), &roles); err != nil {
-			return nil, fmt.Errorf("invalid %s annotation: %w", AllowedRolesAnnotation, err)
-		}
-		return roles, nil
-	}
-
-	// Fall back to allowed-groups annotation for backward compatibility
-	if value, ok := secret.Annotations[AllowedGroupsAnnotation]; ok {
-		var groups []string
-		if err := json.Unmarshal([]byte(value), &groups); err != nil {
-			return nil, fmt.Errorf("invalid %s annotation: %w", AllowedGroupsAnnotation, err)
-		}
-		return groups, nil
-	}
-
-	return []string{}, nil
-}
-
 // GetShareUsers parses the holos.run/share-users annotation from a secret.
 // Returns an empty map if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
@@ -221,24 +189,3 @@ func GetShareGroups(secret *corev1.Secret) (map[string]string, error) {
 	return groups, nil
 }
 
-// GetAllowedGroups parses the holos.run/allowed-groups annotation from a secret.
-// Deprecated: Use GetAllowedRoles instead, which supports backward compatibility.
-// Returns an empty slice if the annotation is missing.
-// Returns an error if the annotation contains invalid JSON.
-func GetAllowedGroups(secret *corev1.Secret) ([]string, error) {
-	if secret.Annotations == nil {
-		return []string{}, nil
-	}
-
-	value, ok := secret.Annotations[AllowedGroupsAnnotation]
-	if !ok {
-		return []string{}, nil
-	}
-
-	var groups []string
-	if err := json.Unmarshal([]byte(value), &groups); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", AllowedGroupsAnnotation, err)
-	}
-
-	return groups, nil
-}

@@ -49,22 +49,14 @@ func (h *Handler) ListSecrets(
 	var secrets []*consolev1.SecretMetadata
 	var accessibleCount int
 	for _, secret := range secretList.Items {
-		allowedRoles, err := GetAllowedRoles(&secret)
-		if err != nil {
-			// Skip secrets with invalid annotations
-			continue
-		}
 		shareUsers, _ := GetShareUsers(&secret)
 		shareGroups, _ := GetShareGroups(&secret)
-		accessible := CheckListAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles) == nil
+		accessible := CheckListAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups) == nil
 		if accessible {
 			accessibleCount++
 		}
-		secrets = append(secrets, &consolev1.SecretMetadata{
-			Name:         secret.Name,
-			Accessible:   accessible,
-			AllowedRoles: allowedRoles,
-		})
+		metadata := buildSecretMetadata(&secret, h.groupMapping, claims)
+		secrets = append(secrets, metadata)
 	}
 
 	slog.InfoContext(ctx, "secrets listed",
@@ -128,20 +120,15 @@ func (h *Handler) DeleteSecret(
 	}
 
 	// Check RBAC for delete access (sharing-aware)
-	allowedRoles, err := GetAllowedRoles(secret)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
+	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
 			slog.String("secret", req.Msg.Name),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 			slog.Any("user_groups", claims.Groups),
-			slog.Any("allowed_roles", allowedRoles),
 		)
 		return nil, err
 	}
@@ -171,9 +158,6 @@ func (h *Handler) CreateSecret(
 	if req.Msg.Name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
 	}
-	if len(req.Msg.AllowedRoles) == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("allowed_roles is required"))
-	}
 
 	// Get claims from context (set by AuthInterceptor)
 	claims := rpc.ClaimsFromContext(ctx)
@@ -181,9 +165,12 @@ func (h *Handler) CreateSecret(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Check that the user has write permission based on their own roles.
-	// Use the requested allowed_roles as the resource roles for the access check.
-	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, nil, nil, req.Msg.AllowedRoles); err != nil {
+	// Convert proto ShareGrant slices to annotation maps
+	shareUsers := shareGrantsToMap(req.Msg.UserGrants)
+	shareGroups := shareGrantsToMap(req.Msg.GroupGrants)
+
+	// Check that the user has write permission based on the requested sharing grants.
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -194,7 +181,7 @@ func (h *Handler) CreateSecret(
 	}
 
 	// Create the secret
-	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, req.Msg.Data, req.Msg.AllowedRoles)
+	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, req.Msg.Data, shareUsers, shareGroups)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -237,14 +224,10 @@ func (h *Handler) UpdateSecret(
 	}
 
 	// Check RBAC for write access (sharing-aware)
-	allowedRoles, err := GetAllowedRoles(secret)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
-		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+		logAuditDenied(ctx, claims, secret.Name)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -293,13 +276,9 @@ func (h *Handler) UpdateSharing(
 	}
 
 	// Check RBAC for admin access (owner only, sharing-aware)
-	allowedRoles, err := GetAllowedRoles(secret)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
+	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
 		slog.WarnContext(ctx, "sharing update denied",
 			slog.String("action", "sharing_update_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -348,10 +327,9 @@ func shareGrantsToMap(grants []*consolev1.ShareGrant) map[string]string {
 
 // buildSecretMetadata creates SecretMetadata for a secret from the caller's perspective.
 func buildSecretMetadata(secret *corev1.Secret, gm *rbac.GroupMapping, claims *rpc.Claims) *consolev1.SecretMetadata {
-	allowedRoles, _ := GetAllowedRoles(secret)
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	accessible := CheckListAccessSharing(gm, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles) == nil
+	accessible := CheckListAccessSharing(gm, claims.Email, claims.Groups, shareUsers, shareGroups) == nil
 
 	// Build user grants
 	var userGrants []*consolev1.ShareGrant
@@ -371,11 +349,10 @@ func buildSecretMetadata(secret *corev1.Secret, gm *rbac.GroupMapping, claims *r
 	}
 
 	return &consolev1.SecretMetadata{
-		Name:         secret.Name,
-		Accessible:   accessible,
-		AllowedRoles: allowedRoles,
-		UserGrants:   userGrants,
-		GroupGrants:  groupGrants,
+		Name:        secret.Name,
+		Accessible:  accessible,
+		UserGrants:  userGrants,
+		GroupGrants: groupGrants,
 	}
 }
 
@@ -396,14 +373,10 @@ func protoRoleFromString(s string) consolev1.Role {
 // returnSecret checks RBAC and returns the secret data.
 func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
 	// Check RBAC (sharing-aware)
-	allowedRoles, err := GetAllowedRoles(secret)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
-		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
+	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+		logAuditDenied(ctx, claims, secret.Name)
 		return nil, err
 	}
 
@@ -446,13 +419,12 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 }
 
 // logAuditDenied logs a denied secret access.
-func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string, allowedRoles []string) {
+func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string) {
 	slog.WarnContext(ctx, "secret access denied",
 		slog.String("action", "secret_access_denied"),
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 		slog.Any("user_groups", claims.Groups),
-		slog.Any("allowed_roles", allowedRoles),
 	)
 }

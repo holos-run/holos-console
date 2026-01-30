@@ -144,16 +144,18 @@ func TestUpdateSecret(t *testing.T) {
 }
 
 func TestCreateSecret(t *testing.T) {
-	t.Run("creates secret with correct labels and annotations", func(t *testing.T) {
+	t.Run("creates secret with correct labels and sharing annotations", func(t *testing.T) {
 		// Given: No secrets exist
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
-		// When: CreateSecret is called
+		// When: CreateSecret is called with sharing grants
 		data := map[string][]byte{"key": []byte("value")}
-		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, []string{"editor"})
+		shareUsers := map[string]string{"alice@example.com": "owner"}
+		shareGroups := map[string]string{"dev-team": "editor"}
+		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, shareUsers, shareGroups)
 
-		// Then: Returns created secret with labels and annotations
+		// Then: Returns created secret with labels and sharing annotations
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -163,8 +165,21 @@ func TestCreateSecret(t *testing.T) {
 		if result.Labels[ManagedByLabel] != ManagedByValue {
 			t.Errorf("expected managed-by label, got %v", result.Labels)
 		}
-		if result.Annotations[AllowedRolesAnnotation] != `["editor"]` {
-			t.Errorf("expected allowed-roles annotation, got %q", result.Annotations[AllowedRolesAnnotation])
+		// Verify share-users annotation
+		parsedUsers, err := GetShareUsers(result)
+		if err != nil {
+			t.Fatalf("failed to parse share-users: %v", err)
+		}
+		if parsedUsers["alice@example.com"] != "owner" {
+			t.Errorf("expected alice=owner, got %q", parsedUsers["alice@example.com"])
+		}
+		// Verify share-groups annotation
+		parsedGroups, err := GetShareGroups(result)
+		if err != nil {
+			t.Fatalf("failed to parse share-groups: %v", err)
+		}
+		if parsedGroups["dev-team"] != "editor" {
+			t.Errorf("expected dev-team=editor, got %q", parsedGroups["dev-team"])
 		}
 		if string(result.Data["key"]) != "value" {
 			t.Errorf("expected key='value', got %q", string(result.Data["key"]))
@@ -183,7 +198,7 @@ func TestCreateSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: CreateSecret with same name
-		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, []string{"editor"})
+		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, map[string]string{}, map[string]string{})
 
 		// Then: Returns AlreadyExists error
 		if err == nil {
@@ -256,118 +271,6 @@ func TestDeleteSecret(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "not managed by") {
 			t.Errorf("expected managed-by error, got %v", err)
-		}
-	})
-}
-
-func TestGetAllowedGroups(t *testing.T) {
-	t.Run("parses allowed-groups annotation", func(t *testing.T) {
-		// Given: Secret with annotation holos.run/allowed-groups: ["admin","ops"]
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-secret",
-				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `["admin","ops"]`,
-				},
-			},
-		}
-
-		// When: GetAllowedGroups(secret) is called
-		groups, err := GetAllowedGroups(secret)
-
-		// Then: Returns ["admin", "ops"]
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(groups) != 2 {
-			t.Fatalf("expected 2 groups, got %d", len(groups))
-		}
-		if groups[0] != "admin" {
-			t.Errorf("expected first group 'admin', got %q", groups[0])
-		}
-		if groups[1] != "ops" {
-			t.Errorf("expected second group 'ops', got %q", groups[1])
-		}
-	})
-
-	t.Run("returns empty slice when annotation is missing", func(t *testing.T) {
-		// Given: Secret without holos.run/allowed-groups annotation
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "test-secret",
-				Annotations: map[string]string{},
-			},
-		}
-
-		// When: GetAllowedGroups(secret) is called
-		groups, err := GetAllowedGroups(secret)
-
-		// Then: Returns empty slice (no groups allowed)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(groups) != 0 {
-			t.Errorf("expected empty slice, got %v", groups)
-		}
-	})
-
-	t.Run("returns empty slice when annotations map is nil", func(t *testing.T) {
-		// Given: Secret with nil annotations
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-secret",
-			},
-		}
-
-		// When: GetAllowedGroups(secret) is called
-		groups, err := GetAllowedGroups(secret)
-
-		// Then: Returns empty slice (no groups allowed)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(groups) != 0 {
-			t.Errorf("expected empty slice, got %v", groups)
-		}
-	})
-
-	t.Run("returns error for malformed annotation", func(t *testing.T) {
-		// Given: Secret with annotation holos.run/allowed-groups: not-json
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-secret",
-				Annotations: map[string]string{
-					AllowedGroupsAnnotation: "not-json",
-				},
-			},
-		}
-
-		// When: GetAllowedGroups(secret) is called
-		_, err := GetAllowedGroups(secret)
-
-		// Then: Returns error (invalid JSON)
-		if err == nil {
-			t.Fatal("expected error for malformed JSON, got nil")
-		}
-	})
-
-	t.Run("returns error for wrong JSON type", func(t *testing.T) {
-		// Given: Secret with annotation that is valid JSON but wrong type
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-secret",
-				Annotations: map[string]string{
-					AllowedGroupsAnnotation: `{"not": "an array"}`,
-				},
-			},
-		}
-
-		// When: GetAllowedGroups(secret) is called
-		_, err := GetAllowedGroups(secret)
-
-		// Then: Returns error (expected array, got object)
-		if err == nil {
-			t.Fatal("expected error for wrong JSON type, got nil")
 		}
 	})
 }

@@ -225,7 +225,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -245,7 +245,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -270,7 +270,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, allowedGroups: [], allowedRoles: ['owner'] },
+          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 

@@ -1,7 +1,6 @@
 package rbac
 
 import (
-	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -126,47 +125,51 @@ func TestHasPermission(t *testing.T) {
 }
 
 func TestMapGroupToRole(t *testing.T) {
+	gm := NewGroupMapping(nil, nil, nil)
+
 	t.Run("maps lowercase group names to roles", func(t *testing.T) {
-		if got := MapGroupToRole("viewer"); got != RoleViewer {
+		if got := gm.MapGroupToRole("viewer"); got != RoleViewer {
 			t.Errorf("expected RoleViewer for 'viewer', got %v", got)
 		}
-		if got := MapGroupToRole("editor"); got != RoleEditor {
+		if got := gm.MapGroupToRole("editor"); got != RoleEditor {
 			t.Errorf("expected RoleEditor for 'editor', got %v", got)
 		}
-		if got := MapGroupToRole("owner"); got != RoleOwner {
+		if got := gm.MapGroupToRole("owner"); got != RoleOwner {
 			t.Errorf("expected RoleOwner for 'owner', got %v", got)
 		}
 	})
 
 	t.Run("case-insensitive mapping", func(t *testing.T) {
-		if got := MapGroupToRole("VIEWER"); got != RoleViewer {
+		if got := gm.MapGroupToRole("VIEWER"); got != RoleViewer {
 			t.Errorf("expected RoleViewer for 'VIEWER', got %v", got)
 		}
-		if got := MapGroupToRole("Editor"); got != RoleEditor {
+		if got := gm.MapGroupToRole("Editor"); got != RoleEditor {
 			t.Errorf("expected RoleEditor for 'Editor', got %v", got)
 		}
-		if got := MapGroupToRole("OWNER"); got != RoleOwner {
+		if got := gm.MapGroupToRole("OWNER"); got != RoleOwner {
 			t.Errorf("expected RoleOwner for 'OWNER', got %v", got)
 		}
 	})
 
 	t.Run("unknown groups return RoleUnspecified", func(t *testing.T) {
-		if got := MapGroupToRole("unknown"); got != RoleUnspecified {
+		if got := gm.MapGroupToRole("unknown"); got != RoleUnspecified {
 			t.Errorf("expected RoleUnspecified for 'unknown', got %v", got)
 		}
-		if got := MapGroupToRole("admin"); got != RoleUnspecified {
+		if got := gm.MapGroupToRole("admin"); got != RoleUnspecified {
 			t.Errorf("expected RoleUnspecified for 'admin', got %v", got)
 		}
-		if got := MapGroupToRole(""); got != RoleUnspecified {
+		if got := gm.MapGroupToRole(""); got != RoleUnspecified {
 			t.Errorf("expected RoleUnspecified for empty string, got %v", got)
 		}
 	})
 }
 
 func TestMapGroupsToRoles(t *testing.T) {
+	gm := NewGroupMapping(nil, nil, nil)
+
 	t.Run("maps multiple groups to roles", func(t *testing.T) {
 		groups := []string{"viewer", "editor"}
-		roles := MapGroupsToRoles(groups)
+		roles := gm.MapGroupsToRoles(groups)
 
 		if len(roles) != 2 {
 			t.Fatalf("expected 2 roles, got %d", len(roles))
@@ -192,7 +195,7 @@ func TestMapGroupsToRoles(t *testing.T) {
 
 	t.Run("skips unknown groups", func(t *testing.T) {
 		groups := []string{"viewer", "unknown", "admin"}
-		roles := MapGroupsToRoles(groups)
+		roles := gm.MapGroupsToRoles(groups)
 
 		if len(roles) != 1 {
 			t.Fatalf("expected 1 role (viewer), got %d", len(roles))
@@ -203,14 +206,14 @@ func TestMapGroupsToRoles(t *testing.T) {
 	})
 
 	t.Run("empty groups returns empty roles", func(t *testing.T) {
-		roles := MapGroupsToRoles([]string{})
+		roles := gm.MapGroupsToRoles([]string{})
 		if len(roles) != 0 {
 			t.Errorf("expected empty roles, got %v", roles)
 		}
 	})
 
 	t.Run("nil groups returns empty roles", func(t *testing.T) {
-		roles := MapGroupsToRoles(nil)
+		roles := gm.MapGroupsToRoles(nil)
 		if roles == nil {
 			t.Error("expected non-nil empty slice, got nil")
 		}
@@ -333,27 +336,6 @@ func TestGroupMappingMapGroupsToRoles(t *testing.T) {
 	})
 }
 
-func TestGroupMappingCheckAccess(t *testing.T) {
-	t.Run("grants access with custom group mapping", func(t *testing.T) {
-		gm := NewGroupMapping([]string{"readers"}, nil, nil)
-		// User is in "readers" group, which maps to viewer role
-		// Secret allows "readers" (which maps to viewer)
-		err := gm.CheckAccess([]string{"readers"}, []string{"readers"}, PermissionSecretsRead)
-		if err != nil {
-			t.Errorf("expected access granted, got error: %v", err)
-		}
-	})
-
-	t.Run("denies access when custom group not in allowed roles", func(t *testing.T) {
-		gm := NewGroupMapping([]string{"readers"}, []string{"writers"}, nil)
-		// User is in "readers" group (viewer role), needs write permission
-		err := gm.CheckAccess([]string{"readers"}, []string{"readers"}, PermissionSecretsWrite)
-		if err == nil {
-			t.Fatal("expected PermissionDenied error, got nil")
-		}
-	})
-}
-
 func TestParseGroups(t *testing.T) {
 	t.Run("parses comma-separated groups", func(t *testing.T) {
 		groups := ParseGroups("readers,writers,admins")
@@ -386,101 +368,6 @@ func TestParseGroups(t *testing.T) {
 		groups := ParseGroups("admins")
 		if len(groups) != 1 || groups[0] != "admins" {
 			t.Errorf("expected [admins], got %v", groups)
-		}
-	})
-}
-
-func TestCheckAccess(t *testing.T) {
-	t.Run("grants access when user has matching role with permission", func(t *testing.T) {
-		// User is in "viewer" group, secret allows "viewer" role
-		userGroups := []string{"viewer"}
-		allowedRoles := []string{"viewer"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err != nil {
-			t.Errorf("expected access granted, got error: %v", err)
-		}
-	})
-
-	t.Run("grants access when user has higher-permission role", func(t *testing.T) {
-		// User is in "owner" group, secret allows "viewer" role - owner should still have access
-		userGroups := []string{"owner"}
-		allowedRoles := []string{"viewer"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err != nil {
-			t.Errorf("expected access granted for owner, got error: %v", err)
-		}
-	})
-
-	t.Run("denies access when user role lacks permission", func(t *testing.T) {
-		// User is in "viewer" group, but requesting write permission
-		userGroups := []string{"viewer"}
-		allowedRoles := []string{"viewer"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsWrite)
-		if err == nil {
-			t.Fatal("expected PermissionDenied error, got nil")
-		}
-		connectErr, ok := err.(*connect.Error)
-		if !ok {
-			t.Fatalf("expected *connect.Error, got %T", err)
-		}
-		if connectErr.Code() != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
-		}
-	})
-
-	t.Run("denies access when user is not in allowed roles", func(t *testing.T) {
-		// User has no recognized role groups
-		userGroups := []string{"developers"}
-		allowedRoles := []string{"viewer", "editor"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err == nil {
-			t.Fatal("expected PermissionDenied error, got nil")
-		}
-		connectErr, ok := err.(*connect.Error)
-		if !ok {
-			t.Fatalf("expected *connect.Error, got %T", err)
-		}
-		if connectErr.Code() != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
-		}
-	})
-
-	t.Run("denies access when no allowed roles specified", func(t *testing.T) {
-		userGroups := []string{"owner"}
-		allowedRoles := []string{}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err == nil {
-			t.Fatal("expected PermissionDenied error, got nil")
-		}
-	})
-
-	t.Run("error message includes allowed roles", func(t *testing.T) {
-		userGroups := []string{"developers"}
-		allowedRoles := []string{"viewer", "editor"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		msg := err.Error()
-		if !strings.Contains(msg, "viewer") || !strings.Contains(msg, "editor") {
-			t.Errorf("expected message to contain allowed roles, got %q", msg)
-		}
-	})
-
-	t.Run("case-insensitive role matching", func(t *testing.T) {
-		// User has uppercase group, allowed roles are lowercase
-		userGroups := []string{"VIEWER"}
-		allowedRoles := []string{"viewer"}
-
-		err := CheckAccess(userGroups, allowedRoles, PermissionSecretsRead)
-		if err != nil {
-			t.Errorf("expected access granted with case-insensitive match, got error: %v", err)
 		}
 	})
 }
@@ -519,7 +406,6 @@ func TestCheckAccessSharing(t *testing.T) {
 			[]string{},
 			map[string]string{"alice@example.com": "viewer"},
 			nil,
-			nil,
 			PermissionSecretsRead,
 		)
 		if err != nil {
@@ -532,7 +418,6 @@ func TestCheckAccessSharing(t *testing.T) {
 			"Alice@Example.COM",
 			[]string{},
 			map[string]string{"alice@example.com": "viewer"},
-			nil,
 			nil,
 			PermissionSecretsRead,
 		)
@@ -547,7 +432,6 @@ func TestCheckAccessSharing(t *testing.T) {
 			[]string{"platform-team"},
 			nil,
 			map[string]string{"platform-team": "editor"},
-			nil,
 			PermissionSecretsWrite,
 		)
 		if err != nil {
@@ -561,25 +445,10 @@ func TestCheckAccessSharing(t *testing.T) {
 			[]string{"Platform-Team"},
 			nil,
 			map[string]string{"platform-team": "viewer"},
-			nil,
 			PermissionSecretsRead,
 		)
 		if err != nil {
 			t.Errorf("expected access granted via case-insensitive group share, got: %v", err)
-		}
-	})
-
-	t.Run("legacy allowedRoles still works", func(t *testing.T) {
-		err := gm.CheckAccessSharing(
-			"carol@example.com",
-			[]string{"viewer"},
-			nil,
-			nil,
-			[]string{"viewer"},
-			PermissionSecretsRead,
-		)
-		if err != nil {
-			t.Errorf("expected access granted via legacy allowedRoles, got: %v", err)
 		}
 	})
 
@@ -591,7 +460,6 @@ func TestCheckAccessSharing(t *testing.T) {
 			[]string{"ops"},
 			map[string]string{"alice@example.com": "viewer"},
 			map[string]string{"ops": "owner"},
-			nil,
 			PermissionSecretsDelete,
 		)
 		if err != nil {
@@ -604,7 +472,6 @@ func TestCheckAccessSharing(t *testing.T) {
 			"alice@example.com",
 			[]string{},
 			map[string]string{"alice@example.com": "viewer"},
-			nil,
 			nil,
 			PermissionSecretsWrite,
 		)
@@ -626,25 +493,10 @@ func TestCheckAccessSharing(t *testing.T) {
 			[]string{"unknown-group"},
 			nil,
 			nil,
-			nil,
 			PermissionSecretsRead,
 		)
 		if err == nil {
 			t.Fatal("expected PermissionDenied, got nil")
-		}
-	})
-
-	t.Run("empty sharing maps fall through to legacy", func(t *testing.T) {
-		err := gm.CheckAccessSharing(
-			"carol@example.com",
-			[]string{"editor"},
-			map[string]string{},
-			map[string]string{},
-			[]string{"editor"},
-			PermissionSecretsWrite,
-		)
-		if err != nil {
-			t.Errorf("expected access granted via legacy fallback, got: %v", err)
 		}
 	})
 }
