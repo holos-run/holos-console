@@ -18,6 +18,8 @@ var (
 	listenAddr      string
 	certFile        string
 	keyFile         string
+	plainHTTP       bool
+	origin          string
 	issuer          string
 	clientID        string
 	idTokenTTL      string
@@ -63,8 +65,10 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&listenAddr, "listen", ":8443", "Address to listen on")
 	cmd.Flags().StringVar(&certFile, "cert", "", "TLS certificate file (auto-generated if empty)")
 	cmd.Flags().StringVar(&keyFile, "key", "", "TLS key file (auto-generated if empty)")
+	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "Listen on plain HTTP instead of HTTPS")
 
 	// OIDC flags
+	cmd.Flags().StringVar(&origin, "origin", "", "Public-facing base URL of the console for OIDC redirect URIs (e.g., https://holos-console.example.com)")
 	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
@@ -81,10 +85,40 @@ func Command() *cobra.Command {
 	return cmd
 }
 
+// deriveOrigin returns the public-facing base URL of the console.
+// If origin is already set, returns it unchanged.
+// Otherwise, derives from the listen address.
+// The scheme is http when plainHTTP is true, https otherwise.
+func deriveOrigin(listenAddr, origin string, plainHTTP bool) string {
+	if origin != "" {
+		return origin
+	}
+
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		if plainHTTP {
+			return "http://localhost:8080"
+		}
+		return "https://localhost:8443"
+	}
+
+	if host == "" || host == "0.0.0.0" {
+		host = "localhost"
+	}
+
+	scheme := "https"
+	if plainHTTP {
+		scheme = "http"
+	}
+
+	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
+}
+
 // deriveIssuer returns the issuer URL based on the listen address.
 // If issuer is already set, returns it unchanged.
-// Otherwise, derives from listen address using https and /dex path.
-func deriveIssuer(listenAddr, issuer string) string {
+// Otherwise, derives from listen address using the /dex path.
+// The scheme is http when plainHTTP is true, https otherwise.
+func deriveIssuer(listenAddr, issuer string, plainHTTP bool) string {
 	if issuer != "" {
 		return issuer
 	}
@@ -93,6 +127,9 @@ func deriveIssuer(listenAddr, issuer string) string {
 	host, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		// Fallback if parsing fails
+		if plainHTTP {
+			return "http://localhost:8080/dex"
+		}
 		return "https://localhost:8443/dex"
 	}
 
@@ -101,7 +138,12 @@ func deriveIssuer(listenAddr, issuer string) string {
 		host = "localhost"
 	}
 
-	return fmt.Sprintf("https://%s:%s/dex", host, port)
+	scheme := "https"
+	if plainHTTP {
+		scheme = "http"
+	}
+
+	return fmt.Sprintf("%s://%s:%s/dex", scheme, host, port)
 }
 
 // parseLogLevel converts a string log level to slog.Level.
@@ -137,13 +179,16 @@ func Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --refresh-token-ttl: %w", err)
 	}
 
-	// Derive issuer from listen address if not explicitly set
-	derivedIssuer := deriveIssuer(listenAddr, issuer)
+	// Derive origin and issuer from listen address if not explicitly set
+	derivedOrigin := deriveOrigin(listenAddr, origin, plainHTTP)
+	derivedIssuer := deriveIssuer(listenAddr, issuer, plainHTTP)
 
 	cfg := console.Config{
 		ListenAddr:      listenAddr,
 		CertFile:        certFile,
 		KeyFile:         keyFile,
+		PlainHTTP:       plainHTTP,
+		Origin:          derivedOrigin,
 		Issuer:          derivedIssuer,
 		ClientID:        clientID,
 		IDTokenTTL:      idTTL,

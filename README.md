@@ -83,3 +83,57 @@ In this example, users in either the `platform-team` or `my-app-owners` groups c
 
 - **Secrets List**: The `/secrets` page shows all console-managed secrets. Secrets the user cannot access display a "No access" indicator with a tooltip showing which groups are allowed.
 - **Secret Detail**: The `/secrets/:name` page displays the secret data in environment variable format (`KEY=value`) for authorized users. Unauthorized users receive a permission denied error.
+
+## Kubernetes Integration
+
+holos-console is designed to run behind a TLS-terminating Gateway or Ingress
+controller.  Use the `--plain-http` flag to listen on plain HTTP and the
+`--issuer` flag to set the OIDC issuer URL that matches the externally
+reachable domain.
+
+### Key Concepts
+
+The `--issuer` flag value determines:
+
+1. The embedded Dex OIDC provider's issuer URL.
+2. The OIDC redirect URIs derived from the issuer base (everything before `/dex`):
+   - **Redirect URI:** `{base}/ui/callback`
+   - **Silent redirect URI:** `{base}/ui/silent-callback.html`
+   - **Post-logout redirect URI:** `{base}/ui`
+3. The HTTPRoute must forward the issuer path (`/dex`) and the UI path (`/ui`)
+   to the holos-console Service so that both the OIDC flow and the frontend
+   are reachable at the same origin.
+
+If you use an **external Dex instance** instead of the embedded one, configure
+a static client with:
+
+- **Client ID:** `holos-console` (or the value of `--client-id`)
+- **Redirect URIs:** the three URIs listed above
+
+### Health Probes
+
+holos-console exposes conventional Kubernetes health endpoints:
+
+| Path | Purpose | Behavior |
+|------|---------|----------|
+| `/healthz` | Liveness probe | Returns `200 OK` when the process is alive |
+| `/readyz` | Readiness probe | Returns `200 OK` when the server is ready to accept traffic |
+
+### Example Manifests
+
+See the `deploy/` directory for reference Kubernetes manifests including
+Deployment, Service, ServiceAccount, RBAC, and namespace resources.
+
+The HTTPRoute must forward the following paths to the holos-console Service:
+
+| Path | Purpose |
+|------|---------|
+| `/dex` | Embedded OIDC provider (for expedience, not production use) |
+| `/ui` | Frontend SPA |
+| `/holos.console.v1` | ConnectRPC and gRPC public API |
+| `/metrics` | Prometheus metrics |
+| `/` | Root redirect to `/ui` |
+
+The ConnectRPC and gRPC endpoints under `/holos.console.v1` are a public API
+intended for programmatic access.  Authenticated clients can call these
+endpoints directly using any gRPC or ConnectRPC client.

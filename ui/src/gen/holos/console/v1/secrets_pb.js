@@ -8,7 +8,7 @@ import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2
  * Describes the file holos/console/v1/secrets.proto.
  */
 export const file_holos_console_v1_secrets = /*@__PURE__*/
-  fileDesc("Ch5ob2xvcy9jb25zb2xlL3YxL3NlY3JldHMucHJvdG8SEGhvbG9zLmNvbnNvbGUudjEiIAoQR2V0U2VjcmV0UmVxdWVzdBIMCgRuYW1lGAEgASgJIn0KEUdldFNlY3JldFJlc3BvbnNlEjsKBGRhdGEYASADKAsyLS5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlc3BvbnNlLkRhdGFFbnRyeRorCglEYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ASIUChJMaXN0U2VjcmV0c1JlcXVlc3QiSAoTTGlzdFNlY3JldHNSZXNwb25zZRIxCgdzZWNyZXRzGAEgAygLMiAuaG9sb3MuY29uc29sZS52MS5TZWNyZXRNZXRhZGF0YSJlCg5TZWNyZXRNZXRhZGF0YRIMCgRuYW1lGAEgASgJEhIKCmFjY2Vzc2libGUYAiABKAgSGgoOYWxsb3dlZF9ncm91cHMYAyADKAlCAhgBEhUKDWFsbG93ZWRfcm9sZXMYBCADKAkywgEKDlNlY3JldHNTZXJ2aWNlEloKC0xpc3RTZWNyZXRzEiQuaG9sb3MuY29uc29sZS52MS5MaXN0U2VjcmV0c1JlcXVlc3QaJS5ob2xvcy5jb25zb2xlLnYxLkxpc3RTZWNyZXRzUmVzcG9uc2USVAoJR2V0U2VjcmV0EiIuaG9sb3MuY29uc29sZS52MS5HZXRTZWNyZXRSZXF1ZXN0GiMuaG9sb3MuY29uc29sZS52MS5HZXRTZWNyZXRSZXNwb25zZUJDWkFnaXRodWIuY29tL2hvbG9zLXJ1bi9ob2xvcy1jb25zb2xlL2dlbi9ob2xvcy9jb25zb2xlL3YxO2NvbnNvbGV2MWIGcHJvdG8z");
+  fileDesc("Ch5ob2xvcy9jb25zb2xlL3YxL3NlY3JldHMucHJvdG8SEGhvbG9zLmNvbnNvbGUudjEiIAoQR2V0U2VjcmV0UmVxdWVzdBIMCgRuYW1lGAEgASgJIn0KEUdldFNlY3JldFJlc3BvbnNlEjsKBGRhdGEYASADKAsyLS5ob2xvcy5jb25zb2xlLnYxLkdldFNlY3JldFJlc3BvbnNlLkRhdGFFbnRyeRorCglEYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ASIUChJMaXN0U2VjcmV0c1JlcXVlc3QiSAoTTGlzdFNlY3JldHNSZXNwb25zZRIxCgdzZWNyZXRzGAEgAygLMiAuaG9sb3MuY29uc29sZS52MS5TZWNyZXRNZXRhZGF0YSKPAQoTVXBkYXRlU2VjcmV0UmVxdWVzdBIMCgRuYW1lGAEgASgJEj0KBGRhdGEYAiADKAsyLy5ob2xvcy5jb25zb2xlLnYxLlVwZGF0ZVNlY3JldFJlcXVlc3QuRGF0YUVudHJ5GisKCURhdGFFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAw6AjgBIhYKFFVwZGF0ZVNlY3JldFJlc3BvbnNlIqYBChNDcmVhdGVTZWNyZXRSZXF1ZXN0EgwKBG5hbWUYASABKAkSPQoEZGF0YRgCIAMoCzIvLmhvbG9zLmNvbnNvbGUudjEuQ3JlYXRlU2VjcmV0UmVxdWVzdC5EYXRhRW50cnkSFQoNYWxsb3dlZF9yb2xlcxgDIAMoCRorCglEYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ASIkChRDcmVhdGVTZWNyZXRSZXNwb25zZRIMCgRuYW1lGAEgASgJIiMKE0RlbGV0ZVNlY3JldFJlcXVlc3QSDAoEbmFtZRgBIAEoCSIWChREZWxldGVTZWNyZXRSZXNwb25zZSJlCg5TZWNyZXRNZXRhZGF0YRIMCgRuYW1lGAEgASgJEhIKCmFjY2Vzc2libGUYAiABKAgSGgoOYWxsb3dlZF9ncm91cHMYAyADKAlCAhgBEhUKDWFsbG93ZWRfcm9sZXMYBCADKAky3wMKDlNlY3JldHNTZXJ2aWNlEloKC0xpc3RTZWNyZXRzEiQuaG9sb3MuY29uc29sZS52MS5MaXN0U2VjcmV0c1JlcXVlc3QaJS5ob2xvcy5jb25zb2xlLnYxLkxpc3RTZWNyZXRzUmVzcG9uc2USVAoJR2V0U2VjcmV0EiIuaG9sb3MuY29uc29sZS52MS5HZXRTZWNyZXRSZXF1ZXN0GiMuaG9sb3MuY29uc29sZS52MS5HZXRTZWNyZXRSZXNwb25zZRJdCgxVcGRhdGVTZWNyZXQSJS5ob2xvcy5jb25zb2xlLnYxLlVwZGF0ZVNlY3JldFJlcXVlc3QaJi5ob2xvcy5jb25zb2xlLnYxLlVwZGF0ZVNlY3JldFJlc3BvbnNlEl0KDENyZWF0ZVNlY3JldBIlLmhvbG9zLmNvbnNvbGUudjEuQ3JlYXRlU2VjcmV0UmVxdWVzdBomLmhvbG9zLmNvbnNvbGUudjEuQ3JlYXRlU2VjcmV0UmVzcG9uc2USXQoMRGVsZXRlU2VjcmV0EiUuaG9sb3MuY29uc29sZS52MS5EZWxldGVTZWNyZXRSZXF1ZXN0GiYuaG9sb3MuY29uc29sZS52MS5EZWxldGVTZWNyZXRSZXNwb25zZUJDWkFnaXRodWIuY29tL2hvbG9zLXJ1bi9ob2xvcy1jb25zb2xlL2dlbi9ob2xvcy9jb25zb2xlL3YxO2NvbnNvbGV2MWIGcHJvdG8z");
 
 /**
  * Describes the message holos.console.v1.GetSecretRequest.
@@ -39,11 +39,53 @@ export const ListSecretsResponseSchema = /*@__PURE__*/
   messageDesc(file_holos_console_v1_secrets, 3);
 
 /**
+ * Describes the message holos.console.v1.UpdateSecretRequest.
+ * Use `create(UpdateSecretRequestSchema)` to create a new message.
+ */
+export const UpdateSecretRequestSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 4);
+
+/**
+ * Describes the message holos.console.v1.UpdateSecretResponse.
+ * Use `create(UpdateSecretResponseSchema)` to create a new message.
+ */
+export const UpdateSecretResponseSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 5);
+
+/**
+ * Describes the message holos.console.v1.CreateSecretRequest.
+ * Use `create(CreateSecretRequestSchema)` to create a new message.
+ */
+export const CreateSecretRequestSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 6);
+
+/**
+ * Describes the message holos.console.v1.CreateSecretResponse.
+ * Use `create(CreateSecretResponseSchema)` to create a new message.
+ */
+export const CreateSecretResponseSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 7);
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretRequest.
+ * Use `create(DeleteSecretRequestSchema)` to create a new message.
+ */
+export const DeleteSecretRequestSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 8);
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretResponse.
+ * Use `create(DeleteSecretResponseSchema)` to create a new message.
+ */
+export const DeleteSecretResponseSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_secrets, 9);
+
+/**
  * Describes the message holos.console.v1.SecretMetadata.
  * Use `create(SecretMetadataSchema)` to create a new message.
  */
 export const SecretMetadataSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_secrets, 4);
+  messageDesc(file_holos_console_v1_secrets, 10);
 
 /**
  * SecretsService provides access to Kubernetes secrets with RBAC.

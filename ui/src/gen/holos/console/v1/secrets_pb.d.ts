@@ -88,6 +88,137 @@ export declare type ListSecretsResponse = Message<"holos.console.v1.ListSecretsR
 export declare const ListSecretsResponseSchema: GenMessage<ListSecretsResponse>;
 
 /**
+ * UpdateSecretRequest contains the name and replacement data for a secret.
+ *
+ * @generated from message holos.console.v1.UpdateSecretRequest
+ */
+export declare type UpdateSecretRequest = Message<"holos.console.v1.UpdateSecretRequest"> & {
+  /**
+   * name is the name of the secret to update.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * data replaces the entire secret data map.
+   * Values are the raw secret bytes (not base64 encoded).
+   *
+   * @generated from field: map<string, bytes> data = 2;
+   */
+  data: { [key: string]: Uint8Array };
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSecretRequest.
+ * Use `create(UpdateSecretRequestSchema)` to create a new message.
+ */
+export declare const UpdateSecretRequestSchema: GenMessage<UpdateSecretRequest>;
+
+/**
+ * UpdateSecretResponse is empty on success.
+ *
+ * @generated from message holos.console.v1.UpdateSecretResponse
+ */
+export declare type UpdateSecretResponse = Message<"holos.console.v1.UpdateSecretResponse"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSecretResponse.
+ * Use `create(UpdateSecretResponseSchema)` to create a new message.
+ */
+export declare const UpdateSecretResponseSchema: GenMessage<UpdateSecretResponse>;
+
+/**
+ * CreateSecretRequest contains the new secret's name, data, and access control.
+ *
+ * @generated from message holos.console.v1.CreateSecretRequest
+ */
+export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecretRequest"> & {
+  /**
+   * name is the name of the secret to create.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * data contains the secret key-value pairs.
+   * Values are the raw secret bytes (not base64 encoded).
+   *
+   * @generated from field: map<string, bytes> data = 2;
+   */
+  data: { [key: string]: Uint8Array };
+
+  /**
+   * allowed_roles specifies which roles can access this secret.
+   *
+   * @generated from field: repeated string allowed_roles = 3;
+   */
+  allowedRoles: string[];
+};
+
+/**
+ * Describes the message holos.console.v1.CreateSecretRequest.
+ * Use `create(CreateSecretRequestSchema)` to create a new message.
+ */
+export declare const CreateSecretRequestSchema: GenMessage<CreateSecretRequest>;
+
+/**
+ * CreateSecretResponse contains the name of the created secret.
+ *
+ * @generated from message holos.console.v1.CreateSecretResponse
+ */
+export declare type CreateSecretResponse = Message<"holos.console.v1.CreateSecretResponse"> & {
+  /**
+   * name is the name of the created secret.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CreateSecretResponse.
+ * Use `create(CreateSecretResponseSchema)` to create a new message.
+ */
+export declare const CreateSecretResponseSchema: GenMessage<CreateSecretResponse>;
+
+/**
+ * DeleteSecretRequest contains the name of the secret to delete.
+ *
+ * @generated from message holos.console.v1.DeleteSecretRequest
+ */
+export declare type DeleteSecretRequest = Message<"holos.console.v1.DeleteSecretRequest"> & {
+  /**
+   * name is the name of the secret to delete.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretRequest.
+ * Use `create(DeleteSecretRequestSchema)` to create a new message.
+ */
+export declare const DeleteSecretRequestSchema: GenMessage<DeleteSecretRequest>;
+
+/**
+ * DeleteSecretResponse is empty on success.
+ *
+ * @generated from message holos.console.v1.DeleteSecretResponse
+ */
+export declare type DeleteSecretResponse = Message<"holos.console.v1.DeleteSecretResponse"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.DeleteSecretResponse.
+ * Use `create(DeleteSecretResponseSchema)` to create a new message.
+ */
+export declare const DeleteSecretResponseSchema: GenMessage<DeleteSecretResponse>;
+
+/**
  * SecretMetadata contains non-sensitive information about a secret.
  *
  * @generated from message holos.console.v1.SecretMetadata
@@ -161,6 +292,41 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof GetSecretRequestSchema;
     output: typeof GetSecretResponseSchema;
+  },
+  /**
+   * UpdateSecret replaces the data of an existing secret.
+   * Requires authentication and PERMISSION_SECRETS_WRITE.
+   * Only operates on secrets with the console managed-by label.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.UpdateSecret
+   */
+  updateSecret: {
+    methodKind: "unary";
+    input: typeof UpdateSecretRequestSchema;
+    output: typeof UpdateSecretResponseSchema;
+  },
+  /**
+   * CreateSecret creates a new secret with the console managed-by label.
+   * Requires authentication and PERMISSION_SECRETS_WRITE.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.CreateSecret
+   */
+  createSecret: {
+    methodKind: "unary";
+    input: typeof CreateSecretRequestSchema;
+    output: typeof CreateSecretResponseSchema;
+  },
+  /**
+   * DeleteSecret deletes a secret by name.
+   * Requires authentication and PERMISSION_SECRETS_DELETE.
+   * Only operates on secrets with the console managed-by label.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.DeleteSecret
+   */
+  deleteSecret: {
+    methodKind: "unary";
+    input: typeof DeleteSecretRequestSchema;
+    output: typeof DeleteSecretResponseSchema;
   },
 }>;
 

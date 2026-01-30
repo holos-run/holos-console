@@ -197,6 +197,293 @@ func (x *ListSecretsResponse) GetSecrets() []*SecretMetadata {
 	return nil
 }
 
+// UpdateSecretRequest contains the name and replacement data for a secret.
+type UpdateSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the secret to update.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// data replaces the entire secret data map.
+	// Values are the raw secret bytes (not base64 encoded).
+	Data          map[string][]byte `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSecretRequest) Reset() {
+	*x = UpdateSecretRequest{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSecretRequest) ProtoMessage() {}
+
+func (x *UpdateSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSecretRequest.ProtoReflect.Descriptor instead.
+func (*UpdateSecretRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *UpdateSecretRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateSecretRequest) GetData() map[string][]byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+// UpdateSecretResponse is empty on success.
+type UpdateSecretResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSecretResponse) Reset() {
+	*x = UpdateSecretResponse{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSecretResponse) ProtoMessage() {}
+
+func (x *UpdateSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSecretResponse.ProtoReflect.Descriptor instead.
+func (*UpdateSecretResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{5}
+}
+
+// CreateSecretRequest contains the new secret's name, data, and access control.
+type CreateSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the secret to create.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// data contains the secret key-value pairs.
+	// Values are the raw secret bytes (not base64 encoded).
+	Data map[string][]byte `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// allowed_roles specifies which roles can access this secret.
+	AllowedRoles  []string `protobuf:"bytes,3,rep,name=allowed_roles,json=allowedRoles,proto3" json:"allowed_roles,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateSecretRequest) Reset() {
+	*x = CreateSecretRequest{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateSecretRequest) ProtoMessage() {}
+
+func (x *CreateSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateSecretRequest.ProtoReflect.Descriptor instead.
+func (*CreateSecretRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CreateSecretRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateSecretRequest) GetData() map[string][]byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *CreateSecretRequest) GetAllowedRoles() []string {
+	if x != nil {
+		return x.AllowedRoles
+	}
+	return nil
+}
+
+// CreateSecretResponse contains the name of the created secret.
+type CreateSecretResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the created secret.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateSecretResponse) Reset() {
+	*x = CreateSecretResponse{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateSecretResponse) ProtoMessage() {}
+
+func (x *CreateSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateSecretResponse.ProtoReflect.Descriptor instead.
+func (*CreateSecretResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CreateSecretResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// DeleteSecretRequest contains the name of the secret to delete.
+type DeleteSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the secret to delete.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteSecretRequest) Reset() {
+	*x = DeleteSecretRequest{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteSecretRequest) ProtoMessage() {}
+
+func (x *DeleteSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteSecretRequest.ProtoReflect.Descriptor instead.
+func (*DeleteSecretRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DeleteSecretRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// DeleteSecretResponse is empty on success.
+type DeleteSecretResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteSecretResponse) Reset() {
+	*x = DeleteSecretResponse{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteSecretResponse) ProtoMessage() {}
+
+func (x *DeleteSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteSecretResponse.ProtoReflect.Descriptor instead.
+func (*DeleteSecretResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{9}
+}
+
 // SecretMetadata contains non-sensitive information about a secret.
 type SecretMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -218,7 +505,7 @@ type SecretMetadata struct {
 
 func (x *SecretMetadata) Reset() {
 	*x = SecretMetadata{}
-	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -230,7 +517,7 @@ func (x *SecretMetadata) String() string {
 func (*SecretMetadata) ProtoMessage() {}
 
 func (x *SecretMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_secrets_proto_msgTypes[4]
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -243,7 +530,7 @@ func (x *SecretMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretMetadata.ProtoReflect.Descriptor instead.
 func (*SecretMetadata) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{4}
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SecretMetadata) GetName() string {
@@ -289,17 +576,39 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
 	"\x12ListSecretsRequest\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\x94\x01\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\xa7\x01\n" +
+	"\x13UpdateSecretRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
+	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.UpdateSecretRequest.DataEntryR\x04data\x1a7\n" +
+	"\tDataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x16\n" +
+	"\x14UpdateSecretResponse\"\xcc\x01\n" +
+	"\x13CreateSecretRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
+	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12#\n" +
+	"\rallowed_roles\x18\x03 \x03(\tR\fallowedRoles\x1a7\n" +
+	"\tDataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"*\n" +
+	"\x14CreateSecretResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\")\n" +
+	"\x13DeleteSecretRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
+	"\x14DeleteSecretResponse\"\x94\x01\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"accessible\x18\x02 \x01(\bR\n" +
 	"accessible\x12)\n" +
 	"\x0eallowed_groups\x18\x03 \x03(\tB\x02\x18\x01R\rallowedGroups\x12#\n" +
-	"\rallowed_roles\x18\x04 \x03(\tR\fallowedRoles2\xc2\x01\n" +
+	"\rallowed_roles\x18\x04 \x03(\tR\fallowedRoles2\xdf\x03\n" +
 	"\x0eSecretsService\x12Z\n" +
 	"\vListSecrets\x12$.holos.console.v1.ListSecretsRequest\x1a%.holos.console.v1.ListSecretsResponse\x12T\n" +
-	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponse\x12]\n" +
+	"\fUpdateSecret\x12%.holos.console.v1.UpdateSecretRequest\x1a&.holos.console.v1.UpdateSecretResponse\x12]\n" +
+	"\fCreateSecret\x12%.holos.console.v1.CreateSecretRequest\x1a&.holos.console.v1.CreateSecretResponse\x12]\n" +
+	"\fDeleteSecret\x12%.holos.console.v1.DeleteSecretRequest\x1a&.holos.console.v1.DeleteSecretResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_secrets_proto_rawDescOnce sync.Once
@@ -313,27 +622,43 @@ func file_holos_console_v1_secrets_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_secrets_proto_rawDescData
 }
 
-var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_holos_console_v1_secrets_proto_goTypes = []any{
-	(*GetSecretRequest)(nil),    // 0: holos.console.v1.GetSecretRequest
-	(*GetSecretResponse)(nil),   // 1: holos.console.v1.GetSecretResponse
-	(*ListSecretsRequest)(nil),  // 2: holos.console.v1.ListSecretsRequest
-	(*ListSecretsResponse)(nil), // 3: holos.console.v1.ListSecretsResponse
-	(*SecretMetadata)(nil),      // 4: holos.console.v1.SecretMetadata
-	nil,                         // 5: holos.console.v1.GetSecretResponse.DataEntry
+	(*GetSecretRequest)(nil),     // 0: holos.console.v1.GetSecretRequest
+	(*GetSecretResponse)(nil),    // 1: holos.console.v1.GetSecretResponse
+	(*ListSecretsRequest)(nil),   // 2: holos.console.v1.ListSecretsRequest
+	(*ListSecretsResponse)(nil),  // 3: holos.console.v1.ListSecretsResponse
+	(*UpdateSecretRequest)(nil),  // 4: holos.console.v1.UpdateSecretRequest
+	(*UpdateSecretResponse)(nil), // 5: holos.console.v1.UpdateSecretResponse
+	(*CreateSecretRequest)(nil),  // 6: holos.console.v1.CreateSecretRequest
+	(*CreateSecretResponse)(nil), // 7: holos.console.v1.CreateSecretResponse
+	(*DeleteSecretRequest)(nil),  // 8: holos.console.v1.DeleteSecretRequest
+	(*DeleteSecretResponse)(nil), // 9: holos.console.v1.DeleteSecretResponse
+	(*SecretMetadata)(nil),       // 10: holos.console.v1.SecretMetadata
+	nil,                          // 11: holos.console.v1.GetSecretResponse.DataEntry
+	nil,                          // 12: holos.console.v1.UpdateSecretRequest.DataEntry
+	nil,                          // 13: holos.console.v1.CreateSecretRequest.DataEntry
 }
 var file_holos_console_v1_secrets_proto_depIdxs = []int32{
-	5, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
-	4, // 1: holos.console.v1.ListSecretsResponse.secrets:type_name -> holos.console.v1.SecretMetadata
-	2, // 2: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
-	0, // 3: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
-	3, // 4: holos.console.v1.SecretsService.ListSecrets:output_type -> holos.console.v1.ListSecretsResponse
-	1, // 5: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	11, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
+	10, // 1: holos.console.v1.ListSecretsResponse.secrets:type_name -> holos.console.v1.SecretMetadata
+	12, // 2: holos.console.v1.UpdateSecretRequest.data:type_name -> holos.console.v1.UpdateSecretRequest.DataEntry
+	13, // 3: holos.console.v1.CreateSecretRequest.data:type_name -> holos.console.v1.CreateSecretRequest.DataEntry
+	2,  // 4: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
+	0,  // 5: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
+	4,  // 6: holos.console.v1.SecretsService.UpdateSecret:input_type -> holos.console.v1.UpdateSecretRequest
+	6,  // 7: holos.console.v1.SecretsService.CreateSecret:input_type -> holos.console.v1.CreateSecretRequest
+	8,  // 8: holos.console.v1.SecretsService.DeleteSecret:input_type -> holos.console.v1.DeleteSecretRequest
+	3,  // 9: holos.console.v1.SecretsService.ListSecrets:output_type -> holos.console.v1.ListSecretsResponse
+	1,  // 10: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
+	5,  // 11: holos.console.v1.SecretsService.UpdateSecret:output_type -> holos.console.v1.UpdateSecretResponse
+	7,  // 12: holos.console.v1.SecretsService.CreateSecret:output_type -> holos.console.v1.CreateSecretResponse
+	9,  // 13: holos.console.v1.SecretsService.DeleteSecret:output_type -> holos.console.v1.DeleteSecretResponse
+	9,  // [9:14] is the sub-list for method output_type
+	4,  // [4:9] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_secrets_proto_init() }
@@ -347,7 +672,7 @@ func file_holos_console_v1_secrets_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_secrets_proto_rawDesc), len(file_holos_console_v1_secrets_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

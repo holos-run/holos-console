@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse } from "./secrets_pb.js";
+import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -39,6 +39,44 @@ export const SecretsService = {
       name: "GetSecret",
       I: GetSecretRequest,
       O: GetSecretResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * UpdateSecret replaces the data of an existing secret.
+     * Requires authentication and PERMISSION_SECRETS_WRITE.
+     * Only operates on secrets with the console managed-by label.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.UpdateSecret
+     */
+    updateSecret: {
+      name: "UpdateSecret",
+      I: UpdateSecretRequest,
+      O: UpdateSecretResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * CreateSecret creates a new secret with the console managed-by label.
+     * Requires authentication and PERMISSION_SECRETS_WRITE.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.CreateSecret
+     */
+    createSecret: {
+      name: "CreateSecret",
+      I: CreateSecretRequest,
+      O: CreateSecretResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * DeleteSecret deletes a secret by name.
+     * Requires authentication and PERMISSION_SECRETS_DELETE.
+     * Only operates on secrets with the console managed-by label.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.DeleteSecret
+     */
+    deleteSecret: {
+      name: "DeleteSecret",
+      I: DeleteSecretRequest,
+      O: DeleteSecretResponse,
       kind: MethodKind.Unary,
     },
   }

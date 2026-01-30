@@ -100,6 +100,166 @@ func (h *Handler) GetSecret(
 	return h.returnSecret(ctx, claims, secret)
 }
 
+// DeleteSecret deletes a secret with RBAC authorization.
+func (h *Handler) DeleteSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.DeleteSecretRequest],
+) (*connect.Response[consolev1.DeleteSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get existing secret to check RBAC
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC for delete access
+	allowedRoles, err := GetAllowedRoles(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := CheckDeleteAccess(claims.Groups, allowedRoles); err != nil {
+		slog.WarnContext(ctx, "secret delete denied",
+			slog.String("action", "secret_delete_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+			slog.Any("user_groups", claims.Groups),
+			slog.Any("allowed_roles", allowedRoles),
+		)
+		return nil, err
+	}
+
+	// Perform the delete
+	if err := h.k8s.DeleteSecret(ctx, req.Msg.Name); err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret deleted",
+		slog.String("action", "secret_delete"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.DeleteSecretResponse{}), nil
+}
+
+// CreateSecret creates a new secret with RBAC authorization.
+// Since the secret doesn't exist yet, authorization is checked against the user's own roles.
+func (h *Handler) CreateSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.CreateSecretRequest],
+) (*connect.Response[consolev1.CreateSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+	if len(req.Msg.AllowedRoles) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("allowed_roles is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Check that the user has write permission based on their own roles.
+	// Use the requested allowed_roles as the resource roles for the access check.
+	if err := CheckWriteAccess(claims.Groups, req.Msg.AllowedRoles); err != nil {
+		slog.WarnContext(ctx, "secret create denied",
+			slog.String("action", "secret_create_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	// Create the secret
+	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, req.Msg.Data, req.Msg.AllowedRoles)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret created",
+		slog.String("action", "secret_create"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CreateSecretResponse{
+		Name: req.Msg.Name,
+	}), nil
+}
+
+// UpdateSecret replaces the data of an existing secret with RBAC authorization.
+func (h *Handler) UpdateSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.UpdateSecretRequest],
+) (*connect.Response[consolev1.UpdateSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+	if len(req.Msg.Data) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret data is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get existing secret to check RBAC
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC for write access
+	allowedRoles, err := GetAllowedRoles(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := CheckWriteAccess(claims.Groups, allowedRoles); err != nil {
+		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
+		slog.WarnContext(ctx, "secret update denied",
+			slog.String("action", "secret_update_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	// Perform the update
+	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, req.Msg.Data); err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret updated",
+		slog.String("action", "secret_update"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.UpdateSecretResponse{}), nil
+}
+
 // returnSecret checks RBAC and returns the secret data.
 func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
 	// Check RBAC
@@ -123,6 +283,9 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 func mapK8sError(err error) error {
 	if errors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
+	}
+	if errors.IsAlreadyExists(err) {
+		return connect.NewError(connect.CodeAlreadyExists, err)
 	}
 	if errors.IsForbidden(err) {
 		return connect.NewError(connect.CodePermissionDenied, err)

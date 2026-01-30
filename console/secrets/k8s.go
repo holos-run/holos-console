@@ -56,6 +56,67 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 	})
 }
 
+// CreateSecret creates a new secret with the console managed-by label.
+func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, allowedRoles []string) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "creating secret in kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	rolesJSON, err := json.Marshal(allowedRoles)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling allowed roles: %w", err)
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: c.namespace,
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
+			Annotations: map[string]string{
+				AllowedRolesAnnotation: string(rolesJSON),
+			},
+		},
+		Data: data,
+	}
+	return c.client.CoreV1().Secrets(c.namespace).Create(ctx, secret, metav1.CreateOptions{})
+}
+
+// UpdateSecret replaces the data of an existing secret.
+// Returns FailedPrecondition if the secret does not have the console managed-by label.
+func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "updating secret in kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	secret, err := c.GetSecret(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
+		return nil, fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
+	}
+	secret.Data = data
+	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+}
+
+// DeleteSecret deletes a secret by name.
+// Returns FailedPrecondition if the secret does not have the console managed-by label.
+func (c *K8sClient) DeleteSecret(ctx context.Context, name string) error {
+	slog.DebugContext(ctx, "deleting secret from kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	secret, err := c.GetSecret(ctx, name)
+	if err != nil {
+		return err
+	}
+	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
+		return fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
+	}
+	return c.client.CoreV1().Secrets(c.namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
 // GetAllowedRoles parses the holos.run/allowed-roles annotation from a secret.
 // Falls back to holos.run/allowed-groups if the new annotation is not present.
 // Returns an empty slice if both annotations are missing.
