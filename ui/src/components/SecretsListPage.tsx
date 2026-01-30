@@ -31,8 +31,15 @@ import { secretsClient } from '../client'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
 
+function sharingSummary(userCount: number, groupCount: number): string | undefined {
+  const parts: string[] = []
+  if (userCount > 0) parts.push(`${userCount} user${userCount !== 1 ? 's' : ''}`)
+  if (groupCount > 0) parts.push(`${groupCount} group${groupCount !== 1 ? 's' : ''}`)
+  return parts.length > 0 ? parts.join(', ') : undefined
+}
+
 export function SecretsListPage() {
-  const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
   const [secrets, setSecrets] = useState<SecretMetadata[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -160,7 +167,7 @@ export function SecretsListPage() {
         {
           name: createName.trim(),
           data,
-          userGrants: [{ principal: 'creator@placeholder', role: Role.OWNER }],
+          userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
         },
         {
           headers: {
@@ -255,7 +262,10 @@ export function SecretsListPage() {
                     to={`/secrets/${secret.name}`}
                     disabled={!secret.accessible}
                   >
-                    <ListItemText primary={secret.name} />
+                    <ListItemText
+                      primary={secret.name}
+                      secondary={sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
+                    />
                   </ListItemButton>
                 </ListItem>
               ))}
