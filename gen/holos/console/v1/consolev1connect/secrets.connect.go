@@ -48,6 +48,9 @@ const (
 	// SecretsServiceDeleteSecretProcedure is the fully-qualified name of the SecretsService's
 	// DeleteSecret RPC.
 	SecretsServiceDeleteSecretProcedure = "/holos.console.v1.SecretsService/DeleteSecret"
+	// SecretsServiceUpdateSharingProcedure is the fully-qualified name of the SecretsService's
+	// UpdateSharing RPC.
+	SecretsServiceUpdateSharingProcedure = "/holos.console.v1.SecretsService/UpdateSharing"
 )
 
 // SecretsServiceClient is a client for the holos.console.v1.SecretsService service.
@@ -72,6 +75,9 @@ type SecretsServiceClient interface {
 	// Requires authentication and PERMISSION_SECRETS_DELETE.
 	// Only operates on secrets with the console managed-by label.
 	DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error)
+	// UpdateSharing updates the sharing grants on a secret without touching its data.
+	// Requires ROLE_OWNER on the secret.
+	UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error)
 }
 
 // NewSecretsServiceClient constructs a client for the holos.console.v1.SecretsService service. By
@@ -115,16 +121,23 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(secretsServiceMethods.ByName("DeleteSecret")),
 			connect.WithClientOptions(opts...),
 		),
+		updateSharing: connect.NewClient[v1.UpdateSharingRequest, v1.UpdateSharingResponse](
+			httpClient,
+			baseURL+SecretsServiceUpdateSharingProcedure,
+			connect.WithSchema(secretsServiceMethods.ByName("UpdateSharing")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // secretsServiceClient implements SecretsServiceClient.
 type secretsServiceClient struct {
-	listSecrets  *connect.Client[v1.ListSecretsRequest, v1.ListSecretsResponse]
-	getSecret    *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
-	updateSecret *connect.Client[v1.UpdateSecretRequest, v1.UpdateSecretResponse]
-	createSecret *connect.Client[v1.CreateSecretRequest, v1.CreateSecretResponse]
-	deleteSecret *connect.Client[v1.DeleteSecretRequest, v1.DeleteSecretResponse]
+	listSecrets   *connect.Client[v1.ListSecretsRequest, v1.ListSecretsResponse]
+	getSecret     *connect.Client[v1.GetSecretRequest, v1.GetSecretResponse]
+	updateSecret  *connect.Client[v1.UpdateSecretRequest, v1.UpdateSecretResponse]
+	createSecret  *connect.Client[v1.CreateSecretRequest, v1.CreateSecretResponse]
+	deleteSecret  *connect.Client[v1.DeleteSecretRequest, v1.DeleteSecretResponse]
+	updateSharing *connect.Client[v1.UpdateSharingRequest, v1.UpdateSharingResponse]
 }
 
 // ListSecrets calls holos.console.v1.SecretsService.ListSecrets.
@@ -152,6 +165,11 @@ func (c *secretsServiceClient) DeleteSecret(ctx context.Context, req *connect.Re
 	return c.deleteSecret.CallUnary(ctx, req)
 }
 
+// UpdateSharing calls holos.console.v1.SecretsService.UpdateSharing.
+func (c *secretsServiceClient) UpdateSharing(ctx context.Context, req *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error) {
+	return c.updateSharing.CallUnary(ctx, req)
+}
+
 // SecretsServiceHandler is an implementation of the holos.console.v1.SecretsService service.
 type SecretsServiceHandler interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
@@ -174,6 +192,9 @@ type SecretsServiceHandler interface {
 	// Requires authentication and PERMISSION_SECRETS_DELETE.
 	// Only operates on secrets with the console managed-by label.
 	DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error)
+	// UpdateSharing updates the sharing grants on a secret without touching its data.
+	// Requires ROLE_OWNER on the secret.
+	UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error)
 }
 
 // NewSecretsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -213,6 +234,12 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 		connect.WithSchema(secretsServiceMethods.ByName("DeleteSecret")),
 		connect.WithHandlerOptions(opts...),
 	)
+	secretsServiceUpdateSharingHandler := connect.NewUnaryHandler(
+		SecretsServiceUpdateSharingProcedure,
+		svc.UpdateSharing,
+		connect.WithSchema(secretsServiceMethods.ByName("UpdateSharing")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.SecretsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SecretsServiceListSecretsProcedure:
@@ -225,6 +252,8 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 			secretsServiceCreateSecretHandler.ServeHTTP(w, r)
 		case SecretsServiceDeleteSecretProcedure:
 			secretsServiceDeleteSecretHandler.ServeHTTP(w, r)
+		case SecretsServiceUpdateSharingProcedure:
+			secretsServiceUpdateSharingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,4 +281,8 @@ func (UnimplementedSecretsServiceHandler) CreateSecret(context.Context, *connect
 
 func (UnimplementedSecretsServiceHandler) DeleteSecret(context.Context, *connect.Request[v1.DeleteSecretRequest]) (*connect.Response[v1.DeleteSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.DeleteSecret is not implemented"))
+}
+
+func (UnimplementedSecretsServiceHandler) UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.UpdateSharing is not implemented"))
 }

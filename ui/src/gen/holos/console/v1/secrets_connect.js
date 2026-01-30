@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse } from "./secrets_pb.js";
+import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse, UpdateSharingRequest, UpdateSharingResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -77,6 +77,18 @@ export const SecretsService = {
       name: "DeleteSecret",
       I: DeleteSecretRequest,
       O: DeleteSecretResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * UpdateSharing updates the sharing grants on a secret without touching its data.
+     * Requires ROLE_OWNER on the secret.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.UpdateSharing
+     */
+    updateSharing: {
+      name: "UpdateSharing",
+      I: UpdateSharingRequest,
+      O: UpdateSharingResponse,
       kind: MethodKind.Unary,
     },
   }

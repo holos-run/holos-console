@@ -1540,3 +1540,317 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 	})
 }
+
+func TestHandler_UpdateSharing(t *testing.T) {
+	t.Run("owner can update sharing grants", func(t *testing.T) {
+		// Given: Secret with owner share-users grant for the caller
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "alice@example.com",
+			Groups: []string{},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
+				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
+			},
+			GroupGrants: []*consolev1.ShareGrant{
+				{Principal: "dev-team", Role: consolev1.Role_ROLE_EDITOR},
+			},
+		})
+
+		// When: UpdateSharing RPC is called
+		resp, err := handler.UpdateSharing(ctx, req)
+
+		// Then: Returns success with updated metadata
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Metadata == nil {
+			t.Fatal("expected metadata in response")
+		}
+		if resp.Msg.Metadata.Name != "my-secret" {
+			t.Errorf("expected name 'my-secret', got %q", resp.Msg.Metadata.Name)
+		}
+
+		// Verify annotations were persisted
+		updated, err := k8sClient.GetSecret(ctx, "my-secret")
+		if err != nil {
+			t.Fatalf("failed to get updated secret: %v", err)
+		}
+		shareUsers, err := GetShareUsers(updated)
+		if err != nil {
+			t.Fatalf("failed to parse share-users: %v", err)
+		}
+		if shareUsers["alice@example.com"] != "owner" {
+			t.Errorf("expected alice=owner, got %q", shareUsers["alice@example.com"])
+		}
+		if shareUsers["bob@example.com"] != "viewer" {
+			t.Errorf("expected bob=viewer, got %q", shareUsers["bob@example.com"])
+		}
+		shareGroups, err := GetShareGroups(updated)
+		if err != nil {
+			t.Fatalf("failed to parse share-groups: %v", err)
+		}
+		if shareGroups["dev-team"] != "editor" {
+			t.Errorf("expected dev-team=editor, got %q", shareGroups["dev-team"])
+		}
+	})
+
+	t.Run("non-owner gets PermissionDenied", func(t *testing.T) {
+		// Given: Secret where caller is only a viewer
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{"bob@example.com":"viewer"}`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-456",
+			Email:  "bob@example.com",
+			Groups: []string{},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_OWNER},
+			},
+		})
+
+		// When: UpdateSharing RPC is called
+		_, err := handler.UpdateSharing(ctx, req)
+
+		// Then: Returns PermissionDenied
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+		})
+
+		_, err := handler.UpdateSharing(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "alice@example.com",
+			Groups: []string{"owner"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "",
+		})
+
+		_, err := handler.UpdateSharing(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "alice@example.com",
+			Groups: []string{"owner"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "missing-secret",
+		})
+
+		_, err := handler.UpdateSharing(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
+		}
+	})
+}
+
+func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
+	t.Run("logs sharing_update on success", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "alice@example.com",
+			Groups: []string{},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
+			},
+		})
+
+		_, err := handler.UpdateSharing(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		record := logHandler.findRecord("sharing_update")
+		if record == nil {
+			t.Fatal("expected log record with action='sharing_update', got none")
+		}
+		if record.Level != slog.LevelInfo {
+			t.Errorf("expected Info level, got %v", record.Level)
+		}
+	})
+
+	t.Run("logs sharing_update_denied on RBAC failure", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{"bob@example.com":"viewer"}`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:    "user-456",
+			Email:  "bob@example.com",
+			Groups: []string{},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_OWNER},
+			},
+		})
+
+		_, err := handler.UpdateSharing(ctx, req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		record := logHandler.findRecord("sharing_update_denied")
+		if record == nil {
+			t.Fatal("expected log record with action='sharing_update_denied', got none")
+		}
+		if record.Level != slog.LevelWarn {
+			t.Errorf("expected Warn level, got %v", record.Level)
+		}
+	})
+}

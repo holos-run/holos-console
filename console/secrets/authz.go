@@ -52,6 +52,12 @@ func CheckListAccessSharing(gm *rbac.GroupMapping, email string, groups []string
 	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsList)
 }
 
+// CheckAdminAccessSharing verifies admin permission using sharing-aware access control.
+// Used for operations like updating sharing grants, which require owner-level access.
+func CheckAdminAccessSharing(gm *rbac.GroupMapping, email string, groups []string, shareUsers, shareGroups map[string]string, allowedRoles []string) error {
+	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsAdmin)
+}
+
 // CheckAccess verifies that the user has at least one group in common with the allowed groups.
 // Deprecated: Use CheckReadAccess or CheckListAccess instead.
 // Returns nil if access is granted, or a PermissionDenied error otherwise.

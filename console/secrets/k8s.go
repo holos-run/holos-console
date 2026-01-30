@@ -125,6 +125,36 @@ func (c *K8sClient) DeleteSecret(ctx context.Context, name string) error {
 	return c.client.CoreV1().Secrets(c.namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
+// UpdateSharing updates the sharing annotations on an existing secret.
+// Returns FailedPrecondition if the secret does not have the console managed-by label.
+func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, shareGroups map[string]string) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "updating sharing on kubernetes secret",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	secret, err := c.GetSecret(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
+		return nil, fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
+	}
+	if secret.Annotations == nil {
+		secret.Annotations = make(map[string]string)
+	}
+	usersJSON, err := json.Marshal(shareUsers)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling share-users: %w", err)
+	}
+	groupsJSON, err := json.Marshal(shareGroups)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling share-groups: %w", err)
+	}
+	secret.Annotations[ShareUsersAnnotation] = string(usersJSON)
+	secret.Annotations[ShareGroupsAnnotation] = string(groupsJSON)
+	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+}
+
 // GetAllowedRoles parses the holos.run/allowed-roles annotation from a secret.
 // Falls back to holos.run/allowed-groups if the new annotation is not present.
 // Returns an empty slice if both annotations are missing.

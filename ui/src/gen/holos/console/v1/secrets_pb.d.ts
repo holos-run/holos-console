@@ -4,6 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { Role } from "./rbac_pb";
 
 /**
  * Describes the file holos/console/v1/secrets.proto.
@@ -254,6 +255,20 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
    * @generated from field: repeated string allowed_roles = 4;
    */
   allowedRoles: string[];
+
+  /**
+   * user_grants contains per-user sharing grants on this secret.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant user_grants = 5;
+   */
+  userGrants: ShareGrant[];
+
+  /**
+   * group_grants contains per-group sharing grants on this secret.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 6;
+   */
+  groupGrants: ShareGrant[];
 };
 
 /**
@@ -261,6 +276,87 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
  * Use `create(SecretMetadataSchema)` to create a new message.
  */
 export declare const SecretMetadataSchema: GenMessage<SecretMetadata>;
+
+/**
+ * ShareGrant represents a sharing grant for a principal (user email or group name).
+ *
+ * @generated from message holos.console.v1.ShareGrant
+ */
+export declare type ShareGrant = Message<"holos.console.v1.ShareGrant"> & {
+  /**
+   * principal is the email address (for users) or group name (for groups).
+   *
+   * @generated from field: string principal = 1;
+   */
+  principal: string;
+
+  /**
+   * role is the permission level granted to the principal.
+   *
+   * @generated from field: holos.console.v1.Role role = 2;
+   */
+  role: Role;
+};
+
+/**
+ * Describes the message holos.console.v1.ShareGrant.
+ * Use `create(ShareGrantSchema)` to create a new message.
+ */
+export declare const ShareGrantSchema: GenMessage<ShareGrant>;
+
+/**
+ * UpdateSharingRequest contains the sharing grants to set on a secret.
+ *
+ * @generated from message holos.console.v1.UpdateSharingRequest
+ */
+export declare type UpdateSharingRequest = Message<"holos.console.v1.UpdateSharingRequest"> & {
+  /**
+   * name is the name of the secret to update sharing for.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * user_grants are the per-user sharing grants to set.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant user_grants = 2;
+   */
+  userGrants: ShareGrant[];
+
+  /**
+   * group_grants are the per-group sharing grants to set.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 3;
+   */
+  groupGrants: ShareGrant[];
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSharingRequest.
+ * Use `create(UpdateSharingRequestSchema)` to create a new message.
+ */
+export declare const UpdateSharingRequestSchema: GenMessage<UpdateSharingRequest>;
+
+/**
+ * UpdateSharingResponse contains the updated secret metadata.
+ *
+ * @generated from message holos.console.v1.UpdateSharingResponse
+ */
+export declare type UpdateSharingResponse = Message<"holos.console.v1.UpdateSharingResponse"> & {
+  /**
+   * metadata contains the updated secret metadata including new sharing grants.
+   *
+   * @generated from field: holos.console.v1.SecretMetadata metadata = 1;
+   */
+  metadata?: SecretMetadata;
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateSharingResponse.
+ * Use `create(UpdateSharingResponseSchema)` to create a new message.
+ */
+export declare const UpdateSharingResponseSchema: GenMessage<UpdateSharingResponse>;
 
 /**
  * SecretsService provides access to Kubernetes secrets with RBAC.
@@ -327,6 +423,17 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof DeleteSecretRequestSchema;
     output: typeof DeleteSecretResponseSchema;
+  },
+  /**
+   * UpdateSharing updates the sharing grants on a secret without touching its data.
+   * Requires ROLE_OWNER on the secret.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.UpdateSharing
+   */
+  updateSharing: {
+    methodKind: "unary";
+    input: typeof UpdateSharingRequestSchema;
+    output: typeof UpdateSharingResponseSchema;
   },
 }>;
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -266,6 +267,130 @@ func (h *Handler) UpdateSecret(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateSecretResponse{}), nil
+}
+
+// UpdateSharing updates the sharing grants on a secret without touching its data.
+// Requires ROLE_OWNER on the secret (via any grant source).
+func (h *Handler) UpdateSharing(
+	ctx context.Context,
+	req *connect.Request[consolev1.UpdateSharingRequest],
+) (*connect.Response[consolev1.UpdateSharingResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get existing secret to check RBAC
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC for admin access (owner only, sharing-aware)
+	allowedRoles, err := GetAllowedRoles(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
+		slog.WarnContext(ctx, "sharing update denied",
+			slog.String("action", "sharing_update_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	// Convert proto ShareGrant slices to annotation maps
+	newShareUsers := shareGrantsToMap(req.Msg.UserGrants)
+	newShareGroups := shareGrantsToMap(req.Msg.GroupGrants)
+
+	// Persist the sharing annotations
+	updated, err := h.k8s.UpdateSharing(ctx, req.Msg.Name, newShareUsers, newShareGroups)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "sharing updated",
+		slog.String("action", "sharing_update"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	// Build response metadata
+	metadata := buildSecretMetadata(updated, h.groupMapping, claims)
+
+	return connect.NewResponse(&consolev1.UpdateSharingResponse{
+		Metadata: metadata,
+	}), nil
+}
+
+// shareGrantsToMap converts a slice of ShareGrant protos to a map[string]string
+// suitable for storing as a Kubernetes annotation.
+func shareGrantsToMap(grants []*consolev1.ShareGrant) map[string]string {
+	result := make(map[string]string, len(grants))
+	for _, g := range grants {
+		if g.Principal != "" {
+			result[g.Principal] = strings.ToLower(g.Role.String()[len("ROLE_"):])
+		}
+	}
+	return result
+}
+
+// buildSecretMetadata creates SecretMetadata for a secret from the caller's perspective.
+func buildSecretMetadata(secret *corev1.Secret, gm *rbac.GroupMapping, claims *rpc.Claims) *consolev1.SecretMetadata {
+	allowedRoles, _ := GetAllowedRoles(secret)
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	accessible := CheckListAccessSharing(gm, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles) == nil
+
+	// Build user grants
+	var userGrants []*consolev1.ShareGrant
+	for email, role := range shareUsers {
+		userGrants = append(userGrants, &consolev1.ShareGrant{
+			Principal: email,
+			Role:      protoRoleFromString(role),
+		})
+	}
+	// Build group grants
+	var groupGrants []*consolev1.ShareGrant
+	for group, role := range shareGroups {
+		groupGrants = append(groupGrants, &consolev1.ShareGrant{
+			Principal: group,
+			Role:      protoRoleFromString(role),
+		})
+	}
+
+	return &consolev1.SecretMetadata{
+		Name:         secret.Name,
+		Accessible:   accessible,
+		AllowedRoles: allowedRoles,
+		UserGrants:   userGrants,
+		GroupGrants:  groupGrants,
+	}
+}
+
+// protoRoleFromString converts a role name string to the proto Role enum.
+func protoRoleFromString(s string) consolev1.Role {
+	switch strings.ToLower(s) {
+	case "viewer":
+		return consolev1.Role_ROLE_VIEWER
+	case "editor":
+		return consolev1.Role_ROLE_EDITOR
+	case "owner":
+		return consolev1.Role_ROLE_OWNER
+	default:
+		return consolev1.Role_ROLE_UNSPECIFIED
+	}
 }
 
 // returnSecret checks RBAC and returns the secret data.
