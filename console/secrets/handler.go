@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -17,12 +18,13 @@ import (
 // Handler implements the SecretsService.
 type Handler struct {
 	consolev1connect.UnimplementedSecretsServiceHandler
-	k8s *K8sClient
+	k8s          *K8sClient
+	groupMapping *rbac.GroupMapping
 }
 
 // NewHandler creates a new SecretsService handler.
-func NewHandler(k8s *K8sClient) *Handler {
-	return &Handler{k8s: k8s}
+func NewHandler(k8s *K8sClient, groupMapping *rbac.GroupMapping) *Handler {
+	return &Handler{k8s: k8s, groupMapping: groupMapping}
 }
 
 // ListSecrets returns all secrets with accessibility info for the current user.
@@ -51,7 +53,7 @@ func (h *Handler) ListSecrets(
 			// Skip secrets with invalid annotations
 			continue
 		}
-		accessible := CheckListAccess(claims.Groups, allowedRoles) == nil
+		accessible := CheckListAccess(h.groupMapping, claims.Groups, allowedRoles) == nil
 		if accessible {
 			accessibleCount++
 		}
@@ -127,7 +129,7 @@ func (h *Handler) DeleteSecret(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckDeleteAccess(claims.Groups, allowedRoles); err != nil {
+	if err := CheckDeleteAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -176,7 +178,7 @@ func (h *Handler) CreateSecret(
 
 	// Check that the user has write permission based on their own roles.
 	// Use the requested allowed_roles as the resource roles for the access check.
-	if err := CheckWriteAccess(claims.Groups, req.Msg.AllowedRoles); err != nil {
+	if err := CheckWriteAccess(h.groupMapping, claims.Groups, req.Msg.AllowedRoles); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -234,7 +236,7 @@ func (h *Handler) UpdateSecret(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckWriteAccess(claims.Groups, allowedRoles); err != nil {
+	if err := CheckWriteAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
 		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
@@ -267,7 +269,7 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckReadAccess(claims.Groups, allowedRoles); err != nil {
+	if err := CheckReadAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
 		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
 		return nil, err
 	}

@@ -63,31 +63,137 @@ func HasPermission(role Role, permission Permission) bool {
 	return perms[permission]
 }
 
-// MapGroupToRole maps a group name to a Role using case-insensitive matching.
-// Returns RoleUnspecified for unknown groups.
-func MapGroupToRole(group string) Role {
-	switch strings.ToLower(group) {
-	case "viewer":
-		return RoleViewer
-	case "editor":
-		return RoleEditor
-	case "owner":
-		return RoleOwner
-	default:
+// GroupMapping holds the mapping from OIDC group names to roles.
+// When custom groups are provided for a role, only those groups map to that role.
+// When no custom groups are provided (nil), the default group name is used.
+type GroupMapping struct {
+	groupToRole map[string]Role
+}
+
+// NewGroupMapping creates a GroupMapping. For each role, if the provided slice is
+// non-nil, those group names are used; otherwise the default group name
+// ("viewer", "editor", or "owner") is used.
+func NewGroupMapping(viewerGroups, editorGroups, ownerGroups []string) *GroupMapping {
+	if viewerGroups == nil {
+		viewerGroups = []string{"viewer"}
+	}
+	if editorGroups == nil {
+		editorGroups = []string{"editor"}
+	}
+	if ownerGroups == nil {
+		ownerGroups = []string{"owner"}
+	}
+
+	m := make(map[string]Role)
+	for _, g := range viewerGroups {
+		m[strings.ToLower(g)] = RoleViewer
+	}
+	for _, g := range editorGroups {
+		m[strings.ToLower(g)] = RoleEditor
+	}
+	for _, g := range ownerGroups {
+		m[strings.ToLower(g)] = RoleOwner
+	}
+
+	return &GroupMapping{groupToRole: m}
+}
+
+// ParseGroups splits a comma-separated string into a slice of trimmed group names.
+// Returns nil for an empty string.
+func ParseGroups(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	groups := make([]string, 0, len(parts))
+	for _, p := range parts {
+		g := strings.TrimSpace(p)
+		if g != "" {
+			groups = append(groups, g)
+		}
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return groups
+}
+
+// MapGroupToRole maps a group name to a Role using the configured mapping.
+func (gm *GroupMapping) MapGroupToRole(group string) Role {
+	role, ok := gm.groupToRole[strings.ToLower(group)]
+	if !ok {
 		return RoleUnspecified
 	}
+	return role
 }
 
 // MapGroupsToRoles maps a slice of group names to roles, filtering out unknown groups.
-func MapGroupsToRoles(groups []string) []Role {
+func (gm *GroupMapping) MapGroupsToRoles(groups []string) []Role {
 	roles := make([]Role, 0, len(groups))
 	for _, g := range groups {
-		role := MapGroupToRole(g)
+		role := gm.MapGroupToRole(g)
 		if role != RoleUnspecified {
 			roles = append(roles, role)
 		}
 	}
 	return roles
+}
+
+// CheckAccess verifies that the user has at least one role that grants the required permission.
+// This is the method form that uses the configured group mapping.
+func (gm *GroupMapping) CheckAccess(userGroups, allowedRoles []string, permission Permission) error {
+	// Map user groups to roles
+	userRoles := gm.MapGroupsToRoles(userGroups)
+
+	// Find the minimum required role level from allowed roles
+	minLevel := -1
+	for _, r := range allowedRoles {
+		role := gm.MapGroupToRole(r)
+		if role != RoleUnspecified {
+			level := roleLevel[role]
+			if minLevel < 0 || level < minLevel {
+				minLevel = level
+			}
+		}
+	}
+
+	// If no valid allowed roles, deny access
+	if minLevel < 0 {
+		return connect.NewError(
+			connect.CodePermissionDenied,
+			fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
+				strings.Join(allowedRoles, " ")),
+		)
+	}
+
+	// Check if any user role is at or above the minimum level AND has the required permission
+	for _, userRole := range userRoles {
+		if roleLevel[userRole] >= minLevel && HasPermission(userRole, permission) {
+			return nil
+		}
+	}
+
+	return connect.NewError(
+		connect.CodePermissionDenied,
+		fmt.Errorf("RBAC: authorization denied (allowed roles: [%s])",
+			strings.Join(allowedRoles, " ")),
+	)
+}
+
+// defaultMapping is the package-level default GroupMapping using built-in group names.
+var defaultMapping = NewGroupMapping(nil, nil, nil)
+
+// MapGroupToRole maps a group name to a Role using case-insensitive matching.
+// Returns RoleUnspecified for unknown groups.
+// Uses the default group mapping (viewer, editor, owner).
+func MapGroupToRole(group string) Role {
+	return defaultMapping.MapGroupToRole(group)
+}
+
+// MapGroupsToRoles maps a slice of group names to roles, filtering out unknown groups.
+// Uses the default group mapping.
+func MapGroupsToRoles(groups []string) []Role {
+	return defaultMapping.MapGroupsToRoles(groups)
 }
 
 // roleLevel defines the hierarchy level of each role for comparison.

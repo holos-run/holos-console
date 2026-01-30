@@ -5,14 +5,22 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/holos-run/holos-console/console/rbac"
 )
 
+// defaultGM returns the default GroupMapping for tests.
+func defaultGM() *rbac.GroupMapping {
+	return rbac.NewGroupMapping(nil, nil, nil)
+}
+
 func TestCheckReadAccess(t *testing.T) {
+	gm := defaultGM()
+
 	t.Run("allows read access for viewer role", func(t *testing.T) {
 		userGroups := []string{"viewer"}
 		allowedRoles := []string{"viewer"}
 
-		err := CheckReadAccess(userGroups, allowedRoles)
+		err := CheckReadAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted), got %v", err)
 		}
@@ -22,7 +30,7 @@ func TestCheckReadAccess(t *testing.T) {
 		userGroups := []string{"owner"}
 		allowedRoles := []string{"viewer"}
 
-		err := CheckReadAccess(userGroups, allowedRoles)
+		err := CheckReadAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted for owner), got %v", err)
 		}
@@ -32,7 +40,7 @@ func TestCheckReadAccess(t *testing.T) {
 		userGroups := []string{"developers"}
 		allowedRoles := []string{"viewer", "editor"}
 
-		err := CheckReadAccess(userGroups, allowedRoles)
+		err := CheckReadAccess(gm, userGroups, allowedRoles)
 		if err == nil {
 			t.Fatal("expected PermissionDenied error, got nil")
 		}
@@ -47,11 +55,13 @@ func TestCheckReadAccess(t *testing.T) {
 }
 
 func TestCheckWriteAccess(t *testing.T) {
+	gm := defaultGM()
+
 	t.Run("allows write access for editor role", func(t *testing.T) {
 		userGroups := []string{"editor"}
 		allowedRoles := []string{"editor"}
 
-		err := CheckWriteAccess(userGroups, allowedRoles)
+		err := CheckWriteAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted), got %v", err)
 		}
@@ -61,7 +71,7 @@ func TestCheckWriteAccess(t *testing.T) {
 		userGroups := []string{"owner"}
 		allowedRoles := []string{"editor"}
 
-		err := CheckWriteAccess(userGroups, allowedRoles)
+		err := CheckWriteAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted for owner), got %v", err)
 		}
@@ -71,7 +81,7 @@ func TestCheckWriteAccess(t *testing.T) {
 		userGroups := []string{"viewer"}
 		allowedRoles := []string{"editor"}
 
-		err := CheckWriteAccess(userGroups, allowedRoles)
+		err := CheckWriteAccess(gm, userGroups, allowedRoles)
 		if err == nil {
 			t.Fatal("expected PermissionDenied error, got nil")
 		}
@@ -86,11 +96,13 @@ func TestCheckWriteAccess(t *testing.T) {
 }
 
 func TestCheckDeleteAccess(t *testing.T) {
+	gm := defaultGM()
+
 	t.Run("allows delete access for owner role", func(t *testing.T) {
 		userGroups := []string{"owner"}
 		allowedRoles := []string{"owner"}
 
-		err := CheckDeleteAccess(userGroups, allowedRoles)
+		err := CheckDeleteAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted), got %v", err)
 		}
@@ -100,7 +112,7 @@ func TestCheckDeleteAccess(t *testing.T) {
 		userGroups := []string{"editor"}
 		allowedRoles := []string{"owner"}
 
-		err := CheckDeleteAccess(userGroups, allowedRoles)
+		err := CheckDeleteAccess(gm, userGroups, allowedRoles)
 		if err == nil {
 			t.Fatal("expected PermissionDenied error, got nil")
 		}
@@ -117,7 +129,7 @@ func TestCheckDeleteAccess(t *testing.T) {
 		userGroups := []string{"viewer"}
 		allowedRoles := []string{"owner"}
 
-		err := CheckDeleteAccess(userGroups, allowedRoles)
+		err := CheckDeleteAccess(gm, userGroups, allowedRoles)
 		if err == nil {
 			t.Fatal("expected PermissionDenied error, got nil")
 		}
@@ -125,11 +137,13 @@ func TestCheckDeleteAccess(t *testing.T) {
 }
 
 func TestCheckListAccess(t *testing.T) {
+	gm := defaultGM()
+
 	t.Run("allows list access for viewer role", func(t *testing.T) {
 		userGroups := []string{"viewer"}
 		allowedRoles := []string{"viewer"}
 
-		err := CheckListAccess(userGroups, allowedRoles)
+		err := CheckListAccess(gm, userGroups, allowedRoles)
 		if err != nil {
 			t.Errorf("expected nil error (access granted), got %v", err)
 		}
@@ -139,7 +153,7 @@ func TestCheckListAccess(t *testing.T) {
 		userGroups := []string{"developers"}
 		allowedRoles := []string{"viewer"}
 
-		err := CheckListAccess(userGroups, allowedRoles)
+		err := CheckListAccess(gm, userGroups, allowedRoles)
 		if err == nil {
 			t.Fatal("expected PermissionDenied error, got nil")
 		}

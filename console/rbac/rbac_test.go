@@ -220,6 +220,176 @@ func TestMapGroupsToRoles(t *testing.T) {
 	})
 }
 
+func TestNewGroupMapping(t *testing.T) {
+	t.Run("default mapping uses viewer, editor, owner groups", func(t *testing.T) {
+		gm := NewGroupMapping(nil, nil, nil)
+		if got := gm.MapGroupToRole("viewer"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'viewer', got %v", got)
+		}
+		if got := gm.MapGroupToRole("editor"); got != RoleEditor {
+			t.Errorf("expected RoleEditor for 'editor', got %v", got)
+		}
+		if got := gm.MapGroupToRole("owner"); got != RoleOwner {
+			t.Errorf("expected RoleOwner for 'owner', got %v", got)
+		}
+		if got := gm.MapGroupToRole("unknown"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'unknown', got %v", got)
+		}
+	})
+
+	t.Run("custom viewer groups", func(t *testing.T) {
+		gm := NewGroupMapping([]string{"readers", "readonly"}, nil, nil)
+		// Custom groups should map to the role
+		if got := gm.MapGroupToRole("readers"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'readers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("readonly"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'readonly', got %v", got)
+		}
+		// Default "viewer" should no longer map when custom groups are set
+		if got := gm.MapGroupToRole("viewer"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'viewer' when custom viewer groups set, got %v", got)
+		}
+		// Other defaults should still work
+		if got := gm.MapGroupToRole("editor"); got != RoleEditor {
+			t.Errorf("expected RoleEditor for 'editor', got %v", got)
+		}
+		if got := gm.MapGroupToRole("owner"); got != RoleOwner {
+			t.Errorf("expected RoleOwner for 'owner', got %v", got)
+		}
+	})
+
+	t.Run("custom editor groups", func(t *testing.T) {
+		gm := NewGroupMapping(nil, []string{"writers", "developers"}, nil)
+		if got := gm.MapGroupToRole("writers"); got != RoleEditor {
+			t.Errorf("expected RoleEditor for 'writers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("developers"); got != RoleEditor {
+			t.Errorf("expected RoleEditor for 'developers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("editor"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'editor' when custom editor groups set, got %v", got)
+		}
+	})
+
+	t.Run("custom owner groups", func(t *testing.T) {
+		gm := NewGroupMapping(nil, nil, []string{"admins", "superusers"})
+		if got := gm.MapGroupToRole("admins"); got != RoleOwner {
+			t.Errorf("expected RoleOwner for 'admins', got %v", got)
+		}
+		if got := gm.MapGroupToRole("superusers"); got != RoleOwner {
+			t.Errorf("expected RoleOwner for 'superusers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("owner"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'owner' when custom owner groups set, got %v", got)
+		}
+	})
+
+	t.Run("all custom groups", func(t *testing.T) {
+		gm := NewGroupMapping(
+			[]string{"readers"},
+			[]string{"writers"},
+			[]string{"admins"},
+		)
+		if got := gm.MapGroupToRole("readers"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'readers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("writers"); got != RoleEditor {
+			t.Errorf("expected RoleEditor for 'writers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("admins"); got != RoleOwner {
+			t.Errorf("expected RoleOwner for 'admins', got %v", got)
+		}
+		// None of the defaults should work
+		if got := gm.MapGroupToRole("viewer"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'viewer', got %v", got)
+		}
+		if got := gm.MapGroupToRole("editor"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'editor', got %v", got)
+		}
+		if got := gm.MapGroupToRole("owner"); got != RoleUnspecified {
+			t.Errorf("expected RoleUnspecified for 'owner', got %v", got)
+		}
+	})
+
+	t.Run("case-insensitive matching with custom groups", func(t *testing.T) {
+		gm := NewGroupMapping([]string{"Readers"}, nil, nil)
+		if got := gm.MapGroupToRole("readers"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'readers', got %v", got)
+		}
+		if got := gm.MapGroupToRole("READERS"); got != RoleViewer {
+			t.Errorf("expected RoleViewer for 'READERS', got %v", got)
+		}
+	})
+}
+
+func TestGroupMappingMapGroupsToRoles(t *testing.T) {
+	t.Run("maps custom groups to roles", func(t *testing.T) {
+		gm := NewGroupMapping([]string{"readers"}, []string{"writers"}, nil)
+		roles := gm.MapGroupsToRoles([]string{"readers", "writers", "unknown"})
+		if len(roles) != 2 {
+			t.Fatalf("expected 2 roles, got %d", len(roles))
+		}
+	})
+}
+
+func TestGroupMappingCheckAccess(t *testing.T) {
+	t.Run("grants access with custom group mapping", func(t *testing.T) {
+		gm := NewGroupMapping([]string{"readers"}, nil, nil)
+		// User is in "readers" group, which maps to viewer role
+		// Secret allows "readers" (which maps to viewer)
+		err := gm.CheckAccess([]string{"readers"}, []string{"readers"}, PermissionSecretsRead)
+		if err != nil {
+			t.Errorf("expected access granted, got error: %v", err)
+		}
+	})
+
+	t.Run("denies access when custom group not in allowed roles", func(t *testing.T) {
+		gm := NewGroupMapping([]string{"readers"}, []string{"writers"}, nil)
+		// User is in "readers" group (viewer role), needs write permission
+		err := gm.CheckAccess([]string{"readers"}, []string{"readers"}, PermissionSecretsWrite)
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+	})
+}
+
+func TestParseGroups(t *testing.T) {
+	t.Run("parses comma-separated groups", func(t *testing.T) {
+		groups := ParseGroups("readers,writers,admins")
+		if len(groups) != 3 {
+			t.Fatalf("expected 3 groups, got %d: %v", len(groups), groups)
+		}
+		if groups[0] != "readers" || groups[1] != "writers" || groups[2] != "admins" {
+			t.Errorf("unexpected groups: %v", groups)
+		}
+	})
+
+	t.Run("trims whitespace", func(t *testing.T) {
+		groups := ParseGroups(" readers , writers , admins ")
+		if len(groups) != 3 {
+			t.Fatalf("expected 3 groups, got %d: %v", len(groups), groups)
+		}
+		if groups[0] != "readers" || groups[1] != "writers" || groups[2] != "admins" {
+			t.Errorf("unexpected groups: %v", groups)
+		}
+	})
+
+	t.Run("returns nil for empty string", func(t *testing.T) {
+		groups := ParseGroups("")
+		if groups != nil {
+			t.Errorf("expected nil for empty string, got %v", groups)
+		}
+	})
+
+	t.Run("single group", func(t *testing.T) {
+		groups := ParseGroups("admins")
+		if len(groups) != 1 || groups[0] != "admins" {
+			t.Errorf("expected [admins], got %v", groups)
+		}
+	})
+}
+
 func TestCheckAccess(t *testing.T) {
 	t.Run("grants access when user has matching role with permission", func(t *testing.T) {
 		// User is in "viewer" group, secret allows "viewer" role

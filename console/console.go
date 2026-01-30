@@ -32,6 +32,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/oidc"
+	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -77,6 +78,18 @@ type Config struct {
 	// Namespace is the Kubernetes namespace for secrets.
 	// Default: "holos-console"
 	Namespace string
+
+	// ViewerGroups are the OIDC groups that map to the viewer role.
+	// When nil, defaults to ["viewer"].
+	ViewerGroups []string
+
+	// EditorGroups are the OIDC groups that map to the editor role.
+	// When nil, defaults to ["editor"].
+	EditorGroups []string
+
+	// OwnerGroups are the OIDC groups that map to the owner role.
+	// When nil, defaults to ["owner"].
+	OwnerGroups []string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -186,8 +199,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 	}
 
+	// Create RBAC group mapping from configuration
+	groupMapping := rbac.NewGroupMapping(s.cfg.ViewerGroups, s.cfg.EditorGroups, s.cfg.OwnerGroups)
+
 	// Register SecretsService (protected - requires auth)
-	secretsHandler := secrets.NewHandler(secretsK8s)
+	secretsHandler := secrets.NewHandler(secretsK8s, groupMapping)
 	secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 	mux.Handle(secretsPath, secretsHTTPHandler)
 

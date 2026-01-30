@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/holos-run/holos-console/console"
+	"github.com/holos-run/holos-console/console/rbac"
 )
 
 var (
@@ -26,6 +27,9 @@ var (
 	refreshTokenTTL string
 	namespace       string
 	logLevel        string
+	viewerGroups    string
+	editorGroups    string
+	ownerGroups     string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -78,6 +82,11 @@ func Command() *cobra.Command {
 
 	// Kubernetes flags
 	cmd.Flags().StringVar(&namespace, "namespace", "holos-console", "Kubernetes namespace for secrets")
+
+	// RBAC group mapping flags
+	cmd.Flags().StringVar(&viewerGroups, "viewer-groups", "", "Comma-separated OIDC groups that map to the viewer role (default: viewer)")
+	cmd.Flags().StringVar(&editorGroups, "editor-groups", "", "Comma-separated OIDC groups that map to the editor role (default: editor)")
+	cmd.Flags().StringVar(&ownerGroups, "owner-groups", "", "Comma-separated OIDC groups that map to the owner role (default: owner)")
 
 	// Logging flags
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -194,6 +203,9 @@ func Run(cmd *cobra.Command, args []string) error {
 		IDTokenTTL:      idTTL,
 		RefreshTokenTTL: refreshTTL,
 		Namespace:       namespace,
+		ViewerGroups:    rbac.ParseGroups(viewerGroups),
+		EditorGroups:    rbac.ParseGroups(editorGroups),
+		OwnerGroups:     rbac.ParseGroups(ownerGroups),
 	}
 
 	server := console.New(cfg)

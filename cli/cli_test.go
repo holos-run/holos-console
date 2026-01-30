@@ -119,6 +119,41 @@ func TestDeriveIssuer(t *testing.T) {
 	}
 }
 
+func TestGroupFlags(t *testing.T) {
+	t.Run("viewer-groups flag is registered", func(t *testing.T) {
+		cmd := Command()
+		f := cmd.Flags().Lookup("viewer-groups")
+		if f == nil {
+			t.Fatal("expected --viewer-groups flag to be registered")
+		}
+		if f.DefValue != "" {
+			t.Errorf("expected empty default, got %q", f.DefValue)
+		}
+	})
+
+	t.Run("editor-groups flag is registered", func(t *testing.T) {
+		cmd := Command()
+		f := cmd.Flags().Lookup("editor-groups")
+		if f == nil {
+			t.Fatal("expected --editor-groups flag to be registered")
+		}
+		if f.DefValue != "" {
+			t.Errorf("expected empty default, got %q", f.DefValue)
+		}
+	})
+
+	t.Run("owner-groups flag is registered", func(t *testing.T) {
+		cmd := Command()
+		f := cmd.Flags().Lookup("owner-groups")
+		if f == nil {
+			t.Fatal("expected --owner-groups flag to be registered")
+		}
+		if f.DefValue != "" {
+			t.Errorf("expected empty default, got %q", f.DefValue)
+		}
+	})
+}
+
 func TestTTLParsing(t *testing.T) {
 	tests := []struct {
 		name    string
