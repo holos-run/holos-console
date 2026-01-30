@@ -100,6 +100,56 @@ func (h *Handler) GetSecret(
 	return h.returnSecret(ctx, claims, secret)
 }
 
+// CreateSecret creates a new secret with RBAC authorization.
+// Since the secret doesn't exist yet, authorization is checked against the user's own roles.
+func (h *Handler) CreateSecret(
+	ctx context.Context,
+	req *connect.Request[consolev1.CreateSecretRequest],
+) (*connect.Response[consolev1.CreateSecretResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+	if len(req.Msg.AllowedRoles) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("allowed_roles is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Check that the user has write permission based on their own roles.
+	// Use the requested allowed_roles as the resource roles for the access check.
+	if err := CheckWriteAccess(claims.Groups, req.Msg.AllowedRoles); err != nil {
+		slog.WarnContext(ctx, "secret create denied",
+			slog.String("action", "secret_create_denied"),
+			slog.String("secret", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	// Create the secret
+	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, req.Msg.Data, req.Msg.AllowedRoles)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "secret created",
+		slog.String("action", "secret_create"),
+		slog.String("secret", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CreateSecretResponse{
+		Name: req.Msg.Name,
+	}), nil
+}
+
 // UpdateSecret replaces the data of an existing secret with RBAC authorization.
 func (h *Handler) UpdateSecret(
 	ctx context.Context,
@@ -179,6 +229,9 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 func mapK8sError(err error) error {
 	if errors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
+	}
+	if errors.IsAlreadyExists(err) {
+		return connect.NewError(connect.CodeAlreadyExists, err)
 	}
 	if errors.IsForbidden(err) {
 		return connect.NewError(connect.CodePermissionDenied, err)

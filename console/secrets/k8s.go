@@ -56,6 +56,32 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 	})
 }
 
+// CreateSecret creates a new secret with the console managed-by label.
+func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, allowedRoles []string) (*corev1.Secret, error) {
+	slog.DebugContext(ctx, "creating secret in kubernetes",
+		slog.String("namespace", c.namespace),
+		slog.String("name", name),
+	)
+	rolesJSON, err := json.Marshal(allowedRoles)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling allowed roles: %w", err)
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: c.namespace,
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
+			Annotations: map[string]string{
+				AllowedRolesAnnotation: string(rolesJSON),
+			},
+		},
+		Data: data,
+	}
+	return c.client.CoreV1().Secrets(c.namespace).Create(ctx, secret, metav1.CreateOptions{})
+}
+
 // UpdateSecret replaces the data of an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
 func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte) (*corev1.Secret, error) {
