@@ -22,7 +22,7 @@ COPY --from=ui-build /src/console/ui/ console/ui/
 RUN CGO_ENABLED=0 make build
 
 # Runtime stage
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=build /src/bin/holos-console /bin/holos-console
 
