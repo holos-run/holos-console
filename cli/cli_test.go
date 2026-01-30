@@ -5,6 +5,63 @@ import (
 	"time"
 )
 
+func TestDeriveOrigin(t *testing.T) {
+	tests := []struct {
+		name       string
+		listenAddr string
+		origin     string
+		plainHTTP  bool
+		want       string
+	}{
+		{
+			name:       "explicit origin takes precedence",
+			listenAddr: ":8443",
+			origin:     "https://holos-console.home.jeffmccune.com",
+			want:       "https://holos-console.home.jeffmccune.com",
+		},
+		{
+			name:       "derive from port-only listen",
+			listenAddr: ":4443",
+			origin:     "",
+			want:       "https://localhost:4443",
+		},
+		{
+			name:       "derive from full listen address",
+			listenAddr: "localhost:9000",
+			origin:     "",
+			want:       "https://localhost:9000",
+		},
+		{
+			name:       "0.0.0.0 becomes localhost",
+			listenAddr: "0.0.0.0:8443",
+			origin:     "",
+			want:       "https://localhost:8443",
+		},
+		{
+			name:       "plain http derive",
+			listenAddr: ":8080",
+			origin:     "",
+			plainHTTP:  true,
+			want:       "http://localhost:8080",
+		},
+		{
+			name:       "plain http explicit origin unchanged",
+			listenAddr: ":8080",
+			origin:     "https://holos-console.example.com",
+			plainHTTP:  true,
+			want:       "https://holos-console.example.com",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deriveOrigin(tt.listenAddr, tt.origin, tt.plainHTTP)
+			if got != tt.want {
+				t.Errorf("deriveOrigin() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDeriveIssuer(t *testing.T) {
 	tests := []struct {
 		name       string

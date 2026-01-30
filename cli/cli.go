@@ -19,6 +19,7 @@ var (
 	certFile        string
 	keyFile         string
 	plainHTTP       bool
+	origin          string
 	issuer          string
 	clientID        string
 	idTokenTTL      string
@@ -67,6 +68,7 @@ func Command() *cobra.Command {
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "Listen on plain HTTP instead of HTTPS")
 
 	// OIDC flags
+	cmd.Flags().StringVar(&origin, "origin", "", "Public-facing base URL of the console for OIDC redirect URIs (e.g., https://holos-console.example.com)")
 	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
@@ -81,6 +83,35 @@ func Command() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 
 	return cmd
+}
+
+// deriveOrigin returns the public-facing base URL of the console.
+// If origin is already set, returns it unchanged.
+// Otherwise, derives from the listen address.
+// The scheme is http when plainHTTP is true, https otherwise.
+func deriveOrigin(listenAddr, origin string, plainHTTP bool) string {
+	if origin != "" {
+		return origin
+	}
+
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		if plainHTTP {
+			return "http://localhost:8080"
+		}
+		return "https://localhost:8443"
+	}
+
+	if host == "" || host == "0.0.0.0" {
+		host = "localhost"
+	}
+
+	scheme := "https"
+	if plainHTTP {
+		scheme = "http"
+	}
+
+	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
 }
 
 // deriveIssuer returns the issuer URL based on the listen address.
@@ -148,7 +179,8 @@ func Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --refresh-token-ttl: %w", err)
 	}
 
-	// Derive issuer from listen address if not explicitly set
+	// Derive origin and issuer from listen address if not explicitly set
+	derivedOrigin := deriveOrigin(listenAddr, origin, plainHTTP)
 	derivedIssuer := deriveIssuer(listenAddr, issuer, plainHTTP)
 
 	cfg := console.Config{
@@ -156,6 +188,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		CertFile:        certFile,
 		KeyFile:         keyFile,
 		PlainHTTP:       plainHTTP,
+		Origin:          derivedOrigin,
 		Issuer:          derivedIssuer,
 		ClientID:        clientID,
 		IDTokenTTL:      idTTL,
