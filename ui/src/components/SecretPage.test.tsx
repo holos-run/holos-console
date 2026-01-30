@@ -11,6 +11,8 @@ vi.mock('../client', () => ({
     getSecret: vi.fn(),
     updateSecret: vi.fn(),
     deleteSecret: vi.fn(),
+    listSecrets: vi.fn(),
+    updateSharing: vi.fn(),
   },
 }))
 
@@ -18,6 +20,8 @@ import { secretsClient } from '../client'
 const mockGetSecret = vi.mocked(secretsClient.getSecret)
 const mockUpdateSecret = vi.mocked(secretsClient.updateSecret)
 const mockDeleteSecret = vi.mocked(secretsClient.deleteSecret)
+const mockListSecrets = vi.mocked(secretsClient.listSecrets)
+const mockUpdateSharing = vi.mocked(secretsClient.updateSharing)
 
 // Helper to create a mock User with profile
 function createMockUser(profile: Record<string, unknown>): User {
@@ -541,6 +545,126 @@ describe('SecretPage', () => {
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer my-test-token',
+            }),
+          }),
+        )
+      })
+    })
+  })
+
+  describe('sharing panel', () => {
+    it('renders sharing panel with grants from metadata', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: ['dev-team'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [{ principal: 'dev-team', role: 1 }],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByText('Sharing')).toBeInTheDocument()
+      })
+
+      expect(screen.getByText('alice@example.com')).toBeInTheDocument()
+      expect(screen.getByText('dev-team')).toBeInTheDocument()
+    })
+
+    it('shows edit button when user is owner', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument()
+      })
+    })
+
+    it('calls updateSharing on save', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      mockUpdateSharing.mockResolvedValue({
+        metadata: {
+          name: 'my-secret',
+          accessible: true,
+          userGrants: [{ principal: 'alice@example.com', role: 3 }],
+          groupGrants: [],
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.updateSharing>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      // Find the sharing panel's Save button (the data Save is disabled since content is unchanged)
+      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
+      const enabledSave = saveButtons.find((btn) => !btn.hasAttribute('disabled'))
+      fireEvent.click(enabledSave!)
+
+      await waitFor(() => {
+        expect(mockUpdateSharing).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: 'Bearer test-token',
             }),
           }),
         )

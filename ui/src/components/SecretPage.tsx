@@ -19,6 +19,9 @@ import {
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
+import { SharingPanel } from './SharingPanel'
+import { Role } from '../gen/holos/console/v1/rbac_pb'
+import type { ShareGrant } from '../gen/holos/console/v1/secrets_pb'
 
 // Convert secret data map to env file format
 function formatAsEnvFile(data: Record<string, Uint8Array>): string {
@@ -46,7 +49,7 @@ function parseEnvFile(text: string): Record<string, Uint8Array> {
 export function SecretPage() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
-  const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
   const [secretData, setSecretData] = useState<string>('')
   const [originalData, setOriginalData] = useState<string>('')
@@ -58,6 +61,11 @@ export function SecretPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Sharing state
+  const [userGrants, setUserGrants] = useState<ShareGrant[]>([])
+  const [groupGrants, setGroupGrants] = useState<ShareGrant[]>([])
+  const [isSavingSharing, setIsSavingSharing] = useState(false)
 
   const isDirty = secretData !== originalData
 
@@ -100,6 +108,68 @@ export function SecretPage() {
 
     fetchSecret()
   }, [isAuthenticated, name, getAccessToken])
+
+  // Fetch sharing metadata via listSecrets
+  useEffect(() => {
+    if (!isAuthenticated || !name) return
+
+    const fetchMetadata = async () => {
+      try {
+        const token = getAccessToken()
+        const response = await secretsClient.listSecrets(
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        )
+        const meta = response.secrets.find((s) => s.name === name)
+        if (meta) {
+          setUserGrants(meta.userGrants)
+          setGroupGrants(meta.groupGrants)
+        }
+      } catch {
+        // Sharing metadata is non-critical; don't block page
+      }
+    }
+
+    fetchMetadata()
+  }, [isAuthenticated, name, getAccessToken])
+
+  const userEmail = user?.profile?.email as string | undefined
+  const isOwner =
+    userEmail != null &&
+    userGrants.some((g) => g.principal === userEmail && g.role === Role.OWNER)
+
+  const handleSaveSharing = async (
+    newUserGrants: { principal: string; role: Role }[],
+    newGroupGrants: { principal: string; role: Role }[],
+  ) => {
+    if (!name) return
+    setIsSavingSharing(true)
+    try {
+      const token = getAccessToken()
+      const response = await secretsClient.updateSharing(
+        {
+          name,
+          userGrants: newUserGrants,
+          groupGrants: newGroupGrants,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+      if (response.metadata) {
+        setUserGrants(response.metadata.userGrants)
+        setGroupGrants(response.metadata.groupGrants)
+      }
+    } finally {
+      setIsSavingSharing(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!name || !isDirty) return
@@ -229,6 +299,13 @@ export function SecretPage() {
             Delete
           </Button>
         </Stack>
+        <SharingPanel
+          userGrants={userGrants}
+          groupGrants={groupGrants}
+          isOwner={isOwner}
+          onSave={handleSaveSharing}
+          isSaving={isSavingSharing}
+        />
         <Snackbar
           open={saveSuccess}
           autoHideDuration={3000}
