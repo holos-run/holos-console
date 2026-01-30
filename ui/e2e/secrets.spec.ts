@@ -113,6 +113,121 @@ test.describe('Secrets Page', () => {
     await expect(page.getByText(/not found/i)).toBeVisible({ timeout: 10000 })
   })
 
+  test('should create secret with sharing and show sharing panel', async ({ page }) => {
+    // Login first via profile page
+    await page.goto('/ui/profile')
+    await login(page)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Navigate to secrets list
+    await page.goto('/ui/secrets')
+    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+
+    // Create a new secret
+    const secretName = `e2e-sharing-${Date.now()}`
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByLabel(/name/i).fill(secretName)
+    await page.getByLabel(/data/i).fill('TEST_KEY=test_value')
+    await page.getByRole('button', { name: /^create$/i }).click()
+
+    // Wait for success snackbar
+    await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
+
+    // Navigate to the created secret
+    await page.getByRole('link', { name: secretName }).click()
+    await page.waitForURL(new RegExp(`/ui/secrets/${secretName}`), { timeout: 5000 })
+
+    // Verify sharing panel is present
+    await expect(page.getByText('Sharing')).toBeVisible({ timeout: 5000 })
+
+    // Verify the creator is shown as owner (admin user email)
+    await expect(page.getByText(/admin@example.com|admin/)).toBeVisible()
+
+    // Clean up: delete the secret
+    await page.getByRole('button', { name: /^delete$/i }).click()
+    await expect(page.getByText(/are you sure/i)).toBeVisible()
+    const dialogDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await dialogDeleteButton.click()
+
+    // Should redirect to secrets list
+    await page.waitForURL(/\/ui\/secrets\/?$/, { timeout: 5000 })
+  })
+
+  test('should update sharing grants on secret page', async ({ page }) => {
+    // Login first via profile page
+    await page.goto('/ui/profile')
+    await login(page)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Navigate to secrets list and create a test secret
+    await page.goto('/ui/secrets')
+    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+
+    const secretName = `e2e-share-update-${Date.now()}`
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByLabel(/name/i).fill(secretName)
+    await page.getByLabel(/data/i).fill('KEY=value')
+    await page.getByRole('button', { name: /^create$/i }).click()
+    await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
+
+    // Navigate to the secret
+    await page.getByRole('link', { name: secretName }).click()
+    await page.waitForURL(new RegExp(`/ui/secrets/${secretName}`), { timeout: 5000 })
+
+    // Verify sharing panel and edit button
+    await expect(page.getByText('Sharing')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /edit/i })).toBeVisible()
+
+    // Enter edit mode
+    await page.getByRole('button', { name: /edit/i }).click()
+
+    // Add a group grant
+    await page.getByRole('button', { name: /add group/i }).click()
+    const groupInput = page.getByPlaceholder(/group name/i)
+    await groupInput.fill('test-team')
+
+    // Save
+    // Find the sharing Save button (smaller, not the data save)
+    const saveBtns = page.getByRole('button', { name: /^save$/i })
+    await saveBtns.last().click()
+
+    // Verify group appears in read mode
+    await expect(page.getByText('test-team')).toBeVisible({ timeout: 5000 })
+
+    // Clean up: delete the secret
+    await page.getByRole('button', { name: /^delete$/i }).click()
+    const dialogDelete = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await dialogDelete.click()
+    await page.waitForURL(/\/ui\/secrets\/?$/, { timeout: 5000 })
+  })
+
+  test('should show sharing summary in secrets list', async ({ page }) => {
+    // Login first via profile page
+    await page.goto('/ui/profile')
+    await login(page)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Navigate to secrets list
+    await page.goto('/ui/secrets')
+    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+
+    // Create a test secret
+    const secretName = `e2e-list-summary-${Date.now()}`
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByLabel(/name/i).fill(secretName)
+    await page.getByRole('button', { name: /^create$/i }).click()
+    await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
+
+    // Verify the secret shows in the list with sharing summary (at least "1 user" for the creator)
+    await expect(page.getByText(/1 user/i)).toBeVisible({ timeout: 5000 })
+
+    // Clean up: delete via the list
+    await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()
+    const dialogDelete = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await dialogDelete.click()
+    await expect(page.getByText(/deleted successfully/i)).toBeVisible({ timeout: 5000 })
+  })
+
   test('should take screenshot of secrets page', async ({ page }) => {
     // Navigate and login
     await page.goto('/ui/secrets/dummy-secret')
