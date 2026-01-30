@@ -32,6 +32,26 @@ func CheckListAccess(gm *rbac.GroupMapping, userGroups, allowedRoles []string) e
 	return gm.CheckAccess(userGroups, allowedRoles, rbac.PermissionSecretsList)
 }
 
+// CheckReadAccessSharing verifies read permission using sharing-aware access control.
+func CheckReadAccessSharing(gm *rbac.GroupMapping, email string, groups []string, shareUsers, shareGroups map[string]string, allowedRoles []string) error {
+	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsRead)
+}
+
+// CheckWriteAccessSharing verifies write permission using sharing-aware access control.
+func CheckWriteAccessSharing(gm *rbac.GroupMapping, email string, groups []string, shareUsers, shareGroups map[string]string, allowedRoles []string) error {
+	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsWrite)
+}
+
+// CheckDeleteAccessSharing verifies delete permission using sharing-aware access control.
+func CheckDeleteAccessSharing(gm *rbac.GroupMapping, email string, groups []string, shareUsers, shareGroups map[string]string, allowedRoles []string) error {
+	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsDelete)
+}
+
+// CheckListAccessSharing verifies list permission using sharing-aware access control.
+func CheckListAccessSharing(gm *rbac.GroupMapping, email string, groups []string, shareUsers, shareGroups map[string]string, allowedRoles []string) error {
+	return gm.CheckAccessSharing(email, groups, shareUsers, shareGroups, allowedRoles, rbac.PermissionSecretsList)
+}
+
 // CheckAccess verifies that the user has at least one group in common with the allowed groups.
 // Deprecated: Use CheckReadAccess or CheckListAccess instead.
 // Returns nil if access is granted, or a PermissionDenied error otherwise.

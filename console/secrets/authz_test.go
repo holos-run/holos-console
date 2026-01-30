@@ -160,6 +160,78 @@ func TestCheckListAccess(t *testing.T) {
 	})
 }
 
+func TestCheckReadAccessSharing(t *testing.T) {
+	gm := defaultGM()
+
+	t.Run("user email grant allows read", func(t *testing.T) {
+		err := CheckReadAccessSharing(gm, "alice@example.com", nil,
+			map[string]string{"alice@example.com": "viewer"}, nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("group grant allows read", func(t *testing.T) {
+		err := CheckReadAccessSharing(gm, "bob@example.com", []string{"dev-team"},
+			nil, map[string]string{"dev-team": "viewer"}, nil)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("legacy fallback works", func(t *testing.T) {
+		err := CheckReadAccessSharing(gm, "carol@example.com", []string{"viewer"},
+			nil, nil, []string{"viewer"})
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+}
+
+func TestCheckWriteAccessSharing(t *testing.T) {
+	gm := defaultGM()
+
+	t.Run("group grant allows write", func(t *testing.T) {
+		err := CheckWriteAccessSharing(gm, "bob@example.com", []string{"writers"},
+			nil, map[string]string{"writers": "editor"}, nil)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("viewer grant denies write", func(t *testing.T) {
+		err := CheckWriteAccessSharing(gm, "alice@example.com", nil,
+			map[string]string{"alice@example.com": "viewer"}, nil, nil)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+}
+
+func TestCheckDeleteAccessSharing(t *testing.T) {
+	gm := defaultGM()
+
+	t.Run("owner email grant allows delete", func(t *testing.T) {
+		err := CheckDeleteAccessSharing(gm, "alice@example.com", nil,
+			map[string]string{"alice@example.com": "owner"}, nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+}
+
+func TestCheckListAccessSharing(t *testing.T) {
+	gm := defaultGM()
+
+	t.Run("user email grant allows list", func(t *testing.T) {
+		err := CheckListAccessSharing(gm, "alice@example.com", nil,
+			map[string]string{"alice@example.com": "viewer"}, nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+}
+
 func TestCheckAccess(t *testing.T) {
 	t.Run("allows access when user has matching group", func(t *testing.T) {
 		// Given: User groups ["developers", "readers"], allowed ["admin", "readers"]

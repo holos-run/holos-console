@@ -371,3 +371,134 @@ func TestGetAllowedGroups(t *testing.T) {
 		}
 	})
 }
+
+func TestGetShareUsers(t *testing.T) {
+	t.Run("parses share-users annotation", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{"alice@example.com":"editor","bob@example.com":"viewer"}`,
+				},
+			},
+		}
+		users, err := GetShareUsers(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 2 {
+			t.Fatalf("expected 2 users, got %d", len(users))
+		}
+		if users["alice@example.com"] != "editor" {
+			t.Errorf("expected alice=editor, got %s", users["alice@example.com"])
+		}
+		if users["bob@example.com"] != "viewer" {
+			t.Errorf("expected bob=viewer, got %s", users["bob@example.com"])
+		}
+	})
+
+	t.Run("missing annotation returns empty map", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+		}
+		users, err := GetShareUsers(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 0 {
+			t.Errorf("expected empty map, got %v", users)
+		}
+	})
+
+	t.Run("nil annotations returns empty map", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{},
+		}
+		users, err := GetShareUsers(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 0 {
+			t.Errorf("expected empty map, got %v", users)
+		}
+	})
+
+	t.Run("invalid JSON returns error", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `{invalid`,
+				},
+			},
+		}
+		_, err := GetShareUsers(secret)
+		if err == nil {
+			t.Fatal("expected error for invalid JSON, got nil")
+		}
+	})
+}
+
+func TestGetShareGroups(t *testing.T) {
+	t.Run("parses share-groups annotation", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					ShareGroupsAnnotation: `{"platform-team":"owner","dev-team":"viewer"}`,
+				},
+			},
+		}
+		groups, err := GetShareGroups(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(groups) != 2 {
+			t.Fatalf("expected 2 groups, got %d", len(groups))
+		}
+		if groups["platform-team"] != "owner" {
+			t.Errorf("expected platform-team=owner, got %s", groups["platform-team"])
+		}
+	})
+
+	t.Run("missing annotation returns empty map", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+		}
+		groups, err := GetShareGroups(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(groups) != 0 {
+			t.Errorf("expected empty map, got %v", groups)
+		}
+	})
+
+	t.Run("nil annotations returns empty map", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{},
+		}
+		groups, err := GetShareGroups(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(groups) != 0 {
+			t.Errorf("expected empty map, got %v", groups)
+		}
+	})
+
+	t.Run("invalid JSON returns error", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					ShareGroupsAnnotation: `not-json`,
+				},
+			},
+		}
+		_, err := GetShareGroups(secret)
+		if err == nil {
+			t.Fatal("expected error for invalid JSON, got nil")
+		}
+	})
+}

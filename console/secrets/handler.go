@@ -53,7 +53,9 @@ func (h *Handler) ListSecrets(
 			// Skip secrets with invalid annotations
 			continue
 		}
-		accessible := CheckListAccess(h.groupMapping, claims.Groups, allowedRoles) == nil
+		shareUsers, _ := GetShareUsers(&secret)
+		shareGroups, _ := GetShareGroups(&secret)
+		accessible := CheckListAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles) == nil
 		if accessible {
 			accessibleCount++
 		}
@@ -124,12 +126,14 @@ func (h *Handler) DeleteSecret(
 		return nil, mapK8sError(err)
 	}
 
-	// Check RBAC for delete access
+	// Check RBAC for delete access (sharing-aware)
 	allowedRoles, err := GetAllowedRoles(secret)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckDeleteAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -178,7 +182,7 @@ func (h *Handler) CreateSecret(
 
 	// Check that the user has write permission based on their own roles.
 	// Use the requested allowed_roles as the resource roles for the access check.
-	if err := CheckWriteAccess(h.groupMapping, claims.Groups, req.Msg.AllowedRoles); err != nil {
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, nil, nil, req.Msg.AllowedRoles); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -231,12 +235,14 @@ func (h *Handler) UpdateSecret(
 		return nil, mapK8sError(err)
 	}
 
-	// Check RBAC for write access
+	// Check RBAC for write access (sharing-aware)
 	allowedRoles, err := GetAllowedRoles(secret)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckWriteAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
 		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
@@ -264,12 +270,14 @@ func (h *Handler) UpdateSecret(
 
 // returnSecret checks RBAC and returns the secret data.
 func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *corev1.Secret) (*connect.Response[consolev1.GetSecretResponse], error) {
-	// Check RBAC
+	// Check RBAC (sharing-aware)
 	allowedRoles, err := GetAllowedRoles(secret)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := CheckReadAccess(h.groupMapping, claims.Groups, allowedRoles); err != nil {
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups, allowedRoles); err != nil {
 		logAuditDenied(ctx, claims, secret.Name, allowedRoles)
 		return nil, err
 	}

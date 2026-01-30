@@ -18,6 +18,14 @@ const AllowedRolesAnnotation = "holos.run/allowed-roles"
 // Deprecated: Use AllowedRolesAnnotation instead.
 const AllowedGroupsAnnotation = "holos.run/allowed-groups"
 
+// ShareUsersAnnotation is the annotation key for per-user sharing grants.
+// Value is a JSON object mapping email address → role name.
+const ShareUsersAnnotation = "holos.run/share-users"
+
+// ShareGroupsAnnotation is the annotation key for per-group sharing grants.
+// Value is a JSON object mapping OIDC group name → role name.
+const ShareGroupsAnnotation = "holos.run/share-groups"
+
 // ManagedByLabel is the label key used to identify secrets managed by the console.
 const ManagedByLabel = "app.kubernetes.io/managed-by"
 
@@ -145,6 +153,42 @@ func GetAllowedRoles(secret *corev1.Secret) ([]string, error) {
 	}
 
 	return []string{}, nil
+}
+
+// GetShareUsers parses the holos.run/share-users annotation from a secret.
+// Returns an empty map if the annotation is missing.
+// Returns an error if the annotation contains invalid JSON.
+func GetShareUsers(secret *corev1.Secret) (map[string]string, error) {
+	if secret.Annotations == nil {
+		return map[string]string{}, nil
+	}
+	value, ok := secret.Annotations[ShareUsersAnnotation]
+	if !ok {
+		return map[string]string{}, nil
+	}
+	var users map[string]string
+	if err := json.Unmarshal([]byte(value), &users); err != nil {
+		return nil, fmt.Errorf("invalid %s annotation: %w", ShareUsersAnnotation, err)
+	}
+	return users, nil
+}
+
+// GetShareGroups parses the holos.run/share-groups annotation from a secret.
+// Returns an empty map if the annotation is missing.
+// Returns an error if the annotation contains invalid JSON.
+func GetShareGroups(secret *corev1.Secret) (map[string]string, error) {
+	if secret.Annotations == nil {
+		return map[string]string{}, nil
+	}
+	value, ok := secret.Annotations[ShareGroupsAnnotation]
+	if !ok {
+		return map[string]string{}, nil
+	}
+	var groups map[string]string
+	if err := json.Unmarshal([]byte(value), &groups); err != nil {
+		return nil, fmt.Errorf("invalid %s annotation: %w", ShareGroupsAnnotation, err)
+	}
+	return groups, nil
 }
 
 // GetAllowedGroups parses the holos.run/allowed-groups annotation from a secret.

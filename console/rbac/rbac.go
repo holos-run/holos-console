@@ -180,6 +180,93 @@ func (gm *GroupMapping) CheckAccess(userGroups, allowedRoles []string, permissio
 	)
 }
 
+// RoleFromString converts a role name string to a Role constant using case-insensitive matching.
+// Returns RoleUnspecified for unknown or empty strings.
+func RoleFromString(s string) Role {
+	switch strings.ToLower(s) {
+	case "viewer":
+		return RoleViewer
+	case "editor":
+		return RoleEditor
+	case "owner":
+		return RoleOwner
+	default:
+		return RoleUnspecified
+	}
+}
+
+// CheckAccessSharing verifies access using per-user sharing, per-group sharing,
+// and legacy allowed-roles. The highest role found across all three sources is used.
+//
+// Evaluation order:
+//  1. Check shareUsers for userEmail (case-insensitive)
+//  2. Check shareGroups for any of userGroups (case-insensitive)
+//  3. Legacy: check allowedRoles via GroupMapping.CheckAccess
+//
+// Returns nil if access is granted, or a PermissionDenied error otherwise.
+func (gm *GroupMapping) CheckAccessSharing(
+	userEmail string,
+	userGroups []string,
+	shareUsers map[string]string,
+	shareGroups map[string]string,
+	allowedRoles []string,
+	permission Permission,
+) error {
+	bestLevel := -1
+
+	// 1. Check per-user sharing grants
+	if shareUsers != nil {
+		emailLower := strings.ToLower(userEmail)
+		for email, roleName := range shareUsers {
+			if strings.ToLower(email) == emailLower {
+				role := RoleFromString(roleName)
+				if level := roleLevel[role]; level > bestLevel {
+					bestLevel = level
+				}
+			}
+		}
+	}
+
+	// 2. Check per-group sharing grants
+	if shareGroups != nil {
+		for _, ug := range userGroups {
+			ugLower := strings.ToLower(ug)
+			for group, roleName := range shareGroups {
+				if strings.ToLower(group) == ugLower {
+					role := RoleFromString(roleName)
+					if level := roleLevel[role]; level > bestLevel {
+						bestLevel = level
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Legacy fallback: check allowedRoles via existing mechanism
+	if len(allowedRoles) > 0 {
+		if gm.CheckAccess(userGroups, allowedRoles, permission) == nil {
+			return nil
+		}
+	}
+
+	// Evaluate best role from sharing sources
+	if bestLevel > 0 {
+		// Find the Role with this level
+		for role, level := range roleLevel {
+			if level == bestLevel {
+				if HasPermission(role, permission) {
+					return nil
+				}
+			}
+		}
+	}
+
+	return connect.NewError(
+		connect.CodePermissionDenied,
+		fmt.Errorf("RBAC: authorization denied"),
+	)
+}
+
 // defaultMapping is the package-level default GroupMapping using built-in group names.
 var defaultMapping = NewGroupMapping(nil, nil, nil)
 

@@ -484,3 +484,167 @@ func TestCheckAccess(t *testing.T) {
 		}
 	})
 }
+
+func TestRoleFromString(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Role
+	}{
+		{"viewer", RoleViewer},
+		{"editor", RoleEditor},
+		{"owner", RoleOwner},
+		{"VIEWER", RoleViewer},
+		{"Editor", RoleEditor},
+		{"OWNER", RoleOwner},
+		{"", RoleUnspecified},
+		{"unknown", RoleUnspecified},
+		{"admin", RoleUnspecified},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := RoleFromString(tt.input)
+			if got != tt.want {
+				t.Errorf("RoleFromString(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckAccessSharing(t *testing.T) {
+	gm := NewGroupMapping(nil, nil, nil)
+
+	t.Run("user email match grants access", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"alice@example.com",
+			[]string{},
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			nil,
+			PermissionSecretsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via email, got: %v", err)
+		}
+	})
+
+	t.Run("user email match is case-insensitive", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"Alice@Example.COM",
+			[]string{},
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			nil,
+			PermissionSecretsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via case-insensitive email, got: %v", err)
+		}
+	})
+
+	t.Run("group match in shareGroups grants access", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"bob@example.com",
+			[]string{"platform-team"},
+			nil,
+			map[string]string{"platform-team": "editor"},
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via group share, got: %v", err)
+		}
+	})
+
+	t.Run("group match in shareGroups is case-insensitive", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"bob@example.com",
+			[]string{"Platform-Team"},
+			nil,
+			map[string]string{"platform-team": "viewer"},
+			nil,
+			PermissionSecretsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via case-insensitive group share, got: %v", err)
+		}
+	})
+
+	t.Run("legacy allowedRoles still works", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"carol@example.com",
+			[]string{"viewer"},
+			nil,
+			nil,
+			[]string{"viewer"},
+			PermissionSecretsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via legacy allowedRoles, got: %v", err)
+		}
+	})
+
+	t.Run("highest role wins across all sources", func(t *testing.T) {
+		// User has viewer via email, but owner via group share
+		// Should allow delete (owner permission)
+		err := gm.CheckAccessSharing(
+			"alice@example.com",
+			[]string{"ops"},
+			map[string]string{"alice@example.com": "viewer"},
+			map[string]string{"ops": "owner"},
+			nil,
+			PermissionSecretsDelete,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via highest role, got: %v", err)
+		}
+	})
+
+	t.Run("denies when no source grants sufficient permission", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"alice@example.com",
+			[]string{},
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("denies when no grants at all", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"unknown-group"},
+			nil,
+			nil,
+			nil,
+			PermissionSecretsRead,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+
+	t.Run("empty sharing maps fall through to legacy", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"carol@example.com",
+			[]string{"editor"},
+			map[string]string{},
+			map[string]string{},
+			[]string{"editor"},
+			PermissionSecretsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via legacy fallback, got: %v", err)
+		}
+	})
+}
