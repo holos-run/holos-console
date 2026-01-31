@@ -11,22 +11,22 @@ func TestDeriveRedirectURI(t *testing.T) {
 		{
 			name:   "standard origin",
 			origin: "https://holos-console.home.jeffmccune.com",
-			want:   "https://holos-console.home.jeffmccune.com/ui/callback",
+			want:   "https://holos-console.home.jeffmccune.com/pkce/verify",
 		},
 		{
 			name:   "localhost origin",
 			origin: "https://localhost:8443",
-			want:   "https://localhost:8443/ui/callback",
+			want:   "https://localhost:8443/pkce/verify",
 		},
 		{
 			name:   "trailing slash stripped",
 			origin: "https://holos-console.example.com/",
-			want:   "https://holos-console.example.com/ui/callback",
+			want:   "https://holos-console.example.com/pkce/verify",
 		},
 		{
 			name:   "plain http origin",
 			origin: "http://localhost:8080",
-			want:   "http://localhost:8080/ui/callback",
+			want:   "http://localhost:8080/pkce/verify",
 		},
 	}
 	for _, tt := range tests {

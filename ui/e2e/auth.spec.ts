@@ -51,7 +51,7 @@ test.describe('Authentication', () => {
     // This simulates what happens when the SPA initiates login
     const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
@@ -72,7 +72,7 @@ test.describe('Login Flow', () => {
     // Navigate to OIDC authorize with proper PKCE parameters
     const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
@@ -110,7 +110,7 @@ test.describe('Login Flow', () => {
     // Navigate to OIDC authorize
     const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
@@ -147,7 +147,7 @@ test.describe('Login Flow', () => {
     // Navigate to OIDC authorize
     const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
     authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/ui/callback')
+    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
     authorizeUrl.searchParams.set('response_type', 'code')
     authorizeUrl.searchParams.set('scope', 'openid profile email')
     authorizeUrl.searchParams.set('state', 'test_state')
@@ -176,7 +176,7 @@ test.describe('Login Flow', () => {
 
       // After successful auth, Dex redirects to the callback URL with a code
       // The URL should contain the callback path and an authorization code
-      await page.waitForURL(/\/ui\/callback\?.*code=/, { timeout: 10000 })
+      await page.waitForURL(/\/pkce\/verify\?.*code=/, { timeout: 10000 })
     }
   })
 })
