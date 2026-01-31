@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"crypto/tls"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,8 +12,9 @@ import (
 
 // LazyAuthInterceptor returns a ConnectRPC interceptor that lazily initializes
 // the OIDC verifier on first use. This is needed because the OIDC provider (Dex)
-// may not be running when the interceptor is created.
-func LazyAuthInterceptor(issuer, clientID string) connect.UnaryInterceptorFunc {
+// may not be running when the interceptor is created. The provided HTTP client
+// is used for OIDC discovery and must trust the issuer's TLS certificate.
+func LazyAuthInterceptor(issuer, clientID string, client *http.Client) connect.UnaryInterceptorFunc {
 	var (
 		verifier *oidc.IDTokenVerifier
 		initOnce sync.Once
@@ -25,15 +25,9 @@ func LazyAuthInterceptor(issuer, clientID string) connect.UnaryInterceptorFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			// Initialize verifier on first use
 			initOnce.Do(func() {
-				// Use insecure HTTP client for local Dex (self-signed certs)
-				insecureClient := &http.Client{
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-					},
-				}
-				insecureCtx := oidc.ClientContext(ctx, insecureClient)
+				oidcCtx := oidc.ClientContext(ctx, client)
 
-				provider, err := oidc.NewProvider(insecureCtx, issuer)
+				provider, err := oidc.NewProvider(oidcCtx, issuer)
 				if err != nil {
 					initErr = err
 					return

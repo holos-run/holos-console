@@ -59,11 +59,23 @@ func startServer(ts *testscript.TestScript, neg bool, args []string) {
 	certPath := filepath.Join(repoRoot, "certs", "tls.crt")
 	keyPath := filepath.Join(repoRoot, "certs", "tls.key")
 
+	// Locate mkcert CA root for TLS verification
+	home, err := os.UserHomeDir()
+	if err != nil {
+		ts.Fatalf("user home dir: %v", err)
+	}
+	caRoot := os.Getenv("MKCERT_CAROOT")
+	if caRoot == "" {
+		caRoot = filepath.Join(home, ".local", "share", "mkcert")
+	}
+	caCertPath := filepath.Join(caRoot, "rootCA.pem")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	server := console.New(console.Config{
 		ListenAddr: addr,
 		CertFile:   certPath,
 		KeyFile:    keyPath,
+		CACertFile: caCertPath,
 	})
 
 	errCh := make(chan error, 1)

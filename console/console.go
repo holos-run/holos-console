@@ -20,6 +20,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync/atomic"
@@ -90,6 +91,12 @@ type Config struct {
 	// PlatformOwners are the OIDC groups with platform owner role.
 	// When nil, defaults to ["owner"].
 	PlatformOwners []string
+
+	// CACertFile is the path to a PEM-encoded CA certificate file.
+	// When set, this CA is added to the TLS root CAs used by the server's
+	// internal HTTP client (e.g., for OIDC discovery). This allows the server
+	// to trust certificates signed by a custom CA such as mkcert.
+	CACertFile string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -123,6 +130,16 @@ func New(cfg Config) *Server {
 
 // Serve starts the HTTPS server and blocks until the context is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
+	// Load custom CA certificate pool for internal HTTP client (OIDC discovery, etc.)
+	caPool, err := loadCACertPool(s.cfg.CACertFile)
+	if err != nil {
+		return fmt.Errorf("failed to load CA certificate: %w", err)
+	}
+	if caPool != nil {
+		slog.Info("custom CA certificate loaded", "file", s.cfg.CACertFile)
+	}
+	internalClient := httpClientWithCA(caPool)
+
 	mux := http.NewServeMux()
 
 	// Health check endpoints for Kubernetes probes
@@ -157,7 +174,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		protectedInterceptors = connect.WithInterceptors(
 			rpc.MetricsInterceptor(),
 			rpc.LoggingInterceptor(),
-			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID),
+			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID, internalClient),
 		)
 	} else {
 		// Fallback to public interceptors if auth not configured
@@ -291,7 +308,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.cfg.Issuer != "" {
 		issuer := s.cfg.Issuer
 		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
-			handleDebugOIDC(w, r, issuer)
+			handleDebugOIDC(w, r, issuer, internalClient)
 		})
 	}
 
@@ -569,15 +586,10 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 
 // handleDebugOIDC returns debug information about OIDC configuration.
 // Useful for troubleshooting OIDC issues like missing groups claims.
-func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string) {
+func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string, client *http.Client) {
 
 	// Fetch the OIDC discovery document
 	discoveryURL := issuer + "/.well-known/openid-configuration"
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
 	resp, err := client.Get(discoveryURL)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to fetch discovery document: %v", err), http.StatusInternalServerError)
@@ -628,6 +640,37 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
 	}, nil
+}
+
+// loadCACertPool loads a PEM-encoded CA certificate file and returns a cert
+// pool containing both the system roots and the custom CA. If caCertFile is
+// empty, nil is returned (causing http.Transport to use system roots only).
+func loadCACertPool(caCertFile string) (*x509.CertPool, error) {
+	if caCertFile == "" {
+		return nil, nil
+	}
+	pemData, err := os.ReadFile(caCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading CA certificate: %w", err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pemData) {
+		return nil, fmt.Errorf("no valid certificates found in %s", caCertFile)
+	}
+	return pool, nil
+}
+
+// httpClientWithCA returns an *http.Client whose TLS config trusts the given
+// CA pool. If pool is nil the returned client uses the default system roots.
+func httpClientWithCA(pool *x509.CertPool) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		},
+	}
 }
 
 // generateSelfSignedCert generates a self-signed TLS certificate.

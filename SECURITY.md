@@ -139,7 +139,7 @@ type Claims struct {
 **Location:** [console/rpc/auth.go:36-44](console/rpc/auth.go#L36-L44)
 
 ```go
-provider, err := oidc.NewProvider(insecureCtx, issuer)
+provider, err := oidc.NewProvider(oidcCtx, issuer)
 if err != nil {
     initErr = err
     return
@@ -189,7 +189,7 @@ Protected endpoints (e.g., SecretsService) use `LazyAuthInterceptor` configured 
 
 ### TLS for OIDC Discovery
 
-In development, the interceptor uses `InsecureSkipVerify: true` for TLS when connecting to the OIDC provider ([auth.go:31](console/rpc/auth.go#L31)). This allows self-signed certificates during local development. In production deployments with external OIDC providers, proper TLS verification should be ensured via valid certificates.
+TLS certificate verification is always enforced for OIDC discovery connections. When using certificates signed by a custom CA (e.g., mkcert for local development), provide the CA certificate via the `--ca-cert` flag so the server can verify the issuer's TLS certificate. For example: `--ca-cert $(mkcert -CAROOT)/rootCA.pem`. In production with publicly trusted certificates, no `--ca-cert` flag is needed.
 
 ### Token Storage
 
