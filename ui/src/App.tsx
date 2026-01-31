@@ -10,8 +10,6 @@ import {
   ListItemButton,
   ListItemText,
   Divider,
-  Card,
-  CardContent,
   AppBar,
   Toolbar,
   IconButton,
@@ -27,7 +25,6 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
-import { ProfilePage } from './components/ProfilePage'
 import { AuthDebugPage } from './components/AuthDebugPage'
 import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
@@ -43,13 +40,12 @@ const DRAWER_WIDTH = 240
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
-  const isVersionPage = location.pathname.startsWith('/version')
-  const isProfilePage = location.pathname.startsWith('/profile')
-  const isAuthDebugPage = location.pathname.startsWith('/auth-debug')
   const isSecretsPage = location.pathname.startsWith('/secrets')
+  const isProfilePage = location.pathname.startsWith('/profile')
+  const isVersionPage = location.pathname.startsWith('/version')
 
   return (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box sx={{ p: 3 }}>
         <Typography variant="h6" component="div">
           Holos Console
@@ -59,19 +55,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <List sx={{ px: 1 }}>
         <ListItemButton
           component={Link}
-          to="/"
-          selected={!isVersionPage && !isProfilePage && !isAuthDebugPage && !isSecretsPage}
+          to="/secrets"
+          selected={isSecretsPage}
           onClick={onNavigate}
         >
-          <ListItemText primary="Landing" />
-        </ListItemButton>
-        <ListItemButton
-          component={Link}
-          to="/version"
-          selected={isVersionPage}
-          onClick={onNavigate}
-        >
-          <ListItemText primary="Version" />
+          <ListItemText primary="Secrets" />
         </ListItemButton>
         <ListItemButton
           component={Link}
@@ -81,24 +69,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         >
           <ListItemText primary="Profile" />
         </ListItemButton>
+      </List>
+      <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      <List sx={{ px: 1 }}>
         <ListItemButton
           component={Link}
-          to="/auth-debug"
-          selected={isAuthDebugPage}
+          to="/version"
+          selected={isVersionPage}
           onClick={onNavigate}
         >
-          <ListItemText primary="Auth Debug" />
-        </ListItemButton>
-        <ListItemButton
-          component={Link}
-          to="/secrets"
-          selected={isSecretsPage}
-          onClick={onNavigate}
-        >
-          <ListItemText primary="Secrets" />
+          <ListItemText primary="Version" />
         </ListItemButton>
       </List>
-    </>
+    </Box>
   )
 }
 
@@ -167,32 +151,12 @@ function MainLayout() {
         {isMobile && <Toolbar />}
         <Stack spacing={3}>
           <Routes>
-            <Route
-              path="/"
-              element={
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h4" component="h1" gutterBottom>
-                      Welcome to Holos Console
-                    </Typography>
-                    <Typography variant="body1" gutterBottom>
-                      This is your landing page. Use the sidebar to explore
-                      server details and status.
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Start by opening the Version page to verify the backend
-                      connection.
-                    </Typography>
-                  </CardContent>
-                </Card>
-              }
-            />
-            <Route path="/version" element={<VersionCard />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/auth-debug" element={<AuthDebugPage />} />
+            <Route path="/" element={<Navigate to="/secrets" replace />} />
             <Route path="/secrets" element={<SecretsListPage />} />
             <Route path="/secrets/:name" element={<SecretPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/profile" element={<AuthDebugPage />} />
+            <Route path="/version" element={<VersionCard />} />
+            <Route path="*" element={<Navigate to="/secrets" replace />} />
           </Routes>
         </Stack>
       </Box>
