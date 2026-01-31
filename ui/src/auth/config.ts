@@ -70,7 +70,7 @@ export function getOIDCSettings(): UserManagerSettings {
     post_logout_redirect_uri: config.post_logout_redirect_uri,
 
     // No silent_redirect_uri: oidc-client-ts uses refresh tokens (from the
-    // offline_access scope) instead of iframes for silent renewal. See ADR 004.
+    // offline_access scope) instead of iframes for silent renewal. See ADR 005.
 
     // PKCE is required for public clients (SPAs)
     response_type: 'code',
