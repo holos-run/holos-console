@@ -18,6 +18,9 @@ import (
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
+// auditResourceType is the resource_type value for all secret audit log events.
+const auditResourceType = "secret"
+
 // Handler implements the SecretsService.
 type Handler struct {
 	consolev1connect.UnimplementedSecretsServiceHandler
@@ -66,6 +69,7 @@ func (h *Handler) ListSecrets(
 
 	slog.InfoContext(ctx, "secrets listed",
 		slog.String("action", "secrets_list"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 		slog.Int("total", len(secrets)),
@@ -133,6 +137,7 @@ func (h *Handler) DeleteSecret(
 	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
+			slog.String("resource_type", auditResourceType),
 			slog.String("secret", req.Msg.Name),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
@@ -148,6 +153,7 @@ func (h *Handler) DeleteSecret(
 
 	slog.InfoContext(ctx, "secret deleted",
 		slog.String("action", "secret_delete"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", req.Msg.Name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -184,6 +190,7 @@ func (h *Handler) CreateSecret(
 	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
+			slog.String("resource_type", auditResourceType),
 			slog.String("secret", req.Msg.Name),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
@@ -202,6 +209,7 @@ func (h *Handler) CreateSecret(
 
 	slog.InfoContext(ctx, "secret created",
 		slog.String("action", "secret_create"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", req.Msg.Name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -247,6 +255,7 @@ func (h *Handler) UpdateSecret(
 		logAuditDenied(ctx, claims, secret.Name)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
+			slog.String("resource_type", auditResourceType),
 			slog.String("secret", req.Msg.Name),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
@@ -264,6 +273,7 @@ func (h *Handler) UpdateSecret(
 
 	slog.InfoContext(ctx, "secret updated",
 		slog.String("action", "secret_update"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", req.Msg.Name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -304,6 +314,7 @@ func (h *Handler) UpdateSharing(
 	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "sharing update denied",
 			slog.String("action", "sharing_update_denied"),
+			slog.String("resource_type", auditResourceType),
 			slog.String("secret", req.Msg.Name),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
@@ -323,6 +334,7 @@ func (h *Handler) UpdateSharing(
 
 	slog.InfoContext(ctx, "sharing updated",
 		slog.String("action", "sharing_update"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", req.Msg.Name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -526,6 +538,7 @@ func mapK8sError(err error) error {
 func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 	slog.InfoContext(ctx, "secret access granted",
 		slog.String("action", "secret_access"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -537,6 +550,7 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string) {
 	slog.WarnContext(ctx, "secret access denied",
 		slog.String("action", "secret_access_denied"),
+		slog.String("resource_type", auditResourceType),
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
