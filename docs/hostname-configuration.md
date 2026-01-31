@@ -45,12 +45,12 @@ cmd.Flags().StringVar(&listenAddr, "listen", ":8443",
 The console server receives the issuer URL from the CLI and:
 
 1. Passes it to the OIDC provider configuration
-2. Derives the redirect URI by stripping `/dex` and appending `/ui/callback`
+2. Derives the redirect URI by stripping `/dex` and appending `/pkce/verify`
 3. Uses it for CORS configuration (allowed origins)
 
 ```go
 // Derive redirect URI from issuer
-redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/ui/callback"
+redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/pkce/verify"
 
 oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
     Issuer:       s.cfg.Issuer,
@@ -107,7 +107,7 @@ function getConfig(): OIDCConfig {
   return {
     authority: `${origin}/dex`,
     client_id: 'holos-console',
-    redirect_uri: `${origin}/ui/callback`,
+    redirect_uri: `${origin}/pkce/verify`,
     post_logout_redirect_uri: `${origin}/ui`,
   }
 }
@@ -162,7 +162,7 @@ The issuer URL flows through the entire stack:
 | OIDC Discovery | `https://myhost.local:9443/dex/.well-known/openid-configuration` |
 | Token `iss` claim | `https://myhost.local:9443/dex` |
 | SPA Authority | `https://myhost.local:9443/dex` |
-| Redirect URI | `https://myhost.local:9443/ui/callback` |
+| Redirect URI | `https://myhost.local:9443/pkce/verify` |
 
 ## Behind a Reverse Proxy
 
