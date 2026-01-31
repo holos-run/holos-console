@@ -57,12 +57,12 @@ const (
 type SecretsServiceClient interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
 	// Only returns secrets with the app.kubernetes.io/managed-by=console.holos.run label.
-	// Each secret includes accessibility info and allowed groups for the UI.
+	// Each secret includes sharing grants for the UI.
 	// Requires authentication via Authorization: Bearer <id_token> header.
 	ListSecrets(context.Context, *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// GetSecret retrieves a secret by name from the current namespace.
 	// Requires authentication via Authorization: Bearer <id_token> header.
-	// Returns PermissionDenied if user is not in the secret's allowed-groups.
+	// Returns PermissionDenied if user does not have an active sharing grant.
 	GetSecret(context.Context, *connect.Request[v1.GetSecretRequest]) (*connect.Response[v1.GetSecretResponse], error)
 	// UpdateSecret replaces the data of an existing secret.
 	// Requires authentication and PERMISSION_SECRETS_WRITE.
@@ -174,12 +174,12 @@ func (c *secretsServiceClient) UpdateSharing(ctx context.Context, req *connect.R
 type SecretsServiceHandler interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
 	// Only returns secrets with the app.kubernetes.io/managed-by=console.holos.run label.
-	// Each secret includes accessibility info and allowed groups for the UI.
+	// Each secret includes sharing grants for the UI.
 	// Requires authentication via Authorization: Bearer <id_token> header.
 	ListSecrets(context.Context, *connect.Request[v1.ListSecretsRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// GetSecret retrieves a secret by name from the current namespace.
 	// Requires authentication via Authorization: Bearer <id_token> header.
-	// Returns PermissionDenied if user is not in the secret's allowed-groups.
+	// Returns PermissionDenied if user does not have an active sharing grant.
 	GetSecret(context.Context, *connect.Request[v1.GetSecretRequest]) (*connect.Response[v1.GetSecretResponse], error)
 	// UpdateSecret replaces the data of an existing secret.
 	// Requires authentication and PERMISSION_SECRETS_WRITE.

@@ -373,7 +373,7 @@ export declare const SecretsService: GenService<{
   /**
    * ListSecrets returns all secrets in the current namespace with console label.
    * Only returns secrets with the app.kubernetes.io/managed-by=console.holos.run label.
-   * Each secret includes accessibility info and allowed groups for the UI.
+   * Each secret includes sharing grants for the UI.
    * Requires authentication via Authorization: Bearer <id_token> header.
    *
    * @generated from rpc holos.console.v1.SecretsService.ListSecrets
@@ -386,7 +386,7 @@ export declare const SecretsService: GenService<{
   /**
    * GetSecret retrieves a secret by name from the current namespace.
    * Requires authentication via Authorization: Bearer <id_token> header.
-   * Returns PermissionDenied if user is not in the secret's allowed-groups.
+   * Returns PermissionDenied if user does not have an active sharing grant.
    *
    * @generated from rpc holos.console.v1.SecretsService.GetSecret
    */
