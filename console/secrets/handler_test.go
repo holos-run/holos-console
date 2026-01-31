@@ -56,6 +56,28 @@ func (h *testLogHandler) findRecord(action string) *slog.Record {
 	return nil
 }
 
+// findAttr returns the string value of the named attribute on the record, or "" if not found.
+func findAttr(r *slog.Record, key string) string {
+	var val string
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			val = a.Value.String()
+			return false
+		}
+		return true
+	})
+	return val
+}
+
+// assertResourceType checks that the log record has resource_type="secret".
+func assertResourceType(t *testing.T, r *slog.Record) {
+	t.Helper()
+	got := findAttr(r, "resource_type")
+	if got != "secret" {
+		t.Errorf("expected resource_type='secret', got %q", got)
+	}
+}
+
 func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns secret data for authorized user", func(t *testing.T) {
 		// Given: Authenticated user in share-users, secret exists
@@ -326,6 +348,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		if foundEmail != "user@example.com" {
 			t.Errorf("expected email='user@example.com', got %q", foundEmail)
 		}
+		assertResourceType(t, record)
 	})
 
 	t.Run("logs denied access with action secret_access_denied", func(t *testing.T) {
@@ -400,6 +423,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		if foundEmail != "other@example.com" {
 			t.Errorf("expected email='other@example.com', got %q", foundEmail)
 		}
+		assertResourceType(t, record)
 	})
 }
 
@@ -641,6 +665,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelInfo {
 			t.Errorf("expected Info level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 
 	t.Run("logs secret_delete_denied on RBAC failure", func(t *testing.T) {
@@ -686,6 +711,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelWarn {
 			t.Errorf("expected Warn level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 }
 
@@ -965,6 +991,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelInfo {
 			t.Errorf("expected Info level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 
 	t.Run("logs secret_create_denied on RBAC failure", func(t *testing.T) {
@@ -1005,6 +1032,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelWarn {
 			t.Errorf("expected Warn level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 }
 
@@ -1282,6 +1310,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelInfo {
 			t.Errorf("expected Info level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 
 	t.Run("logs secret_update_denied on RBAC failure", func(t *testing.T) {
@@ -1334,6 +1363,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelWarn {
 			t.Errorf("expected Warn level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 }
 
@@ -2244,6 +2274,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelInfo {
 			t.Errorf("expected Info level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
 	})
 
 	t.Run("logs sharing_update_denied on RBAC failure", func(t *testing.T) {
@@ -2295,5 +2326,54 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		if record.Level != slog.LevelWarn {
 			t.Errorf("expected Warn level, got %v", record.Level)
 		}
+		assertResourceType(t, record)
+	})
+}
+
+func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
+	t.Run("logs secrets_list with resource_type", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"owner"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+
+		_, err := handler.ListSecrets(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		record := logHandler.findRecord("secrets_list")
+		if record == nil {
+			t.Fatal("expected log record with action='secrets_list', got none")
+		}
+		if record.Level != slog.LevelInfo {
+			t.Errorf("expected Info level, got %v", record.Level)
+		}
+		assertResourceType(t, record)
 	})
 }
