@@ -10,7 +10,7 @@ const backendUrl = 'https://localhost:8443'
 const oidcConfig = {
   authority: `${backendUrl}/dex`,
   client_id: 'holos-console',
-  redirect_uri: 'https://localhost:5173/ui/callback', // Vite dev server
+  redirect_uri: 'https://localhost:5173/pkce/verify', // Vite dev server
   post_logout_redirect_uri: 'https://localhost:5173/ui',
 }
 
@@ -39,9 +39,26 @@ const uiCanonicalRedirect = (): Plugin => ({
   },
 })
 
+// Serve index.html for /pkce/verify so the SPA can handle the OIDC callback.
+// This path is outside the /ui base so Vite's SPA fallback doesn't cover it.
+const pkceVerifyFallback = (): Plugin => ({
+  name: 'pkce-verify-fallback',
+  configureServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      const url = req.url?.split('?')[0]
+      if (url === '/pkce/verify') {
+        req.url = '/ui/'
+        next()
+        return
+      }
+      next()
+    })
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [injectOIDCConfig(), uiCanonicalRedirect(), react()],
+  plugins: [injectOIDCConfig(), pkceVerifyFallback(), uiCanonicalRedirect(), react()],
   base: '/ui',
   test: {
     environment: 'jsdom',
