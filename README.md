@@ -76,7 +76,11 @@ type: Opaque
 ### UI Behavior
 
 - **Secrets List**: The `/secrets` page shows all console-managed secrets with accessibility indicators.
-- **Secret Detail**: The `/secrets/:name` page displays the secret data for authorized users. Unauthorized users receive a permission denied error.
+- **Secret Detail**: The `/secrets/:name` page displays the secret data as named file entries for authorized users. Editors and Owners can modify and save changes. Unauthorized users receive a permission denied error.
+- **Creating Secrets**: Editors and Owners can create new secrets from the list page. The creator is automatically granted Owner access.
+- **Sharing**: Owners can grant time-bounded access to individual users or OIDC groups from the secret detail page.
+
+See [docs/secrets.md](docs/secrets.md) for the full secrets management guide, including how pods consume these secrets via volume mounts and environment variables.
 
 ## Kubernetes Integration
 
