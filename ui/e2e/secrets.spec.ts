@@ -263,3 +263,72 @@ test.describe('Secrets Page', () => {
     })
   })
 })
+
+test.describe('Mobile Responsive Layout', () => {
+  // These tests run with the mobile-chrome project (iPhone 13 viewport)
+  // and verify responsive behavior. On desktop viewport they are skipped.
+  test.skip(({ browserName }, testInfo) => {
+    return testInfo.project.name !== 'mobile-chrome'
+  }, 'mobile-only test')
+
+  test('should show hamburger menu and hide sidebar on mobile', async ({ page }) => {
+    await page.goto('/ui')
+
+    // Hamburger button should be visible
+    await expect(page.getByLabel(/open menu/i)).toBeVisible({ timeout: 5000 })
+
+    // Sidebar nav links should not be visible initially
+    await expect(page.getByRole('link', { name: 'Secrets' })).not.toBeVisible()
+  })
+
+  test('should open drawer and navigate via hamburger on mobile', async ({ page }) => {
+    await page.goto('/ui')
+
+    // Tap hamburger to open drawer
+    await page.getByLabel(/open menu/i).click()
+
+    // Secrets link should now be visible in drawer
+    await expect(page.getByRole('link', { name: 'Secrets' })).toBeVisible({ timeout: 5000 })
+
+    // Navigate to Secrets
+    await page.getByRole('link', { name: 'Secrets' }).click()
+
+    // Should redirect to Dex login (unauthenticated)
+    await page.waitForURL(/\/dex\//, { timeout: 10000 })
+  })
+
+  test('should create secret via full-screen dialog on mobile', async ({ page }) => {
+    // Login first
+    await page.goto('/ui/profile')
+    await login(page)
+    await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
+
+    // Navigate to secrets via hamburger
+    await page.getByLabel(/open menu/i).click()
+    await page.getByRole('link', { name: 'Secrets' }).click()
+    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+
+    // Open create dialog (should be full-screen on mobile)
+    await page.getByRole('button', { name: /create secret/i }).click()
+
+    // The dialog should be visible and full-screen
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+
+    // Create a secret
+    const secretName = `e2e-mobile-${Date.now()}`
+    await page.getByLabel(/name/i).fill(secretName)
+    await page.getByRole('button', { name: /^create$/i }).click()
+
+    // Wait for success
+    await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
+
+    // Clean up: delete the secret
+    await page.getByRole('link', { name: secretName }).click()
+    await page.waitForURL(new RegExp(`/ui/secrets/${secretName}`), { timeout: 5000 })
+    await page.getByRole('button', { name: /^delete$/i }).click()
+    const dialogDelete = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await dialogDelete.click()
+    await page.waitForURL(/\/ui\/secrets\/?$/, { timeout: 5000 })
+  })
+})
