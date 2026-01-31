@@ -4,6 +4,27 @@ import { SecretDataEditor } from './SecretDataEditor'
 
 const encode = (s: string) => new TextEncoder().encode(s)
 
+/**
+ * Override window.matchMedia so that queries matching the given pattern
+ * return matches=true while all others return matches=false.
+ */
+function mockMatchMedia(matchPattern: RegExp): () => void {
+  const original = window.matchMedia
+  window.matchMedia = (query: string) => ({
+    matches: matchPattern.test(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+  return () => {
+    window.matchMedia = original
+  }
+}
+
 describe('SecretDataEditor', () => {
   it('renders existing entries with keys and content', () => {
     const onChange = vi.fn()
@@ -125,5 +146,43 @@ describe('SecretDataEditor', () => {
 
     const errors = screen.getAllByText(/duplicate key/i)
     expect(errors).toHaveLength(2)
+  })
+
+  it('stacks key above value on mobile', () => {
+    const cleanup = mockMatchMedia(/max-width/)
+    try {
+      const onChange = vi.fn()
+      render(
+        <SecretDataEditor
+          initialData={{ '.env': encode('KEY=val') }}
+          onChange={onChange}
+        />,
+      )
+
+      // The entry row should use column direction on mobile
+      const keyInput = screen.getByPlaceholderText('key')
+      const entryRow = keyInput.closest('.MuiStack-root')
+      expect(entryRow).toHaveStyle({ 'flex-direction': 'column' })
+
+      // Key field should be full width on mobile (no fixed 200px)
+      expect(keyInput.closest('.MuiTextField-root')).not.toHaveStyle({ width: '200px' })
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('shows key and value side-by-side on desktop', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataEditor
+        initialData={{ '.env': encode('KEY=val') }}
+        onChange={onChange}
+      />,
+    )
+
+    // The entry row should use row direction on desktop
+    const keyInput = screen.getByPlaceholderText('key')
+    const entryRow = keyInput.closest('.MuiStack-root')
+    expect(entryRow).toHaveStyle({ 'flex-direction': 'row' })
   })
 })

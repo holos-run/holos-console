@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Box, Button, IconButton, TextField, Stack, Tooltip } from '@mui/material'
+import { Box, Button, IconButton, TextField, Stack, Tooltip, useMediaQuery, useTheme } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
@@ -41,6 +41,8 @@ function dataToEntries(data: Record<string, Uint8Array>): Entry[] {
 }
 
 export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProps) {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [entries, setEntries] = useState<Entry[]>(() => dataToEntries(initialData))
 
   const update = useCallback(
@@ -80,7 +82,7 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
       {entries.map((entry) => {
         const isDuplicate = (keyCounts.get(entry.filename) || 0) > 1
         return (
-          <Stack key={entry.id} direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 2 }}>
+          <Stack key={entry.id} direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'flex-start'} sx={{ mb: 2 }}>
             <TextField
               size="small"
               placeholder="key"
@@ -88,7 +90,7 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
               onChange={(e) => handleFilenameChange(entry.id, e.target.value)}
               error={isDuplicate}
               helperText={isDuplicate ? 'Duplicate key' : undefined}
-              sx={{ width: 200 }}
+              sx={isMobile ? {} : { width: 200 }}
             />
             <TextField
               size="small"
@@ -118,7 +120,7 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
         <Button startIcon={<AddIcon />} onClick={handleAdd} size="small">
           Add Key
         </Button>
-        <Tooltip title="A key is often a filename without a path separator, e.g. .env or config.yaml">
+        <Tooltip title="A key is often a filename or environment variable name, e.g. .env, config.yaml, or API_KEY">
           <InfoOutlinedIcon fontSize="small" color="action" />
         </Tooltip>
       </Stack>
