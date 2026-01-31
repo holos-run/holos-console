@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
-import { Box, Button, IconButton, TextField, Stack } from '@mui/material'
+import { Box, Button, IconButton, TextField, Stack, Tooltip } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 interface Entry {
   id: string
@@ -66,32 +67,32 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
     update(entries.map((e) => (e.id === id ? { ...e, content } : e)))
   }
 
-  // Detect duplicate filenames
-  const filenameCounts = new Map<string, number>()
+  // Detect duplicate keys
+  const keyCounts = new Map<string, number>()
   for (const entry of entries) {
     if (entry.filename !== '') {
-      filenameCounts.set(entry.filename, (filenameCounts.get(entry.filename) || 0) + 1)
+      keyCounts.set(entry.filename, (keyCounts.get(entry.filename) || 0) + 1)
     }
   }
 
   return (
     <Box>
       {entries.map((entry) => {
-        const isDuplicate = (filenameCounts.get(entry.filename) || 0) > 1
+        const isDuplicate = (keyCounts.get(entry.filename) || 0) > 1
         return (
           <Stack key={entry.id} direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 2 }}>
             <TextField
               size="small"
-              placeholder="filename"
+              placeholder="key"
               value={entry.filename}
               onChange={(e) => handleFilenameChange(entry.id, e.target.value)}
               error={isDuplicate}
-              helperText={isDuplicate ? 'Duplicate filename' : undefined}
+              helperText={isDuplicate ? 'Duplicate key' : undefined}
               sx={{ width: 200 }}
             />
             <TextField
               size="small"
-              placeholder="file content"
+              placeholder="value"
               multiline
               minRows={3}
               value={entry.content}
@@ -104,7 +105,7 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
               sx={{ flexGrow: 1 }}
             />
             <IconButton
-              aria-label="remove file entry"
+              aria-label="remove key entry"
               onClick={() => handleRemove(entry.id)}
               size="small"
             >
@@ -113,9 +114,14 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
           </Stack>
         )
       })}
-      <Button startIcon={<AddIcon />} onClick={handleAdd} size="small">
-        Add File
-      </Button>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Button startIcon={<AddIcon />} onClick={handleAdd} size="small">
+          Add Key
+        </Button>
+        <Tooltip title="A key is often a filename without a path separator, e.g. .env or config.yaml">
+          <InfoOutlinedIcon fontSize="small" color="action" />
+        </Tooltip>
+      </Stack>
     </Box>
   )
 }

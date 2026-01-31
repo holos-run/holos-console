@@ -117,14 +117,14 @@ describe('SecretPage', () => {
 
       // Then: secret data is displayed as filename + content entries
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('filename').length).toBeGreaterThan(0)
+        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
       })
 
-      const filenames = screen.getAllByPlaceholderText('filename').map((el) => (el as HTMLInputElement).value)
+      const filenames = screen.getAllByPlaceholderText('key').map((el) => (el as HTMLInputElement).value)
       expect(filenames).toContain('username')
       expect(filenames).toContain('password')
 
-      const contents = screen.getAllByPlaceholderText('file content').map((el) => (el as HTMLTextAreaElement).value)
+      const contents = screen.getAllByPlaceholderText('value').map((el) => (el as HTMLTextAreaElement).value)
       expect(contents).toContain('admin')
       expect(contents).toContain('secret123')
     })
@@ -145,7 +145,7 @@ describe('SecretPage', () => {
 
       // Then: displays Add File button and no entries
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /add file/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /add key/i })).toBeInTheDocument()
       })
 
       expect(screen.queryAllByPlaceholderText('filename')).toHaveLength(0)
@@ -283,11 +283,11 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
       })
 
       // Change the content
-      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
 
       expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
     })
@@ -311,11 +311,11 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
       })
 
       // Change and save
-      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
@@ -346,10 +346,10 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
@@ -373,10 +373,10 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
