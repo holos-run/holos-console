@@ -12,7 +12,6 @@ const oidcConfig = {
   client_id: 'holos-console',
   redirect_uri: 'https://localhost:5173/ui/callback', // Vite dev server
   post_logout_redirect_uri: 'https://localhost:5173/ui',
-  silent_redirect_uri: 'https://localhost:5173/ui/silent-callback.html',
 }
 
 const injectOIDCConfig = (): Plugin => ({
