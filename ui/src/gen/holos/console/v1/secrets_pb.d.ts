@@ -108,6 +108,16 @@ export declare type UpdateSecretRequest = Message<"holos.console.v1.UpdateSecret
    * @generated from field: map<string, bytes> data = 2;
    */
   data: { [key: string]: Uint8Array };
+
+  /**
+   * string_data contains plaintext string values that are merged into data.
+   * Values are encoded to bytes before storage, matching Kubernetes stringData
+   * semantics. When both data and string_data contain the same key, string_data
+   * takes precedence.
+   *
+   * @generated from field: map<string, string> string_data = 3;
+   */
+  stringData: { [key: string]: string };
 };
 
 /**
@@ -150,6 +160,16 @@ export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecret
    * @generated from field: map<string, bytes> data = 2;
    */
   data: { [key: string]: Uint8Array };
+
+  /**
+   * string_data contains plaintext string values that are merged into data.
+   * Values are encoded to bytes before storage, matching Kubernetes stringData
+   * semantics. When both data and string_data contain the same key, string_data
+   * takes precedence.
+   *
+   * @generated from field: map<string, string> string_data = 3;
+   */
+  stringData: { [key: string]: string };
 
   /**
    * user_grants are the per-user sharing grants to set on the created secret.
@@ -365,6 +385,46 @@ export declare type UpdateSharingResponse = Message<"holos.console.v1.UpdateShar
 export declare const UpdateSharingResponseSchema: GenMessage<UpdateSharingResponse>;
 
 /**
+ * GetSecretRawRequest contains the name of the secret to retrieve as raw JSON.
+ *
+ * @generated from message holos.console.v1.GetSecretRawRequest
+ */
+export declare type GetSecretRawRequest = Message<"holos.console.v1.GetSecretRawRequest"> & {
+  /**
+   * name is the name of the secret to retrieve.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetSecretRawRequest.
+ * Use `create(GetSecretRawRequestSchema)` to create a new message.
+ */
+export declare const GetSecretRawRequestSchema: GenMessage<GetSecretRawRequest>;
+
+/**
+ * GetSecretRawResponse contains the full Kubernetes Secret object as JSON.
+ *
+ * @generated from message holos.console.v1.GetSecretRawResponse
+ */
+export declare type GetSecretRawResponse = Message<"holos.console.v1.GetSecretRawResponse"> & {
+  /**
+   * raw is the verbatim JSON-serialized Secret object from the K8s API.
+   *
+   * @generated from field: string raw = 1;
+   */
+  raw: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetSecretRawResponse.
+ * Use `create(GetSecretRawResponseSchema)` to create a new message.
+ */
+export declare const GetSecretRawResponseSchema: GenMessage<GetSecretRawResponse>;
+
+/**
  * SecretsService provides access to Kubernetes secrets with RBAC.
  *
  * @generated from service holos.console.v1.SecretsService
@@ -440,6 +500,18 @@ export declare const SecretsService: GenService<{
     methodKind: "unary";
     input: typeof UpdateSharingRequestSchema;
     output: typeof UpdateSharingResponseSchema;
+  },
+  /**
+   * GetSecretRaw retrieves the full Kubernetes Secret object as verbatim JSON.
+   * The backend returns the Secret exactly as the K8s API provides it, with no
+   * field filtering. Requires authentication and PERMISSION_SECRETS_READ.
+   *
+   * @generated from rpc holos.console.v1.SecretsService.GetSecretRaw
+   */
+  getSecretRaw: {
+    methodKind: "unary";
+    input: typeof GetSecretRawRequestSchema;
+    output: typeof GetSecretRawResponseSchema;
   },
 }>;
 

@@ -51,6 +51,9 @@ const (
 	// SecretsServiceUpdateSharingProcedure is the fully-qualified name of the SecretsService's
 	// UpdateSharing RPC.
 	SecretsServiceUpdateSharingProcedure = "/holos.console.v1.SecretsService/UpdateSharing"
+	// SecretsServiceGetSecretRawProcedure is the fully-qualified name of the SecretsService's
+	// GetSecretRaw RPC.
+	SecretsServiceGetSecretRawProcedure = "/holos.console.v1.SecretsService/GetSecretRaw"
 )
 
 // SecretsServiceClient is a client for the holos.console.v1.SecretsService service.
@@ -78,6 +81,10 @@ type SecretsServiceClient interface {
 	// UpdateSharing updates the sharing grants on a secret without touching its data.
 	// Requires ROLE_OWNER on the secret.
 	UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error)
+	// GetSecretRaw retrieves the full Kubernetes Secret object as verbatim JSON.
+	// The backend returns the Secret exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_SECRETS_READ.
+	GetSecretRaw(context.Context, *connect.Request[v1.GetSecretRawRequest]) (*connect.Response[v1.GetSecretRawResponse], error)
 }
 
 // NewSecretsServiceClient constructs a client for the holos.console.v1.SecretsService service. By
@@ -127,6 +134,12 @@ func NewSecretsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(secretsServiceMethods.ByName("UpdateSharing")),
 			connect.WithClientOptions(opts...),
 		),
+		getSecretRaw: connect.NewClient[v1.GetSecretRawRequest, v1.GetSecretRawResponse](
+			httpClient,
+			baseURL+SecretsServiceGetSecretRawProcedure,
+			connect.WithSchema(secretsServiceMethods.ByName("GetSecretRaw")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -138,6 +151,7 @@ type secretsServiceClient struct {
 	createSecret  *connect.Client[v1.CreateSecretRequest, v1.CreateSecretResponse]
 	deleteSecret  *connect.Client[v1.DeleteSecretRequest, v1.DeleteSecretResponse]
 	updateSharing *connect.Client[v1.UpdateSharingRequest, v1.UpdateSharingResponse]
+	getSecretRaw  *connect.Client[v1.GetSecretRawRequest, v1.GetSecretRawResponse]
 }
 
 // ListSecrets calls holos.console.v1.SecretsService.ListSecrets.
@@ -170,6 +184,11 @@ func (c *secretsServiceClient) UpdateSharing(ctx context.Context, req *connect.R
 	return c.updateSharing.CallUnary(ctx, req)
 }
 
+// GetSecretRaw calls holos.console.v1.SecretsService.GetSecretRaw.
+func (c *secretsServiceClient) GetSecretRaw(ctx context.Context, req *connect.Request[v1.GetSecretRawRequest]) (*connect.Response[v1.GetSecretRawResponse], error) {
+	return c.getSecretRaw.CallUnary(ctx, req)
+}
+
 // SecretsServiceHandler is an implementation of the holos.console.v1.SecretsService service.
 type SecretsServiceHandler interface {
 	// ListSecrets returns all secrets in the current namespace with console label.
@@ -195,6 +214,10 @@ type SecretsServiceHandler interface {
 	// UpdateSharing updates the sharing grants on a secret without touching its data.
 	// Requires ROLE_OWNER on the secret.
 	UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error)
+	// GetSecretRaw retrieves the full Kubernetes Secret object as verbatim JSON.
+	// The backend returns the Secret exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_SECRETS_READ.
+	GetSecretRaw(context.Context, *connect.Request[v1.GetSecretRawRequest]) (*connect.Response[v1.GetSecretRawResponse], error)
 }
 
 // NewSecretsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -240,6 +263,12 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 		connect.WithSchema(secretsServiceMethods.ByName("UpdateSharing")),
 		connect.WithHandlerOptions(opts...),
 	)
+	secretsServiceGetSecretRawHandler := connect.NewUnaryHandler(
+		SecretsServiceGetSecretRawProcedure,
+		svc.GetSecretRaw,
+		connect.WithSchema(secretsServiceMethods.ByName("GetSecretRaw")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.SecretsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SecretsServiceListSecretsProcedure:
@@ -254,6 +283,8 @@ func NewSecretsServiceHandler(svc SecretsServiceHandler, opts ...connect.Handler
 			secretsServiceDeleteSecretHandler.ServeHTTP(w, r)
 		case SecretsServiceUpdateSharingProcedure:
 			secretsServiceUpdateSharingHandler.ServeHTTP(w, r)
+		case SecretsServiceGetSecretRawProcedure:
+			secretsServiceGetSecretRawHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -285,4 +316,8 @@ func (UnimplementedSecretsServiceHandler) DeleteSecret(context.Context, *connect
 
 func (UnimplementedSecretsServiceHandler) UpdateSharing(context.Context, *connect.Request[v1.UpdateSharingRequest]) (*connect.Response[v1.UpdateSharingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.UpdateSharing is not implemented"))
+}
+
+func (UnimplementedSecretsServiceHandler) GetSecretRaw(context.Context, *connect.Request[v1.GetSecretRawRequest]) (*connect.Response[v1.GetSecretRawResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SecretsService.GetSecretRaw is not implemented"))
 }
