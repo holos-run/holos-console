@@ -37,8 +37,19 @@ Sharing grants provide fine-grained access to individual secrets. They are store
 
 | Annotation | Format | Description |
 |---|---|---|
-| `console.holos.run/share-users` | `{"email":"role"}` | Per-user grants |
-| `console.holos.run/share-groups` | `{"group":"role"}` | Per-group grants |
+| `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
+| `console.holos.run/share-groups` | `[{"principal":"group","role":"role","nbf":ts,"exp":ts}]` | Per-group grants |
+
+Each grant is a JSON object with:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `principal` | string | yes | Email address (users) or OIDC group name (groups) |
+| `role` | string | yes | One of `viewer`, `editor`, `owner` |
+| `nbf` | int64 | no | Unix timestamp before which the grant is inactive |
+| `exp` | int64 | no | Unix timestamp at or after which the grant is inactive |
+
+When `nbf` or `exp` is omitted, the grant has no time restriction for that bound.
 
 ### Example
 
@@ -51,8 +62,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
-    console.holos.run/share-users: '{"alice@example.com":"owner","bob@example.com":"viewer"}'
-    console.holos.run/share-groups: '{"dev-team":"editor"}'
+    console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"},{"principal":"bob@example.com","role":"viewer","exp":1735689600}]'
+    console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
 ```
 
 ## How Roles Combine
@@ -68,7 +79,7 @@ The highest role found across all three sources determines access.
 
 ### Example
 
-Alice is in the OIDC group `viewer` (platform viewer role). A secret has `share-users: {"alice@example.com":"editor"}`. Alice gets **editor** access to that secret because editor > viewer.
+Alice is in the OIDC group `viewer` (platform viewer role). A secret has `share-users: [{"principal":"alice@example.com","role":"editor"}]`. Alice gets **editor** access to that secret because editor > viewer.
 
 Bob is in the OIDC group `owner` (platform owner role). A secret has no sharing grants for Bob. Bob still gets **owner** access via his platform role.
 

@@ -286,6 +286,22 @@ export declare type ShareGrant = Message<"holos.console.v1.ShareGrant"> & {
    * @generated from field: holos.console.v1.Role role = 2;
    */
   role: Role;
+
+  /**
+   * nbf (not before) is the unix timestamp before which the grant is inactive.
+   * When unset, the grant has no start time restriction.
+   *
+   * @generated from field: optional int64 nbf = 3;
+   */
+  nbf?: bigint;
+
+  /**
+   * exp (expiration) is the unix timestamp at or after which the grant is inactive.
+   * When unset, the grant has no expiration.
+   *
+   * @generated from field: optional int64 exp = 4;
+   */
+  exp?: bigint;
 };
 
 /**

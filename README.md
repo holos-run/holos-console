@@ -51,8 +51,8 @@ To make a secret accessible through the console, configure it with:
 2. **Sharing annotations** (controls who can access the secret):
    ```yaml
    annotations:
-     console.holos.run/share-users: '{"alice@example.com":"owner","bob@example.com":"viewer"}'
-     console.holos.run/share-groups: '{"dev-team":"editor"}'
+     console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"},{"principal":"bob@example.com","role":"viewer"}]'
+     console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
    ```
 
 ### Example Secret
@@ -66,8 +66,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
-    console.holos.run/share-users: '{"alice@example.com":"owner"}'
-    console.holos.run/share-groups: '{"platform-team":"editor"}'
+    console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
+    console.holos.run/share-groups: '[{"principal":"platform-team","role":"editor"}]'
 stringData:
   API_KEY: secret-value
 type: Opaque

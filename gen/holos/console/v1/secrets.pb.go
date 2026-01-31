@@ -572,7 +572,13 @@ type ShareGrant struct {
 	// principal is the email address (for users) or group name (for groups).
 	Principal string `protobuf:"bytes,1,opt,name=principal,proto3" json:"principal,omitempty"`
 	// role is the permission level granted to the principal.
-	Role          Role `protobuf:"varint,2,opt,name=role,proto3,enum=holos.console.v1.Role" json:"role,omitempty"`
+	Role Role `protobuf:"varint,2,opt,name=role,proto3,enum=holos.console.v1.Role" json:"role,omitempty"`
+	// nbf (not before) is the unix timestamp before which the grant is inactive.
+	// When unset, the grant has no start time restriction.
+	Nbf *int64 `protobuf:"varint,3,opt,name=nbf,proto3,oneof" json:"nbf,omitempty"`
+	// exp (expiration) is the unix timestamp at or after which the grant is inactive.
+	// When unset, the grant has no expiration.
+	Exp           *int64 `protobuf:"varint,4,opt,name=exp,proto3,oneof" json:"exp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -619,6 +625,20 @@ func (x *ShareGrant) GetRole() Role {
 		return x.Role
 	}
 	return Role_ROLE_UNSPECIFIED
+}
+
+func (x *ShareGrant) GetNbf() int64 {
+	if x != nil && x.Nbf != nil {
+		return *x.Nbf
+	}
+	return 0
+}
+
+func (x *ShareGrant) GetExp() int64 {
+	if x != nil && x.Exp != nil {
+		return *x.Exp
+	}
+	return 0
 }
 
 // UpdateSharingRequest contains the sharing grants to set on a secret.
@@ -774,11 +794,15 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"accessible\x12=\n" +
 	"\vuser_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"V\n" +
+	"\fgroup_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"\x94\x01\n" +
 	"\n" +
 	"ShareGrant\x12\x1c\n" +
 	"\tprincipal\x18\x01 \x01(\tR\tprincipal\x12*\n" +
-	"\x04role\x18\x02 \x01(\x0e2\x16.holos.console.v1.RoleR\x04role\"\xaa\x01\n" +
+	"\x04role\x18\x02 \x01(\x0e2\x16.holos.console.v1.RoleR\x04role\x12\x15\n" +
+	"\x03nbf\x18\x03 \x01(\x03H\x00R\x03nbf\x88\x01\x01\x12\x15\n" +
+	"\x03exp\x18\x04 \x01(\x03H\x01R\x03exp\x88\x01\x01B\x06\n" +
+	"\x04_nbfB\x06\n" +
+	"\x04_exp\"\xaa\x01\n" +
 	"\x14UpdateSharingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\vuser_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
@@ -865,6 +889,7 @@ func file_holos_console_v1_secrets_proto_init() {
 		return
 	}
 	file_holos_console_v1_rbac_proto_init()
+	file_holos_console_v1_secrets_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

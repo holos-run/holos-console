@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +25,14 @@ const ManagedByLabel = "app.kubernetes.io/managed-by"
 
 // ManagedByValue is the label value that identifies secrets managed by console.holos.run.
 const ManagedByValue = "console.holos.run"
+
+// AnnotationGrant represents a single sharing grant stored in a Kubernetes annotation.
+type AnnotationGrant struct {
+	Principal string `json:"principal"`
+	Role      string `json:"role"`
+	Nbf       *int64 `json:"nbf,omitempty"`
+	Exp       *int64 `json:"exp,omitempty"`
+}
 
 // K8sClient wraps Kubernetes client operations for secrets.
 type K8sClient struct {
@@ -58,7 +67,7 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 }
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
-func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups map[string]string) (*corev1.Secret, error) {
+func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "creating secret in kubernetes",
 		slog.String("namespace", c.namespace),
 		slog.String("name", name),
@@ -125,7 +134,7 @@ func (c *K8sClient) DeleteSecret(ctx context.Context, name string) error {
 
 // UpdateSharing updates the sharing annotations on an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, shareGroups map[string]string) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating sharing on kubernetes secret",
 		slog.String("namespace", c.namespace),
 		slog.String("name", name),
@@ -154,38 +163,52 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, 
 }
 
 // GetShareUsers parses the console.holos.run/share-users annotation from a secret.
-// Returns an empty map if the annotation is missing.
+// Returns an empty slice if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
-func GetShareUsers(secret *corev1.Secret) (map[string]string, error) {
-	if secret.Annotations == nil {
-		return map[string]string{}, nil
-	}
-	value, ok := secret.Annotations[ShareUsersAnnotation]
-	if !ok {
-		return map[string]string{}, nil
-	}
-	var users map[string]string
-	if err := json.Unmarshal([]byte(value), &users); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", ShareUsersAnnotation, err)
-	}
-	return users, nil
+func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
+	return parseGrantAnnotation(secret, ShareUsersAnnotation)
 }
 
 // GetShareGroups parses the console.holos.run/share-groups annotation from a secret.
-// Returns an empty map if the annotation is missing.
+// Returns an empty slice if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
-func GetShareGroups(secret *corev1.Secret) (map[string]string, error) {
+func GetShareGroups(secret *corev1.Secret) ([]AnnotationGrant, error) {
+	return parseGrantAnnotation(secret, ShareGroupsAnnotation)
+}
+
+// parseGrantAnnotation parses a JSON annotation value into a slice of AnnotationGrant.
+func parseGrantAnnotation(secret *corev1.Secret, key string) ([]AnnotationGrant, error) {
 	if secret.Annotations == nil {
-		return map[string]string{}, nil
+		return nil, nil
 	}
-	value, ok := secret.Annotations[ShareGroupsAnnotation]
+	value, ok := secret.Annotations[key]
 	if !ok {
-		return map[string]string{}, nil
+		return nil, nil
 	}
-	var groups map[string]string
-	if err := json.Unmarshal([]byte(value), &groups); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", ShareGroupsAnnotation, err)
+	var grants []AnnotationGrant
+	if err := json.Unmarshal([]byte(value), &grants); err != nil {
+		return nil, fmt.Errorf("invalid %s annotation: %w", key, err)
 	}
-	return groups, nil
+	return grants, nil
+}
+
+// ActiveGrantsMap filters grants by time window and returns a map of principal → role
+// suitable for passing to CheckAccessSharing. Grants with nbf > now or exp <= now are
+// excluded. Grants with nil nbf/exp have no time restriction.
+func ActiveGrantsMap(grants []AnnotationGrant, now time.Time) map[string]string {
+	nowUnix := now.Unix()
+	result := make(map[string]string)
+	for _, g := range grants {
+		if g.Nbf != nil && *g.Nbf > nowUnix {
+			continue // not yet active
+		}
+		if g.Exp != nil && *g.Exp <= nowUnix {
+			continue // expired
+		}
+		if g.Principal != "" {
+			result[g.Principal] = g.Role
+		}
+	}
+	return result
 }
 

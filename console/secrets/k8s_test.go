@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -151,8 +152,8 @@ func TestCreateSecret(t *testing.T) {
 
 		// When: CreateSecret is called with sharing grants
 		data := map[string][]byte{"key": []byte("value")}
-		shareUsers := map[string]string{"alice@example.com": "owner"}
-		shareGroups := map[string]string{"dev-team": "editor"}
+		shareUsers := []AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
+		shareGroups := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
 		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, shareUsers, shareGroups)
 
 		// Then: Returns created secret with labels and sharing annotations
@@ -170,16 +171,16 @@ func TestCreateSecret(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to parse share-users: %v", err)
 		}
-		if parsedUsers["alice@example.com"] != "owner" {
-			t.Errorf("expected alice=owner, got %q", parsedUsers["alice@example.com"])
+		if len(parsedUsers) != 1 || parsedUsers[0].Principal != "alice@example.com" || parsedUsers[0].Role != "owner" {
+			t.Errorf("expected [{alice@example.com owner}], got %v", parsedUsers)
 		}
 		// Verify share-groups annotation
 		parsedGroups, err := GetShareGroups(result)
 		if err != nil {
 			t.Fatalf("failed to parse share-groups: %v", err)
 		}
-		if parsedGroups["dev-team"] != "editor" {
-			t.Errorf("expected dev-team=editor, got %q", parsedGroups["dev-team"])
+		if len(parsedGroups) != 1 || parsedGroups[0].Principal != "dev-team" || parsedGroups[0].Role != "editor" {
+			t.Errorf("expected [{dev-team editor}], got %v", parsedGroups)
 		}
 		if string(result.Data["key"]) != "value" {
 			t.Errorf("expected key='value', got %q", string(result.Data["key"]))
@@ -198,7 +199,7 @@ func TestCreateSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: CreateSecret with same name
-		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, map[string]string{}, map[string]string{})
+		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
 
 		// Then: Returns AlreadyExists error
 		if err == nil {
@@ -280,7 +281,7 @@ func TestGetShareUsers(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"alice@example.com":"editor","bob@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor"},{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -291,15 +292,38 @@ func TestGetShareUsers(t *testing.T) {
 		if len(users) != 2 {
 			t.Fatalf("expected 2 users, got %d", len(users))
 		}
-		if users["alice@example.com"] != "editor" {
-			t.Errorf("expected alice=editor, got %s", users["alice@example.com"])
+		if users[0].Principal != "alice@example.com" || users[0].Role != "editor" {
+			t.Errorf("expected alice=editor, got %s=%s", users[0].Principal, users[0].Role)
 		}
-		if users["bob@example.com"] != "viewer" {
-			t.Errorf("expected bob=viewer, got %s", users["bob@example.com"])
+		if users[1].Principal != "bob@example.com" || users[1].Role != "viewer" {
+			t.Errorf("expected bob=viewer, got %s=%s", users[1].Principal, users[1].Role)
 		}
 	})
 
-	t.Run("missing annotation returns empty map", func(t *testing.T) {
+	t.Run("parses grants with nbf and exp", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor","nbf":1000,"exp":2000}]`,
+				},
+			},
+		}
+		users, err := GetShareUsers(secret)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 1 {
+			t.Fatalf("expected 1 user, got %d", len(users))
+		}
+		if users[0].Nbf == nil || *users[0].Nbf != 1000 {
+			t.Errorf("expected nbf=1000, got %v", users[0].Nbf)
+		}
+		if users[0].Exp == nil || *users[0].Exp != 2000 {
+			t.Errorf("expected exp=2000, got %v", users[0].Exp)
+		}
+	})
+
+	t.Run("missing annotation returns nil", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{},
@@ -309,12 +333,12 @@ func TestGetShareUsers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(users) != 0 {
-			t.Errorf("expected empty map, got %v", users)
+		if users != nil {
+			t.Errorf("expected nil, got %v", users)
 		}
 	})
 
-	t.Run("nil annotations returns empty map", func(t *testing.T) {
+	t.Run("nil annotations returns nil", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{},
 		}
@@ -322,8 +346,8 @@ func TestGetShareUsers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(users) != 0 {
-			t.Errorf("expected empty map, got %v", users)
+		if users != nil {
+			t.Errorf("expected nil, got %v", users)
 		}
 	})
 
@@ -347,7 +371,7 @@ func TestGetShareGroups(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `{"platform-team":"owner","dev-team":"viewer"}`,
+					ShareGroupsAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
 				},
 			},
 		}
@@ -358,12 +382,12 @@ func TestGetShareGroups(t *testing.T) {
 		if len(groups) != 2 {
 			t.Fatalf("expected 2 groups, got %d", len(groups))
 		}
-		if groups["platform-team"] != "owner" {
-			t.Errorf("expected platform-team=owner, got %s", groups["platform-team"])
+		if groups[0].Principal != "platform-team" || groups[0].Role != "owner" {
+			t.Errorf("expected platform-team=owner, got %s=%s", groups[0].Principal, groups[0].Role)
 		}
 	})
 
-	t.Run("missing annotation returns empty map", func(t *testing.T) {
+	t.Run("missing annotation returns nil", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{},
@@ -373,12 +397,12 @@ func TestGetShareGroups(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(groups) != 0 {
-			t.Errorf("expected empty map, got %v", groups)
+		if groups != nil {
+			t.Errorf("expected nil, got %v", groups)
 		}
 	})
 
-	t.Run("nil annotations returns empty map", func(t *testing.T) {
+	t.Run("nil annotations returns nil", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{},
 		}
@@ -386,8 +410,8 @@ func TestGetShareGroups(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(groups) != 0 {
-			t.Errorf("expected empty map, got %v", groups)
+		if groups != nil {
+			t.Errorf("expected nil, got %v", groups)
 		}
 	})
 
@@ -402,6 +426,116 @@ func TestGetShareGroups(t *testing.T) {
 		_, err := GetShareGroups(secret)
 		if err == nil {
 			t.Fatal("expected error for invalid JSON, got nil")
+		}
+	})
+}
+
+func TestActiveGrantsMap(t *testing.T) {
+	now := time.Unix(1000, 0)
+
+	t.Run("includes grants with no time bounds", func(t *testing.T) {
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor"},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if m["alice@example.com"] != "editor" {
+			t.Errorf("expected alice=editor, got %v", m)
+		}
+	})
+
+	t.Run("excludes expired grants", func(t *testing.T) {
+		exp := int64(999) // before now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Exp: &exp},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if _, ok := m["alice@example.com"]; ok {
+			t.Error("expected expired grant to be excluded")
+		}
+	})
+
+	t.Run("excludes grant expiring exactly at now", func(t *testing.T) {
+		exp := int64(1000) // exactly now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Exp: &exp},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if _, ok := m["alice@example.com"]; ok {
+			t.Error("expected grant expiring at now to be excluded")
+		}
+	})
+
+	t.Run("includes grant not yet expired", func(t *testing.T) {
+		exp := int64(1001) // after now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Exp: &exp},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if m["alice@example.com"] != "editor" {
+			t.Errorf("expected alice=editor, got %v", m)
+		}
+	})
+
+	t.Run("excludes not-yet-active grants", func(t *testing.T) {
+		nbf := int64(1001) // after now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Nbf: &nbf},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if _, ok := m["alice@example.com"]; ok {
+			t.Error("expected not-yet-active grant to be excluded")
+		}
+	})
+
+	t.Run("includes grant active at nbf boundary", func(t *testing.T) {
+		nbf := int64(1000) // exactly now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Nbf: &nbf},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if m["alice@example.com"] != "editor" {
+			t.Errorf("expected alice=editor, got %v", m)
+		}
+	})
+
+	t.Run("includes grants within valid window", func(t *testing.T) {
+		nbf := int64(500)
+		exp := int64(1500)
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Nbf: &nbf, Exp: &exp},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if m["alice@example.com"] != "editor" {
+			t.Errorf("expected alice=editor, got %v", m)
+		}
+	})
+
+	t.Run("excludes grants outside valid window", func(t *testing.T) {
+		nbf := int64(500)
+		exp := int64(800) // expired before now
+		grants := []AnnotationGrant{
+			{Principal: "alice@example.com", Role: "editor", Nbf: &nbf, Exp: &exp},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if _, ok := m["alice@example.com"]; ok {
+			t.Error("expected grant outside window to be excluded")
+		}
+	})
+
+	t.Run("nil grants returns empty map", func(t *testing.T) {
+		m := ActiveGrantsMap(nil, now)
+		if len(m) != 0 {
+			t.Errorf("expected empty map, got %v", m)
+		}
+	})
+
+	t.Run("skips grants with empty principal", func(t *testing.T) {
+		grants := []AnnotationGrant{
+			{Principal: "", Role: "editor"},
+		}
+		m := ActiveGrantsMap(grants, now)
+		if len(m) != 0 {
+			t.Errorf("expected empty map, got %v", m)
 		}
 	})
 }
