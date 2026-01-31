@@ -159,6 +159,35 @@ Version is determined by:
 
 Build metadata (commit, tree state, date) injected via ldflags in Makefile.
 
+### Container Builds
+
+Trigger container image builds using the `container.yaml` GitHub workflow, passing a git reference of the branch to build:
+
+```bash
+gh workflow run container.yaml --ref <branch-name>
+```
+
 ### Tool Dependencies
 
 Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
+
+## Planning and Execution
+
+### Feature Planning
+
+Plan features using phases. Record plans as GitHub issues before execution using `gh issue create`.
+
+### RED GREEN Implementation
+
+Implement each phase using a RED GREEN approach:
+
+1. **RED** - Write failing tests first that define the expected behavior.
+2. **GREEN** - Write the minimum implementation to make the tests pass.
+
+### Tracking Progress
+
+When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes.
+
+## Contributing
+
+The GitHub issue tracker is for use by project maintainers and their agents. Features and bugs should be reported using Discord. This project operates on a best effort support model; see the LICENSE for the terms of support.
