@@ -15,10 +15,13 @@ import {
   DialogTitle,
   Snackbar,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import { SecretDataEditor } from './SecretDataEditor'
+import { SecretRawView } from './SecretRawView'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { ShareGrant } from '../gen/holos/console/v1/secrets_pb'
@@ -49,6 +52,11 @@ export function SecretPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
+  const [rawJson, setRawJson] = useState<string | null>(null)
+  const [includeAllFields, setIncludeAllFields] = useState(false)
 
   // Sharing state
   const [userGrants, setUserGrants] = useState<ShareGrant[]>([])
@@ -155,6 +163,28 @@ export function SecretPage() {
     }
   }
 
+  const handleViewModeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'editor' | 'raw' | null) => {
+    if (newMode === null) return
+    setViewMode(newMode)
+
+    if (newMode === 'raw' && rawJson === null && name) {
+      try {
+        const token = getAccessToken()
+        const response = await secretsClient.getSecretRaw(
+          { name },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        )
+        setRawJson(response.raw)
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)))
+      }
+    }
+  }
+
   const handleSave = async () => {
     if (!name || !isDirty) return
     setIsSaving(true)
@@ -249,7 +279,26 @@ export function SecretPage() {
         <Typography variant="h6" gutterBottom>
           Secret: {name}
         </Typography>
-        <SecretDataEditor initialData={originalData} onChange={setSecretData} />
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={handleViewModeChange}
+          size="small"
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="editor">Editor</ToggleButton>
+          <ToggleButton value="raw">Raw</ToggleButton>
+        </ToggleButtonGroup>
+        {viewMode === 'editor' && (
+          <SecretDataEditor initialData={originalData} onChange={setSecretData} />
+        )}
+        {viewMode === 'raw' && rawJson && (
+          <SecretRawView
+            raw={rawJson}
+            includeAllFields={includeAllFields}
+            onToggleIncludeAllFields={() => setIncludeAllFields((prev) => !prev)}
+          />
+        )}
         {saveError && (
           <Alert severity="error" sx={{ mt: 2 }}>
             {saveError}
@@ -259,7 +308,7 @@ export function SecretPage() {
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={!isDirty || isSaving}
+            disabled={!isDirty || isSaving || viewMode === 'raw'}
           >
             {isSaving ? 'Saving...' : 'Save'}
           </Button>
