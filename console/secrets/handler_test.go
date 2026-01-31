@@ -56,13 +56,13 @@ func (h *testLogHandler) findRecord(action string) *slog.Record {
 
 func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns secret data for authorized user", func(t *testing.T) {
-		// Given: Authenticated user in allowed-roles, secret exists
+		// Given: Authenticated user in share-users, secret exists
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["viewer","editor"]`,
+					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -74,7 +74,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
-		// Create authenticated context with matching role group
+		// Create authenticated context with matching email
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
@@ -139,13 +139,13 @@ func TestHandler_GetSecret(t *testing.T) {
 	})
 
 	t.Run("returns PermissionDenied for unauthorized user", func(t *testing.T) {
-		// Given: Authenticated user NOT in allowed-roles
+		// Given: Authenticated user NOT in sharing annotations
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner","editor"]`,
+					ShareUsersAnnotation: `{"other@example.com":"owner"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -156,7 +156,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
-		// Create authenticated context with non-matching role group
+		// Create authenticated context with non-matching email
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
@@ -259,7 +259,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareGroupsAnnotation: `{"owner":"owner"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -333,7 +333,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner","editor"]`,
+					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -411,7 +411,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
 				},
 			},
 		}
@@ -467,7 +467,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
 				},
 			},
 		}
@@ -507,7 +507,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
 				},
 			},
 		}
@@ -605,7 +605,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
 				},
 			},
 		}
@@ -650,7 +650,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"other@example.com":"editor"}`,
 				},
 			},
 		}
@@ -702,9 +702,11 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"key": []byte("value")},
-			AllowedRoles: []string{"editor"},
+			Name: "new-secret",
+			Data: map[string][]byte{"key": []byte("value")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
 		})
 
 		// When: CreateSecret RPC is called
@@ -726,9 +728,11 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "new-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -757,10 +761,13 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
+		// Grants give viewer role to the caller — insufficient for write
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "new-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_VIEWER},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -790,9 +797,11 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -809,7 +818,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns InvalidArgument for empty allowed_roles", func(t *testing.T) {
+	t.Run("returns PermissionDenied for empty grants", func(t *testing.T) {
+		// No grants means the caller has no write permission
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
@@ -822,9 +832,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{},
+			Name: "new-secret",
+			Data: map[string][]byte{"k": []byte("v")},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -836,8 +845,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *connect.Error, got %T", err)
 		}
-		if connectErr.Code() != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
 		}
 	})
 
@@ -860,9 +869,11 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "existing-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "existing-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -899,9 +910,11 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "new-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -935,10 +948,13 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
+		// Grants give viewer role — insufficient for write
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name:         "new-secret",
-			Data:         map[string][]byte{"k": []byte("v")},
-			AllowedRoles: []string{"editor"},
+			Name: "new-secret",
+			Data: map[string][]byte{"k": []byte("v")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "other@example.com", Role: consolev1.Role_ROLE_VIEWER},
+			},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -958,7 +974,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 
 func TestHandler_UpdateSecret(t *testing.T) {
 	t.Run("returns success for authorized editor", func(t *testing.T) {
-		// Given: Managed secret with editor access, user is editor
+		// Given: Managed secret with editor share-users grant, user is editor
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
@@ -967,7 +983,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["editor"]`,
+					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1030,7 +1046,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 	})
 
 	t.Run("returns PermissionDenied for viewer", func(t *testing.T) {
-		// Given: Secret allows editor, user is only viewer
+		// Given: Secret shared with user as viewer, user lacks editor permission
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
@@ -1039,7 +1055,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["editor"]`,
+					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1190,7 +1206,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["editor"]`,
+					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1242,7 +1258,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1293,7 +1309,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				Name:      "multi-key-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareGroupsAnnotation: `{"owner":"owner"}`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1350,7 +1366,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
 				},
 			},
 		}
@@ -1359,7 +1375,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "unlabeled-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
 				},
 			},
 		}
@@ -1395,9 +1411,6 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if !resp.Msg.Secrets[0].Accessible {
 			t.Error("expected secret to be accessible")
 		}
-		if len(resp.Msg.Secrets[0].AllowedRoles) != 1 || resp.Msg.Secrets[0].AllowedRoles[0] != "owner" {
-			t.Errorf("expected allowed_roles=['owner'], got %v", resp.Msg.Secrets[0].AllowedRoles)
-		}
 	})
 
 	t.Run("returns all secrets with accessibility info", func(t *testing.T) {
@@ -1410,7 +1423,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["viewer"]`,
+					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
 				},
 			},
 		}
@@ -1422,7 +1435,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					AllowedRolesAnnotation: `["owner"]`,
+					ShareUsersAnnotation: `{"other@example.com":"owner"}`,
 				},
 			},
 		}
@@ -1467,18 +1480,12 @@ func TestHandler_ListSecrets(t *testing.T) {
 		if !accessible.Accessible {
 			t.Error("expected accessible-secret to be accessible")
 		}
-		if len(accessible.AllowedRoles) != 1 || accessible.AllowedRoles[0] != "viewer" {
-			t.Errorf("expected allowed_roles=['viewer'], got %v", accessible.AllowedRoles)
-		}
 
 		if inaccessible == nil {
 			t.Fatal("expected to find 'inaccessible-secret'")
 		}
 		if inaccessible.Accessible {
 			t.Error("expected inaccessible-secret to not be accessible")
-		}
-		if len(inaccessible.AllowedRoles) != 1 || inaccessible.AllowedRoles[0] != "owner" {
-			t.Errorf("expected allowed_roles=['owner'], got %v", inaccessible.AllowedRoles)
 		}
 	})
 

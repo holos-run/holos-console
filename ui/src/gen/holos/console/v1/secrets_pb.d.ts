@@ -131,7 +131,7 @@ export declare type UpdateSecretResponse = Message<"holos.console.v1.UpdateSecre
 export declare const UpdateSecretResponseSchema: GenMessage<UpdateSecretResponse>;
 
 /**
- * CreateSecretRequest contains the new secret's name, data, and access control.
+ * CreateSecretRequest contains the new secret's name, data, and sharing grants.
  *
  * @generated from message holos.console.v1.CreateSecretRequest
  */
@@ -152,11 +152,18 @@ export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecret
   data: { [key: string]: Uint8Array };
 
   /**
-   * allowed_roles specifies which roles can access this secret.
+   * user_grants are the per-user sharing grants to set on the created secret.
    *
-   * @generated from field: repeated string allowed_roles = 3;
+   * @generated from field: repeated holos.console.v1.ShareGrant user_grants = 4;
    */
-  allowedRoles: string[];
+  userGrants: ShareGrant[];
+
+  /**
+   * group_grants are the per-group sharing grants to set on the created secret.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   */
+  groupGrants: ShareGrant[];
 };
 
 /**
@@ -238,23 +245,6 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
    * @generated from field: bool accessible = 2;
    */
   accessible: boolean;
-
-  /**
-   * allowed_groups contains the groups that have permission to read this secret.
-   * Deprecated: Use allowed_roles instead.
-   *
-   * @generated from field: repeated string allowed_groups = 3 [deprecated = true];
-   * @deprecated
-   */
-  allowedGroups: string[];
-
-  /**
-   * allowed_roles contains the roles that have permission to read this secret.
-   * Populated regardless of whether the user has access, to show in the UI.
-   *
-   * @generated from field: repeated string allowed_roles = 4;
-   */
-  allowedRoles: string[];
 
   /**
    * user_grants contains per-user sharing grants on this secret.
