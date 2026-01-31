@@ -110,3 +110,47 @@ func TestCheckAdminAccessSharing(t *testing.T) {
 		}
 	})
 }
+
+func TestPlatformRoleThroughWrappers(t *testing.T) {
+	gm := defaultGM()
+
+	t.Run("platform viewer grants read via wrapper", func(t *testing.T) {
+		err := CheckReadAccessSharing(gm, "nobody@example.com", []string{"viewer"},
+			nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted via platform viewer role, got: %v", err)
+		}
+	})
+
+	t.Run("platform editor grants write via wrapper", func(t *testing.T) {
+		err := CheckWriteAccessSharing(gm, "nobody@example.com", []string{"editor"},
+			nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted via platform editor role, got: %v", err)
+		}
+	})
+
+	t.Run("platform owner grants delete via wrapper", func(t *testing.T) {
+		err := CheckDeleteAccessSharing(gm, "nobody@example.com", []string{"owner"},
+			nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted via platform owner role, got: %v", err)
+		}
+	})
+
+	t.Run("platform viewer grants list via wrapper", func(t *testing.T) {
+		err := CheckListAccessSharing(gm, "nobody@example.com", []string{"viewer"},
+			nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted via platform viewer role, got: %v", err)
+		}
+	})
+
+	t.Run("platform owner grants admin via wrapper", func(t *testing.T) {
+		err := CheckAdminAccessSharing(gm, "nobody@example.com", []string{"owner"},
+			nil, nil)
+		if err != nil {
+			t.Errorf("expected access granted via platform owner role, got: %v", err)
+		}
+	})
+}

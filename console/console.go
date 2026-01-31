@@ -79,17 +79,17 @@ type Config struct {
 	// Default: "holos-console"
 	Namespace string
 
-	// ViewerGroups are the OIDC groups that map to the viewer role.
+	// PlatformViewers are the OIDC groups with platform viewer role.
 	// When nil, defaults to ["viewer"].
-	ViewerGroups []string
+	PlatformViewers []string
 
-	// EditorGroups are the OIDC groups that map to the editor role.
+	// PlatformEditors are the OIDC groups with platform editor role.
 	// When nil, defaults to ["editor"].
-	EditorGroups []string
+	PlatformEditors []string
 
-	// OwnerGroups are the OIDC groups that map to the owner role.
+	// PlatformOwners are the OIDC groups with platform owner role.
 	// When nil, defaults to ["owner"].
-	OwnerGroups []string
+	PlatformOwners []string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -200,7 +200,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	// Create RBAC group mapping from configuration
-	groupMapping := rbac.NewGroupMapping(s.cfg.ViewerGroups, s.cfg.EditorGroups, s.cfg.OwnerGroups)
+	groupMapping := rbac.NewGroupMapping(s.cfg.PlatformViewers, s.cfg.PlatformEditors, s.cfg.PlatformOwners)
 
 	// Register SecretsService (protected - requires auth)
 	secretsHandler := secrets.NewHandler(secretsK8s, groupMapping)
