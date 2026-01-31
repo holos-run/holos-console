@@ -19,7 +19,7 @@ import {
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
-import { SharingPanel } from './SharingPanel'
+import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { ShareGrant } from '../gen/holos/console/v1/secrets_pb'
 
@@ -142,10 +142,7 @@ export function SecretPage() {
     userEmail != null &&
     userGrants.some((g) => g.principal === userEmail && g.role === Role.OWNER)
 
-  const handleSaveSharing = async (
-    newUserGrants: { principal: string; role: Role }[],
-    newGroupGrants: { principal: string; role: Role }[],
-  ) => {
+  const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
     if (!name) return
     setIsSavingSharing(true)
     try {

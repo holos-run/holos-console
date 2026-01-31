@@ -1,10 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { SharingPanel } from './SharingPanel'
+import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import { vi } from 'vitest'
 
-function grant(principal: string, role: Role) {
-  return { principal, role }
+function grant(principal: string, role: Role, nbf?: bigint, exp?: bigint): Grant {
+  return { principal, role, nbf, exp }
 }
 
 describe('SharingPanel', () => {
@@ -52,6 +52,41 @@ describe('SharingPanel', () => {
 
       expect(screen.getByText(/no sharing grants/i)).toBeInTheDocument()
     })
+
+    it('displays time bounds in read mode', () => {
+      const nbf = BigInt(1704067200) // 2024-01-01T00:00:00Z
+      const exp = BigInt(1735689600) // 2025-01-01T00:00:00Z
+
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER, nbf, exp)]}
+          groupGrants={[]}
+          isOwner={false}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      // Should show "from" and "until" text in the secondary line
+      expect(screen.getByText(/from/)).toBeInTheDocument()
+      expect(screen.getByText(/until/)).toBeInTheDocument()
+    })
+
+    it('shows only role when no time bounds', () => {
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER)]}
+          groupGrants={[]}
+          isOwner={false}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      expect(screen.getByText('Owner')).toBeInTheDocument()
+      expect(screen.queryByText(/from/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/until/)).not.toBeInTheDocument()
+    })
   })
 
   describe('owner edit mode', () => {
@@ -98,6 +133,23 @@ describe('SharingPanel', () => {
 
       expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+    })
+
+    it('shows datetime fields in edit mode', () => {
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER)]}
+          groupGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      expect(screen.getByLabelText(/not before/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/expires/i)).toBeInTheDocument()
     })
   })
 
@@ -184,6 +236,32 @@ describe('SharingPanel', () => {
           [{ principal: 'alice@example.com', role: Role.OWNER }],
           [{ principal: 'dev-team', role: Role.EDITOR }],
         )
+      })
+    })
+
+    it('preserves nbf/exp through save', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const nbf = BigInt(1704067200)
+      const exp = BigInt(1735689600)
+
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER, nbf, exp)]}
+          groupGrants={[]}
+          isOwner={true}
+          onSave={onSave}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalled()
+        const savedUsers = onSave.mock.calls[0][0]
+        expect(savedUsers[0].nbf).toBe(nbf)
+        expect(savedUsers[0].exp).toBe(exp)
       })
     })
 
