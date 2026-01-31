@@ -5,7 +5,6 @@ import {
   CardContent,
   Typography,
   Box,
-  TextField,
   Alert,
   Button,
   CircularProgress,
@@ -19,31 +18,20 @@ import {
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
+import { SecretDataEditor } from './SecretDataEditor'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { ShareGrant } from '../gen/holos/console/v1/secrets_pb'
 
-// Convert secret data map to env file format
-function formatAsEnvFile(data: Record<string, Uint8Array>): string {
-  return Object.entries(data)
-    .map(([key, value]) => `${key}=${new TextDecoder().decode(value)}`)
-    .join('\n')
-}
-
-// Parse env file format back to key-value map
-function parseEnvFile(text: string): Record<string, Uint8Array> {
-  const encoder = new TextEncoder()
-  const result: Record<string, Uint8Array> = {}
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed === '' || trimmed.startsWith('#')) continue
-    const eqIndex = trimmed.indexOf('=')
-    if (eqIndex === -1) continue
-    const key = trimmed.slice(0, eqIndex)
-    const value = trimmed.slice(eqIndex + 1)
-    result[key] = encoder.encode(value)
+// Serialize data map to a stable JSON string for dirty checking
+function serializeData(data: Record<string, Uint8Array>): string {
+  const sorted = Object.keys(data).sort()
+  const obj: Record<string, string> = {}
+  const decoder = new TextDecoder()
+  for (const key of sorted) {
+    obj[key] = decoder.decode(data[key])
   }
-  return result
+  return JSON.stringify(obj)
 }
 
 export function SecretPage() {
@@ -51,8 +39,8 @@ export function SecretPage() {
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
-  const [secretData, setSecretData] = useState<string>('')
-  const [originalData, setOriginalData] = useState<string>('')
+  const [secretData, setSecretData] = useState<Record<string, Uint8Array>>({})
+  const [originalData, setOriginalData] = useState<Record<string, Uint8Array>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -67,7 +55,7 @@ export function SecretPage() {
   const [groupGrants, setGroupGrants] = useState<ShareGrant[]>([])
   const [isSavingSharing, setIsSavingSharing] = useState(false)
 
-  const isDirty = secretData !== originalData
+  const isDirty = serializeData(secretData) !== serializeData(originalData)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -95,10 +83,9 @@ export function SecretPage() {
           },
         )
 
-        // Convert response data to env format
-        const envContent = formatAsEnvFile(response.data as Record<string, Uint8Array>)
-        setSecretData(envContent)
-        setOriginalData(envContent)
+        const data = response.data as Record<string, Uint8Array>
+        setSecretData(data)
+        setOriginalData(data)
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)))
       } finally {
@@ -176,16 +163,15 @@ export function SecretPage() {
 
     try {
       const token = getAccessToken()
-      const data = parseEnvFile(secretData)
       await secretsClient.updateSecret(
-        { name, data },
+        { name, data: secretData },
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         },
       )
-      setOriginalData(secretData)
+      setOriginalData({ ...secretData })
       setSaveSuccess(true)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
@@ -263,18 +249,7 @@ export function SecretPage() {
         <Typography variant="h6" gutterBottom>
           Secret: {name}
         </Typography>
-        <TextField
-          multiline
-          fullWidth
-          value={secretData}
-          onChange={(e) => setSecretData(e.target.value)}
-          slotProps={{
-            input: {
-              sx: { fontFamily: 'monospace' },
-            },
-          }}
-          minRows={4}
-        />
+        <SecretDataEditor initialData={originalData} onChange={setSecretData} />
         {saveError && (
           <Alert severity="error" sx={{ mt: 2 }}>
             {saveError}
