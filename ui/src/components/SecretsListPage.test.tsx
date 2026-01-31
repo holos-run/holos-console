@@ -302,4 +302,105 @@ describe('SecretsListPage', () => {
       })
     })
   })
+
+  describe('create dialog sharing', () => {
+    it('uses actual user email as owner grant', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: ['editor'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      mockCreateSecret.mockResolvedValue({
+        name: 'new-secret',
+      } as unknown as Awaited<ReturnType<typeof secretsClient.createSecret>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create secret/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+      fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'new-secret' } })
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+      await waitFor(() => {
+        expect(mockCreateSecret).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'new-secret',
+            userGrants: expect.arrayContaining([
+              expect.objectContaining({ principal: 'alice@example.com', role: 3 }),
+            ]),
+          }),
+          expect.any(Object),
+        )
+      })
+    })
+  })
+
+  describe('list sharing summary', () => {
+    it('shows sharing grant counts in list items', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'shared-secret',
+            accessible: true,
+            userGrants: [
+              { principal: 'alice@example.com', role: 3 },
+              { principal: 'bob@example.com', role: 1 },
+            ],
+            groupGrants: [{ principal: 'dev-team', role: 2 }],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText(/2 users/i)).toBeInTheDocument()
+        expect(screen.getByText(/1 group/i)).toBeInTheDocument()
+      })
+    })
+
+    it('shows no sharing text when no grants', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'private-secret',
+            accessible: true,
+            userGrants: [],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText('private-secret')).toBeInTheDocument()
+      })
+
+      // No sharing summary should appear when there are no grants
+      expect(screen.queryByText(/users/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/groups/i)).not.toBeInTheDocument()
+    })
+  })
 })
