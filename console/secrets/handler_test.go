@@ -2106,8 +2106,8 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "precedence-secret",
-			Data: map[string][]byte{"key": []byte("from-data")},
+			Name:       "precedence-secret",
+			Data:       map[string][]byte{"key": []byte("from-data")},
 			StringData: map[string]string{"key": "from-string-data"},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},

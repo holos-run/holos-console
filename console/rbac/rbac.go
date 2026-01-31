@@ -25,12 +25,12 @@ const (
 
 // Permission constants aliasing proto enum values.
 const (
-	PermissionUnspecified  = consolev1.Permission_PERMISSION_UNSPECIFIED
-	PermissionSecretsRead  = consolev1.Permission_PERMISSION_SECRETS_READ
-	PermissionSecretsList  = consolev1.Permission_PERMISSION_SECRETS_LIST
-	PermissionSecretsWrite = consolev1.Permission_PERMISSION_SECRETS_WRITE
+	PermissionUnspecified   = consolev1.Permission_PERMISSION_UNSPECIFIED
+	PermissionSecretsRead   = consolev1.Permission_PERMISSION_SECRETS_READ
+	PermissionSecretsList   = consolev1.Permission_PERMISSION_SECRETS_LIST
+	PermissionSecretsWrite  = consolev1.Permission_PERMISSION_SECRETS_WRITE
 	PermissionSecretsDelete = consolev1.Permission_PERMISSION_SECRETS_DELETE
-	PermissionSecretsAdmin = consolev1.Permission_PERMISSION_SECRETS_ADMIN
+	PermissionSecretsAdmin  = consolev1.Permission_PERMISSION_SECRETS_ADMIN
 )
 
 // rolePermissions defines which permissions each role has.

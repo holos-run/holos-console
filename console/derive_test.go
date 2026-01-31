@@ -65,4 +65,3 @@ func TestDerivePostLogoutRedirectURI(t *testing.T) {
 		})
 	}
 }
-

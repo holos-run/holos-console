@@ -211,4 +211,3 @@ func ActiveGrantsMap(grants []AnnotationGrant, now time.Time) map[string]string 
 	}
 	return result
 }
-
