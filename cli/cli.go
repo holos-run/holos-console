@@ -19,6 +19,7 @@ var (
 	listenAddr      string
 	certFile        string
 	keyFile         string
+	caCertFile      string
 	plainHTTP       bool
 	origin          string
 	issuer          string
@@ -69,6 +70,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&listenAddr, "listen", ":8443", "Address to listen on")
 	cmd.Flags().StringVar(&certFile, "cert", "", "TLS certificate file (auto-generated if empty)")
 	cmd.Flags().StringVar(&keyFile, "key", "", "TLS key file (auto-generated if empty)")
+	cmd.Flags().StringVar(&caCertFile, "ca-cert", "", "PEM-encoded CA certificate file to trust (e.g., mkcert CA root)")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "Listen on plain HTTP instead of HTTPS")
 
 	// OIDC flags
@@ -196,6 +198,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		ListenAddr:      listenAddr,
 		CertFile:        certFile,
 		KeyFile:         keyFile,
+		CACertFile:      caCertFile,
 		PlainHTTP:       plainHTTP,
 		Origin:          derivedOrigin,
 		Issuer:          derivedIssuer,
