@@ -75,8 +75,10 @@ type: Opaque
 
 ### UI Behavior
 
-- **Secrets List**: The `/secrets` page shows all console-managed secrets with accessibility indicators.
-- **Secret Detail**: The `/secrets/:name` page displays the secret data for authorized users. Unauthorized users receive a permission denied error.
+- **Secrets List**: The `/secrets` page shows all console-managed secrets with accessibility indicators and sharing summaries.
+- **Creating Secrets**: Click "Create Secret" to open a dialog with a name field and a file-based key-value editor. Each entry has a key (filename) and a multiline value (file content). The creator is automatically granted the Owner role.
+- **Secret Detail**: The `/secrets/:name` page displays secret data as individual key-value entries in a file-based editor. Editors can modify entries and save changes. Owners can delete the secret and manage sharing grants with optional time bounds. Unauthorized users receive a permission denied error.
+- **Consuming Secrets**: Secrets are standard Kubernetes `Opaque` secrets. Mount them as volumes (each key becomes a file) or inject them as environment variables. See [docs/secrets.md](docs/secrets.md) for detailed examples.
 
 ## Kubernetes Integration
 
