@@ -1,4 +1,4 @@
-# ADR 004: Use Refresh Tokens Instead of Iframes for Silent Token Renewal
+# ADR 005: Use Refresh Tokens Instead of Iframes for Silent Token Renewal
 
 ## Status
 
