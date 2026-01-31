@@ -119,34 +119,34 @@ func TestDeriveIssuer(t *testing.T) {
 	}
 }
 
-func TestGroupFlags(t *testing.T) {
-	t.Run("viewer-groups flag is registered", func(t *testing.T) {
+func TestPlatformRoleFlags(t *testing.T) {
+	t.Run("platform-viewers flag is registered", func(t *testing.T) {
 		cmd := Command()
-		f := cmd.Flags().Lookup("viewer-groups")
+		f := cmd.Flags().Lookup("platform-viewers")
 		if f == nil {
-			t.Fatal("expected --viewer-groups flag to be registered")
+			t.Fatal("expected --platform-viewers flag to be registered")
 		}
 		if f.DefValue != "" {
 			t.Errorf("expected empty default, got %q", f.DefValue)
 		}
 	})
 
-	t.Run("editor-groups flag is registered", func(t *testing.T) {
+	t.Run("platform-editors flag is registered", func(t *testing.T) {
 		cmd := Command()
-		f := cmd.Flags().Lookup("editor-groups")
+		f := cmd.Flags().Lookup("platform-editors")
 		if f == nil {
-			t.Fatal("expected --editor-groups flag to be registered")
+			t.Fatal("expected --platform-editors flag to be registered")
 		}
 		if f.DefValue != "" {
 			t.Errorf("expected empty default, got %q", f.DefValue)
 		}
 	})
 
-	t.Run("owner-groups flag is registered", func(t *testing.T) {
+	t.Run("platform-owners flag is registered", func(t *testing.T) {
 		cmd := Command()
-		f := cmd.Flags().Lookup("owner-groups")
+		f := cmd.Flags().Lookup("platform-owners")
 		if f == nil {
-			t.Fatal("expected --owner-groups flag to be registered")
+			t.Fatal("expected --platform-owners flag to be registered")
 		}
 		if f.DefValue != "" {
 			t.Errorf("expected empty default, got %q", f.DefValue)

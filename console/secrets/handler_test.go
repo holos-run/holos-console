@@ -818,8 +818,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns PermissionDenied for empty grants", func(t *testing.T) {
-		// No grants means the caller has no write permission
+	t.Run("returns PermissionDenied for empty grants and no platform role", func(t *testing.T) {
+		// No per-secret grants and user not in any platform role group
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
@@ -827,7 +827,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Groups: []string{"some-other-group"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -847,6 +847,40 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 		if connectErr.Code() != connect.CodePermissionDenied {
 			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns success for platform editor with no per-secret grants", func(t *testing.T) {
+		// Given: User is in the "editor" OIDC group (platform editor role),
+		// and provides grants for the new secret (required for the secret itself)
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "platformeditor@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.CreateSecretRequest{
+			Name: "platform-editor-secret",
+			Data: map[string][]byte{"key": []byte("value")},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "platformeditor@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
+		})
+
+		// When: CreateSecret RPC is called
+		resp, err := handler.CreateSecret(ctx, req)
+
+		// Then: Returns success — platform editor role grants write permission
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "platform-editor-secret" {
+			t.Errorf("expected name 'platform-editor-secret', got %q", resp.Msg.Name)
 		}
 	})
 
@@ -1414,7 +1448,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 	})
 
 	t.Run("returns all secrets with accessibility info", func(t *testing.T) {
-		// Given: Two labeled secrets, user can only access one
+		// Given: Two labeled secrets, user can only access one (no platform role)
 		accessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "accessible-secret",
@@ -1446,7 +1480,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Groups: []string{"some-team"}, // Not a platform role group
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 

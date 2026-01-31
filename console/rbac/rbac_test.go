@@ -499,4 +499,86 @@ func TestCheckAccessSharing(t *testing.T) {
 			t.Fatal("expected PermissionDenied, got nil")
 		}
 	})
+
+	t.Run("platform viewer role grants read access", func(t *testing.T) {
+		// User has no per-secret grants, but belongs to the "viewer" OIDC group
+		err := gm.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"viewer"},
+			nil,
+			nil,
+			PermissionSecretsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via platform viewer role, got: %v", err)
+		}
+	})
+
+	t.Run("platform viewer role denies write access", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"viewer"},
+			nil,
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+
+	t.Run("platform editor role grants write access", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"editor"},
+			nil,
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via platform editor role, got: %v", err)
+		}
+	})
+
+	t.Run("platform owner role grants delete access", func(t *testing.T) {
+		err := gm.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"owner"},
+			nil,
+			nil,
+			PermissionSecretsDelete,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via platform owner role, got: %v", err)
+		}
+	})
+
+	t.Run("platform role combined with per-secret grant uses highest", func(t *testing.T) {
+		// Per-secret grant gives viewer, platform role gives editor
+		// Should allow write (editor permission)
+		err := gm.CheckAccessSharing(
+			"alice@example.com",
+			[]string{"editor"},
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via highest role (platform editor), got: %v", err)
+		}
+	})
+
+	t.Run("custom platform groups grant access", func(t *testing.T) {
+		customGM := NewGroupMapping([]string{"readers"}, []string{"writers"}, []string{"admins"})
+		err := customGM.CheckAccessSharing(
+			"nobody@example.com",
+			[]string{"writers"},
+			nil,
+			nil,
+			PermissionSecretsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via custom platform editor group, got: %v", err)
+		}
+	})
 }

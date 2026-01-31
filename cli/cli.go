@@ -27,9 +27,9 @@ var (
 	refreshTokenTTL string
 	namespace       string
 	logLevel        string
-	viewerGroups    string
-	editorGroups    string
-	ownerGroups     string
+	platformViewers string
+	platformEditors string
+	platformOwners  string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -83,10 +83,10 @@ func Command() *cobra.Command {
 	// Kubernetes flags
 	cmd.Flags().StringVar(&namespace, "namespace", "holos-console", "Kubernetes namespace for secrets")
 
-	// RBAC group mapping flags
-	cmd.Flags().StringVar(&viewerGroups, "viewer-groups", "", "Comma-separated OIDC groups that map to the viewer role (default: viewer)")
-	cmd.Flags().StringVar(&editorGroups, "editor-groups", "", "Comma-separated OIDC groups that map to the editor role (default: editor)")
-	cmd.Flags().StringVar(&ownerGroups, "owner-groups", "", "Comma-separated OIDC groups that map to the owner role (default: owner)")
+	// RBAC platform role flags
+	cmd.Flags().StringVar(&platformViewers, "platform-viewers", "", "OIDC groups with platform viewer role (default: viewer)")
+	cmd.Flags().StringVar(&platformEditors, "platform-editors", "", "OIDC groups with platform editor role (default: editor)")
+	cmd.Flags().StringVar(&platformOwners, "platform-owners", "", "OIDC groups with platform owner role (default: owner)")
 
 	// Logging flags
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -203,9 +203,9 @@ func Run(cmd *cobra.Command, args []string) error {
 		IDTokenTTL:      idTTL,
 		RefreshTokenTTL: refreshTTL,
 		Namespace:       namespace,
-		ViewerGroups:    rbac.ParseGroups(viewerGroups),
-		EditorGroups:    rbac.ParseGroups(editorGroups),
-		OwnerGroups:     rbac.ParseGroups(ownerGroups),
+		PlatformViewers: rbac.ParseGroups(platformViewers),
+		PlatformEditors: rbac.ParseGroups(platformEditors),
+		PlatformOwners:  rbac.ParseGroups(platformOwners),
 	}
 
 	server := console.New(cfg)

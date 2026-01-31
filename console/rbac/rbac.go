@@ -154,12 +154,14 @@ func RoleFromString(s string) Role {
 	}
 }
 
-// CheckAccessSharing verifies access using per-user and per-group sharing grants.
-// The highest role found across both sources is used to determine access.
+// CheckAccessSharing verifies access using per-user sharing, per-group sharing,
+// and platform-level role grants. The highest role found across all sources is
+// used to determine access.
 //
 // Evaluation order:
 //  1. Check shareUsers for userEmail (case-insensitive)
 //  2. Check shareGroups for any of userGroups (case-insensitive)
+//  3. Check platform roles (groupToRole) for any of userGroups
 //
 // Returns nil if access is granted, or a PermissionDenied error otherwise.
 func (gm *GroupMapping) CheckAccessSharing(
@@ -199,7 +201,15 @@ func (gm *GroupMapping) CheckAccessSharing(
 		}
 	}
 
-	// Evaluate best role from sharing sources
+	// 3. Check platform roles (OIDC group → system role mapping)
+	for _, ug := range userGroups {
+		role := gm.MapGroupToRole(ug)
+		if level := roleLevel[role]; level > bestLevel {
+			bestLevel = level
+		}
+	}
+
+	// Evaluate best role from all sources
 	if bestLevel > 0 {
 		// Find the Role with this level
 		for role, level := range roleLevel {

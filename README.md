@@ -32,17 +32,11 @@ The server reads Kubernetes secrets from the namespace specified by the `--names
 
 Secrets must have the label `app.kubernetes.io/managed-by=console.holos.run` to appear in the UI.
 
-## Group-Based Access Control for Secrets
+## Access Control
 
-Access to secrets is controlled by comparing the user's OIDC groups with allowed groups specified on each secret.
+Access to secrets uses a two-tier model: **platform roles** and **per-secret sharing grants**. Platform roles (configured via `--platform-viewers`, `--platform-editors`, `--platform-owners` flags) map OIDC groups to baseline roles across all secrets. Per-secret sharing grants (stored as Kubernetes annotations) provide fine-grained access to individual secrets.
 
-### How It Works
-
-1. **User Groups**: When a user logs in via OIDC, their group memberships are extracted from the `groups` claim in the ID token.
-
-2. **Secret Allowed Groups**: Each secret specifies which groups can access it via the `holos.run/allowed-groups` annotation. This annotation must contain a JSON array of group names.
-
-3. **Access Decision**: A user can read a secret if they belong to at least one group listed in the secret's `holos.run/allowed-groups` annotation. If the annotation is missing or empty, no users can access the secret.
+The highest role from any source wins. See [docs/rbac.md](docs/rbac.md) for the full access control model.
 
 ### Secret Configuration
 
@@ -54,10 +48,11 @@ To make a secret accessible through the console, configure it with:
      app.kubernetes.io/managed-by: console.holos.run
    ```
 
-2. **Required annotation** (controls who can read the secret data):
+2. **Sharing annotations** (controls who can access the secret):
    ```yaml
    annotations:
-     holos.run/allowed-groups: '["admin", "developers"]'
+     holos.run/share-users: '{"alice@example.com":"owner","bob@example.com":"viewer"}'
+     holos.run/share-groups: '{"dev-team":"editor"}'
    ```
 
 ### Example Secret
@@ -71,18 +66,17 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
-    holos.run/allowed-groups: '["platform-team", "my-app-owners"]'
+    holos.run/share-users: '{"alice@example.com":"owner"}'
+    holos.run/share-groups: '{"platform-team":"editor"}'
 stringData:
   API_KEY: secret-value
 type: Opaque
 ```
 
-In this example, users in either the `platform-team` or `my-app-owners` groups can view the secret.
-
 ### UI Behavior
 
-- **Secrets List**: The `/secrets` page shows all console-managed secrets. Secrets the user cannot access display a "No access" indicator with a tooltip showing which groups are allowed.
-- **Secret Detail**: The `/secrets/:name` page displays the secret data in environment variable format (`KEY=value`) for authorized users. Unauthorized users receive a permission denied error.
+- **Secrets List**: The `/secrets` page shows all console-managed secrets with accessibility indicators.
+- **Secret Detail**: The `/secrets/:name` page displays the secret data for authorized users. Unauthorized users receive a permission denied error.
 
 ## Kubernetes Integration
 
