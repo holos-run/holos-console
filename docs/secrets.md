@@ -49,9 +49,10 @@ Duplicate keys are detected and flagged in the editor before submission.
 
 ### Viewing and Editing a Secret
 
-Navigate to `/secrets/<name>` to view a secret's data. Authorized users see individual key-value entries in the file-based editor. Each entry shows the key (filename) and value (file content) as separate fields.
+Navigate to `/secrets/<name>` to view a secret's data. The detail page provides two view modes toggled at the top of the card:
 
-To edit, modify the key or value fields directly. The **Save** button enables when changes are detected (dirty checking). Saving replaces the entire secret data map.
+- **Editor** (default) — Individual key-value entries in the file-based editor. Each entry shows the key (filename) and value (file content) as separate fields. Modify fields directly; the **Save** button enables when changes are detected (dirty checking). Saving replaces the entire secret data map.
+- **Raw** — The full Kubernetes Secret manifest as pretty-printed JSON. The raw view converts `data` (base64) to `stringData` (plaintext) for readability. An "Include all fields" toggle controls whether server-managed metadata fields (uid, resourceVersion, creationTimestamp, etc.) are shown. A "Copy to Clipboard" button copies the rendered JSON. The raw view is read-only; Save is disabled while it is active.
 
 ### Deleting a Secret
 
@@ -148,7 +149,8 @@ The `SecretsService` ConnectRPC API provides programmatic access to secrets. All
 | `GetSecret` | Viewer | Retrieve a secret's data by name |
 | `CreateSecret` | Editor | Create a new secret with data and sharing grants |
 | `UpdateSecret` | Editor | Replace a secret's data map |
+| `GetSecretRaw` | Viewer | Retrieve the full K8s Secret object as verbatim JSON |
 | `DeleteSecret` | Owner | Delete a secret by name |
 | `UpdateSharing` | Owner | Update sharing grants without touching data |
 
-Secret data is transmitted as `map<string, bytes>` -- values are raw bytes, not base64-encoded, in the protobuf wire format.
+Secret data is transmitted as `map<string, bytes>` -- values are raw bytes, not base64-encoded, in the protobuf wire format. `CreateSecret` and `UpdateSecret` also accept a `string_data` field (`map<string, string>`) for plaintext values that are merged into `data` (with `string_data` taking precedence), matching Kubernetes `stringData` semantics.
