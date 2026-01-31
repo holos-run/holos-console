@@ -109,7 +109,7 @@ type OIDCConfig struct {
 
 // deriveRedirectURI derives the OIDC redirect URI from the console origin.
 func deriveRedirectURI(origin string) string {
-	return strings.TrimSuffix(origin, "/") + "/ui/callback"
+	return strings.TrimSuffix(origin, "/") + "/pkce/verify"
 }
 
 // derivePostLogoutRedirectURI derives the post-logout redirect URI from the console origin.
@@ -234,7 +234,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Also allow Vite dev server redirect URI for local development
 		redirectURIs := []string{redirectURI}
-		viteRedirectURI := "https://localhost:5173/ui/callback"
+		viteRedirectURI := "https://localhost:5173/pkce/verify"
 		if redirectURI != viteRedirectURI {
 			redirectURIs = append(redirectURIs, viteRedirectURI)
 		}
@@ -275,6 +275,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	uiHandler := newUIHandler(uiContent, oidcConfig)
+
+	// Serve SPA at /pkce/verify for OIDC PKCE callback handling.
+	// This path is outside the /ui prefix so it needs its own handler.
+	mux.HandleFunc("/pkce/verify", func(w http.ResponseWriter, r *http.Request) {
+		uiHandler.serveIndex(w, r)
+	})
 
 	// Redirect / to /ui (canonical path without trailing slash)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +473,7 @@ type uiHandler struct {
 	oidcConfig *OIDCConfig
 }
 
-func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) http.Handler {
+func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) *uiHandler {
 	return &uiHandler{fs: uiContent, oidcConfig: oidcConfig}
 }
 

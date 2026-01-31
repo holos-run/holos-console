@@ -55,7 +55,7 @@ function getConfig(): OIDCConfig {
   return {
     authority: `${origin}/dex`,
     client_id: 'holos-console',
-    redirect_uri: `${origin}/ui/callback`,
+    redirect_uri: `${origin}/pkce/verify`,
     post_logout_redirect_uri: `${origin}/ui`,
   }
 }
