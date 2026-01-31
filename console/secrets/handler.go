@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -190,8 +191,11 @@ func (h *Handler) CreateSecret(
 		return nil, err
 	}
 
+	// Merge string_data into data (string_data takes precedence)
+	data := mergeStringData(req.Msg.Data, req.Msg.StringData)
+
 	// Create the secret
-	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, req.Msg.Data, shareUsers, shareGroups)
+	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, data, shareUsers, shareGroups)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -217,7 +221,7 @@ func (h *Handler) UpdateSecret(
 	if req.Msg.Name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
 	}
-	if len(req.Msg.Data) == 0 {
+	if len(req.Msg.Data) == 0 && len(req.Msg.StringData) == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret data is required"))
 	}
 
@@ -250,8 +254,11 @@ func (h *Handler) UpdateSecret(
 		return nil, err
 	}
 
+	// Merge string_data into data (string_data takes precedence)
+	data := mergeStringData(req.Msg.Data, req.Msg.StringData)
+
 	// Perform the update
-	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, req.Msg.Data); err != nil {
+	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, data); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -331,6 +338,71 @@ func (h *Handler) UpdateSharing(
 	return connect.NewResponse(&consolev1.UpdateSharingResponse{
 		Metadata: metadata,
 	}), nil
+}
+
+// GetSecretRaw retrieves the full Kubernetes Secret object as verbatim JSON.
+func (h *Handler) GetSecretRaw(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetSecretRawRequest],
+) (*connect.Response[consolev1.GetSecretRawResponse], error) {
+	// Validate request
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret name is required"))
+	}
+
+	// Get claims from context (set by AuthInterceptor)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Get secret from Kubernetes
+	secret, err := h.k8s.GetSecret(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Check RBAC (sharing-aware)
+	shareUsers, _ := GetShareUsers(secret)
+	shareGroups, _ := GetShareGroups(secret)
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+		logAuditDenied(ctx, claims, secret.Name)
+		return nil, err
+	}
+
+	logAuditAllowed(ctx, claims, secret.Name)
+
+	// Set apiVersion and kind (not populated by client-go on fetched objects)
+	secret.APIVersion = "v1"
+	secret.Kind = "Secret"
+
+	// Marshal the full object to JSON
+	raw, err := json.Marshal(secret)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("marshaling secret to JSON: %w", err))
+	}
+
+	return connect.NewResponse(&consolev1.GetSecretRawResponse{
+		Raw: string(raw),
+	}), nil
+}
+
+// mergeStringData merges string_data values into data. string_data keys take
+// precedence over data keys, matching Kubernetes stringData semantics.
+func mergeStringData(data map[string][]byte, stringData map[string]string) map[string][]byte {
+	if len(stringData) == 0 {
+		return data
+	}
+	if data == nil {
+		data = make(map[string][]byte)
+	}
+	for k, v := range stringData {
+		data[k] = []byte(v)
+	}
+	return data
 }
 
 // shareGrantsToAnnotations converts a slice of ShareGrant protos to []AnnotationGrant
