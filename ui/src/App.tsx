@@ -28,7 +28,7 @@ import { VersionCard } from './components/VersionCard'
 import { AuthDebugPage } from './components/AuthDebugPage'
 import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
-import { AuthProvider, Callback } from './auth'
+import { AuthProvider } from './auth'
 
 const theme = createTheme({
   palette: {
@@ -165,20 +165,6 @@ function MainLayout() {
 }
 
 function App() {
-  const location = useLocation()
-
-  // Callback route renders without the main layout
-  if (location.pathname === '/callback') {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <AuthProvider>
-          <Callback />
-        </AuthProvider>
-      </ThemeProvider>
-    )
-  }
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
