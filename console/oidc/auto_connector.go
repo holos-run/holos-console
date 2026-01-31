@@ -1,6 +1,7 @@
 package oidc
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -80,6 +81,6 @@ func (c *autoConnector) HandleCallback(scopes connector.Scopes, r *http.Request)
 }
 
 // Refresh preserves the identity on token refresh.
-func (c *autoConnector) Refresh(_ connector.Scopes, identity connector.Identity) (connector.Identity, error) {
+func (c *autoConnector) Refresh(_ context.Context, _ connector.Scopes, identity connector.Identity) (connector.Identity, error) {
 	return identity, nil
 }
