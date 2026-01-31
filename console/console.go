@@ -98,7 +98,6 @@ type OIDCConfig struct {
 	ClientID              string `json:"client_id"`
 	RedirectURI           string `json:"redirect_uri"`
 	PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
-	SilentRedirectURI     string `json:"silent_redirect_uri"`
 }
 
 // deriveRedirectURI derives the OIDC redirect URI from the console origin.
@@ -109,12 +108,6 @@ func deriveRedirectURI(origin string) string {
 // derivePostLogoutRedirectURI derives the post-logout redirect URI from the console origin.
 func derivePostLogoutRedirectURI(origin string) string {
 	return strings.TrimSuffix(origin, "/") + "/ui"
-}
-
-// deriveSilentRedirectURI derives the silent redirect URI from the console origin.
-// Used by oidc-client-ts for iframe-based silent token renewal.
-func deriveSilentRedirectURI(origin string) string {
-	return strings.TrimSuffix(origin, "/") + "/ui/silent-callback.html"
 }
 
 // Server represents the console server.
@@ -221,14 +214,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.cfg.Issuer != "" {
 		// Derive redirect URIs from origin
 		redirectURI := deriveRedirectURI(s.cfg.Origin)
-		silentRedirectURI := deriveSilentRedirectURI(s.cfg.Origin)
 
-		// Also allow Vite dev server redirect URIs for local development
-		redirectURIs := []string{redirectURI, silentRedirectURI}
+		// Also allow Vite dev server redirect URI for local development
+		redirectURIs := []string{redirectURI}
 		viteRedirectURI := "https://localhost:5173/ui/callback"
-		viteSilentRedirectURI := "https://localhost:5173/ui/silent-callback.html"
 		if redirectURI != viteRedirectURI {
-			redirectURIs = append(redirectURIs, viteRedirectURI, viteSilentRedirectURI)
+			redirectURIs = append(redirectURIs, viteRedirectURI)
 		}
 
 		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
@@ -263,7 +254,6 @@ func (s *Server) Serve(ctx context.Context) error {
 			ClientID:              s.cfg.ClientID,
 			RedirectURI:           deriveRedirectURI(s.cfg.Origin),
 			PostLogoutRedirectURI: derivePostLogoutRedirectURI(s.cfg.Origin),
-			SilentRedirectURI:     deriveSilentRedirectURI(s.cfg.Origin),
 		}
 	}
 

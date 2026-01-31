@@ -35,7 +35,6 @@ interface OIDCConfig {
   client_id: string
   redirect_uri: string
   post_logout_redirect_uri: string
-  silent_redirect_uri: string
 }
 
 declare global {
@@ -58,7 +57,6 @@ function getConfig(): OIDCConfig {
     client_id: 'holos-console',
     redirect_uri: `${origin}/ui/callback`,
     post_logout_redirect_uri: `${origin}/ui`,
-    silent_redirect_uri: `${origin}/ui/silent-callback.html`,
   }
 }
 
@@ -70,14 +68,16 @@ export function getOIDCSettings(): UserManagerSettings {
     client_id: config.client_id,
     redirect_uri: config.redirect_uri,
     post_logout_redirect_uri: config.post_logout_redirect_uri,
-    silent_redirect_uri: config.silent_redirect_uri,
+
+    // No silent_redirect_uri: oidc-client-ts uses refresh tokens (from the
+    // offline_access scope) instead of iframes for silent renewal. See ADR 004.
 
     // PKCE is required for public clients (SPAs)
     response_type: 'code',
 
     // Request openid, profile, email, groups, and offline_access scopes
     // groups scope requests group memberships from the identity provider
-    // offline_access requests a refresh token for silent renewal without iframes
+    // offline_access requests a refresh token for silent renewal
     scope: 'openid profile email groups offline_access',
 
     // Use session storage to survive page refreshes but not browser restarts

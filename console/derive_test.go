@@ -66,29 +66,3 @@ func TestDerivePostLogoutRedirectURI(t *testing.T) {
 	}
 }
 
-func TestDeriveSilentRedirectURI(t *testing.T) {
-	tests := []struct {
-		name   string
-		origin string
-		want   string
-	}{
-		{
-			name:   "standard origin",
-			origin: "https://holos-console.home.jeffmccune.com",
-			want:   "https://holos-console.home.jeffmccune.com/ui/silent-callback.html",
-		},
-		{
-			name:   "localhost origin",
-			origin: "https://localhost:8443",
-			want:   "https://localhost:8443/ui/silent-callback.html",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := deriveSilentRedirectURI(tt.origin)
-			if got != tt.want {
-				t.Errorf("deriveSilentRedirectURI() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
