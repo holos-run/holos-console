@@ -51,29 +51,28 @@ function mockMatchMedia(matchPattern: RegExp): () => void {
 }
 
 describe('navigation', () => {
-  it('links the landing page without a trailing slash', async () => {
+  it('links the secrets page from sidebar', async () => {
     renderApp('/ui/version')
-    // Wait for AuthProvider async initialization to complete
     await waitFor(() => {
-      const landingLink = screen.getByRole('link', { name: 'Landing' })
-      expect(landingLink).toHaveAttribute('href', '/ui')
+      const secretsLink = screen.getByRole('link', { name: 'Secrets' })
+      expect(secretsLink).toHaveAttribute('href', '/ui/secrets')
     })
   })
 
-  it('navigates to the landing page via the landing link', async () => {
-    const user = userEvent.setup()
+  it('links the profile page from sidebar', async () => {
     renderApp('/ui/version')
-
-    // Wait for AuthProvider async initialization to complete
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: 'Landing' })).toBeInTheDocument()
+      const profileLink = screen.getByRole('link', { name: 'Profile' })
+      expect(profileLink).toHaveAttribute('href', '/ui/profile')
     })
+  })
 
-    await user.click(screen.getByRole('link', { name: 'Landing' }))
-
-    expect(
-      screen.getByRole('heading', { name: 'Welcome to Holos Console' }),
-    ).toBeInTheDocument()
+  it('links the version page from sidebar', async () => {
+    renderApp('/ui/version')
+    await waitFor(() => {
+      const versionLink = screen.getByRole('link', { name: 'Version' })
+      expect(versionLink).toHaveAttribute('href', '/ui/version')
+    })
   })
 })
 
@@ -82,13 +81,10 @@ describe('responsive layout', () => {
     // Mobile: max-width queries match (below md breakpoint)
     const cleanup = mockMatchMedia(/max-width/)
     try {
-      renderApp('/ui/')
+      renderApp('/ui/version')
       await waitFor(() => {
-        expect(screen.getByRole('heading', { name: 'Welcome to Holos Console' })).toBeInTheDocument()
+        expect(screen.getByLabelText(/open menu/i)).toBeInTheDocument()
       })
-
-      // Hamburger menu button should be visible
-      expect(screen.getByLabelText(/open menu/i)).toBeInTheDocument()
 
       // The permanent sidebar nav should not be rendered
       expect(screen.queryByRole('navigation', { hidden: false })).toBeNull()
@@ -101,7 +97,7 @@ describe('responsive layout', () => {
     const user = userEvent.setup()
     const cleanup = mockMatchMedia(/max-width/)
     try {
-      renderApp('/ui/')
+      renderApp('/ui/version')
       await waitFor(() => {
         expect(screen.getByLabelText(/open menu/i)).toBeInTheDocument()
       })
@@ -119,7 +115,7 @@ describe('responsive layout', () => {
 
   it('shows permanent sidebar and no hamburger on desktop', async () => {
     // Desktop: default matchMedia returns matches=false (no max-width match)
-    renderApp('/ui/')
+    renderApp('/ui/version')
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Secrets' })).toBeInTheDocument()
     })
@@ -127,7 +123,9 @@ describe('responsive layout', () => {
     // Hamburger should not be present
     expect(screen.queryByLabelText(/open menu/i)).toBeNull()
 
-    // Sidebar nav should be visible
-    expect(screen.getByRole('link', { name: 'Landing' })).toBeInTheDocument()
+    // Sidebar nav should be visible with expected links
+    expect(screen.getByRole('link', { name: 'Secrets' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Version' })).toBeInTheDocument()
   })
 })

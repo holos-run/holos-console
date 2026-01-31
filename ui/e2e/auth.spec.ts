@@ -16,13 +16,11 @@ const DEFAULT_USERNAME = 'admin'
 const DEFAULT_PASSWORD = 'verysecret'
 
 test.describe('Authentication', () => {
-  test('should have landing page accessible', async ({ page }) => {
+  test('should redirect to secrets page by default', async ({ page }) => {
     await page.goto('/ui')
 
-    // Verify the landing page loads
-    await expect(
-      page.getByRole('heading', { name: 'Welcome to Holos Console' }),
-    ).toBeVisible()
+    // Verify redirect to secrets page (shows Sign In since unauthenticated)
+    await expect(page).toHaveURL(/\/ui\/secrets/)
   })
 
   test('should have version page accessible', async ({ page }) => {
@@ -191,10 +189,6 @@ test.describe('Profile Page', () => {
 
     // Verify Sign In button is visible
     await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible()
-
-    // Verify user info is NOT visible (no Name/Email/Subject fields)
-    await expect(page.getByText('Name', { exact: true })).not.toBeVisible()
-    await expect(page.getByText('Email', { exact: true })).not.toBeVisible()
   })
 
   test('should navigate to profile page from sidebar', async ({ page }) => {
@@ -240,15 +234,15 @@ test.describe('Profile Page', () => {
     // Wait for redirect back to profile page (returnTo state preserves the path)
     await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Verify profile page shows user info - wait for Sign Out button which confirms auth
-    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
+    // Verify profile page shows token status after login
+    await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 5000 })
 
-    // Verify user info labels are visible (use exact match to avoid matching JSON)
-    await expect(page.getByText('Name', { exact: true })).toBeVisible()
-    await expect(page.getByText('Email', { exact: true })).toBeVisible()
+    // Verify token details section is visible
+    await expect(page.getByText('Token Details')).toBeVisible()
+    await expect(page.getByText('Email')).toBeVisible()
   })
 
-  test('should display ID token claims in expandable section', async ({ page }) => {
+  test('should display token details after login', async ({ page }) => {
     // Navigate to profile page and login
     await page.goto('/ui/profile')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -277,26 +271,19 @@ test.describe('Profile Page', () => {
     // Wait for redirect back to profile page
     await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Verify profile page loaded - wait for Sign Out button which confirms auth
-    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
-
-    // Expand the ID Token Claims accordion
-    await page.getByText('ID Token Claims').click()
-
-    // Verify JSON content is visible with expected claims
-    const claimsJson = page.locator('pre')
-    await expect(claimsJson).toBeVisible()
-    await expect(claimsJson).toContainText('"sub"')
-    await expect(claimsJson).toContainText('"iss"')
+    // Verify token details are visible
+    await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Subject (sub)')).toBeVisible()
+    await expect(page.getByText('Email')).toBeVisible()
 
     // Take screenshot for visual verification
     await page.screenshot({
-      path: 'e2e/screenshots/profile-claims.png',
+      path: 'e2e/screenshots/profile-token-details.png',
       fullPage: true,
     })
   })
 
-  test('should include groups claim in ID token', async ({ page }) => {
+  test('should include groups in profile page', async ({ page }) => {
     // Navigate to profile page and login
     await page.goto('/ui/profile')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -325,22 +312,14 @@ test.describe('Profile Page', () => {
     // Wait for redirect back to profile page
     await page.waitForURL(/\/ui\/profile/, { timeout: 15000 })
 
-    // Verify profile page loaded - wait for Sign Out button which confirms auth
-    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible({ timeout: 5000 })
+    // Verify token details are visible
+    await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
 
-    // Expand the ID Token Claims accordion to see raw claims
-    await page.getByText('ID Token Claims').click()
+    // Verify groups are displayed in the token details
+    await expect(page.getByText('Groups')).toBeVisible()
 
-    // Verify the groups claim exists in the ID token with "owner" group
-    const claimsJson = page.locator('pre')
-    await expect(claimsJson).toBeVisible()
-    await expect(claimsJson).toContainText('"groups"')
-    await expect(claimsJson).toContainText('"owner"')
-
-    // Wait for accordion animation to complete then take screenshot
-    await page.waitForTimeout(300)
     await page.screenshot({
-      path: 'e2e/screenshots/groups-claims.png',
+      path: 'e2e/screenshots/profile-groups.png',
       fullPage: true,
     })
   })

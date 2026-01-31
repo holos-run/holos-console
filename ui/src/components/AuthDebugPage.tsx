@@ -82,7 +82,7 @@ export function AuthDebugPage() {
         <Card variant="outlined">
           <CardContent>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Auth Debug</Typography>
+              <Typography variant="h6">Profile</Typography>
               <Chip label="BFF Mode" color="info" size="small" />
             </Stack>
 
@@ -134,7 +134,7 @@ export function AuthDebugPage() {
     return (
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>Auth Debug</Typography>
+          <Typography variant="h6" sx={{ mb: 2 }}>Profile</Typography>
           <Typography color="text.secondary" paragraph>
             Sign in to view token information.
           </Typography>
