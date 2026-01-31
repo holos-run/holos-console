@@ -13,11 +13,11 @@ import (
 
 // ShareUsersAnnotation is the annotation key for per-user sharing grants.
 // Value is a JSON object mapping email address → role name.
-const ShareUsersAnnotation = "holos.run/share-users"
+const ShareUsersAnnotation = "console.holos.run/share-users"
 
 // ShareGroupsAnnotation is the annotation key for per-group sharing grants.
 // Value is a JSON object mapping OIDC group name → role name.
-const ShareGroupsAnnotation = "holos.run/share-groups"
+const ShareGroupsAnnotation = "console.holos.run/share-groups"
 
 // ManagedByLabel is the label key used to identify secrets managed by the console.
 const ManagedByLabel = "app.kubernetes.io/managed-by"
@@ -153,7 +153,7 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, 
 	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
-// GetShareUsers parses the holos.run/share-users annotation from a secret.
+// GetShareUsers parses the console.holos.run/share-users annotation from a secret.
 // Returns an empty map if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
 func GetShareUsers(secret *corev1.Secret) (map[string]string, error) {
@@ -171,7 +171,7 @@ func GetShareUsers(secret *corev1.Secret) (map[string]string, error) {
 	return users, nil
 }
 
-// GetShareGroups parses the holos.run/share-groups annotation from a secret.
+// GetShareGroups parses the console.holos.run/share-groups annotation from a secret.
 // Returns an empty map if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
 func GetShareGroups(secret *corev1.Secret) (map[string]string, error) {

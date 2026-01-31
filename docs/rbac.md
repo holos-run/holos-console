@@ -37,8 +37,8 @@ Sharing grants provide fine-grained access to individual secrets. They are store
 
 | Annotation | Format | Description |
 |---|---|---|
-| `holos.run/share-users` | `{"email":"role"}` | Per-user grants |
-| `holos.run/share-groups` | `{"group":"role"}` | Per-group grants |
+| `console.holos.run/share-users` | `{"email":"role"}` | Per-user grants |
+| `console.holos.run/share-groups` | `{"group":"role"}` | Per-group grants |
 
 ### Example
 
@@ -51,8 +51,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
-    holos.run/share-users: '{"alice@example.com":"owner","bob@example.com":"viewer"}'
-    holos.run/share-groups: '{"dev-team":"editor"}'
+    console.holos.run/share-users: '{"alice@example.com":"owner","bob@example.com":"viewer"}'
+    console.holos.run/share-groups: '{"dev-team":"editor"}'
 ```
 
 ## How Roles Combine
