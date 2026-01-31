@@ -16,22 +16,35 @@ If `make generate` fails, fix the errors before committing. Common issues:
 
 ## Implementing Plans
 
-When implementing a plan from `docs/plans/`:
+Plans are recorded as GitHub issues. Implement each plan on a feature branch with regular commits in a single PR that references the issue.
 
-1. **Mark steps complete in the plan file** - Before committing, update the plan's checklist to mark completed steps (change `- [ ]` to `- [x]`). Include the plan file in the commit.
-
-2. **Include step identifiers in commit messages** - Put the step identifier (e.g., 1.1, 1.2, 2.1) at the END of the first line in parentheses.
+1. **Create a feature branch** from `main` for the plan.
+2. **Make regular commits** as you work. Each commit should be a logical unit of change.
+3. **Open a PR** when the work is complete. Include `Closes: #NN` (where NN is the issue number) in the PR description so the issue is automatically closed when the PR is merged.
 
 Example workflow:
 ```bash
-# 1. Implement step 1.1
-# 2. Edit docs/plans/my-plan.md to mark step 1.1 as [x]
-# 3. Commit both the implementation and the updated plan
-git add src/file.ts docs/plans/my-plan.md
-git commit -m "Add webServer configuration to playwright.config.ts (1.1)
+git checkout -b feat/add-playwright-config
+# ... implement changes, committing as you go ...
+git commit -m "Add webServer configuration to playwright.config.ts
 
 Configure Playwright to automatically start Go backend and Vite dev
 server before running E2E tests."
+
+# Open a PR that closes the plan issue
+gh pr create --title "Add Playwright E2E test infrastructure" --body "$(cat <<'EOF'
+## Summary
+- Configure Playwright to start Go backend and Vite dev server
+- Add E2E test for the login flow
+
+Closes: #42
+
+## Test plan
+- [ ] `make test-e2e` passes
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
 ```
 
 ## Build Commands
@@ -187,7 +200,7 @@ Implement each phase using a RED GREEN approach:
 
 ### Tracking Progress
 
-When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes.
+When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes. When the PR is merged, the `Closes: #NN` line in the PR description automatically closes the issue.
 
 ## Contributing
 
