@@ -62,7 +62,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -145,7 +145,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"other@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -259,7 +259,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `{"owner":"owner"}`,
+					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -333,7 +333,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -411,7 +411,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -467,7 +467,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 		}
@@ -507,7 +507,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -605,7 +605,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -650,7 +650,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"other@example.com":"editor"}`,
+					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"editor"}]`,
 				},
 			},
 		}
@@ -1017,7 +1017,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1089,7 +1089,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1240,7 +1240,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"editor"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1292,7 +1292,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1343,7 +1343,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				Name:      "multi-key-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `{"owner":"owner"}`,
+					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1400,7 +1400,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1409,7 +1409,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "unlabeled-secret",
 				Namespace: "test-namespace",
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1457,7 +1457,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"user@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -1469,7 +1469,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"other@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1593,7 +1593,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -1643,18 +1643,26 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to parse share-users: %v", err)
 		}
-		if shareUsers["alice@example.com"] != "owner" {
-			t.Errorf("expected alice=owner, got %q", shareUsers["alice@example.com"])
+		userMap := make(map[string]string)
+		for _, g := range shareUsers {
+			userMap[g.Principal] = g.Role
 		}
-		if shareUsers["bob@example.com"] != "viewer" {
-			t.Errorf("expected bob=viewer, got %q", shareUsers["bob@example.com"])
+		if userMap["alice@example.com"] != "owner" {
+			t.Errorf("expected alice=owner, got %q", userMap["alice@example.com"])
+		}
+		if userMap["bob@example.com"] != "viewer" {
+			t.Errorf("expected bob=viewer, got %q", userMap["bob@example.com"])
 		}
 		shareGroups, err := GetShareGroups(updated)
 		if err != nil {
 			t.Fatalf("failed to parse share-groups: %v", err)
 		}
-		if shareGroups["dev-team"] != "editor" {
-			t.Errorf("expected dev-team=editor, got %q", shareGroups["dev-team"])
+		groupMap := make(map[string]string)
+		for _, g := range shareGroups {
+			groupMap[g.Principal] = g.Role
+		}
+		if groupMap["dev-team"] != "editor" {
+			t.Errorf("expected dev-team=editor, got %q", groupMap["dev-team"])
 		}
 	})
 
@@ -1668,7 +1676,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"bob@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -1802,7 +1810,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"alice@example.com":"owner"}`,
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -1853,7 +1861,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 					ManagedByLabel: ManagedByValue,
 				},
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{"bob@example.com":"viewer"}`,
+					ShareUsersAnnotation: `[{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},

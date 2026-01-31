@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -46,16 +47,19 @@ func (h *Handler) ListSecrets(
 	}
 
 	// Build list with accessibility info for each secret
+	now := time.Now()
 	var secrets []*consolev1.SecretMetadata
 	var accessibleCount int
 	for _, secret := range secretList.Items {
 		shareUsers, _ := GetShareUsers(&secret)
 		shareGroups, _ := GetShareGroups(&secret)
-		accessible := CheckListAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups) == nil
+		activeUsers := ActiveGrantsMap(shareUsers, now)
+		activeGroups := ActiveGrantsMap(shareGroups, now)
+		accessible := CheckListAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups) == nil
 		if accessible {
 			accessibleCount++
 		}
-		metadata := buildSecretMetadata(&secret, h.groupMapping, claims)
+		metadata := buildSecretMetadata(&secret, shareUsers, shareGroups, activeUsers, activeGroups, h.groupMapping, claims)
 		secrets = append(secrets, metadata)
 	}
 
@@ -122,7 +126,10 @@ func (h *Handler) DeleteSecret(
 	// Check RBAC for delete access (sharing-aware)
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckDeleteAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -165,12 +172,15 @@ func (h *Handler) CreateSecret(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Convert proto ShareGrant slices to annotation maps
-	shareUsers := shareGrantsToMap(req.Msg.UserGrants)
-	shareGroups := shareGrantsToMap(req.Msg.GroupGrants)
+	// Convert proto ShareGrant slices to annotation grants
+	shareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
+	shareGroups := shareGrantsToAnnotations(req.Msg.GroupGrants)
 
 	// Check that the user has write permission based on the requested sharing grants.
-	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -226,7 +236,10 @@ func (h *Handler) UpdateSecret(
 	// Check RBAC for write access (sharing-aware)
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckWriteAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		logAuditDenied(ctx, claims, secret.Name)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
@@ -278,7 +291,10 @@ func (h *Handler) UpdateSharing(
 	// Check RBAC for admin access (owner only, sharing-aware)
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckAdminAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "sharing update denied",
 			slog.String("action", "sharing_update_denied"),
 			slog.String("secret", req.Msg.Name),
@@ -288,9 +304,9 @@ func (h *Handler) UpdateSharing(
 		return nil, err
 	}
 
-	// Convert proto ShareGrant slices to annotation maps
-	newShareUsers := shareGrantsToMap(req.Msg.UserGrants)
-	newShareGroups := shareGrantsToMap(req.Msg.GroupGrants)
+	// Convert proto ShareGrant slices to annotation grants
+	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
+	newShareGroups := shareGrantsToAnnotations(req.Msg.GroupGrants)
 
 	// Persist the sharing annotations
 	updated, err := h.k8s.UpdateSharing(ctx, req.Msg.Name, newShareUsers, newShareGroups)
@@ -306,47 +322,50 @@ func (h *Handler) UpdateSharing(
 	)
 
 	// Build response metadata
-	metadata := buildSecretMetadata(updated, h.groupMapping, claims)
+	updatedUsers, _ := GetShareUsers(updated)
+	updatedGroups, _ := GetShareGroups(updated)
+	updatedActiveUsers := ActiveGrantsMap(updatedUsers, now)
+	updatedActiveGroups := ActiveGrantsMap(updatedGroups, now)
+	metadata := buildSecretMetadata(updated, updatedUsers, updatedGroups, updatedActiveUsers, updatedActiveGroups, h.groupMapping, claims)
 
 	return connect.NewResponse(&consolev1.UpdateSharingResponse{
 		Metadata: metadata,
 	}), nil
 }
 
-// shareGrantsToMap converts a slice of ShareGrant protos to a map[string]string
+// shareGrantsToAnnotations converts a slice of ShareGrant protos to []AnnotationGrant
 // suitable for storing as a Kubernetes annotation.
-func shareGrantsToMap(grants []*consolev1.ShareGrant) map[string]string {
-	result := make(map[string]string, len(grants))
+func shareGrantsToAnnotations(grants []*consolev1.ShareGrant) []AnnotationGrant {
+	result := make([]AnnotationGrant, 0, len(grants))
 	for _, g := range grants {
 		if g.Principal != "" {
-			result[g.Principal] = strings.ToLower(g.Role.String()[len("ROLE_"):])
+			ag := AnnotationGrant{
+				Principal: g.Principal,
+				Role:      strings.ToLower(g.Role.String()[len("ROLE_"):]),
+			}
+			if g.Nbf != nil {
+				nbf := *g.Nbf
+				ag.Nbf = &nbf
+			}
+			if g.Exp != nil {
+				exp := *g.Exp
+				ag.Exp = &exp
+			}
+			result = append(result, ag)
 		}
 	}
 	return result
 }
 
 // buildSecretMetadata creates SecretMetadata for a secret from the caller's perspective.
-func buildSecretMetadata(secret *corev1.Secret, gm *rbac.GroupMapping, claims *rpc.Claims) *consolev1.SecretMetadata {
-	shareUsers, _ := GetShareUsers(secret)
-	shareGroups, _ := GetShareGroups(secret)
-	accessible := CheckListAccessSharing(gm, claims.Email, claims.Groups, shareUsers, shareGroups) == nil
+// It receives the full grant slices (for the proto response) and the active maps (for RBAC).
+func buildSecretMetadata(secret *corev1.Secret, shareUsers, shareGroups []AnnotationGrant, activeUsers, activeGroups map[string]string, gm *rbac.GroupMapping, claims *rpc.Claims) *consolev1.SecretMetadata {
+	accessible := CheckListAccessSharing(gm, claims.Email, claims.Groups, activeUsers, activeGroups) == nil
 
-	// Build user grants
-	var userGrants []*consolev1.ShareGrant
-	for email, role := range shareUsers {
-		userGrants = append(userGrants, &consolev1.ShareGrant{
-			Principal: email,
-			Role:      protoRoleFromString(role),
-		})
-	}
+	// Build user grants (all grants, including expired, for display)
+	userGrants := annotationGrantsToProto(shareUsers)
 	// Build group grants
-	var groupGrants []*consolev1.ShareGrant
-	for group, role := range shareGroups {
-		groupGrants = append(groupGrants, &consolev1.ShareGrant{
-			Principal: group,
-			Role:      protoRoleFromString(role),
-		})
-	}
+	groupGrants := annotationGrantsToProto(shareGroups)
 
 	return &consolev1.SecretMetadata{
 		Name:        secret.Name,
@@ -354,6 +373,27 @@ func buildSecretMetadata(secret *corev1.Secret, gm *rbac.GroupMapping, claims *r
 		UserGrants:  userGrants,
 		GroupGrants: groupGrants,
 	}
+}
+
+// annotationGrantsToProto converts []AnnotationGrant to []*consolev1.ShareGrant.
+func annotationGrantsToProto(grants []AnnotationGrant) []*consolev1.ShareGrant {
+	result := make([]*consolev1.ShareGrant, 0, len(grants))
+	for _, g := range grants {
+		sg := &consolev1.ShareGrant{
+			Principal: g.Principal,
+			Role:      protoRoleFromString(g.Role),
+		}
+		if g.Nbf != nil {
+			nbf := *g.Nbf
+			sg.Nbf = &nbf
+		}
+		if g.Exp != nil {
+			exp := *g.Exp
+			sg.Exp = &exp
+		}
+		result = append(result, sg)
+	}
+	return result
 }
 
 // protoRoleFromString converts a role name string to the proto Role enum.
@@ -375,7 +415,10 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	// Check RBAC (sharing-aware)
 	shareUsers, _ := GetShareUsers(secret)
 	shareGroups, _ := GetShareGroups(secret)
-	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, shareUsers, shareGroups); err != nil {
+	now := time.Now()
+	activeUsers := ActiveGrantsMap(shareUsers, now)
+	activeGroups := ActiveGrantsMap(shareGroups, now)
+	if err := CheckReadAccessSharing(h.groupMapping, claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
 		logAuditDenied(ctx, claims, secret.Name)
 		return nil, err
 	}
