@@ -2,12 +2,14 @@ package secrets
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/holos-run/holos-console/console/rbac"
@@ -1796,6 +1798,398 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		}
 		if connectErr.Code() != connect.CodeNotFound {
 			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
+		}
+	})
+}
+
+func TestHandler_GetSecretRaw(t *testing.T) {
+	t.Run("returns valid JSON with apiVersion and kind", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
+				},
+			},
+			Data: map[string][]byte{
+				"username": []byte("admin"),
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+
+		resp, err := handler.GetSecretRaw(ctx, req)
+
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp == nil || resp.Msg.Raw == "" {
+			t.Fatal("expected non-empty raw JSON response")
+		}
+
+		// Parse and verify apiVersion and kind
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(resp.Msg.Raw), &parsed); err != nil {
+			t.Fatalf("expected valid JSON, got parse error: %v", err)
+		}
+		if parsed["apiVersion"] != "v1" {
+			t.Errorf("expected apiVersion 'v1', got %v", parsed["apiVersion"])
+		}
+		if parsed["kind"] != "Secret" {
+			t.Errorf("expected kind 'Secret', got %v", parsed["kind"])
+		}
+	})
+
+	t.Run("response includes server-managed fields", func(t *testing.T) {
+		uid := "abc-123-def"
+		rv := "12345"
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "my-secret",
+				Namespace:         "test-namespace",
+				UID:               types.UID(uid),
+				ResourceVersion:   rv,
+				CreationTimestamp: metav1.Now(),
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+
+		resp, err := handler.GetSecretRaw(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(resp.Msg.Raw), &parsed); err != nil {
+			t.Fatalf("expected valid JSON: %v", err)
+		}
+		metadata, ok := parsed["metadata"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected metadata object in JSON")
+		}
+		if metadata["uid"] != uid {
+			t.Errorf("expected uid %q, got %v", uid, metadata["uid"])
+		}
+		if metadata["resourceVersion"] != rv {
+			t.Errorf("expected resourceVersion %q, got %v", rv, metadata["resourceVersion"])
+		}
+		if metadata["creationTimestamp"] == nil {
+			t.Error("expected creationTimestamp to be present")
+		}
+	})
+
+	t.Run("returns PermissionDenied without Viewer grant", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "unauthorized@example.com",
+			Groups: []string{"developers"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+
+		_, err := handler.GetSecretRaw(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected PermissionDenied error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+
+		_, err := handler.GetSecretRaw(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: ""})
+
+		_, err := handler.GetSecretRaw(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+		}
+	})
+
+	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"viewer"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "missing"})
+
+		_, err := handler.GetSecretRaw(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok {
+			t.Fatalf("expected *connect.Error, got %T", err)
+		}
+		if connectErr.Code() != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connectErr.Code())
+		}
+	})
+}
+
+func TestHandler_CreateSecret_StringData(t *testing.T) {
+	t.Run("string_data values are base64-encoded into data", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.CreateSecretRequest{
+			Name:       "sd-secret",
+			StringData: map[string]string{"username": "admin", "password": "secret123"},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
+		})
+
+		resp, err := handler.CreateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "sd-secret" {
+			t.Errorf("expected name 'sd-secret', got %q", resp.Msg.Name)
+		}
+
+		// Verify the stored secret has the data encoded as bytes
+		stored, err := k8sClient.GetSecret(ctx, "sd-secret")
+		if err != nil {
+			t.Fatalf("failed to get stored secret: %v", err)
+		}
+		if string(stored.Data["username"]) != "admin" {
+			t.Errorf("expected username 'admin', got %q", string(stored.Data["username"]))
+		}
+		if string(stored.Data["password"]) != "secret123" {
+			t.Errorf("expected password 'secret123', got %q", string(stored.Data["password"]))
+		}
+	})
+
+	t.Run("string_data takes precedence over data for same key", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.CreateSecretRequest{
+			Name: "precedence-secret",
+			Data: map[string][]byte{"key": []byte("from-data")},
+			StringData: map[string]string{"key": "from-string-data"},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			},
+		})
+
+		_, err := handler.CreateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		stored, err := k8sClient.GetSecret(ctx, "precedence-secret")
+		if err != nil {
+			t.Fatalf("failed to get stored secret: %v", err)
+		}
+		if string(stored.Data["key"]) != "from-string-data" {
+			t.Errorf("expected string_data to take precedence, got %q", string(stored.Data["key"]))
+		}
+	})
+}
+
+func TestHandler_UpdateSecret_StringData(t *testing.T) {
+	t.Run("string_data values are merged into data on update", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"editor"}]`,
+				},
+			},
+			Data: map[string][]byte{"old-key": []byte("old-value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name:       "my-secret",
+			Data:       map[string][]byte{"existing": []byte("value")},
+			StringData: map[string]string{"new-key": "new-value"},
+		})
+
+		_, err := handler.UpdateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		stored, err := k8sClient.GetSecret(ctx, "my-secret")
+		if err != nil {
+			t.Fatalf("failed to get stored secret: %v", err)
+		}
+		if string(stored.Data["existing"]) != "value" {
+			t.Errorf("expected existing='value', got %q", string(stored.Data["existing"]))
+		}
+		if string(stored.Data["new-key"]) != "new-value" {
+			t.Errorf("expected new-key='new-value', got %q", string(stored.Data["new-key"]))
+		}
+	})
+
+	t.Run("string_data takes precedence over data on update", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels: map[string]string{
+					ManagedByLabel: ManagedByValue,
+				},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"editor"}]`,
+				},
+			},
+			Data: map[string][]byte{"k": []byte("v")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{
+			Sub:    "user-123",
+			Email:  "user@example.com",
+			Groups: []string{"editor"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name:       "my-secret",
+			Data:       map[string][]byte{"key": []byte("from-data")},
+			StringData: map[string]string{"key": "from-string-data"},
+		})
+
+		_, err := handler.UpdateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		stored, err := k8sClient.GetSecret(ctx, "my-secret")
+		if err != nil {
+			t.Fatalf("failed to get stored secret: %v", err)
+		}
+		if string(stored.Data["key"]) != "from-string-data" {
+			t.Errorf("expected string_data to take precedence, got %q", string(stored.Data["key"]))
 		}
 	})
 }
