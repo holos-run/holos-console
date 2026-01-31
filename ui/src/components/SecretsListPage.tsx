@@ -23,6 +23,8 @@ import {
   TextField,
   Tooltip,
   Chip,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -40,6 +42,8 @@ function sharingSummary(userCount: number, groupCount: number): string | undefin
 }
 
 export function SecretsListPage() {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
   const [secrets, setSecrets] = useState<SecretMetadata[]>([])
@@ -205,7 +209,7 @@ export function SecretsListPage() {
     <>
       <Card variant="outlined">
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
             <Typography variant="h6">Secrets</Typography>
             <Button variant="contained" size="small" onClick={handleCreateOpen}>
               Create Secret
@@ -263,7 +267,7 @@ export function SecretsListPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="md" fullWidth>
+      <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create Secret</DialogTitle>
         <DialogContent>
           <TextField
@@ -296,7 +300,7 @@ export function SecretsListPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} fullScreen={isMobile}>
         <DialogTitle>Delete Secret</DialogTitle>
         <DialogContent>
           <DialogContentText>

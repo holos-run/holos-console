@@ -7,6 +7,27 @@ function grant(principal: string, role: Role, nbf?: bigint, exp?: bigint): Grant
   return { principal, role, nbf, exp }
 }
 
+/**
+ * Override window.matchMedia so that queries matching the given pattern
+ * return matches=true while all others return matches=false.
+ */
+function mockMatchMedia(matchPattern: RegExp): () => void {
+  const original = window.matchMedia
+  window.matchMedia = (query: string) => ({
+    matches: matchPattern.test(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+  return () => {
+    window.matchMedia = original
+  }
+}
+
 describe('SharingPanel', () => {
   describe('rendering grants', () => {
     it('renders user grants', () => {
@@ -326,6 +347,32 @@ describe('SharingPanel', () => {
 
       // Bob should be back
       expect(screen.getByText('bob@example.com')).toBeInTheDocument()
+    })
+  })
+
+  describe('responsive layout', () => {
+    it('stacks grant edit rows vertically on mobile', () => {
+      const cleanup = mockMatchMedia(/max-width/)
+      try {
+        render(
+          <SharingPanel
+            userGrants={[grant('alice@example.com', Role.OWNER)]}
+            groupGrants={[]}
+            isOwner={true}
+            onSave={vi.fn()}
+            isSaving={false}
+          />,
+        )
+
+        fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+        // The principal row should use column direction on mobile
+        const emailInput = screen.getByPlaceholderText(/email/i)
+        const principalRow = emailInput.closest('.MuiStack-root')
+        expect(principalRow).toHaveStyle({ 'flex-direction': 'column' })
+      } finally {
+        cleanup()
+      }
     })
   })
 })

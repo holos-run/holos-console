@@ -17,6 +17,8 @@ import {
   Stack,
   ToggleButton,
   ToggleButtonGroup,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
@@ -40,6 +42,8 @@ function serializeData(data: Record<string, Uint8Array>): string {
 export function SecretPage() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
+  const muiTheme = useTheme()
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
   const [secretData, setSecretData] = useState<Record<string, Uint8Array>>({})
@@ -304,7 +308,7 @@ export function SecretPage() {
             {saveError}
           </Alert>
         )}
-        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
           <Button
             variant="contained"
             onClick={handleSave}
@@ -335,7 +339,7 @@ export function SecretPage() {
         />
       </CardContent>
 
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} fullScreen={isMobile}>
         <DialogTitle>Delete Secret</DialogTitle>
         <DialogContent>
           <DialogContentText>
