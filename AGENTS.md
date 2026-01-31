@@ -198,6 +198,10 @@ Implement each phase using a RED GREEN approach:
 1. **RED** - Write failing tests first that define the expected behavior.
 2. **GREEN** - Write the minimum implementation to make the tests pass.
 
+### Final Cleanup Phase
+
+Every plan must include a final phase to scan the entire repository for dead, deprecated, or outdated information introduced or made stale by the commits implementing the plan. This includes removing obsolete comments, unused imports, stale documentation, dead code paths, and outdated references in AGENTS.md, README files, and doc files. Commit cleanup changes separately with a clear message explaining what was removed and why.
+
 ### Tracking Progress
 
 When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes. When the PR is merged, the `Closes: #NN` line in the PR description automatically closes the issue.
