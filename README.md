@@ -93,12 +93,11 @@ The `--issuer` flag value determines:
 
 1. The embedded Dex OIDC provider's issuer URL.
 2. The OIDC redirect URIs derived from the issuer base (everything before `/dex`):
-   - **Redirect URI:** `{base}/ui/callback`
-   - **Silent redirect URI:** `{base}/ui/silent-callback.html`
+   - **Redirect URI:** `{base}/pkce/verify`
    - **Post-logout redirect URI:** `{base}/ui`
-3. The HTTPRoute must forward the issuer path (`/dex`) and the UI path (`/ui`)
-   to the holos-console Service so that both the OIDC flow and the frontend
-   are reachable at the same origin.
+3. The HTTPRoute must forward the issuer path (`/dex`), the UI path (`/ui`),
+   and the PKCE callback path (`/pkce`) to the holos-console Service so that
+   the OIDC flow and the frontend are reachable at the same origin.
 
 If you use an **external Dex instance** instead of the embedded one, configure
 a static client with:
@@ -125,6 +124,7 @@ The HTTPRoute must forward the following paths to the holos-console Service:
 | Path | Purpose |
 |------|---------|
 | `/dex` | Embedded OIDC provider (for expedience, not production use) |
+| `/pkce` | OIDC PKCE callback (`/pkce/verify`) |
 | `/ui` | Frontend SPA |
 | `/holos.console.v1` | ConnectRPC and gRPC public API |
 | `/metrics` | Prometheus metrics |

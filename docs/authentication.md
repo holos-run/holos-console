@@ -64,7 +64,7 @@ export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
 2. **PKCE Challenge Generated** - oidc-client-ts generates code verifier and challenge
 3. **Redirect to Dex** - Browser redirects to `/dex/auth` with PKCE parameters
 4. **Auto-Login** - Embedded Dex immediately authenticates user (no form displayed)
-5. **Authorization Code Returned** - Dex redirects to `/ui/callback` with code
+5. **Authorization Code Returned** - Dex redirects to `/pkce/verify` with code
 6. **Token Exchange** - Callback component exchanges code for tokens via `/dex/token`
 7. **Session Established** - Tokens stored in session storage, user redirected to app
 
@@ -114,7 +114,7 @@ staticClients:
     name: Holos Console
     public: true
     redirectURIs:
-      - https://console.example.com/ui/callback
+      - https://console.example.com/pkce/verify
 ```
 
 ## React SPA Integration
@@ -191,8 +191,8 @@ curl -k https://localhost:8443/dex/.well-known/openid-configuration
 ### "Callback error" after login
 
 Check that the redirect URI matches the configuration:
-- For development: `https://localhost:5173/ui/callback` (Vite)
-- For production: `https://your-host/ui/callback`
+- For development: `https://localhost:5173/pkce/verify` (Vite)
+- For production: `https://your-host/pkce/verify`
 
 ### CORS errors
 
