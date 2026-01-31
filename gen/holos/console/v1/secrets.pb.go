@@ -204,7 +204,12 @@ type UpdateSecretRequest struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// data replaces the entire secret data map.
 	// Values are the raw secret bytes (not base64 encoded).
-	Data          map[string][]byte `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Data map[string][]byte `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// string_data contains plaintext string values that are merged into data.
+	// Values are encoded to bytes before storage, matching Kubernetes stringData
+	// semantics. When both data and string_data contain the same key, string_data
+	// takes precedence.
+	StringData    map[string]string `protobuf:"bytes,3,rep,name=string_data,json=stringData,proto3" json:"string_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -249,6 +254,13 @@ func (x *UpdateSecretRequest) GetName() string {
 func (x *UpdateSecretRequest) GetData() map[string][]byte {
 	if x != nil {
 		return x.Data
+	}
+	return nil
+}
+
+func (x *UpdateSecretRequest) GetStringData() map[string]string {
+	if x != nil {
+		return x.StringData
 	}
 	return nil
 }
@@ -298,6 +310,11 @@ type CreateSecretRequest struct {
 	// data contains the secret key-value pairs.
 	// Values are the raw secret bytes (not base64 encoded).
 	Data map[string][]byte `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// string_data contains plaintext string values that are merged into data.
+	// Values are encoded to bytes before storage, matching Kubernetes stringData
+	// semantics. When both data and string_data contain the same key, string_data
+	// takes precedence.
+	StringData map[string]string `protobuf:"bytes,3,rep,name=string_data,json=stringData,proto3" json:"string_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// user_grants are the per-user sharing grants to set on the created secret.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// group_grants are the per-group sharing grants to set on the created secret.
@@ -346,6 +363,13 @@ func (x *CreateSecretRequest) GetName() string {
 func (x *CreateSecretRequest) GetData() map[string][]byte {
 	if x != nil {
 		return x.Data
+	}
+	return nil
+}
+
+func (x *CreateSecretRequest) GetStringData() map[string]string {
+	if x != nil {
+		return x.StringData
 	}
 	return nil
 }
@@ -751,6 +775,98 @@ func (x *UpdateSharingResponse) GetMetadata() *SecretMetadata {
 	return nil
 }
 
+// GetSecretRawRequest contains the name of the secret to retrieve as raw JSON.
+type GetSecretRawRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the secret to retrieve.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSecretRawRequest) Reset() {
+	*x = GetSecretRawRequest{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSecretRawRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSecretRawRequest) ProtoMessage() {}
+
+func (x *GetSecretRawRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSecretRawRequest.ProtoReflect.Descriptor instead.
+func (*GetSecretRawRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetSecretRawRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// GetSecretRawResponse contains the full Kubernetes Secret object as JSON.
+type GetSecretRawResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// raw is the verbatim JSON-serialized Secret object from the K8s API.
+	Raw           string `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSecretRawResponse) Reset() {
+	*x = GetSecretRawResponse{}
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSecretRawResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSecretRawResponse) ProtoMessage() {}
+
+func (x *GetSecretRawResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_secrets_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSecretRawResponse.ProtoReflect.Descriptor instead.
+func (*GetSecretRawResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetSecretRawResponse) GetRaw() string {
+	if x != nil {
+		return x.Raw
+	}
+	return ""
+}
+
 var File_holos_console_v1_secrets_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_secrets_proto_rawDesc = "" +
@@ -765,23 +881,33 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
 	"\x12ListSecretsRequest\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\xa7\x01\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\xbe\x02\n" +
 	"\x13UpdateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
-	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.UpdateSecretRequest.DataEntryR\x04data\x1a7\n" +
+	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.UpdateSecretRequest.DataEntryR\x04data\x12V\n" +
+	"\vstring_data\x18\x03 \x03(\v25.holos.console.v1.UpdateSecretRequest.StringDataEntryR\n" +
+	"stringData\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x16\n" +
-	"\x14UpdateSecretResponse\"\xa7\x02\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
+	"\x0fStringDataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x16\n" +
+	"\x14UpdateSecretResponse\"\xbe\x03\n" +
 	"\x13CreateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
-	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12=\n" +
+	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12V\n" +
+	"\vstring_data\x18\x03 \x03(\v25.holos.console.v1.CreateSecretRequest.StringDataEntryR\n" +
+	"stringData\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"*\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
+	"\x0fStringDataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
 	"\x14CreateSecretResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\")\n" +
 	"\x13DeleteSecretRequest\x12\x12\n" +
@@ -809,14 +935,19 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"U\n" +
 	"\x15UpdateSharingResponse\x12<\n" +
-	"\bmetadata\x18\x01 \x01(\v2 .holos.console.v1.SecretMetadataR\bmetadata2\xc1\x04\n" +
+	"\bmetadata\x18\x01 \x01(\v2 .holos.console.v1.SecretMetadataR\bmetadata\")\n" +
+	"\x13GetSecretRawRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"(\n" +
+	"\x14GetSecretRawResponse\x12\x10\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw2\xa0\x05\n" +
 	"\x0eSecretsService\x12Z\n" +
 	"\vListSecrets\x12$.holos.console.v1.ListSecretsRequest\x1a%.holos.console.v1.ListSecretsResponse\x12T\n" +
 	"\tGetSecret\x12\".holos.console.v1.GetSecretRequest\x1a#.holos.console.v1.GetSecretResponse\x12]\n" +
 	"\fUpdateSecret\x12%.holos.console.v1.UpdateSecretRequest\x1a&.holos.console.v1.UpdateSecretResponse\x12]\n" +
 	"\fCreateSecret\x12%.holos.console.v1.CreateSecretRequest\x1a&.holos.console.v1.CreateSecretResponse\x12]\n" +
 	"\fDeleteSecret\x12%.holos.console.v1.DeleteSecretRequest\x1a&.holos.console.v1.DeleteSecretResponse\x12`\n" +
-	"\rUpdateSharing\x12&.holos.console.v1.UpdateSharingRequest\x1a'.holos.console.v1.UpdateSharingResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\rUpdateSharing\x12&.holos.console.v1.UpdateSharingRequest\x1a'.holos.console.v1.UpdateSharingResponse\x12]\n" +
+	"\fGetSecretRaw\x12%.holos.console.v1.GetSecretRawRequest\x1a&.holos.console.v1.GetSecretRawResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_secrets_proto_rawDescOnce sync.Once
@@ -830,7 +961,7 @@ func file_holos_console_v1_secrets_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_secrets_proto_rawDescData
 }
 
-var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_holos_console_v1_secrets_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_holos_console_v1_secrets_proto_goTypes = []any{
 	(*GetSecretRequest)(nil),      // 0: holos.console.v1.GetSecretRequest
 	(*GetSecretResponse)(nil),     // 1: holos.console.v1.GetSecretResponse
@@ -846,41 +977,49 @@ var file_holos_console_v1_secrets_proto_goTypes = []any{
 	(*ShareGrant)(nil),            // 11: holos.console.v1.ShareGrant
 	(*UpdateSharingRequest)(nil),  // 12: holos.console.v1.UpdateSharingRequest
 	(*UpdateSharingResponse)(nil), // 13: holos.console.v1.UpdateSharingResponse
-	nil,                           // 14: holos.console.v1.GetSecretResponse.DataEntry
-	nil,                           // 15: holos.console.v1.UpdateSecretRequest.DataEntry
-	nil,                           // 16: holos.console.v1.CreateSecretRequest.DataEntry
-	(Role)(0),                     // 17: holos.console.v1.Role
+	(*GetSecretRawRequest)(nil),   // 14: holos.console.v1.GetSecretRawRequest
+	(*GetSecretRawResponse)(nil),  // 15: holos.console.v1.GetSecretRawResponse
+	nil,                           // 16: holos.console.v1.GetSecretResponse.DataEntry
+	nil,                           // 17: holos.console.v1.UpdateSecretRequest.DataEntry
+	nil,                           // 18: holos.console.v1.UpdateSecretRequest.StringDataEntry
+	nil,                           // 19: holos.console.v1.CreateSecretRequest.DataEntry
+	nil,                           // 20: holos.console.v1.CreateSecretRequest.StringDataEntry
+	(Role)(0),                     // 21: holos.console.v1.Role
 }
 var file_holos_console_v1_secrets_proto_depIdxs = []int32{
-	14, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
+	16, // 0: holos.console.v1.GetSecretResponse.data:type_name -> holos.console.v1.GetSecretResponse.DataEntry
 	10, // 1: holos.console.v1.ListSecretsResponse.secrets:type_name -> holos.console.v1.SecretMetadata
-	15, // 2: holos.console.v1.UpdateSecretRequest.data:type_name -> holos.console.v1.UpdateSecretRequest.DataEntry
-	16, // 3: holos.console.v1.CreateSecretRequest.data:type_name -> holos.console.v1.CreateSecretRequest.DataEntry
-	11, // 4: holos.console.v1.CreateSecretRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 5: holos.console.v1.CreateSecretRequest.group_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 6: holos.console.v1.SecretMetadata.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 7: holos.console.v1.SecretMetadata.group_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 8: holos.console.v1.ShareGrant.role:type_name -> holos.console.v1.Role
-	11, // 9: holos.console.v1.UpdateSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 10: holos.console.v1.UpdateSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
-	10, // 11: holos.console.v1.UpdateSharingResponse.metadata:type_name -> holos.console.v1.SecretMetadata
-	2,  // 12: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
-	0,  // 13: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
-	4,  // 14: holos.console.v1.SecretsService.UpdateSecret:input_type -> holos.console.v1.UpdateSecretRequest
-	6,  // 15: holos.console.v1.SecretsService.CreateSecret:input_type -> holos.console.v1.CreateSecretRequest
-	8,  // 16: holos.console.v1.SecretsService.DeleteSecret:input_type -> holos.console.v1.DeleteSecretRequest
-	12, // 17: holos.console.v1.SecretsService.UpdateSharing:input_type -> holos.console.v1.UpdateSharingRequest
-	3,  // 18: holos.console.v1.SecretsService.ListSecrets:output_type -> holos.console.v1.ListSecretsResponse
-	1,  // 19: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
-	5,  // 20: holos.console.v1.SecretsService.UpdateSecret:output_type -> holos.console.v1.UpdateSecretResponse
-	7,  // 21: holos.console.v1.SecretsService.CreateSecret:output_type -> holos.console.v1.CreateSecretResponse
-	9,  // 22: holos.console.v1.SecretsService.DeleteSecret:output_type -> holos.console.v1.DeleteSecretResponse
-	13, // 23: holos.console.v1.SecretsService.UpdateSharing:output_type -> holos.console.v1.UpdateSharingResponse
-	18, // [18:24] is the sub-list for method output_type
-	12, // [12:18] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	17, // 2: holos.console.v1.UpdateSecretRequest.data:type_name -> holos.console.v1.UpdateSecretRequest.DataEntry
+	18, // 3: holos.console.v1.UpdateSecretRequest.string_data:type_name -> holos.console.v1.UpdateSecretRequest.StringDataEntry
+	19, // 4: holos.console.v1.CreateSecretRequest.data:type_name -> holos.console.v1.CreateSecretRequest.DataEntry
+	20, // 5: holos.console.v1.CreateSecretRequest.string_data:type_name -> holos.console.v1.CreateSecretRequest.StringDataEntry
+	11, // 6: holos.console.v1.CreateSecretRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 7: holos.console.v1.CreateSecretRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 8: holos.console.v1.SecretMetadata.user_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 9: holos.console.v1.SecretMetadata.group_grants:type_name -> holos.console.v1.ShareGrant
+	21, // 10: holos.console.v1.ShareGrant.role:type_name -> holos.console.v1.Role
+	11, // 11: holos.console.v1.UpdateSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 12: holos.console.v1.UpdateSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	10, // 13: holos.console.v1.UpdateSharingResponse.metadata:type_name -> holos.console.v1.SecretMetadata
+	2,  // 14: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
+	0,  // 15: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest
+	4,  // 16: holos.console.v1.SecretsService.UpdateSecret:input_type -> holos.console.v1.UpdateSecretRequest
+	6,  // 17: holos.console.v1.SecretsService.CreateSecret:input_type -> holos.console.v1.CreateSecretRequest
+	8,  // 18: holos.console.v1.SecretsService.DeleteSecret:input_type -> holos.console.v1.DeleteSecretRequest
+	12, // 19: holos.console.v1.SecretsService.UpdateSharing:input_type -> holos.console.v1.UpdateSharingRequest
+	14, // 20: holos.console.v1.SecretsService.GetSecretRaw:input_type -> holos.console.v1.GetSecretRawRequest
+	3,  // 21: holos.console.v1.SecretsService.ListSecrets:output_type -> holos.console.v1.ListSecretsResponse
+	1,  // 22: holos.console.v1.SecretsService.GetSecret:output_type -> holos.console.v1.GetSecretResponse
+	5,  // 23: holos.console.v1.SecretsService.UpdateSecret:output_type -> holos.console.v1.UpdateSecretResponse
+	7,  // 24: holos.console.v1.SecretsService.CreateSecret:output_type -> holos.console.v1.CreateSecretResponse
+	9,  // 25: holos.console.v1.SecretsService.DeleteSecret:output_type -> holos.console.v1.DeleteSecretResponse
+	13, // 26: holos.console.v1.SecretsService.UpdateSharing:output_type -> holos.console.v1.UpdateSharingResponse
+	15, // 27: holos.console.v1.SecretsService.GetSecretRaw:output_type -> holos.console.v1.GetSecretRawResponse
+	21, // [21:28] is the sub-list for method output_type
+	14, // [14:21] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_secrets_proto_init() }
@@ -896,7 +1035,7 @@ func file_holos_console_v1_secrets_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_secrets_proto_rawDesc), len(file_holos_console_v1_secrets_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

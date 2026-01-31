@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse, UpdateSharingRequest, UpdateSharingResponse } from "./secrets_pb.js";
+import { CreateSecretRequest, CreateSecretResponse, DeleteSecretRequest, DeleteSecretResponse, GetSecretRawRequest, GetSecretRawResponse, GetSecretRequest, GetSecretResponse, ListSecretsRequest, ListSecretsResponse, UpdateSecretRequest, UpdateSecretResponse, UpdateSharingRequest, UpdateSharingResponse } from "./secrets_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -89,6 +89,19 @@ export declare const SecretsService: {
       readonly name: "UpdateSharing",
       readonly I: typeof UpdateSharingRequest,
       readonly O: typeof UpdateSharingResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * GetSecretRaw retrieves the full Kubernetes Secret object as verbatim JSON.
+     * The backend returns the Secret exactly as the K8s API provides it, with no
+     * field filtering. Requires authentication and PERMISSION_SECRETS_READ.
+     *
+     * @generated from rpc holos.console.v1.SecretsService.GetSecretRaw
+     */
+    readonly getSecretRaw: {
+      readonly name: "GetSecretRaw",
+      readonly I: typeof GetSecretRawRequest,
+      readonly O: typeof GetSecretRawResponse,
       readonly kind: MethodKind.Unary,
     },
   }
