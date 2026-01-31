@@ -97,7 +97,7 @@ describe('SecretPage', () => {
   })
 
   describe('successful fetch', () => {
-    it('displays secret data in env format when successful', async () => {
+    it('displays secret data as filename and content fields', async () => {
       // Given: authenticated user and successful API response
       const mockUser = createMockUser({ groups: ['owner'] })
       const authValue = createAuthContext({
@@ -106,26 +106,27 @@ describe('SecretPage', () => {
       })
 
       // Mock successful response with secret data
-      // Cast to unknown to satisfy protobuf Message type requirements in mocks
       mockGetSecret.mockResolvedValue({
         data: {
           username: new TextEncoder().encode('admin'),
           password: new TextEncoder().encode('secret123'),
-          'api-key': new TextEncoder().encode('key-12345'),
         },
       } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
 
       renderSecretPage(authValue, 'my-secret')
 
-      // Then: secret data is displayed in env file format
+      // Then: secret data is displayed as filename + content entries
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getAllByPlaceholderText('filename').length).toBeGreaterThan(0)
       })
 
-      const textbox = screen.getByRole('textbox') as HTMLTextAreaElement
-      expect(textbox.value).toContain('username=admin')
-      expect(textbox.value).toContain('password=secret123')
-      expect(textbox.value).toContain('api-key=key-12345')
+      const filenames = screen.getAllByPlaceholderText('filename').map((el) => (el as HTMLInputElement).value)
+      expect(filenames).toContain('username')
+      expect(filenames).toContain('password')
+
+      const contents = screen.getAllByPlaceholderText('file content').map((el) => (el as HTMLTextAreaElement).value)
+      expect(contents).toContain('admin')
+      expect(contents).toContain('secret123')
     })
 
     it('handles empty secret data', async () => {
@@ -142,13 +143,12 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'empty-secret')
 
-      // Then: displays empty state message or empty textbox
+      // Then: displays Add File button and no entries
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /add file/i })).toBeInTheDocument()
       })
 
-      const textbox = screen.getByRole('textbox')
-      expect(textbox).toHaveValue('')
+      expect(screen.queryAllByPlaceholderText('filename')).toHaveLength(0)
     })
   })
 
@@ -283,11 +283,11 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
       })
 
-      // Change the text
-      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'key=new-value' } })
+      // Change the content
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
 
       expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
     })
@@ -311,11 +311,11 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
       })
 
       // Change and save
-      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'key=new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
@@ -346,10 +346,10 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'key=new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
@@ -373,10 +373,10 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('textbox')).toBeInTheDocument()
+        expect(screen.getByPlaceholderText('file content')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'key=new-value' } })
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'new-value' } })
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
