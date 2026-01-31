@@ -73,7 +73,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(/\/dex\//, { timeout: 10000 })
   })
 
-  test('should display dummy-secret data in env format after login', async ({
+  test('should display dummy-secret data as file entries after login', async ({
     page,
   }) => {
     // Navigate to secrets page
@@ -88,14 +88,29 @@ test.describe('Secrets Page', () => {
     // Verify the page shows the secret name
     await expect(page.getByRole('heading', { name: /dummy-secret/i })).toBeVisible({ timeout: 5000 })
 
-    // Verify the textbox contains env format data
-    const textbox = page.getByRole('textbox')
-    await expect(textbox).toBeVisible()
+    // Verify filename fields are present with expected keys
+    const filenames = page.getByPlaceholder('filename')
+    await expect(filenames.first()).toBeVisible({ timeout: 5000 })
+    const count = await filenames.count()
+    expect(count).toBe(3)
 
-    // Check that the textbox contains expected env format values
-    await expect(textbox).toHaveValue(/username=dummy-user/)
-    await expect(textbox).toHaveValue(/password=dummy-password/)
-    await expect(textbox).toHaveValue(/api-key=dummy-api-key-12345/)
+    // Collect all filename and content values
+    const filenameValues: string[] = []
+    const contentValues: string[] = []
+    const contents = page.getByPlaceholder('file content')
+    for (let i = 0; i < count; i++) {
+      filenameValues.push(await filenames.nth(i).inputValue())
+      contentValues.push(await contents.nth(i).inputValue())
+    }
+
+    expect(filenameValues).toContain('username')
+    expect(filenameValues).toContain('password')
+    expect(filenameValues).toContain('api-key')
+
+    const idx = (name: string) => filenameValues.indexOf(name)
+    expect(contentValues[idx('username')]).toBe('dummy-user')
+    expect(contentValues[idx('password')]).toBe('dummy-password')
+    expect(contentValues[idx('api-key')]).toBe('dummy-api-key-12345')
   })
 
   test('should display NotFound error for non-existent secret', async ({
@@ -127,7 +142,9 @@ test.describe('Secrets Page', () => {
     const secretName = `e2e-sharing-${Date.now()}`
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.getByLabel(/name/i).fill(secretName)
-    await page.getByLabel(/data/i).fill('TEST_KEY=test_value')
+    await page.getByRole('button', { name: /add file/i }).click()
+    await page.getByPlaceholder('filename').fill('.env')
+    await page.getByPlaceholder('file content').fill('TEST_KEY=test_value')
     await page.getByRole('button', { name: /^create$/i }).click()
 
     // Wait for success snackbar
@@ -166,7 +183,9 @@ test.describe('Secrets Page', () => {
     const secretName = `e2e-share-update-${Date.now()}`
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.getByLabel(/name/i).fill(secretName)
-    await page.getByLabel(/data/i).fill('KEY=value')
+    await page.getByRole('button', { name: /add file/i }).click()
+    await page.getByPlaceholder('filename').fill('.env')
+    await page.getByPlaceholder('file content').fill('KEY=value')
     await page.getByRole('button', { name: /^create$/i }).click()
     await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
 
@@ -235,7 +254,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(/\/ui\/secrets\/dummy-secret/, { timeout: 15000 })
 
     // Wait for content to load
-    await expect(page.getByRole('textbox')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByPlaceholder('filename').first()).toBeVisible({ timeout: 5000 })
 
     // Take screenshot
     await page.screenshot({
