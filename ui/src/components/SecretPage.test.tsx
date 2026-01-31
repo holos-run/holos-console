@@ -9,6 +9,7 @@ import { vi } from 'vitest'
 vi.mock('../client', () => ({
   secretsClient: {
     getSecret: vi.fn(),
+    getSecretRaw: vi.fn(),
     updateSecret: vi.fn(),
     deleteSecret: vi.fn(),
     listSecrets: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock('../client', () => ({
 
 import { secretsClient } from '../client'
 const mockGetSecret = vi.mocked(secretsClient.getSecret)
+const mockGetSecretRaw = vi.mocked(secretsClient.getSecretRaw)
 const mockUpdateSecret = vi.mocked(secretsClient.updateSecret)
 const mockDeleteSecret = vi.mocked(secretsClient.deleteSecret)
 const mockListSecrets = vi.mocked(secretsClient.listSecrets)
@@ -610,7 +612,7 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
       })
     })
 
@@ -649,10 +651,10 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
 
       // Find the sharing panel's Save button (the data Save is disabled since content is unchanged)
       const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
@@ -669,6 +671,158 @@ describe('SecretPage', () => {
           }),
         )
       })
+    })
+  })
+
+  describe('view mode toggle', () => {
+    it('displays Editor and Raw toggle buttons', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: {
+          username: new TextEncoder().encode('admin'),
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^editor$/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /^raw$/i })).toBeInTheDocument()
+      })
+    })
+
+    it('selecting Raw hides SecretDataEditor and shows SecretRawView', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: {
+          username: new TextEncoder().encode('admin'),
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: { name: 'my-secret', namespace: 'default' },
+        data: { username: btoa('admin') },
+        type: 'Opaque',
+      })
+      mockGetSecretRaw.mockResolvedValue({
+        raw: rawJson,
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecretRaw>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      // Wait for editor to load
+      await waitFor(() => {
+        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+      })
+
+      // Click Raw tab
+      fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
+
+      // SecretDataEditor fields should be hidden, raw view should be visible
+      await waitFor(() => {
+        expect(screen.getByRole('code')).toBeInTheDocument()
+      })
+      expect(screen.queryAllByPlaceholderText('key')).toHaveLength(0)
+    })
+
+    it('selecting Editor shows the existing editor', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: {
+          username: new TextEncoder().encode('admin'),
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: { name: 'my-secret', namespace: 'default' },
+        data: { username: btoa('admin') },
+        type: 'Opaque',
+      })
+      mockGetSecretRaw.mockResolvedValue({
+        raw: rawJson,
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecretRaw>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+      })
+
+      // Switch to Raw
+      fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('code')).toBeInTheDocument()
+      })
+
+      // Switch back to Editor
+      fireEvent.click(screen.getByRole('button', { name: /^editor$/i }))
+
+      await waitFor(() => {
+        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+      })
+      expect(screen.queryByRole('code')).not.toBeInTheDocument()
+    })
+
+    it('Save button is disabled when raw view is active', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: {
+          username: new TextEncoder().encode('admin'),
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: { name: 'my-secret', namespace: 'default' },
+        data: { username: btoa('admin') },
+        type: 'Opaque',
+      })
+      mockGetSecretRaw.mockResolvedValue({
+        raw: rawJson,
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecretRaw>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+      })
+
+      // Switch to Raw
+      fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('code')).toBeInTheDocument()
+      })
+
+      // Save button should be disabled in raw view
+      const saveButton = screen.getByRole('button', { name: /^save$/i })
+      expect(saveButton).toBeDisabled()
     })
   })
 })
