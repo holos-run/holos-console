@@ -137,9 +137,13 @@ describe('SecretsListPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
 
-      // Fill in the form
+      // Fill in the name
       fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'new-secret' } })
-      fireEvent.change(screen.getByLabelText(/data/i), { target: { value: 'KEY=value' } })
+
+      // Add a file entry via the SecretDataEditor
+      fireEvent.click(screen.getByRole('button', { name: /add file/i }))
+      fireEvent.change(screen.getByPlaceholderText('filename'), { target: { value: '.env' } })
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'KEY=value' } })
 
       // Submit
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
@@ -177,6 +181,12 @@ describe('SecretsListPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
       fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'existing' } })
+
+      // Add a file entry
+      fireEvent.click(screen.getByRole('button', { name: /add file/i }))
+      fireEvent.change(screen.getByPlaceholderText('filename'), { target: { value: '.env' } })
+      fireEvent.change(screen.getByPlaceholderText('file content'), { target: { value: 'KEY=value' } })
+
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
 
       await waitFor(() => {

@@ -28,6 +28,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
+import { SecretDataEditor } from './SecretDataEditor'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
 
@@ -48,7 +49,7 @@ export function SecretsListPage() {
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
-  const [createData, setCreateData] = useState('')
+  const [createData, setCreateData] = useState<Record<string, Uint8Array>>({})
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createSuccess, setCreateSuccess] = useState(false)
@@ -131,7 +132,7 @@ export function SecretsListPage() {
 
   const handleCreateOpen = () => {
     setCreateName('')
-    setCreateData('')
+    setCreateData({})
     setCreateError(null)
     setCreateOpen(true)
   }
@@ -151,22 +152,10 @@ export function SecretsListPage() {
 
     try {
       const token = getAccessToken()
-      const encoder = new TextEncoder()
-      const data: Record<string, Uint8Array> = {}
-      for (const line of createData.split('\n')) {
-        const trimmed = line.trim()
-        if (trimmed === '' || trimmed.startsWith('#')) continue
-        const eqIndex = trimmed.indexOf('=')
-        if (eqIndex === -1) continue
-        const key = trimmed.slice(0, eqIndex)
-        const value = trimmed.slice(eqIndex + 1)
-        data[key] = encoder.encode(value)
-      }
-
       await secretsClient.createSecret(
         {
           name: createName.trim(),
-          data,
+          data: createData,
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
         },
         {
@@ -274,7 +263,7 @@ export function SecretsListPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="sm" fullWidth>
+      <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="md" fullWidth>
         <DialogTitle>Create Secret</DialogTitle>
         <DialogContent>
           <TextField
@@ -287,21 +276,9 @@ export function SecretsListPage() {
             placeholder="my-secret"
             helperText="Lowercase alphanumeric and hyphens only"
           />
-          <TextField
-            margin="dense"
-            label="Data (env format)"
-            fullWidth
-            multiline
-            minRows={4}
-            value={createData}
-            onChange={(e) => setCreateData(e.target.value)}
-            placeholder={'KEY=value\nANOTHER_KEY=another-value'}
-            slotProps={{
-              input: {
-                sx: { fontFamily: 'monospace' },
-              },
-            }}
-          />
+          <Box sx={{ mt: 1 }}>
+            <SecretDataEditor initialData={createData} onChange={setCreateData} />
+          </Box>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             You will be added as the Owner of this secret.
           </Typography>
