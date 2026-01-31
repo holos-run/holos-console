@@ -74,6 +74,27 @@ function renderSecretPage(authValue: AuthContextValue, secretName: string = 'tes
   )
 }
 
+/**
+ * Override window.matchMedia so that queries matching the given pattern
+ * return matches=true while all others return matches=false.
+ */
+function mockMatchMedia(matchPattern: RegExp): () => void {
+  const original = window.matchMedia
+  window.matchMedia = (query: string) => ({
+    matches: matchPattern.test(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+  return () => {
+    window.matchMedia = original
+  }
+}
+
 describe('SecretPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -823,6 +844,36 @@ describe('SecretPage', () => {
       // Save button should be disabled in raw view
       const saveButton = screen.getByRole('button', { name: /^save$/i })
       expect(saveButton).toBeDisabled()
+    })
+  })
+
+  describe('responsive dialogs', () => {
+    it('renders delete dialog fullScreen on mobile', async () => {
+      const cleanup = mockMatchMedia(/max-width/)
+      try {
+        const mockUser = createMockUser({ groups: ['owner'] })
+        const authValue = createAuthContext({
+          user: mockUser,
+          isAuthenticated: true,
+        })
+
+        mockGetSecret.mockResolvedValue({
+          data: { key: new TextEncoder().encode('value') },
+        } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+        renderSecretPage(authValue, 'my-secret')
+
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+        const dialog = screen.getByRole('dialog')
+        expect(dialog).toHaveClass('MuiDialog-paperFullScreen')
+      } finally {
+        cleanup()
+      }
     })
   })
 })

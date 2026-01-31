@@ -10,12 +10,16 @@ import {
   Chip,
   Stack,
   Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '../auth'
 
 export function AuthDebugPage() {
   const location = useLocation()
+  const muiTheme = useTheme()
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const {
     user,
     bffUser,
@@ -177,7 +181,7 @@ export function AuthDebugPage() {
             />
           </Box>
 
-          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1} sx={{ mb: 2 }}>
             <Chip
               label={user?.expired ? 'Expired' : 'Valid'}
               color={user?.expired ? 'error' : 'success'}
@@ -206,7 +210,7 @@ export function AuthDebugPage() {
             Last Refresh Status
           </Typography>
 
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'flex-start' : 'center'} sx={{ mb: 2 }}>
             <Chip
               label={lastRefreshStatus}
               color={

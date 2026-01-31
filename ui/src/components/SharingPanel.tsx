@@ -11,6 +11,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
@@ -81,6 +83,8 @@ function datetimeLocalToTimestamp(value: string): bigint | undefined {
 }
 
 export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSaving }: SharingPanelProps) {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [editing, setEditing] = useState(false)
   const [editUserGrants, setEditUserGrants] = useState<Grant[]>([])
   const [editGroupGrants, setEditGroupGrants] = useState<Grant[]>([])
@@ -194,7 +198,7 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
       </Typography>
       {editUserGrants.map((g, i) => (
         <Stack key={i} spacing={1} sx={{ mt: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
             <TextField
               size="small"
               placeholder="Email address"
@@ -215,7 +219,7 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Stack>
-          <Stack direction="row" spacing={1}>
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1}>
             <TextField
               size="small"
               label="Not before"
@@ -246,7 +250,7 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
       </Typography>
       {editGroupGrants.map((g, i) => (
         <Stack key={i} spacing={1} sx={{ mt: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
             <TextField
               size="small"
               placeholder="Group name"
@@ -267,7 +271,7 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Stack>
-          <Stack direction="row" spacing={1}>
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={1}>
             <TextField
               size="small"
               label="Not before"

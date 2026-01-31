@@ -66,6 +66,27 @@ function renderSecretsListPage(authValue: AuthContextValue) {
   )
 }
 
+/**
+ * Override window.matchMedia so that queries matching the given pattern
+ * return matches=true while all others return matches=false.
+ */
+function mockMatchMedia(matchPattern: RegExp): () => void {
+  const original = window.matchMedia
+  window.matchMedia = (query: string) => ({
+    matches: matchPattern.test(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+  return () => {
+    window.matchMedia = original
+  }
+}
+
 describe('SecretsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -351,6 +372,67 @@ describe('SecretsListPage', () => {
           expect.any(Object),
         )
       })
+    })
+  })
+
+  describe('responsive dialogs', () => {
+    it('renders create dialog fullScreen on mobile', async () => {
+      const cleanup = mockMatchMedia(/max-width/)
+      try {
+        const mockUser = createMockUser({ groups: ['editor'] })
+        const authValue = createAuthContext({
+          user: mockUser,
+          isAuthenticated: true,
+        })
+
+        mockListSecrets.mockResolvedValue({
+          secrets: [],
+        } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+        renderSecretsListPage(authValue)
+
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /create secret/i })).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+
+        // The dialog should have the fullScreen class on mobile
+        const dialog = screen.getByRole('dialog')
+        expect(dialog).toHaveClass('MuiDialog-paperFullScreen')
+      } finally {
+        cleanup()
+      }
+    })
+
+    it('renders delete dialog fullScreen on mobile', async () => {
+      const cleanup = mockMatchMedia(/max-width/)
+      try {
+        const mockUser = createMockUser({ groups: ['owner'] })
+        const authValue = createAuthContext({
+          user: mockUser,
+          isAuthenticated: true,
+        })
+
+        mockListSecrets.mockResolvedValue({
+          secrets: [
+            { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
+          ],
+        } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+        renderSecretsListPage(authValue)
+
+        await waitFor(() => {
+          expect(screen.getByLabelText(/delete my-secret/i)).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getByLabelText(/delete my-secret/i))
+
+        const dialog = screen.getByRole('dialog')
+        expect(dialog).toHaveClass('MuiDialog-paperFullScreen')
+      } finally {
+        cleanup()
+      }
     })
   })
 
