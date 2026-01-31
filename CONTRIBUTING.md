@@ -179,40 +179,7 @@ The `reuseExistingServer` option detects when servers are already running and sk
 
 ## Authentication
 
-The console uses an embedded OIDC identity provider (Dex) for development and testing.
-
-### Default Credentials
-
-For local development, use these credentials to log in:
-
-- **Username:** `admin`
-- **Password:** `verysecret`
-
-### Customizing Credentials
-
-Override the default credentials via environment variables:
-
-```bash
-export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
-export HOLOS_DEX_INITIAL_ADMIN_PASSWORD=mypassword
-make run
-```
-
-### Using an External Identity Provider
-
-For production, point to an external OIDC provider:
-
-```bash
-./holos-console \
-  --issuer=https://dex.example.com \
-  --client-id=holos-console \
-  --cert-file=server.crt \
-  --key-file=server.key
-```
-
-The embedded Dex provider still runs but is ignored when `--issuer` points to an external URL.
-
-See [docs/authentication.md](docs/authentication.md) for detailed documentation.
+The embedded Dex OIDC provider auto-logs in during local development. See [docs/authentication.md](docs/authentication.md) for detailed documentation including external OIDC provider configuration.
 
 ## Commit Messages
 
