@@ -1,20 +1,32 @@
 # Hostname Configuration
 
-This document explains how the hostname and port flow through the entire holos-console stack. It's written for contributors wondering how to set the hostname in one place and have it propagate everywhere.
+This document explains how the hostname and port flow through the holos-console stack.
 
-## Key Concept
+## Key Concepts
 
-The `--issuer` flag is the **canonical source of truth** for the external URL.
+Two flags control how the server presents itself externally:
 
-```bash
-./holos-console --issuer=https://console.example.com/dex
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--origin` | derived from `--listen` | Public-facing base URL for redirect URIs |
+| `--issuer` | derived from `--listen` | OIDC issuer URL for Dex and token validation |
+| `--listen` | `:8443` | Internal bind address |
+
+The `--origin` flag is the source of truth for the server's public-facing base URL. Redirect URIs are derived from it:
+
+| Derived URI | Value |
+|-------------|-------|
+| Redirect URI | `{origin}/pkce/verify` |
+| Post-logout redirect URI | `{origin}/ui` |
+
+The `--issuer` flag only determines the OIDC issuer URL used by the embedded Dex provider and JWT validation. It does not affect redirect URIs.
+
+When neither `--origin` nor `--issuer` is set, both are derived from `--listen`:
+
 ```
-
-This single flag determines:
-- The OIDC issuer URL in discovery documents
-- The `iss` claim in issued tokens
-- The expected hostname for redirect URIs
-- The URL the SPA uses for authentication
+--listen :8443  →  origin  = https://localhost:8443
+                →  issuer  = https://localhost:8443/dex
+```
 
 ## Configuration Flow
 
@@ -22,198 +34,119 @@ This single flag determines:
 
 **File:** [cli/cli.go](../cli/cli.go)
 
-The CLI defines two key flags:
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--issuer` | `https://localhost:8443/dex` | External URL for OIDC |
-| `--listen` | `:8443` | Internal bind address |
-
-The issuer URL determines the external hostname. The listen address is the internal bind address and doesn't need to match the issuer's port (useful behind a load balancer or reverse proxy).
-
-```go
-cmd.Flags().StringVar(&issuer, "issuer", "https://localhost:8443/dex",
-    "OIDC issuer URL for token validation")
-cmd.Flags().StringVar(&listenAddr, "listen", ":8443",
-    "Address to listen on")
-```
+The `deriveOrigin()` and `deriveIssuer()` functions resolve defaults from `--listen` when the flags are not explicitly set. With `--plain-http`, the scheme changes to `http`. The host `0.0.0.0` is normalized to `localhost`.
 
 ### 2. Console Server
 
 **File:** [console/console.go](../console/console.go)
 
-The console server receives the issuer URL from the CLI and:
-
-1. Passes it to the OIDC provider configuration
-2. Derives the redirect URI by stripping `/dex` and appending `/pkce/verify`
-3. Uses it for CORS configuration (allowed origins)
+The server uses `origin` and `issuer` independently:
 
 ```go
-// Derive redirect URI from issuer
-redirectURI := strings.TrimSuffix(s.cfg.Issuer, "/dex") + "/pkce/verify"
+// Redirect URIs derived from origin (not issuer)
+redirectURI := deriveRedirectURI(s.cfg.Origin)       // {origin}/pkce/verify
+postLogout := derivePostLogoutRedirectURI(s.cfg.Origin) // {origin}/ui
 
+// Issuer passed directly to embedded Dex
 oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
     Issuer:       s.cfg.Issuer,
-    ClientID:     s.cfg.ClientID,
-    RedirectURIs: []string{redirectURI},
+    RedirectURIs: redirectURIs,
 })
+```
+
+The OIDC configuration injected into the frontend combines both:
+
+```go
+oidcConfig = &OIDCConfig{
+    Authority:             s.cfg.Issuer,                        // from --issuer
+    RedirectURI:           deriveRedirectURI(s.cfg.Origin),     // from --origin
+    PostLogoutRedirectURI: derivePostLogoutRedirectURI(s.cfg.Origin),
+}
 ```
 
 ### 3. Embedded OIDC Provider (Dex)
 
 **File:** [console/oidc/oidc.go](../console/oidc/oidc.go)
 
-The OIDC provider receives the full issuer URL including the mount path:
+Dex receives the issuer URL and uses it for the OIDC discovery document, the `iss` claim in tokens, and the JWKS endpoint. It is mounted at `/dex/`.
 
-```go
-dexServer, err := server.NewServer(ctx, server.Config{
-    Issuer:  cfg.Issuer,  // e.g., "https://console.example.com/dex"
-    Storage: store,
-    // ...
-})
-```
+### 4. React SPA
 
-This issuer appears in:
-- OIDC discovery document (`/.well-known/openid-configuration`)
-- Token `iss` claim
-- JWKS endpoint URL
+**File:** [ui/src/auth/config.ts](../ui/src/auth/config.ts)
 
-### 4. JWT Validation
+The server injects `window.__OIDC_CONFIG__` into the HTML with the authority, redirect URI, and post-logout redirect URI. The SPA reads this at startup. A fallback derives these from `window.location.origin` if injection is missing.
 
-**File:** [console/auth.go](../console/auth.go)
+During development, the Vite dev server proxies `/dex` requests to the Go backend so the SPA's origin-based URLs resolve correctly.
 
-The JWT verifier fetches OIDC discovery from the issuer URL and validates that tokens have a matching issuer claim:
+## Examples
 
-```go
-verifier, err := NewIDTokenVerifier(ctx, issuer, clientID)
-// Verifier checks that token.iss == issuer
-```
-
-### 5. React SPA - Production
-
-**Files:** [ui/src/auth/config.ts](../ui/src/auth/config.ts)
-
-In production, the SPA reads configuration from `window.__OIDC_CONFIG__`, which would be injected by the server based on the request. Currently, the SPA falls back to using `window.location.origin`:
-
-```typescript
-function getConfig(): OIDCConfig {
-  // Check for server-injected config (production)
-  if (window.__OIDC_CONFIG__) {
-    return window.__OIDC_CONFIG__
-  }
-
-  // Development defaults
-  const origin = window.location.origin
-  return {
-    authority: `${origin}/dex`,
-    client_id: 'holos-console',
-    redirect_uri: `${origin}/pkce/verify`,
-    post_logout_redirect_uri: `${origin}/ui`,
-  }
-}
-```
-
-### 6. React SPA - Development
-
-**File:** [ui/vite.config.ts](../ui/vite.config.ts)
-
-During development, the Vite dev server runs on a different port (5173) and proxies OIDC requests to the Go backend:
-
-```typescript
-proxy: {
-  '/dex': {
-    target: 'https://localhost:8443',
-    secure: false,
-    changeOrigin: true,
-  },
-}
-```
-
-The SPA uses `window.location.origin` which resolves to the Vite dev server, but the proxy transparently forwards to the Go backend.
-
-## Example: Changing the Hostname
-
-To run holos-console on `https://myhost.local:9443`:
-
-### 1. Generate Certificates
+### Local Development (defaults)
 
 ```bash
-mkcert myhost.local
+make run
+# Equivalent to:
+# --listen=:8443 --origin=https://localhost:8443 --issuer=https://localhost:8443/dex
 ```
 
-This creates `myhost.local.pem` and `myhost.local-key.pem`.
+| Component | URL |
+|-----------|-----|
+| OIDC Issuer | `https://localhost:8443/dex` |
+| Redirect URI | `https://localhost:8443/pkce/verify` |
+| Post-logout | `https://localhost:8443/ui` |
 
-### 2. Start the Server
+### Custom Hostname
 
 ```bash
 ./holos-console \
   --listen=:9443 \
-  --cert-file=myhost.local.pem \
-  --key-file=myhost.local-key.pem \
+  --cert=myhost.local.pem \
+  --key=myhost.local-key.pem \
+  --origin=https://myhost.local:9443 \
   --issuer=https://myhost.local:9443/dex
 ```
 
-### 3. Result
+### Behind a Reverse Proxy
 
-The issuer URL flows through the entire stack:
-
-| Component | URL |
-|-----------|-----|
-| OIDC Discovery | `https://myhost.local:9443/dex/.well-known/openid-configuration` |
-| Token `iss` claim | `https://myhost.local:9443/dex` |
-| SPA Authority | `https://myhost.local:9443/dex` |
-| Redirect URI | `https://myhost.local:9443/pkce/verify` |
-
-## Behind a Reverse Proxy
-
-When running behind a reverse proxy (e.g., nginx, Traefik), the listen address and issuer can differ:
+When a reverse proxy terminates TLS, the listen address and external URLs differ:
 
 ```bash
 ./holos-console \
-  --listen=:8080 \                                    # Internal port
-  --issuer=https://console.example.com/dex            # External URL
+  --plain-http \
+  --listen=:8080 \
+  --origin=https://console.example.com \
+  --issuer=https://console.example.com/dex
 ```
 
-The proxy terminates TLS and forwards to the internal port. The issuer URL reflects the external URL that clients use.
-
-## Key Files Reference
-
-| File | Purpose |
-|------|---------|
-| [cli/cli.go](../cli/cli.go) | Flag definitions (`--issuer`, `--listen`) |
-| [console/console.go](../console/console.go) | URL parsing, handler setup |
-| [console/oidc/oidc.go](../console/oidc/oidc.go) | Dex configuration with issuer |
-| [ui/src/auth/config.ts](../ui/src/auth/config.ts) | Frontend OIDC config |
-| [ui/vite.config.ts](../ui/vite.config.ts) | Dev server proxy configuration |
+The proxy forwards to port 8080. The `--origin` and `--issuer` reflect the external URLs that clients use.
 
 ## Common Mistakes
 
-### Mismatched Issuer and Listen Port
+### Missing /dex Suffix on Issuer
 
 ```bash
-# Wrong: issuer port doesn't match listen port
-./holos-console --listen=:8443 --issuer=https://localhost:9443/dex
-```
-
-Tokens will be issued with `iss=https://localhost:9443/dex` but the server is on port 8443. Fix by matching the ports (unless using a reverse proxy).
-
-### Missing /dex Suffix
-
-```bash
-# Wrong: missing /dex suffix
+# Wrong: issuer must include /dex
 ./holos-console --issuer=https://localhost:8443
+
+# Correct
+./holos-console --issuer=https://localhost:8443/dex
 ```
 
-The embedded Dex provider is mounted at `/dex/`. The issuer must include this path.
+### Mismatched Origin and Issuer Hosts
 
-### Forgetting to Regenerate Certificates
-
-When changing hostnames, regenerate certificates:
+When setting these explicitly, the origin and issuer should share the same scheme and host (the issuer adds the `/dex` path):
 
 ```bash
-# Old hostname
-mkcert localhost
+# Wrong: different hosts
+--origin=https://console.example.com --issuer=https://other.example.com/dex
 
-# New hostname - need new certs!
+# Correct: same host
+--origin=https://console.example.com --issuer=https://console.example.com/dex
+```
+
+### Forgetting Certificates for New Hostnames
+
+When changing hostnames, regenerate TLS certificates to match:
+
+```bash
 mkcert myhost.local
 ```
