@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -45,6 +45,7 @@ function roleName(role: Role): string {
 }
 
 export function ProjectsListPage() {
+  const { organizationName } = useParams<{ organizationName?: string }>()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
@@ -73,9 +74,9 @@ export function ProjectsListPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login('/projects')
+      login(organizationName ? `/organizations/${organizationName}/projects` : '/projects')
     }
-  }, [authLoading, isAuthenticated, login])
+  }, [authLoading, isAuthenticated, login, organizationName])
 
   // Fetch projects list when authenticated
   const fetchProjects = async () => {
@@ -86,7 +87,7 @@ export function ProjectsListPage() {
     try {
       const token = getAccessToken()
       const response = await projectsClient.listProjects(
-        {},
+        { organization: organizationName || '' },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -105,7 +106,7 @@ export function ProjectsListPage() {
   useEffect(() => {
     fetchProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, getAccessToken])
+  }, [isAuthenticated, getAccessToken, organizationName])
 
   const handleDeleteOpen = (name: string) => {
     setDeleteTarget(name)
@@ -167,6 +168,7 @@ export function ProjectsListPage() {
           name: createName.trim(),
           displayName: createDisplayName.trim(),
           description: createDescription.trim(),
+          organization: organizationName || '',
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
           groupGrants: [],
         },
@@ -218,7 +220,7 @@ export function ProjectsListPage() {
       <Card variant="outlined">
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
-            <Typography variant="h6">Projects</Typography>
+            <Typography variant="h6">{organizationName ? `Projects in ${organizationName}` : 'Projects'}</Typography>
             <Button variant="contained" size="small" onClick={handleCreateOpen}>
               Create Project
             </Button>
