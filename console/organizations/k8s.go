@@ -99,6 +99,7 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: name,
 			},
 			Annotations: annotations,
 		},

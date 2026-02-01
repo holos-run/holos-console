@@ -12,7 +12,7 @@ const (
 	ResourceTypeOrganization = "organization"
 	// ResourceTypeProject is the resource-type label value for project namespaces.
 	ResourceTypeProject = "project"
-	// OrganizationLabel stores the organization name on project namespaces.
+	// OrganizationLabel stores the organization name on organization and project namespaces.
 	OrganizationLabel = "console.holos.run/organization"
 	// ProjectLabel stores the project name on project namespaces.
 	ProjectLabel = "console.holos.run/project"
