@@ -58,15 +58,23 @@ Access to a project is evaluated in this order:
 1. **Project grants** — Full project permissions
 2. **Organization grants** — Never cascade to projects. Org grants only authorize viewing the org resource itself.
 
-### Secret cascade mapping (project grants)
+### Role-per-scope cascade tables
 
-| Secret Permission | Required Project Permission |
-|---|---|
-| `SECRETS_LIST` | `PROJECTS_READ` (viewer) |
-| `SECRETS_READ` | Not cascaded (direct grant required) |
-| `SECRETS_WRITE` | `PROJECTS_WRITE` (editor) |
-| `SECRETS_DELETE` | `PROJECTS_ADMIN` (owner) |
-| `SECRETS_ADMIN` | `PROJECTS_ADMIN` (owner) |
+Cascade behavior is defined by explicit permission tables per scope (`CascadeTable` in `console/rbac/rbac.go`). Each table maps a parent role to the set of child permissions it grants. This makes cascade policy readable at a glance without tracing through indirect permission mappings.
+
+#### `ProjectCascadeSecretPerms` — project role → secret permissions
+
+| Project Role | `SECRETS_LIST` | `SECRETS_READ` | `SECRETS_WRITE` | `SECRETS_DELETE` | `SECRETS_ADMIN` |
+|---|---|---|---|---|---|
+| Viewer | yes | **no** | no | no | no |
+| Editor | yes | **no** | yes | no | no |
+| Owner | yes | **no** | yes | yes | yes |
+
+`SECRETS_READ` is never cascaded — reading secret data always requires a direct per-secret grant.
+
+#### `OrgCascadeSecretPerms` — empty (org grants never cascade to secrets)
+
+#### `OrgCascadeProjectPerms` — empty (org grants never cascade to projects)
 
 ## Grant Annotations
 
