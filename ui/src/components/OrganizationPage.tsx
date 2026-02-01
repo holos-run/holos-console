@@ -24,19 +24,19 @@ import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '../auth'
-import { projectsClient } from '../client'
+import { organizationsClient } from '../client'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Project } from '../gen/holos/console/v1/projects_pb'
+import type { Organization } from '../gen/holos/console/v1/organizations_pb'
 
-export function ProjectPage() {
-  const { projectName: name } = useParams<{ projectName: string }>()
+export function OrganizationPage() {
+  const { organizationName: name } = useParams<{ organizationName: string }>()
   const navigate = useNavigate()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
-  const [project, setProject] = useState<Project | null>(null)
+  const [organization, setOrganization] = useState<Organization | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -63,21 +63,21 @@ export function ProjectPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login(`/projects/${name}`)
+      login(`/organizations/${name}`)
     }
   }, [authLoading, isAuthenticated, login, name])
 
-  // Fetch project data
+  // Fetch organization data
   useEffect(() => {
     if (!isAuthenticated || !name) return
 
-    const fetchProject = async () => {
+    const fetchOrganization = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
         const token = getAccessToken()
-        const response = await projectsClient.getProject(
+        const response = await organizationsClient.getOrganization(
           { name },
           {
             headers: {
@@ -86,8 +86,8 @@ export function ProjectPage() {
           },
         )
 
-        if (response.project) {
-          setProject(response.project)
+        if (response.organization) {
+          setOrganization(response.organization)
         }
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)))
@@ -96,18 +96,18 @@ export function ProjectPage() {
       }
     }
 
-    fetchProject()
+    fetchOrganization()
   }, [isAuthenticated, name, getAccessToken])
 
-  const isOwner = project?.userRole === Role.OWNER
-  const isEditorOrAbove = project != null && project.userRole >= Role.EDITOR
+  const isOwner = organization?.userRole === Role.OWNER
+  const isEditorOrAbove = organization != null && organization.userRole >= Role.EDITOR
 
   const handleSaveDisplayName = async (newDisplayName: string) => {
     if (!name) return
     setIsSaving(true)
     try {
       const token = getAccessToken()
-      await projectsClient.updateProject(
+      await organizationsClient.updateOrganization(
         { name, displayName: newDisplayName },
         {
           headers: {
@@ -115,7 +115,7 @@ export function ProjectPage() {
           },
         },
       )
-      setProject((prev) => prev ? { ...prev, displayName: newDisplayName } : prev)
+      setOrganization((prev) => prev ? { ...prev, displayName: newDisplayName } : prev)
       setEditingDisplayName(false)
       setSaveSuccess(true)
     } catch {
@@ -130,7 +130,7 @@ export function ProjectPage() {
     setIsSaving(true)
     try {
       const token = getAccessToken()
-      await projectsClient.updateProject(
+      await organizationsClient.updateOrganization(
         { name, description: newDescription },
         {
           headers: {
@@ -138,7 +138,7 @@ export function ProjectPage() {
           },
         },
       )
-      setProject((prev) => prev ? { ...prev, description: newDescription } : prev)
+      setOrganization((prev) => prev ? { ...prev, description: newDescription } : prev)
       setEditingDescription(false)
       setSaveSuccess(true)
     } catch {
@@ -153,7 +153,7 @@ export function ProjectPage() {
     setIsSavingSharing(true)
     try {
       const token = getAccessToken()
-      const response = await projectsClient.updateProjectSharing(
+      const response = await organizationsClient.updateOrganizationSharing(
         {
           name,
           userGrants: newUserGrants,
@@ -165,8 +165,8 @@ export function ProjectPage() {
           },
         },
       )
-      if (response.project) {
-        setProject(response.project)
+      if (response.organization) {
+        setOrganization(response.organization)
       }
     } finally {
       setIsSavingSharing(false)
@@ -180,7 +180,7 @@ export function ProjectPage() {
 
     try {
       const token = getAccessToken()
-      await projectsClient.deleteProject(
+      await organizationsClient.deleteOrganization(
         { name },
         {
           headers: {
@@ -189,7 +189,7 @@ export function ProjectPage() {
         },
       )
       setDeleteOpen(false)
-      navigate('/projects')
+      navigate('/organizations')
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -197,7 +197,7 @@ export function ProjectPage() {
     }
   }
 
-  // Show loading while checking auth or fetching project
+  // Show loading while checking auth or fetching organization
   if (authLoading || (isAuthenticated && isLoading)) {
     return (
       <Card variant="outlined">
@@ -217,13 +217,13 @@ export function ProjectPage() {
     let displayMessage = error.message
 
     if (errorMessage.includes('not found') || (error as Error & { code?: string }).code === 'not_found') {
-      displayMessage = `Project "${name}" not found`
+      displayMessage = `Organization "${name}" not found`
     } else if (
       errorMessage.includes('permission') ||
       errorMessage.includes('denied') ||
       (error as Error & { code?: string }).code === 'permission_denied'
     ) {
-      displayMessage = 'Permission denied: You are not authorized to view this project'
+      displayMessage = 'Permission denied: You are not authorized to view this organization'
     }
 
     return (
@@ -235,19 +235,13 @@ export function ProjectPage() {
     )
   }
 
-  if (!project) return null
+  if (!organization) return null
 
   return (
     <Card variant="outlined">
       <CardContent>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          {project.organization ? (
-            <RouterLink to={`/organizations/${project.organization}`} style={{ color: 'inherit' }}>
-              {project.organization}
-            </RouterLink>
-          ) : null}
-          {project.organization ? ' / ' : ''}
-          {project.name}
+          {organization.name}
         </Typography>
 
         {/* Display Name */}
@@ -291,14 +285,14 @@ export function ProjectPage() {
                 variant="h6"
                 sx={{ flexGrow: 1 }}
               >
-                {project.displayName || project.name}
+                {organization.displayName || organization.name}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit display name"
                   size="small"
                   onClick={() => {
-                    setDraftDisplayName(project.displayName || '')
+                    setDraftDisplayName(organization.displayName || '')
                     setEditingDisplayName(true)
                   }}
                 >
@@ -320,7 +314,7 @@ export function ProjectPage() {
                 autoFocus
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
-                placeholder="What is this project for?"
+                placeholder="What is this organization for?"
                 disabled={isSaving}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -348,17 +342,17 @@ export function ProjectPage() {
             <>
               <Typography
                 variant="body2"
-                color={project.description ? 'text.primary' : 'text.secondary'}
+                color={organization.description ? 'text.primary' : 'text.secondary'}
                 sx={{ flexGrow: 1 }}
               >
-                {project.description || 'No description'}
+                {organization.description || 'No description'}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit description"
                   size="small"
                   onClick={() => {
-                    setDraftDescription(project.description || '')
+                    setDraftDescription(organization.description || '')
                     setEditingDescription(true)
                   }}
                 >
@@ -374,9 +368,9 @@ export function ProjectPage() {
           <Button
             variant="contained"
             component={RouterLink}
-            to={`/projects/${name}/secrets`}
+            to={`/organizations/${name}/projects`}
           >
-            Secrets
+            Projects
           </Button>
           {isOwner && (
             <Button
@@ -391,8 +385,8 @@ export function ProjectPage() {
 
         {/* Sharing */}
         <SharingPanel
-          userGrants={project.userGrants}
-          groupGrants={project.groupGrants}
+          userGrants={organization.userGrants}
+          groupGrants={organization.groupGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={isSavingSharing}
@@ -402,15 +396,15 @@ export function ProjectPage() {
           open={saveSuccess}
           autoHideDuration={3000}
           onClose={() => setSaveSuccess(false)}
-          message="Project updated successfully"
+          message="Organization updated successfully"
         />
       </CardContent>
 
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} fullScreen={isMobile}>
-        <DialogTitle>Delete Project</DialogTitle>
+        <DialogTitle>Delete Organization</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete project &quot;{name}&quot;? This will delete the namespace and all resources within it. This action cannot be undone.
+            Are you sure you want to delete organization &quot;{name}&quot;? This action cannot be undone.
           </DialogContentText>
           {deleteError && (
             <Alert severity="error" sx={{ mt: 2 }}>

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -42,39 +43,72 @@ type AnnotationGrant struct {
 
 // K8sClient wraps Kubernetes client operations for secrets.
 type K8sClient struct {
-	client kubernetes.Interface
+	client   kubernetes.Interface
+	Resolver *resolver.Resolver
 }
 
 // NewK8sClient creates a client for secrets operations.
-func NewK8sClient(client kubernetes.Interface) *K8sClient {
-	return &K8sClient{client: client}
+func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
+	return &K8sClient{client: client, Resolver: r}
 }
 
-// GetSecret retrieves a secret by name from the given namespace.
-func (c *K8sClient) GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+// resolveProjectNS finds the Kubernetes namespace for a project by label lookup.
+func (c *K8sClient) resolveProjectNS(ctx context.Context, project string) (string, error) {
+	labelSelector := ManagedByLabel + "=" + ManagedByValue + "," +
+		resolver.ResourceTypeLabel + "=" + resolver.ResourceTypeProject + "," +
+		resolver.ProjectLabel + "=" + project
+	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(list.Items) == 0 {
+		return "", fmt.Errorf("project %q not found", project)
+	}
+	return list.Items[0].Name, nil
+}
+
+// GetSecret retrieves a secret by name from the project's namespace.
+func (c *K8sClient) GetSecret(ctx context.Context, project, name string) (*corev1.Secret, error) {
+	ns, err := c.resolveProjectNS(ctx, project)
+	if err != nil {
+		return nil, err
+	}
 	slog.DebugContext(ctx, "getting secret from kubernetes",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
+		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
-	return c.client.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	return c.client.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
 }
 
-// ListSecrets retrieves secrets with the console label from the given namespace.
-func (c *K8sClient) ListSecrets(ctx context.Context, namespace string) (*corev1.SecretList, error) {
+// ListSecrets retrieves secrets with the console label from the project's namespace.
+func (c *K8sClient) ListSecrets(ctx context.Context, project string) (*corev1.SecretList, error) {
+	ns, err := c.resolveProjectNS(ctx, project)
+	if err != nil {
+		return nil, err
+	}
 	labelSelector := ManagedByLabel + "=" + ManagedByValue
 	slog.DebugContext(ctx, "listing secrets from kubernetes",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
+		slog.String("namespace", ns),
 		slog.String("labelSelector", labelSelector),
 	)
-	return c.client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
+	return c.client.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 }
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
-func (c *K8sClient) CreateSecret(ctx context.Context, namespace, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
+func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
+	ns, err := c.resolveProjectNS(ctx, project)
+	if err != nil {
+		return nil, err
+	}
 	slog.DebugContext(ctx, "creating secret in kubernetes",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
+		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
 	usersJSON, err := json.Marshal(shareUsers)
@@ -98,7 +132,7 @@ func (c *K8sClient) CreateSecret(ctx context.Context, namespace, name string, da
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: ns,
 			Labels: map[string]string{
 				ManagedByLabel: ManagedByValue,
 			},
@@ -106,18 +140,18 @@ func (c *K8sClient) CreateSecret(ctx context.Context, namespace, name string, da
 		},
 		Data: data,
 	}
-	return c.client.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
+	return c.client.CoreV1().Secrets(ns).Create(ctx, secret, metav1.CreateOptions{})
 }
 
 // UpdateSecret replaces the data of an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
 // description and url are optional pointers: nil preserves the existing value, non-nil updates it.
-func (c *K8sClient) UpdateSecret(ctx context.Context, namespace, name string, data map[string][]byte, description, url *string) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSecret(ctx context.Context, project, name string, data map[string][]byte, description, url *string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating secret in kubernetes",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, namespace, name)
+	secret, err := c.GetSecret(ctx, project, name)
 	if err != nil {
 		return nil, err
 	}
@@ -144,34 +178,34 @@ func (c *K8sClient) UpdateSecret(ctx context.Context, namespace, name string, da
 			}
 		}
 	}
-	return c.client.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	return c.client.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
 // DeleteSecret deletes a secret by name.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) DeleteSecret(ctx context.Context, namespace, name string) error {
+func (c *K8sClient) DeleteSecret(ctx context.Context, project, name string) error {
 	slog.DebugContext(ctx, "deleting secret from kubernetes",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, namespace, name)
+	secret, err := c.GetSecret(ctx, project, name)
 	if err != nil {
 		return err
 	}
 	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
 		return fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
 	}
-	return c.client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.client.CoreV1().Secrets(secret.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 // UpdateSharing updates the sharing annotations on an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) UpdateSharing(ctx context.Context, namespace, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating sharing on kubernetes secret",
-		slog.String("namespace", namespace),
+		slog.String("project", project),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, namespace, name)
+	secret, err := c.GetSecret(ctx, project, name)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +225,7 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, namespace, name string, s
 	}
 	secret.Annotations[ShareUsersAnnotation] = string(usersJSON)
 	secret.Annotations[ShareGroupsAnnotation] = string(groupsJSON)
-	return c.client.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	return c.client.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
 // GetShareUsers parses the console.holos.run/share-users annotation from a secret.

@@ -33,7 +33,9 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/oidc"
+	"github.com/holos-run/holos-console/console/organizations"
 	"github.com/holos-run/holos-console/console/projects"
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -81,6 +83,16 @@ type Config struct {
 	// internal HTTP client (e.g., for OIDC discovery). This allows the server
 	// to trust certificates signed by a custom CA such as mkcert.
 	CACertFile string
+
+	// NamespacePrefix is prepended to all console-managed namespace names.
+	// Default: "holos-"
+	NamespacePrefix string
+
+	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
+	OrgCreatorUsers []string
+
+	// OrgCreatorGroups is a list of OIDC group names allowed to create organizations.
+	OrgCreatorGroups []string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -114,6 +126,11 @@ func New(cfg Config) *Server {
 
 // Serve starts the HTTPS server and blocks until the context is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
+	// Apply default for namespace prefix
+	if s.cfg.NamespacePrefix == "" {
+		s.cfg.NamespacePrefix = "holos-"
+	}
+
 	// Load custom CA certificate pool for internal HTTP client (OIDC discovery, etc.)
 	caPool, err := loadCACertPool(s.cfg.CACertFile)
 	if err != nil {
@@ -181,29 +198,35 @@ func (s *Server) Serve(ctx context.Context) error {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	var secretsK8s *secrets.K8sClient
+	// Register services (protected - requires auth)
 	if k8sClientset != nil {
-		secretsK8s = secrets.NewK8sClient(k8sClientset)
+		nsResolver := &resolver.Resolver{Prefix: s.cfg.NamespacePrefix}
 		slog.Info("kubernetes client initialized")
-	} else {
-		slog.Info("no kubernetes config available, using dummy-secret only")
-	}
 
-	// Register ProjectService and SecretsService (protected - requires auth)
-	if k8sClientset != nil {
-		projectsK8s := projects.NewK8sClient(k8sClientset)
-		projectsHandler := projects.NewHandler(projectsK8s)
+		// Organization service
+		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
+		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
+		orgsHandler := organizations.NewHandler(orgsK8s, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
+		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
+		mux.Handle(orgsPath, orgsHTTPHandler)
+
+		// Project service with org grant fallback
+		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
+		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
-		// Create project-scoped secrets handler with project grant resolver
+		// Secrets service with project and org grant fallback
+		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
+		orgResolverForSecrets := projects.NewOrgGrantResolverForProject(projectsK8s, orgGrantResolver)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, orgResolverForSecrets)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
-		// Fallback: secrets handler without K8s (no project resolver)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, nil)
+		slog.Info("no kubernetes config available, using dummy-secret only")
+		// Fallback: secrets handler without K8s (no resolvers)
+		secretsHandler := secrets.NewProjectScopedHandler(nil, nil, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
@@ -213,6 +236,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.VersionServiceName,
 		consolev1connect.SecretsServiceName,
 		consolev1connect.ProjectServiceName,
+		consolev1connect.OrganizationServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)

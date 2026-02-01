@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -22,16 +22,14 @@ import {
   Snackbar,
   Stack,
   TextField,
-  Tooltip,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
-import { projectsClient } from '../client'
-import { useOrg } from '../OrgProvider'
+import { organizationsClient } from '../client'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Project } from '../gen/holos/console/v1/projects_pb'
+import type { Organization } from '../gen/holos/console/v1/organizations_pb'
 
 function roleName(role: Role): string {
   switch (role) {
@@ -46,16 +44,13 @@ function roleName(role: Role): string {
   }
 }
 
-export function ProjectsListPage() {
-  const { organizationName } = useParams<{ organizationName?: string }>()
-  const { selectedOrg } = useOrg()
-  const effectiveOrg = organizationName || selectedOrg || ''
+export function OrganizationsListPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
 
-  const [projects, setProjects] = useState<Project[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -78,20 +73,20 @@ export function ProjectsListPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login(effectiveOrg ? `/organizations/${effectiveOrg}/projects` : '/projects')
+      login('/organizations')
     }
-  }, [authLoading, isAuthenticated, login, effectiveOrg])
+  }, [authLoading, isAuthenticated, login])
 
-  // Fetch projects list when authenticated
-  const fetchProjects = async () => {
+  // Fetch organizations list when authenticated
+  const fetchOrganizations = async () => {
     if (!isAuthenticated) return
     setIsLoading(true)
     setError(null)
 
     try {
       const token = getAccessToken()
-      const response = await projectsClient.listProjects(
-        { organization: effectiveOrg },
+      const response = await organizationsClient.listOrganizations(
+        {},
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -99,7 +94,7 @@ export function ProjectsListPage() {
         },
       )
 
-      setProjects(response.projects)
+      setOrganizations(response.organizations)
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
     } finally {
@@ -108,9 +103,9 @@ export function ProjectsListPage() {
   }
 
   useEffect(() => {
-    fetchProjects()
+    fetchOrganizations()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, getAccessToken, effectiveOrg])
+  }, [isAuthenticated, getAccessToken])
 
   const handleDeleteOpen = (name: string) => {
     setDeleteTarget(name)
@@ -125,7 +120,7 @@ export function ProjectsListPage() {
 
     try {
       const token = getAccessToken()
-      await projectsClient.deleteProject(
+      await organizationsClient.deleteOrganization(
         { name: deleteTarget },
         {
           headers: {
@@ -136,7 +131,7 @@ export function ProjectsListPage() {
       setDeleteOpen(false)
       setDeleteTarget(null)
       setDeleteSuccess(true)
-      fetchProjects()
+      fetchOrganizations()
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -158,7 +153,7 @@ export function ProjectsListPage() {
 
   const handleCreate = async () => {
     if (!createName.trim()) {
-      setCreateError('Project name is required')
+      setCreateError('Organization name is required')
       return
     }
 
@@ -167,12 +162,11 @@ export function ProjectsListPage() {
 
     try {
       const token = getAccessToken()
-      await projectsClient.createProject(
+      await organizationsClient.createOrganization(
         {
           name: createName.trim(),
           displayName: createDisplayName.trim(),
           description: createDescription.trim(),
-          organization: effectiveOrg,
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
           groupGrants: [],
         },
@@ -185,7 +179,7 @@ export function ProjectsListPage() {
 
       setCreateOpen(false)
       setCreateSuccess(true)
-      navigate(`/projects/${createName.trim()}`)
+      navigate(`/organizations/${createName.trim()}`)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -193,7 +187,7 @@ export function ProjectsListPage() {
     }
   }
 
-  // Show loading while checking auth or fetching projects
+  // Show loading while checking auth or fetching organizations
   if (authLoading || (isAuthenticated && isLoading)) {
     return (
       <Card variant="outlined">
@@ -218,38 +212,33 @@ export function ProjectsListPage() {
     )
   }
 
-  // Show projects list
+  // Show organizations list
   return (
     <>
       <Card variant="outlined">
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
-            <Typography variant="h6">{effectiveOrg ? `Projects in ${effectiveOrg}` : 'Projects'}</Typography>
-            <Tooltip title={effectiveOrg ? '' : 'Select an organization first'}>
-              <span>
-                <Button variant="contained" size="small" onClick={handleCreateOpen} disabled={!effectiveOrg}>
-                  Create Project
-                </Button>
-              </span>
-            </Tooltip>
+            <Typography variant="h6">Organizations</Typography>
+            <Button variant="contained" size="small" onClick={handleCreateOpen}>
+              Create Organization
+            </Button>
           </Stack>
-          {projects.length === 0 ? (
+          {organizations.length === 0 ? (
             <Typography color="text.secondary">
-              No projects available. Projects are Kubernetes namespaces labeled{' '}
-              <code>app.kubernetes.io/managed-by=console.holos.run</code>.
+              No organizations available.
             </Typography>
           ) : (
             <List>
-              {projects.map((project) => (
+              {organizations.map((org) => (
                 <ListItem
-                  key={project.name}
+                  key={org.name}
                   disablePadding
                   secondaryAction={
-                    project.userRole === Role.OWNER ? (
+                    org.userRole === Role.OWNER ? (
                       <IconButton
                         edge="end"
-                        aria-label={`delete ${project.name}`}
-                        onClick={() => handleDeleteOpen(project.name)}
+                        aria-label={`delete ${org.name}`}
+                        onClick={() => handleDeleteOpen(org.name)}
                         size="small"
                       >
                         <DeleteIcon />
@@ -259,14 +248,14 @@ export function ProjectsListPage() {
                 >
                   <ListItemButton
                     component={RouterLink}
-                    to={`/projects/${project.name}`}
+                    to={`/organizations/${org.name}`}
                   >
                     <ListItemText
-                      primary={project.displayName || project.name}
-                      secondary={project.description || project.name}
+                      primary={org.displayName || org.name}
+                      secondary={org.description || org.name}
                     />
                     <Chip
-                      label={roleName(project.userRole)}
+                      label={roleName(org.userRole)}
                       size="small"
                       variant="outlined"
                       sx={{ ml: 1, flexShrink: 0 }}
@@ -280,7 +269,7 @@ export function ProjectsListPage() {
       </Card>
 
       <Dialog open={createOpen} onClose={handleCreateClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
-        <DialogTitle>Create Project</DialogTitle>
+        <DialogTitle>Create Organization</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -289,8 +278,8 @@ export function ProjectsListPage() {
             fullWidth
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
-            placeholder="my-project"
-            helperText="Kubernetes namespace name (lowercase alphanumeric and hyphens)"
+            placeholder="my-org"
+            helperText="Lowercase alphanumeric and hyphens"
           />
           <TextField
             margin="dense"
@@ -298,7 +287,7 @@ export function ProjectsListPage() {
             fullWidth
             value={createDisplayName}
             onChange={(e) => setCreateDisplayName(e.target.value)}
-            placeholder="My Project"
+            placeholder="My Organization"
           />
           <TextField
             margin="dense"
@@ -306,10 +295,10 @@ export function ProjectsListPage() {
             fullWidth
             value={createDescription}
             onChange={(e) => setCreateDescription(e.target.value)}
-            placeholder="What is this project for?"
+            placeholder="What is this organization for?"
           />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-            You will be added as the Owner of this project.
+            You will be added as the Owner of this organization.
           </Typography>
           {createError && (
             <Alert severity="error" sx={{ mt: 2 }}>
@@ -326,10 +315,10 @@ export function ProjectsListPage() {
       </Dialog>
 
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} fullScreen={isMobile}>
-        <DialogTitle>Delete Project</DialogTitle>
+        <DialogTitle>Delete Organization</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete project &quot;{deleteTarget}&quot;? This will delete the namespace and all resources within it. This action cannot be undone.
+            Are you sure you want to delete organization &quot;{deleteTarget}&quot;? This action cannot be undone.
           </DialogContentText>
           {deleteError && (
             <Alert severity="error" sx={{ mt: 2 }}>
@@ -349,13 +338,13 @@ export function ProjectsListPage() {
         open={createSuccess}
         autoHideDuration={3000}
         onClose={() => setCreateSuccess(false)}
-        message="Project created successfully"
+        message="Organization created successfully"
       />
       <Snackbar
         open={deleteSuccess}
         autoHideDuration={3000}
         onClose={() => setDeleteSuccess(false)}
-        message="Project deleted successfully"
+        message="Organization deleted successfully"
       />
     </>
   )

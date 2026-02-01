@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "holos/console/v1/rbac.proto";
+import "holos/console/v1/secrets.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// OrganizationService provides CRUD operations for organizations.
+// An organization is a top-level administrative boundary backed by a Kubernetes
+// Namespace with a configurable prefix.
+service OrganizationService {
+  // ListOrganizations returns all organizations the user has access to.
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+
+  // GetOrganization retrieves an organization by name.
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+
+  // CreateOrganization creates a new organization.
+  // Requires PERMISSION_ORGANIZATIONS_CREATE (owner on at least one existing organization).
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+
+  // UpdateOrganization updates organization metadata (description, display name).
+  // Requires PERMISSION_ORGANIZATIONS_WRITE on the organization.
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+
+  // DeleteOrganization deletes an organization.
+  // Requires PERMISSION_ORGANIZATIONS_DELETE on the organization.
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+
+  // UpdateOrganizationSharing updates the sharing grants on an organization.
+  // Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
+  rpc UpdateOrganizationSharing(UpdateOrganizationSharingRequest) returns (UpdateOrganizationSharingResponse);
+}
+
+// Organization represents an organization with its metadata and grants.
+message Organization {
+  // name is the organization name (not the Kubernetes namespace).
+  string name = 1;
+  // display_name is a human-readable display name for the organization.
+  string display_name = 2;
+  // description is a human-readable description of the organization.
+  string description = 3;
+  // user_grants are the per-user sharing grants on this organization.
+  repeated ShareGrant user_grants = 4;
+  // group_grants are the per-group sharing grants on this organization.
+  repeated ShareGrant group_grants = 5;
+  // user_role is the calling user's effective role on this organization.
+  Role user_role = 6;
+}
+
+// ListOrganizationsRequest contains optional filters for listing organizations.
+message ListOrganizationsRequest {}
+
+// ListOrganizationsResponse contains the list of organizations the user can access.
+message ListOrganizationsResponse {
+  // organizations contains the list of organizations.
+  repeated Organization organizations = 1;
+}
+
+// GetOrganizationRequest contains the name of the organization to retrieve.
+message GetOrganizationRequest {
+  // name is the name of the organization to retrieve.
+  string name = 1;
+}
+
+// GetOrganizationResponse contains the organization.
+message GetOrganizationResponse {
+  // organization is the retrieved organization.
+  Organization organization = 1;
+}
+
+// CreateOrganizationRequest contains the fields for creating a new organization.
+message CreateOrganizationRequest {
+  // name is the organization name.
+  string name = 1;
+  // display_name is a human-readable display name for the organization.
+  string display_name = 2;
+  // description is a human-readable description of the organization.
+  string description = 3;
+  // user_grants are the initial per-user sharing grants.
+  repeated ShareGrant user_grants = 4;
+  // group_grants are the initial per-group sharing grants.
+  repeated ShareGrant group_grants = 5;
+}
+
+// CreateOrganizationResponse contains the name of the created organization.
+message CreateOrganizationResponse {
+  // name is the name of the created organization.
+  string name = 1;
+}
+
+// UpdateOrganizationRequest contains the fields to update on an organization.
+message UpdateOrganizationRequest {
+  // name is the name of the organization to update.
+  string name = 1;
+  // display_name is the new display name. When unset, preserves the existing value.
+  optional string display_name = 2;
+  // description is the new description. When unset, preserves the existing value.
+  optional string description = 3;
+}
+
+// UpdateOrganizationResponse is empty on success.
+message UpdateOrganizationResponse {}
+
+// DeleteOrganizationRequest contains the name of the organization to delete.
+message DeleteOrganizationRequest {
+  // name is the name of the organization to delete.
+  string name = 1;
+}
+
+// DeleteOrganizationResponse is empty on success.
+message DeleteOrganizationResponse {}
+
+// UpdateOrganizationSharingRequest contains the sharing grants to set on an organization.
+message UpdateOrganizationSharingRequest {
+  // name is the name of the organization to update sharing for.
+  string name = 1;
+  // user_grants are the per-user sharing grants to set.
+  repeated ShareGrant user_grants = 2;
+  // group_grants are the per-group sharing grants to set.
+  repeated ShareGrant group_grants = 3;
+}
+
+// UpdateOrganizationSharingResponse contains the updated organization.
+message UpdateOrganizationSharingResponse {
+  // organization is the updated organization with new sharing grants.
+  Organization organization = 1;
+}

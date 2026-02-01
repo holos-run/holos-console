@@ -15,6 +15,10 @@ import {
   IconButton,
   Drawer,
   useMediaQuery,
+  Select,
+  MenuItem,
+  CircularProgress,
+  FormControl,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import {
@@ -23,6 +27,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
 } from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
 import { AuthDebugPage } from './components/AuthDebugPage'
@@ -30,7 +35,10 @@ import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
 import { ProjectsListPage } from './components/ProjectsListPage'
 import { ProjectPage } from './components/ProjectPage'
+import { OrganizationsListPage } from './components/OrganizationsListPage'
+import { OrganizationPage } from './components/OrganizationPage'
 import { AuthProvider } from './auth'
+import { OrgProvider, useOrg } from './OrgProvider'
 
 const theme = createTheme({
   palette: {
@@ -40,11 +48,61 @@ const theme = createTheme({
 
 const DRAWER_WIDTH = 240
 
+function OrgPicker() {
+  const { organizations, selectedOrg, setSelectedOrg, isLoading } = useOrg()
+  const navigate = useNavigate()
+
+  if (isLoading) {
+    return (
+      <Box sx={{ px: 2, py: 1, display: 'flex', justifyContent: 'center' }}>
+        <CircularProgress size={20} />
+      </Box>
+    )
+  }
+
+  if (organizations.length === 0) {
+    return null
+  }
+
+  return (
+    <FormControl fullWidth size="small" sx={{ px: 2, py: 1 }}>
+      <Select
+        value={selectedOrg || '__all__'}
+        onChange={(e) => {
+          const value = e.target.value
+          if (value === '__all__') {
+            setSelectedOrg(null)
+            navigate('/organizations')
+          } else {
+            setSelectedOrg(value)
+            navigate(`/organizations/${value}/projects`)
+          }
+        }}
+        displayEmpty
+        sx={{ fontSize: '0.875rem' }}
+      >
+        <MenuItem value="__all__">All Organizations</MenuItem>
+        {organizations.map((org) => (
+          <MenuItem key={org.name} value={org.name}>
+            {org.displayName || org.name}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  )
+}
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
-  const isProjectsPage = location.pathname.startsWith('/projects')
+  const { selectedOrg } = useOrg()
+  const isOrganizationsPage = location.pathname.startsWith('/organizations')
+  const isProjectsPage = location.pathname.startsWith('/projects') || location.pathname.includes('/projects')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isVersionPage = location.pathname.startsWith('/version')
+
+  const projectsLink = selectedOrg
+    ? `/organizations/${selectedOrg}/projects`
+    : '/projects'
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -54,10 +112,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </Typography>
       </Box>
       <Divider />
+      <OrgPicker />
+      <Divider />
       <List sx={{ px: 1 }}>
         <ListItemButton
           component={Link}
-          to="/projects"
+          to="/organizations"
+          selected={isOrganizationsPage}
+          onClick={onNavigate}
+        >
+          <ListItemText primary="Organizations" />
+        </ListItemButton>
+        <ListItemButton
+          component={Link}
+          to={projectsLink}
           selected={isProjectsPage}
           onClick={onNavigate}
         >
@@ -153,14 +221,17 @@ function MainLayout() {
         {isMobile && <Toolbar />}
         <Stack spacing={3}>
           <Routes>
-            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/" element={<Navigate to="/organizations" replace />} />
+            <Route path="/organizations" element={<OrganizationsListPage />} />
+            <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
+            <Route path="/organizations/:organizationName/projects" element={<ProjectsListPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:projectName" element={<ProjectPage />} />
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
             <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
             <Route path="/version" element={<VersionCard />} />
-            <Route path="*" element={<Navigate to="/projects" replace />} />
+            <Route path="*" element={<Navigate to="/organizations" replace />} />
           </Routes>
         </Stack>
       </Box>
@@ -173,7 +244,9 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <MainLayout />
+        <OrgProvider>
+          <MainLayout />
+        </OrgProvider>
       </AuthProvider>
     </ThemeProvider>
   )

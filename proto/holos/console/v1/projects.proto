@@ -47,10 +47,15 @@ message Project {
   repeated ShareGrant group_grants = 5;
   // user_role is the calling user's effective role on this project.
   Role user_role = 6;
+  // organization is the organization this project belongs to.
+  string organization = 7;
 }
 
 // ListProjectsRequest contains optional filters for listing projects.
-message ListProjectsRequest {}
+message ListProjectsRequest {
+  // organization filters projects by organization. When empty, returns all accessible projects.
+  string organization = 1;
+}
 
 // ListProjectsResponse contains the list of projects the user can access.
 message ListProjectsResponse {
@@ -82,6 +87,8 @@ message CreateProjectRequest {
   repeated ShareGrant user_grants = 4;
   // group_grants are the initial per-group sharing grants.
   repeated ShareGrant group_grants = 5;
+  // organization is the organization to create this project in.
+  string organization = 6;
 }
 
 // CreateProjectResponse contains the name of the created project.
