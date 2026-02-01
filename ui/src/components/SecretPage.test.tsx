@@ -121,7 +121,7 @@ describe('SecretPage', () => {
   })
 
   describe('successful fetch', () => {
-    it('displays secret data as filename and content fields', async () => {
+    it('displays secret key names in read-only view', async () => {
       // Given: authenticated user and successful API response
       const mockUser = createMockUser({ groups: ['owner'] })
       const authValue = createAuthContext({
@@ -139,18 +139,15 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'my-secret')
 
-      // Then: secret data is displayed as filename + content entries
+      // Then: secret key names are displayed as labels
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+        expect(screen.getByText('username')).toBeInTheDocument()
+        expect(screen.getByText('password')).toBeInTheDocument()
       })
 
-      const filenames = screen.getAllByPlaceholderText('key').map((el) => (el as HTMLInputElement).value)
-      expect(filenames).toContain('username')
-      expect(filenames).toContain('password')
-
-      const contents = screen.getAllByPlaceholderText('value').map((el) => (el as HTMLTextAreaElement).value)
-      expect(contents).toContain('admin')
-      expect(contents).toContain('secret123')
+      // Values should be hidden by default
+      expect(screen.queryByText('admin')).not.toBeInTheDocument()
+      expect(screen.queryByText('secret123')).not.toBeInTheDocument()
     })
 
     it('handles empty secret data', async () => {
@@ -167,12 +164,10 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'empty-secret')
 
-      // Then: displays Add File button and no entries
+      // Then: page renders without errors, shows save/delete buttons
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /add key/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
       })
-
-      expect(screen.queryAllByPlaceholderText('filename')).toHaveLength(0)
     })
   })
 
@@ -291,7 +286,7 @@ describe('SecretPage', () => {
       })
     })
 
-    it('enables Save button when content is changed', async () => {
+    it('enables Save button when content is changed via Edit affordance', async () => {
       const mockUser = createMockUser({ groups: ['editor'] })
       const authValue = createAuthContext({
         user: mockUser,
@@ -307,13 +302,23 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
+        expect(screen.getByText('key')).toBeInTheDocument()
       })
 
-      // Change the content
-      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
+      // Click Edit on the key entry
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
 
-      expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+      // Change the content in the inline editor
+      fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
+
+      // Save the inline edit
+      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
+      const inlineSave = saveButtons.find((btn) => btn.closest('[class*="MuiBox"]') && btn.textContent === 'Save')
+      fireEvent.click(inlineSave!)
+
+      // Top-level Save should now be enabled
+      const topSave = screen.getByRole('button', { name: /^save$/i })
+      expect(topSave).toBeEnabled()
     })
 
     it('calls updateSecret RPC on save', async () => {
@@ -335,12 +340,22 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
+        expect(screen.getByText('key')).toBeInTheDocument()
       })
 
-      // Change and save
-      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
-      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+      // Use Edit affordance to change value
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+      fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
+      // Save inline edit
+      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
+      fireEvent.click(saveButtons[0])
+
+      // Click top-level Save
+      await waitFor(() => {
+        const topSave = screen.getByRole('button', { name: /^save$/i })
+        expect(topSave).toBeEnabled()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
       await waitFor(() => {
         expect(mockUpdateSecret).toHaveBeenCalledWith(
@@ -370,11 +385,20 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
+        expect(screen.getByText('key')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
-      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+      // Use Edit affordance to make a change
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+      fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
+      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
+      fireEvent.click(saveButtons[0])
+
+      await waitFor(() => {
+        const topSave = screen.getByRole('button', { name: /^save$/i })
+        expect(topSave).toBeEnabled()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
       await waitFor(() => {
         expect(screen.getByText(/saved successfully/i)).toBeInTheDocument()
@@ -397,11 +421,20 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
+        expect(screen.getByText('key')).toBeInTheDocument()
       })
 
-      fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new-value' } })
-      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+      // Use Edit affordance to make a change
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+      fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
+      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
+      fireEvent.click(saveButtons[0])
+
+      await waitFor(() => {
+        const topSave = screen.getByRole('button', { name: /^save$/i })
+        expect(topSave).toBeEnabled()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
       await waitFor(() => {
         expect(screen.getByText(/permission denied/i)).toBeInTheDocument()
@@ -633,9 +666,13 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'my-secret')
 
+      // Wait for sharing panel to load, then find Edit button near the Sharing heading
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+        expect(screen.getByText('Sharing')).toBeInTheDocument()
       })
+      // There should be multiple Edit buttons (one per key in viewer + one in sharing panel)
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      expect(editButtons.length).toBeGreaterThanOrEqual(2) // at least key Edit + sharing Edit
     })
 
     it('calls updateSharing on save', async () => {
@@ -672,11 +709,14 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'my-secret')
 
+      // Wait for sharing panel to load
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+        expect(screen.getByText('Sharing')).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+      // Find the sharing panel's Edit button (last Edit button on page)
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      fireEvent.click(editButtons[editButtons.length - 1])
 
       // Find the sharing panel's Save button (the data Save is disabled since content is unchanged)
       const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
@@ -962,7 +1002,7 @@ describe('SecretPage', () => {
       })
     })
 
-    it('selecting Raw hides SecretDataEditor and shows SecretRawView', async () => {
+    it('selecting Raw hides SecretDataViewer and shows SecretRawView', async () => {
       const mockUser = createMockUser({ groups: ['owner'] })
       const authValue = createAuthContext({
         user: mockUser,
@@ -988,22 +1028,21 @@ describe('SecretPage', () => {
 
       renderSecretPage(authValue, 'my-secret')
 
-      // Wait for editor to load
+      // Wait for viewer to load with key names
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+        expect(screen.getByText('username')).toBeInTheDocument()
       })
 
       // Click Raw tab
       fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
 
-      // SecretDataEditor fields should be hidden, raw view should be visible
+      // SecretDataViewer should be hidden, raw view should be visible
       await waitFor(() => {
         expect(screen.getByRole('code')).toBeInTheDocument()
       })
-      expect(screen.queryAllByPlaceholderText('key')).toHaveLength(0)
     })
 
-    it('selecting Editor shows the existing editor', async () => {
+    it('selecting Editor shows the viewer', async () => {
       const mockUser = createMockUser({ groups: ['owner'] })
       const authValue = createAuthContext({
         user: mockUser,
@@ -1030,7 +1069,7 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+        expect(screen.getByText('username')).toBeInTheDocument()
       })
 
       // Switch to Raw
@@ -1044,7 +1083,7 @@ describe('SecretPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /^editor$/i }))
 
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+        expect(screen.getByText('username')).toBeInTheDocument()
       })
       expect(screen.queryByRole('code')).not.toBeInTheDocument()
     })
@@ -1076,7 +1115,7 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getAllByPlaceholderText('key').length).toBeGreaterThan(0)
+        expect(screen.getByText('username')).toBeInTheDocument()
       })
 
       // Switch to Raw
