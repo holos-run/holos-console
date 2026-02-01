@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -28,10 +28,9 @@ import {
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
-import { projectsClient } from '../client'
 import { useOrg } from '../OrgProvider'
+import { useListProjects, useDeleteProject, useCreateProject } from '../queries/projects'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Project } from '../gen/holos/console/v1/projects_pb'
 
 function roleName(role: Role): string {
   switch (role) {
@@ -52,11 +51,13 @@ export function ProjectsListPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
-  const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth()
 
-  const [projects, setProjects] = useState<Project[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const { data, isLoading, error } = useListProjects(effectiveOrg)
+  const projects = data?.projects ?? []
+
+  const deleteProjectMutation = useDeleteProject()
+  const createProjectMutation = useCreateProject()
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false)
@@ -64,82 +65,34 @@ export function ProjectsListPage() {
   const [createDisplayName, setCreateDisplayName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
   const [createSuccess, setCreateSuccess] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
   const [deleteSuccess, setDeleteSuccess] = useState(false)
 
   // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      login('/projects')
-    }
-  }, [authLoading, isAuthenticated, login])
-
-  // Fetch projects list when authenticated
-  const fetchProjects = async () => {
-    if (!isAuthenticated) return
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const token = getAccessToken()
-      const response = await projectsClient.listProjects(
-        { organization: effectiveOrg },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-
-      setProjects(response.projects)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
-    } finally {
-      setIsLoading(false)
-    }
+  if (!authLoading && !isAuthenticated) {
+    login('/projects')
   }
-
-  useEffect(() => {
-    fetchProjects()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, getAccessToken, effectiveOrg])
 
   const handleDeleteOpen = (name: string) => {
     setDeleteTarget(name)
-    setDeleteError(null)
+    deleteProjectMutation.reset()
     setDeleteOpen(true)
   }
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
-    setIsDeleting(true)
-    setDeleteError(null)
 
     try {
-      const token = getAccessToken()
-      await projectsClient.deleteProject(
-        { name: deleteTarget },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await deleteProjectMutation.mutateAsync({ name: deleteTarget })
       setDeleteOpen(false)
       setDeleteTarget(null)
       setDeleteSuccess(true)
-      fetchProjects()
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsDeleting(false)
+    } catch {
+      // Error is available via deleteProjectMutation.error
     }
   }
 
@@ -161,34 +114,23 @@ export function ProjectsListPage() {
       return
     }
 
-    setIsCreating(true)
     setCreateError(null)
 
     try {
-      const token = getAccessToken()
-      await projectsClient.createProject(
-        {
-          name: createName.trim(),
-          displayName: createDisplayName.trim(),
-          description: createDescription.trim(),
-          organization: effectiveOrg,
-          userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
-          groupGrants: [],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await createProjectMutation.mutateAsync({
+        name: createName.trim(),
+        displayName: createDisplayName.trim(),
+        description: createDescription.trim(),
+        organization: effectiveOrg,
+        userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
+        groupGrants: [],
+      })
 
       setCreateOpen(false)
       setCreateSuccess(true)
       navigate(`/projects/${createName.trim()}`)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsCreating(false)
     }
   }
 
@@ -318,8 +260,8 @@ export function ProjectsListPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCreateClose}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" disabled={isCreating}>
-            {isCreating ? 'Creating...' : 'Create'}
+          <Button onClick={handleCreate} variant="contained" disabled={createProjectMutation.isPending}>
+            {createProjectMutation.isPending ? 'Creating...' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -330,16 +272,16 @@ export function ProjectsListPage() {
           <DialogContentText>
             Are you sure you want to delete project &quot;{deleteTarget}&quot;? This will delete the namespace and all resources within it. This action cannot be undone.
           </DialogContentText>
-          {deleteError && (
+          {deleteProjectMutation.error && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteError}
+              {deleteProjectMutation.error.message}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Delete'}
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={deleteProjectMutation.isPending}>
+            {deleteProjectMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

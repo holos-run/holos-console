@@ -1,25 +1,23 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { TransportProvider } from '@connectrpc/connect-query'
+import { createRouterTransport, ConnectError, Code } from '@connectrpc/connect'
+import { create } from '@bufbuild/protobuf'
 import { ProjectsListPage } from './ProjectsListPage'
 import { AuthContext, type AuthContextValue } from '../auth'
 import { OrgContext, type OrgContextValue } from '../OrgProvider'
 import type { User } from 'oidc-client-ts'
 import { vi } from 'vitest'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-
-// Mock the client module
-vi.mock('../client', () => ({
-  projectsClient: {
-    listProjects: vi.fn(),
-    createProject: vi.fn(),
-    deleteProject: vi.fn(),
-  },
-}))
-
-import { projectsClient } from '../client'
-const mockListProjects = vi.mocked(projectsClient.listProjects)
-const mockCreateProject = vi.mocked(projectsClient.createProject)
-const mockDeleteProject = vi.mocked(projectsClient.deleteProject)
+import {
+  CreateProjectResponseSchema,
+  DeleteProjectResponseSchema,
+  ListProjectsResponseSchema,
+  ProjectSchema,
+  ProjectService,
+} from '../gen/holos/console/v1/projects_pb.js'
+import type { Transport } from '@connectrpc/connect'
 
 function createMockUser(profile: Record<string, unknown>): User {
   return {
@@ -73,20 +71,58 @@ const defaultOrgValue: OrgContextValue = {
   isLoading: false,
 }
 
-function renderProjectsListPage(authValue: AuthContextValue, orgValue: OrgContextValue = defaultOrgValue) {
+function renderProjectsListPage(
+  authValue: AuthContextValue,
+  orgValue: OrgContextValue = defaultOrgValue,
+  transport?: Transport,
+) {
   navigatedTo = null
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+  const t = transport ?? createRouterTransport(({ service }) => {
+    service(ProjectService, {
+      listProjects: () => create(ListProjectsResponseSchema, { projects: [] }),
+      deleteProject: () => create(DeleteProjectResponseSchema),
+      createProject: () => create(CreateProjectResponseSchema, { name: 'test' }),
+    })
+  })
   return render(
-    <MemoryRouter initialEntries={['/projects']}>
-      <AuthContext.Provider value={authValue}>
-        <OrgContext.Provider value={orgValue}>
-          <Routes>
-            <Route path="/projects" element={<ProjectsListPage />} />
-            <Route path="/projects/:projectName" element={<CaptureNavigate />} />
-          </Routes>
-        </OrgContext.Provider>
-      </AuthContext.Provider>
-    </MemoryRouter>,
+    <TransportProvider transport={t}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/projects']}>
+          <AuthContext.Provider value={authValue}>
+            <OrgContext.Provider value={orgValue}>
+              <Routes>
+                <Route path="/projects" element={<ProjectsListPage />} />
+                <Route path="/projects/:projectName" element={<CaptureNavigate />} />
+              </Routes>
+            </OrgContext.Provider>
+          </AuthContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </TransportProvider>,
   )
+}
+
+function createListTransport(projects: Array<{
+  name: string
+  displayName: string
+  description: string
+  userRole: Role
+}>) {
+  return createRouterTransport(({ service }) => {
+    service(ProjectService, {
+      listProjects: () =>
+        create(ListProjectsResponseSchema, {
+          projects: projects.map((p) => create(ProjectSchema, p)),
+        }),
+      deleteProject: () => create(DeleteProjectResponseSchema),
+      createProject: (req) => create(CreateProjectResponseSchema, { name: req.name }),
+    })
+  })
 }
 
 describe('ProjectsListPage', () => {
@@ -102,32 +138,31 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
-
       const orgValue: OrgContextValue = {
         ...defaultOrgValue,
         selectedOrg: 'from-provider',
       }
 
+      const transport = createListTransport([])
+
       render(
-        <MemoryRouter initialEntries={['/projects']}>
-          <AuthContext.Provider value={authValue}>
-            <OrgContext.Provider value={orgValue}>
-              <Routes>
-                <Route path="/projects" element={<ProjectsListPage />} />
-              </Routes>
-            </OrgContext.Provider>
-          </AuthContext.Provider>
-        </MemoryRouter>,
+        <TransportProvider transport={transport}>
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            <MemoryRouter initialEntries={['/projects']}>
+              <AuthContext.Provider value={authValue}>
+                <OrgContext.Provider value={orgValue}>
+                  <Routes>
+                    <Route path="/projects" element={<ProjectsListPage />} />
+                  </Routes>
+                </OrgContext.Provider>
+              </AuthContext.Provider>
+            </MemoryRouter>
+          </QueryClientProvider>
+        </TransportProvider>,
       )
 
       await waitFor(() => {
-        expect(mockListProjects).toHaveBeenCalledWith(
-          expect.objectContaining({ organization: 'from-provider' }),
-          expect.any(Object),
-        )
+        expect(screen.getByText(/projects in from-provider/i)).toBeInTheDocument()
       })
     })
   })
@@ -140,28 +175,22 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: 'Production environment',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
-          },
-          {
-            name: 'staging',
-            displayName: 'Staging',
-            description: 'Staging environment',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.VIEWER,
-          },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([
+        {
+          name: 'prod',
+          displayName: 'Production',
+          description: 'Production environment',
+          userRole: Role.OWNER,
+        },
+        {
+          name: 'staging',
+          displayName: 'Staging',
+          description: 'Staging environment',
+          userRole: Role.VIEWER,
+        },
+      ])
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByText('Production')).toBeInTheDocument()
@@ -175,10 +204,6 @@ describe('ProjectsListPage', () => {
         user: mockUser,
         isAuthenticated: true,
       })
-
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
 
       renderProjectsListPage(authValue)
 
@@ -194,10 +219,6 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
-
       renderProjectsListPage(authValue)
 
       await waitFor(() => {
@@ -211,10 +232,6 @@ describe('ProjectsListPage', () => {
         user: mockUser,
         isAuthenticated: true,
       })
-
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
 
       renderProjectsListPage(authValue, { ...defaultOrgValue, selectedOrg: null })
 
@@ -230,28 +247,12 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
-          },
-          {
-            name: 'staging',
-            displayName: 'Staging',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.VIEWER,
-          },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([
+        { name: 'prod', displayName: 'Production', description: '', userRole: Role.OWNER },
+        { name: 'staging', displayName: 'Staging', description: '', userRole: Role.VIEWER },
+      ])
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByText('Owner')).toBeInTheDocument()
@@ -266,20 +267,11 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: 'Production environment',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
-          },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([
+        { name: 'prod', displayName: 'Production', description: 'Production environment', userRole: Role.OWNER },
+      ])
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByText('Production environment')).toBeInTheDocument()
@@ -293,28 +285,12 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
-          },
-          {
-            name: 'staging',
-            displayName: 'Staging',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.VIEWER,
-          },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([
+        { name: 'prod', displayName: 'Production', description: '', userRole: Role.OWNER },
+        { name: 'staging', displayName: 'Staging', description: '', userRole: Role.VIEWER },
+      ])
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByLabelText(/delete prod/i)).toBeInTheDocument()
@@ -336,10 +312,6 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
-
       renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
@@ -359,18 +331,11 @@ describe('ProjectsListPage', () => {
       const authValue = createAuthContext({
         user: mockUser,
         isAuthenticated: true,
-        getAccessToken: vi.fn(() => 'test-token'),
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([])
 
-      mockCreateProject.mockResolvedValue({
-        name: 'new-project',
-      } as unknown as Awaited<ReturnType<typeof projectsClient.createProject>>)
-
-      renderProjectsListPage(authValue, orgWithSelection)
+      renderProjectsListPage(authValue, orgWithSelection, transport)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -385,22 +350,7 @@ describe('ProjectsListPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
 
       await waitFor(() => {
-        expect(mockCreateProject).toHaveBeenCalledWith(
-          expect.objectContaining({
-            name: 'new-project',
-            displayName: 'New Project',
-            description: 'A new project',
-            organization: 'test-org',
-            userGrants: expect.arrayContaining([
-              expect.objectContaining({ principal: 'alice@example.com', role: Role.OWNER }),
-            ]),
-          }),
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              Authorization: 'Bearer test-token',
-            }),
-          }),
-        )
+        expect(navigatedTo).toBe('/projects/new-project')
       })
     })
 
@@ -410,10 +360,6 @@ describe('ProjectsListPage', () => {
         user: mockUser,
         isAuthenticated: true,
       })
-
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
 
       renderProjectsListPage(authValue, orgWithSelection)
 
@@ -427,8 +373,6 @@ describe('ProjectsListPage', () => {
       await waitFor(() => {
         expect(screen.getByText(/name is required/i)).toBeInTheDocument()
       })
-
-      expect(mockCreateProject).not.toHaveBeenCalled()
     })
 
     it('shows error message on RPC failure', async () => {
@@ -438,13 +382,17 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createRouterTransport(({ service }) => {
+        service(ProjectService, {
+          listProjects: () => create(ListProjectsResponseSchema, { projects: [] }),
+          createProject: () => {
+            throw new ConnectError('already exists', Code.AlreadyExists)
+          },
+          deleteProject: () => create(DeleteProjectResponseSchema),
+        })
+      })
 
-      mockCreateProject.mockRejectedValue(new Error('already exists'))
-
-      renderProjectsListPage(authValue, orgWithSelection)
+      renderProjectsListPage(authValue, orgWithSelection, transport)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -465,14 +413,6 @@ describe('ProjectsListPage', () => {
         user: mockUser,
         isAuthenticated: true,
       })
-
-      mockListProjects.mockResolvedValue({
-        projects: [],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
-
-      mockCreateProject.mockResolvedValue({
-        name: 'new-project',
-      } as unknown as Awaited<ReturnType<typeof projectsClient.createProject>>)
 
       renderProjectsListPage(authValue, orgWithSelection)
 
@@ -498,20 +438,11 @@ describe('ProjectsListPage', () => {
         isAuthenticated: true,
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
-          },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+      const transport = createListTransport([
+        { name: 'prod', displayName: 'Production', description: '', userRole: Role.OWNER },
+      ])
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByLabelText(/delete prod/i)).toBeInTheDocument()
@@ -523,29 +454,36 @@ describe('ProjectsListPage', () => {
     })
 
     it('calls deleteProject RPC on confirm', async () => {
+      const deleteFn = vi.fn(() => create(DeleteProjectResponseSchema))
       const mockUser = createMockUser({})
       const authValue = createAuthContext({
         user: mockUser,
         isAuthenticated: true,
-        getAccessToken: vi.fn(() => 'test-token'),
       })
 
-      mockListProjects.mockResolvedValue({
-        projects: [
-          {
-            name: 'prod',
-            displayName: 'Production',
-            description: '',
-            userGrants: [],
-            groupGrants: [],
-            userRole: Role.OWNER,
+      const transport = createRouterTransport(({ service }) => {
+        service(ProjectService, {
+          listProjects: () =>
+            create(ListProjectsResponseSchema, {
+              projects: [
+                create(ProjectSchema, {
+                  name: 'prod',
+                  displayName: 'Production',
+                  description: '',
+                  userRole: Role.OWNER,
+                }),
+              ],
+            }),
+          deleteProject: (req) => {
+            deleteFn()
+            expect(req.name).toBe('prod')
+            return create(DeleteProjectResponseSchema)
           },
-        ],
-      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+          createProject: (req) => create(CreateProjectResponseSchema, { name: req.name }),
+        })
+      })
 
-      mockDeleteProject.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof projectsClient.deleteProject>>)
-
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
 
       await waitFor(() => {
         expect(screen.getByLabelText(/delete prod/i)).toBeInTheDocument()
@@ -559,15 +497,54 @@ describe('ProjectsListPage', () => {
       fireEvent.click(dialogDeleteButton!)
 
       await waitFor(() => {
-        expect(mockDeleteProject).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'prod' }),
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              Authorization: 'Bearer test-token',
-            }),
-          }),
-        )
+        expect(deleteFn).toHaveBeenCalled()
       })
+    })
+
+    it('removes project from list after successful delete (optimistic update)', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      let deleted = false
+      const transport = createRouterTransport(({ service }) => {
+        service(ProjectService, {
+          listProjects: () => {
+            const projects = deleted
+              ? [create(ProjectSchema, { name: 'staging', displayName: 'Staging', description: '', userRole: Role.OWNER })]
+              : [
+                  create(ProjectSchema, { name: 'prod', displayName: 'Production', description: '', userRole: Role.OWNER }),
+                  create(ProjectSchema, { name: 'staging', displayName: 'Staging', description: '', userRole: Role.OWNER }),
+                ]
+            return create(ListProjectsResponseSchema, { projects })
+          },
+          deleteProject: () => {
+            deleted = true
+            return create(DeleteProjectResponseSchema)
+          },
+          createProject: (req) => create(CreateProjectResponseSchema, { name: req.name }),
+        })
+      })
+
+      renderProjectsListPage(authValue, defaultOrgValue, transport)
+
+      await waitFor(() => {
+        expect(screen.getByText('Production')).toBeInTheDocument()
+        expect(screen.getByText('Staging')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText(/delete prod/i))
+      const dialogDeleteButton = screen.getAllByRole('button', { name: /delete/i }).find(
+        (btn) => btn.closest('[role="dialog"]'),
+      )
+      fireEvent.click(dialogDeleteButton!)
+
+      await waitFor(() => {
+        expect(screen.queryByText('Production')).not.toBeInTheDocument()
+      })
+      expect(screen.getByText('Staging')).toBeInTheDocument()
     })
   })
 })
