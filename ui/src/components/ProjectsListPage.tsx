@@ -22,12 +22,14 @@ import {
   Snackbar,
   Stack,
   TextField,
+  Tooltip,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
 import { projectsClient } from '../client'
+import { useOrg } from '../OrgProvider'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { Project } from '../gen/holos/console/v1/projects_pb'
 
@@ -46,6 +48,8 @@ function roleName(role: Role): string {
 
 export function ProjectsListPage() {
   const { organizationName } = useParams<{ organizationName?: string }>()
+  const { selectedOrg } = useOrg()
+  const effectiveOrg = organizationName || selectedOrg || ''
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
@@ -74,9 +78,9 @@ export function ProjectsListPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login(organizationName ? `/organizations/${organizationName}/projects` : '/projects')
+      login(effectiveOrg ? `/organizations/${effectiveOrg}/projects` : '/projects')
     }
-  }, [authLoading, isAuthenticated, login, organizationName])
+  }, [authLoading, isAuthenticated, login, effectiveOrg])
 
   // Fetch projects list when authenticated
   const fetchProjects = async () => {
@@ -87,7 +91,7 @@ export function ProjectsListPage() {
     try {
       const token = getAccessToken()
       const response = await projectsClient.listProjects(
-        { organization: organizationName || '' },
+        { organization: effectiveOrg },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -106,7 +110,7 @@ export function ProjectsListPage() {
   useEffect(() => {
     fetchProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, getAccessToken, organizationName])
+  }, [isAuthenticated, getAccessToken, effectiveOrg])
 
   const handleDeleteOpen = (name: string) => {
     setDeleteTarget(name)
@@ -168,7 +172,7 @@ export function ProjectsListPage() {
           name: createName.trim(),
           displayName: createDisplayName.trim(),
           description: createDescription.trim(),
-          organization: organizationName || '',
+          organization: effectiveOrg,
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
           groupGrants: [],
         },
@@ -220,10 +224,14 @@ export function ProjectsListPage() {
       <Card variant="outlined">
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
-            <Typography variant="h6">{organizationName ? `Projects in ${organizationName}` : 'Projects'}</Typography>
-            <Button variant="contained" size="small" onClick={handleCreateOpen}>
-              Create Project
-            </Button>
+            <Typography variant="h6">{effectiveOrg ? `Projects in ${effectiveOrg}` : 'Projects'}</Typography>
+            <Tooltip title={effectiveOrg ? '' : 'Select an organization first'}>
+              <span>
+                <Button variant="contained" size="small" onClick={handleCreateOpen} disabled={!effectiveOrg}>
+                  Create Project
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
           {projects.length === 0 ? (
             <Typography color="text.secondary">

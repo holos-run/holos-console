@@ -4,7 +4,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransportProvider } from '@connectrpc/connect-query'
 import { createConnectTransport } from '@connectrpc/connect-web'
 import { MemoryRouter } from 'react-router-dom'
+import { vi } from 'vitest'
 import App from './App'
+
+// Mock the client module so OrgProvider doesn't make real RPC calls
+vi.mock('./client', () => ({
+  organizationsClient: {
+    listOrganizations: vi.fn().mockResolvedValue({ organizations: [] }),
+  },
+  projectsClient: {
+    listProjects: vi.fn().mockResolvedValue({ projects: [] }),
+  },
+  versionClient: {
+    getVersion: vi.fn().mockResolvedValue({}),
+  },
+  secretsClient: {
+    listSecrets: vi.fn().mockResolvedValue({ secrets: [] }),
+  },
+}))
 
 function renderApp(initialEntry: string) {
   const queryClient = new QueryClient({
