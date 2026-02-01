@@ -4,6 +4,7 @@ import { TransportProvider } from '@connectrpc/connect-query'
 import { createRouterTransport } from '@connectrpc/connect'
 import { create } from '@bufbuild/protobuf'
 import { useListProjects } from './projects'
+import { tokenRef, authInterceptor } from '../client'
 import {
   ListProjectsResponseSchema,
   ProjectSchema,
@@ -30,6 +31,10 @@ function createWrapper(transport: ReturnType<typeof createRouterTransport>) {
 }
 
 describe('useListProjects', () => {
+  afterEach(() => {
+    tokenRef.current = null
+  })
+
   it('returns project data from the RPC', async () => {
     const transport = createRouterTransport(({ service }) => {
       service(ProjectService, {
@@ -58,5 +63,30 @@ describe('useListProjects', () => {
     expect(result.current.data?.projects).toHaveLength(1)
     expect(result.current.data?.projects[0].name).toBe('my-project')
     expect(result.current.data?.projects[0].displayName).toBe('My Project')
+  })
+
+  it('includes Authorization header via auth interceptor', async () => {
+    let capturedAuth: string | null = null
+
+    tokenRef.current = 'test-token-abc'
+
+    const transport = createRouterTransport(({ service }) => {
+      service(ProjectService, {
+        listProjects: (_req, context) => {
+          capturedAuth = context.requestHeader.get('Authorization')
+          return create(ListProjectsResponseSchema, { projects: [] })
+        },
+      })
+    }, { transport: { interceptors: [authInterceptor] } })
+
+    const { result } = renderHook(() => useListProjects(''), {
+      wrapper: createWrapper(transport),
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(capturedAuth).toBe('Bearer test-token-abc')
   })
 })

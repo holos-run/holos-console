@@ -9,6 +9,7 @@ import App from './App'
 
 // Mock the client module so OrgProvider doesn't make real RPC calls
 vi.mock('./client', () => ({
+  tokenRef: { current: null },
   organizationsClient: {
     listOrganizations: vi.fn().mockResolvedValue({ organizations: [] }),
   },
