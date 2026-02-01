@@ -86,7 +86,7 @@ func TestUpdateSecret(t *testing.T) {
 		newData := map[string][]byte{
 			"new-key": []byte("new-value"),
 		}
-		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", newData)
+		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", newData, nil, nil)
 
 		// Then: Returns updated secret with new data
 		if err != nil {
@@ -106,7 +106,7 @@ func TestUpdateSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: UpdateSecret is called
-		_, err := k8sClient.UpdateSecret(context.Background(), "missing", map[string][]byte{"k": []byte("v")})
+		_, err := k8sClient.UpdateSecret(context.Background(), "missing", map[string][]byte{"k": []byte("v")}, nil, nil)
 
 		// Then: Returns NotFound error
 		if err == nil {
@@ -132,7 +132,7 @@ func TestUpdateSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: UpdateSecret is called
-		_, err := k8sClient.UpdateSecret(context.Background(), "unmanaged-secret", map[string][]byte{"k": []byte("v")})
+		_, err := k8sClient.UpdateSecret(context.Background(), "unmanaged-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
 
 		// Then: Returns error about managed-by label
 		if err == nil {
@@ -154,7 +154,7 @@ func TestCreateSecret(t *testing.T) {
 		data := map[string][]byte{"key": []byte("value")}
 		shareUsers := []AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
 		shareGroups := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
-		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, shareUsers, shareGroups)
+		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, shareUsers, shareGroups, "", "")
 
 		// Then: Returns created secret with labels and sharing annotations
 		if err != nil {
@@ -199,7 +199,7 @@ func TestCreateSecret(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, "test-namespace")
 
 		// When: CreateSecret with same name
-		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
+		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil, "", "")
 
 		// Then: Returns AlreadyExists error
 		if err == nil {
@@ -536,6 +536,197 @@ func TestActiveGrantsMap(t *testing.T) {
 		m := ActiveGrantsMap(grants, now)
 		if len(m) != 0 {
 			t.Errorf("expected empty map, got %v", m)
+		}
+	})
+}
+
+func TestGetDescription(t *testing.T) {
+	t.Run("returns description from annotation", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					DescriptionAnnotation: "Database credentials for production",
+				},
+			},
+		}
+		if got := GetDescription(secret); got != "Database credentials for production" {
+			t.Errorf("expected 'Database credentials for production', got %q", got)
+		}
+	})
+
+	t.Run("returns empty string when annotation is missing", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+		}
+		if got := GetDescription(secret); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+
+	t.Run("returns empty string when annotations map is nil", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{},
+		}
+		if got := GetDescription(secret); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+}
+
+func TestGetURL(t *testing.T) {
+	t.Run("returns URL from annotation", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					URLAnnotation: "https://example.com/service",
+				},
+			},
+		}
+		if got := GetURL(secret); got != "https://example.com/service" {
+			t.Errorf("expected 'https://example.com/service', got %q", got)
+		}
+	})
+
+	t.Run("returns empty string when annotation is missing", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+		}
+		if got := GetURL(secret); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+
+	t.Run("returns empty string when annotations map is nil", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{},
+		}
+		if got := GetURL(secret); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+}
+
+func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
+	t.Run("stores description and URL annotations", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		data := map[string][]byte{"key": []byte("value")}
+		result, err := k8sClient.CreateSecret(context.Background(), "my-secret", data, nil, nil, "DB creds", "https://db.example.com")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if GetDescription(result) != "DB creds" {
+			t.Errorf("expected description 'DB creds', got %q", GetDescription(result))
+		}
+		if GetURL(result) != "https://db.example.com" {
+			t.Errorf("expected URL 'https://db.example.com', got %q", GetURL(result))
+		}
+	})
+
+	t.Run("omits annotations when empty", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		data := map[string][]byte{"key": []byte("value")}
+		result, err := k8sClient.CreateSecret(context.Background(), "my-secret", data, nil, nil, "", "")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := result.Annotations[DescriptionAnnotation]; ok {
+			t.Error("expected no description annotation when empty")
+		}
+		if _, ok := result.Annotations[URLAnnotation]; ok {
+			t.Error("expected no URL annotation when empty")
+		}
+	})
+}
+
+func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
+	t.Run("updates description and URL annotations", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		desc := "Updated description"
+		url := "https://updated.example.com"
+		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, &desc, &url)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if GetDescription(result) != "Updated description" {
+			t.Errorf("expected description 'Updated description', got %q", GetDescription(result))
+		}
+		if GetURL(result) != "https://updated.example.com" {
+			t.Errorf("expected URL 'https://updated.example.com', got %q", GetURL(result))
+		}
+	})
+
+	t.Run("preserves existing annotations when nil", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					DescriptionAnnotation: "Original desc",
+					URLAnnotation:         "https://original.example.com",
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, nil, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if GetDescription(result) != "Original desc" {
+			t.Errorf("expected preserved description, got %q", GetDescription(result))
+		}
+		if GetURL(result) != "https://original.example.com" {
+			t.Errorf("expected preserved URL, got %q", GetURL(result))
+		}
+	})
+
+	t.Run("clears annotations when set to empty string", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					DescriptionAnnotation: "Original desc",
+					URLAnnotation:         "https://original.example.com",
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+
+		empty := ""
+		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, &empty, &empty)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := result.Annotations[DescriptionAnnotation]; ok {
+			t.Error("expected description annotation to be removed")
+		}
+		if _, ok := result.Annotations[URLAnnotation]; ok {
+			t.Error("expected URL annotation to be removed")
 		}
 	})
 }

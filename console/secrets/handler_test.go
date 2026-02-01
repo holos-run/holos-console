@@ -2377,3 +2377,196 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		assertResourceType(t, record)
 	})
 }
+
+func TestHandler_DescriptionAndURL(t *testing.T) {
+	t.Run("ListSecrets returns description from annotation", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
+					DescriptionAnnotation: "Database credentials",
+					URLAnnotation:         "https://db.example.com",
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Msg.Secrets) != 1 {
+			t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+		}
+		md := resp.Msg.Secrets[0]
+		if md.Description == nil || *md.Description != "Database credentials" {
+			t.Errorf("expected description 'Database credentials', got %v", md.Description)
+		}
+		if md.Url == nil || *md.Url != "https://db.example.com" {
+			t.Errorf("expected url 'https://db.example.com', got %v", md.Url)
+		}
+	})
+
+	t.Run("ListSecrets omits description and url when not set", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		md := resp.Msg.Secrets[0]
+		if md.Description != nil {
+			t.Errorf("expected nil description, got %v", md.Description)
+		}
+		if md.Url != nil {
+			t.Errorf("expected nil url, got %v", md.Url)
+		}
+	})
+
+	t.Run("CreateSecret stores description and url", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		desc := "API key for staging"
+		url := "https://staging.example.com"
+		req := connect.NewRequest(&consolev1.CreateSecretRequest{
+			Name:       "new-secret",
+			StringData: map[string]string{"key": "value"},
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_OWNER},
+			},
+			Description: &desc,
+			Url:         &url,
+		})
+
+		_, err := handler.CreateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify annotations persisted by reading back via K8s
+		secret, err := k8sClient.GetSecret(context.Background(), "new-secret")
+		if err != nil {
+			t.Fatalf("failed to get created secret: %v", err)
+		}
+		if GetDescription(secret) != "API key for staging" {
+			t.Errorf("expected description 'API key for staging', got %q", GetDescription(secret))
+		}
+		if GetURL(secret) != "https://staging.example.com" {
+			t.Errorf("expected URL 'https://staging.example.com', got %q", GetURL(secret))
+		}
+	})
+
+	t.Run("UpdateSecret updates description and url", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
+					DescriptionAnnotation: "Old description",
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		desc := "New description"
+		url := "https://new.example.com"
+		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
+			Name:        "my-secret",
+			StringData:  map[string]string{"key": "value"},
+			Description: &desc,
+			Url:         &url,
+		})
+
+		_, err := handler.UpdateSecret(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		updated, err := k8sClient.GetSecret(context.Background(), "my-secret")
+		if err != nil {
+			t.Fatalf("failed to get updated secret: %v", err)
+		}
+		if GetDescription(updated) != "New description" {
+			t.Errorf("expected 'New description', got %q", GetDescription(updated))
+		}
+		if GetURL(updated) != "https://new.example.com" {
+			t.Errorf("expected 'https://new.example.com', got %q", GetURL(updated))
+		}
+	})
+
+	t.Run("UpdateSharing returns description and url in metadata", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "test-namespace",
+				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Annotations: map[string]string{
+					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
+					DescriptionAnnotation: "Important secret",
+					URLAnnotation:         "https://important.example.com",
+				},
+			},
+		}
+		fakeClient := fake.NewClientset(secret)
+		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
+
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
+			Name: "my-secret",
+			UserGrants: []*consolev1.ShareGrant{
+				{Principal: "user@example.com", Role: consolev1.Role_ROLE_OWNER},
+			},
+		})
+
+		resp, err := handler.UpdateSharing(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		md := resp.Msg.Metadata
+		if md.Description == nil || *md.Description != "Important secret" {
+			t.Errorf("expected description 'Important secret', got %v", md.Description)
+		}
+		if md.Url == nil || *md.Url != "https://important.example.com" {
+			t.Errorf("expected url 'https://important.example.com', got %v", md.Url)
+		}
+	})
+}
