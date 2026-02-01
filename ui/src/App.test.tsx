@@ -77,7 +77,7 @@ describe('navigation', () => {
   })
 
   it('redirects /organizations/:orgName/projects to /projects', async () => {
-    const { container } = renderApp('/ui/organizations/my-org/projects')
+    renderApp('/ui/organizations/my-org/projects')
     // The org-scoped projects route should redirect to /projects
     await waitFor(() => {
       const projectsLink = screen.getByRole('link', { name: 'Projects' })

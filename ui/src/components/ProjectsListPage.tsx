@@ -79,7 +79,7 @@ export function ProjectsListPage() {
     if (!authLoading && !isAuthenticated) {
       login('/projects')
     }
-  }, [authLoading, isAuthenticated, login, effectiveOrg])
+  }, [authLoading, isAuthenticated, login])
 
   // Fetch projects list when authenticated
   const fetchProjects = async () => {
