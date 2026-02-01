@@ -166,6 +166,19 @@ func TestCreateOrganization_CreatesNamespaceWithPrefixAndLabels(t *testing.T) {
 	}
 }
 
+func TestCreateOrganization_SetsOrganizationLabel(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Labels[resolver.OrganizationLabel] != "acme" {
+		t.Errorf("expected organization label 'acme', got %q", result.Labels[resolver.OrganizationLabel])
+	}
+}
+
 func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 	existing := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
