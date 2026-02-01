@@ -22,12 +22,16 @@ const auditResourceType = "organization"
 // Handler implements the OrganizationService.
 type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
-	k8s *K8sClient
+	k8s            *K8sClient
+	creatorUsers   []string
+	creatorGroups  []string
 }
 
 // NewHandler creates a new OrganizationService handler.
-func NewHandler(k8s *K8sClient) *Handler {
-	return &Handler{k8s: k8s}
+// creatorUsers and creatorGroups are the email addresses and OIDC group names
+// allowed to create organizations (configured via CLI flags).
+func NewHandler(k8s *K8sClient, creatorUsers, creatorGroups []string) *Handler {
+	return &Handler{k8s: k8s, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
 }
 
 // ListOrganizations returns all organizations the user has access to.
@@ -139,12 +143,8 @@ func (h *Handler) CreateOrganization(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Check create access: user must be owner on at least one existing organization
-	allOrgs, err := h.k8s.ListOrganizations(ctx)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-	if err := CheckOrgCreateAccess(claims.Email, claims.Groups, allOrgs); err != nil {
+	// Check create access: caller must be in --org-creator-users or --org-creator-groups
+	if !h.isOrgCreator(claims.Email, claims.Groups) {
 		slog.WarnContext(ctx, "organization create denied",
 			slog.String("action", "organization_create_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -152,7 +152,7 @@ func (h *Handler) CreateOrganization(
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
-		return nil, err
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to create organizations"))
 	}
 
 	shareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
@@ -161,8 +161,7 @@ func (h *Handler) CreateOrganization(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, shareUsers, shareGroups)
-	if err != nil {
+	if _, err := h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, shareUsers, shareGroups); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -342,6 +341,26 @@ func (h *Handler) UpdateOrganizationSharing(
 	return connect.NewResponse(&consolev1.UpdateOrganizationSharingResponse{
 		Organization: buildOrganization(h.k8s, updated, updatedUsers, updatedGroups, userRole),
 	}), nil
+}
+
+// isOrgCreator checks whether the caller is authorized to create organizations
+// based on the CLI-configured creator lists.
+func (h *Handler) isOrgCreator(email string, groups []string) bool {
+	emailLower := strings.ToLower(email)
+	for _, u := range h.creatorUsers {
+		if strings.ToLower(u) == emailLower {
+			return true
+		}
+	}
+	for _, g := range groups {
+		gLower := strings.ToLower(g)
+		for _, cg := range h.creatorGroups {
+			if strings.ToLower(cg) == gLower {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // buildOrganization creates an Organization proto message from a namespace.

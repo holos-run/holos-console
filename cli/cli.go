@@ -25,9 +25,11 @@ var (
 	clientID        string
 	idTokenTTL      string
 	refreshTokenTTL string
-	orgPrefix       string
-	projectPrefix   string
-	logLevel        string
+	orgPrefix        string
+	projectPrefix    string
+	orgCreatorUsers  string
+	orgCreatorGroups string
+	logLevel         string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -82,6 +84,10 @@ func Command() *cobra.Command {
 	// Namespace prefix flags
 	cmd.Flags().StringVar(&orgPrefix, "org-prefix", "holos-org-", "Prefix prepended to organization names to form Kubernetes namespace names")
 	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "holos-prj-", "Prefix prepended to project names to form Kubernetes namespace names")
+
+	// Organization creation permission flags
+	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
+	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "", "Comma-separated OIDC group names allowed to create organizations")
 
 	// Logging flags
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -166,6 +172,23 @@ func parseLogLevel(level string) (slog.Level, error) {
 	}
 }
 
+// splitCSV splits a comma-separated string into a slice, trimming whitespace
+// and omitting empty entries.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // Run serves as the Cobra run function for the root command.
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
@@ -188,18 +211,20 @@ func Run(cmd *cobra.Command, args []string) error {
 	derivedIssuer := deriveIssuer(listenAddr, issuer, plainHTTP)
 
 	cfg := console.Config{
-		ListenAddr:      listenAddr,
-		CertFile:        certFile,
-		KeyFile:         keyFile,
-		CACertFile:      caCertFile,
-		PlainHTTP:       plainHTTP,
-		Origin:          derivedOrigin,
-		Issuer:          derivedIssuer,
-		ClientID:        clientID,
-		IDTokenTTL:      idTTL,
-		RefreshTokenTTL: refreshTTL,
-		OrgPrefix:       orgPrefix,
-		ProjectPrefix:   projectPrefix,
+		ListenAddr:       listenAddr,
+		CertFile:         certFile,
+		KeyFile:          keyFile,
+		CACertFile:       caCertFile,
+		PlainHTTP:        plainHTTP,
+		Origin:           derivedOrigin,
+		Issuer:           derivedIssuer,
+		ClientID:         clientID,
+		IDTokenTTL:       idTTL,
+		RefreshTokenTTL:  refreshTTL,
+		OrgPrefix:        orgPrefix,
+		ProjectPrefix:    projectPrefix,
+		OrgCreatorUsers:  splitCSV(orgCreatorUsers),
+		OrgCreatorGroups: splitCSV(orgCreatorGroups),
 	}
 
 	server := console.New(cfg)

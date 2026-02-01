@@ -48,14 +48,23 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 }
 
+type testHandlerOpts struct {
+	creatorUsers  []string
+	creatorGroups []string
+}
+
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
+	return newTestHandlerWithOpts(testHandlerOpts{}, namespaces...)
+}
+
+func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespace) *Handler {
 	objs := make([]runtime.Object, len(namespaces))
 	for i, ns := range namespaces {
 		objs[i] = ns
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s)
+	handler := NewHandler(k8s, opts.creatorUsers, opts.creatorGroups)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
 }
@@ -147,9 +156,10 @@ func TestGetOrganization_InvalidArgument(t *testing.T) {
 
 // ---- CreateOrganization tests ----
 
-func TestCreateOrganization_Authorized(t *testing.T) {
-	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	handler := newTestHandler(existing)
+func TestCreateOrganization_AuthorizedByCreatorUsers(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		creatorUsers: []string{"alice@example.com"},
+	})
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
@@ -164,9 +174,50 @@ func TestCreateOrganization_Authorized(t *testing.T) {
 	}
 }
 
-func TestCreateOrganization_Denied(t *testing.T) {
-	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(existing)
+func TestCreateOrganization_AuthorizedByCreatorGroups(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		creatorGroups: []string{"platform-admins"},
+	})
+	ctx := contextWithClaims("bob@example.com", "platform-admins")
+
+	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-org" {
+		t.Errorf("expected name 'new-org', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		creatorUsers:  []string{"admin@example.com"},
+		creatorGroups: []string{"platform-admins"},
+	})
+	ctx := contextWithClaims("alice@example.com", "developers")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestCreateOrganization_DeniedEmptyCreatorLists(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{})
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
+	// Being owner on an existing org should NOT grant create permission
+	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandlerWithOpts(testHandlerOpts{}, existing)
 	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
@@ -176,12 +227,9 @@ func TestCreateOrganization_Denied(t *testing.T) {
 }
 
 func TestCreateOrganization_AutoOwner(t *testing.T) {
-	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-
-	objs := []runtime.Object{existing}
-	fakeClient := fake.NewClientset(objs...)
+	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s)
+	handler := NewHandler(k8s, []string{"alice@example.com"}, nil)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{

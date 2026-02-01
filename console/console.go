@@ -91,6 +91,12 @@ type Config struct {
 	// ProjectPrefix is prepended to project names to form Kubernetes namespace names.
 	// Default: "holos-prj-"
 	ProjectPrefix string
+
+	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
+	OrgCreatorUsers []string
+
+	// OrgCreatorGroups is a list of OIDC group names allowed to create organizations.
+	OrgCreatorGroups []string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -207,7 +213,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Organization service
 		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
-		orgsHandler := organizations.NewHandler(orgsK8s)
+		orgsHandler := organizations.NewHandler(orgsK8s, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 
