@@ -10,7 +10,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/holos-run/holos-console/console/resolver"
 )
+
+func testResolver() *resolver.Resolver {
+	return &resolver.Resolver{OrgPrefix: "holos-org-", ProjectPrefix: "holos-prj-"}
+}
 
 func TestGetSecret(t *testing.T) {
 	t.Run("returns secret by name from current namespace", func(t *testing.T) {
@@ -18,7 +24,7 @@ func TestGetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 			},
 			Data: map[string][]byte{
 				"username": []byte("admin"),
@@ -26,7 +32,7 @@ func TestGetSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: GetSecret("my-secret") is called
 		result, err := k8sClient.GetSecret(context.Background(), "test-namespace", "my-secret")
@@ -49,7 +55,7 @@ func TestGetSecret(t *testing.T) {
 	t.Run("returns NotFound error for non-existent secret", func(t *testing.T) {
 		// Given: Secret "missing" does not exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: GetSecret("missing") is called
 		_, err := k8sClient.GetSecret(context.Background(), "test-namespace", "missing")
@@ -70,7 +76,7 @@ func TestUpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -80,7 +86,7 @@ func TestUpdateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called with new data
 		newData := map[string][]byte{
@@ -103,7 +109,7 @@ func TestUpdateSecret(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: No secrets exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called
 		_, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "missing", map[string][]byte{"k": []byte("v")}, nil, nil)
@@ -122,14 +128,14 @@ func TestUpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 			},
 			Data: map[string][]byte{
 				"key": []byte("value"),
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called
 		_, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "unmanaged-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
@@ -148,7 +154,7 @@ func TestCreateSecret(t *testing.T) {
 	t.Run("creates secret with correct labels and sharing annotations", func(t *testing.T) {
 		// Given: No secrets exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: CreateSecret is called with sharing grants
 		data := map[string][]byte{"key": []byte("value")}
@@ -192,11 +198,11 @@ func TestCreateSecret(t *testing.T) {
 		existing := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "existing-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(existing)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: CreateSecret with same name
 		_, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil, "", "")
@@ -217,14 +223,14 @@ func TestDeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: DeleteSecret is called
 		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "my-secret")
@@ -243,7 +249,7 @@ func TestDeleteSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "missing")
 
@@ -259,11 +265,11 @@ func TestDeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "unmanaged-secret")
 
@@ -613,7 +619,7 @@ func TestGetURL(t *testing.T) {
 func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 	t.Run("stores description and URL annotations", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		data := map[string][]byte{"key": []byte("value")}
 		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "my-secret", data, nil, nil, "DB creds", "https://db.example.com")
@@ -630,7 +636,7 @@ func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 
 	t.Run("omits annotations when empty", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		data := map[string][]byte{"key": []byte("value")}
 		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "my-secret", data, nil, nil, "", "")
@@ -651,13 +657,13 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		desc := "Updated description"
 		url := "https://updated.example.com"
@@ -677,7 +683,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
@@ -687,7 +693,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, nil, nil)
 		if err != nil {
@@ -705,7 +711,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "test-namespace",
+				Namespace: "holos-prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
@@ -715,7 +721,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		empty := ""
 		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, &empty, &empty)
