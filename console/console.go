@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/oidc"
+	"github.com/holos-run/holos-console/console/organizations"
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -198,31 +199,35 @@ func (s *Server) Serve(ctx context.Context) error {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	var secretsK8s *secrets.K8sClient
-	if k8sClientset != nil {
-		secretsResolver := &resolver.Resolver{OrgPrefix: s.cfg.OrgPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
-		secretsK8s = secrets.NewK8sClient(k8sClientset, secretsResolver)
-		slog.Info("kubernetes client initialized")
-	} else {
-		slog.Info("no kubernetes config available, using dummy-secret only")
-	}
-
-	// Register ProjectService and SecretsService (protected - requires auth)
+	// Register services (protected - requires auth)
 	if k8sClientset != nil {
 		nsResolver := &resolver.Resolver{OrgPrefix: s.cfg.OrgPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		slog.Info("kubernetes client initialized")
+
+		// Organization service
+		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
+		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
+		orgsHandler := organizations.NewHandler(orgsK8s)
+		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
+		mux.Handle(orgsPath, orgsHTTPHandler)
+
+		// Project service with org grant fallback
 		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
-		projectsHandler := projects.NewHandler(projectsK8s, nil)
+		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
-		// Create project-scoped secrets handler with project grant resolver
+		// Secrets service with project and org grant fallback
+		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, nil)
+		orgResolverForSecrets := projects.NewOrgGrantResolverForProject(projectsK8s, orgGrantResolver)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, orgResolverForSecrets)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
-		// Fallback: secrets handler without K8s (no project resolver)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, nil, nil)
+		slog.Info("no kubernetes config available, using dummy-secret only")
+		// Fallback: secrets handler without K8s (no resolvers)
+		secretsHandler := secrets.NewProjectScopedHandler(nil, nil, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
@@ -232,6 +237,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.VersionServiceName,
 		consolev1connect.SecretsServiceName,
 		consolev1connect.ProjectServiceName,
+		consolev1connect.OrganizationServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
