@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Box, Button, IconButton, TextField, Stack, Tooltip, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Button, Checkbox, FormControlLabel, IconButton, TextField, Stack, Tooltip, useMediaQuery, useTheme } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
@@ -20,12 +20,16 @@ function genId(): string {
   return `entry-${++nextId}`
 }
 
-function entriesToData(entries: Entry[]): Record<string, Uint8Array> {
+function entriesToData(entries: Entry[], trailingNewline: boolean): Record<string, Uint8Array> {
   const encoder = new TextEncoder()
   const data: Record<string, Uint8Array> = {}
   for (const entry of entries) {
     if (entry.filename !== '') {
-      data[entry.filename] = encoder.encode(entry.content)
+      let value = entry.content
+      if (trailingNewline && value.length > 0 && !value.endsWith('\n')) {
+        value += '\n'
+      }
+      data[entry.filename] = encoder.encode(value)
     }
   }
   return data
@@ -44,14 +48,20 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [entries, setEntries] = useState<Entry[]>(() => dataToEntries(initialData))
+  const [trailingNewline, setTrailingNewline] = useState(true)
 
   const update = useCallback(
-    (newEntries: Entry[]) => {
+    (newEntries: Entry[], newTrailingNewline?: boolean) => {
       setEntries(newEntries)
-      onChange(entriesToData(newEntries))
+      onChange(entriesToData(newEntries, newTrailingNewline ?? trailingNewline))
     },
-    [onChange],
+    [onChange, trailingNewline],
   )
+
+  const handleTrailingNewlineChange = (checked: boolean) => {
+    setTrailingNewline(checked)
+    onChange(entriesToData(entries, checked))
+  }
 
   const handleAdd = () => {
     update([...entries, { id: genId(), filename: '', content: '' }])
@@ -124,6 +134,16 @@ export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProp
           <InfoOutlinedIcon fontSize="small" color="action" />
         </Tooltip>
       </Stack>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={trailingNewline}
+            onChange={(e) => handleTrailingNewlineChange(e.target.checked)}
+            size="small"
+          />
+        }
+        label="Ensure trailing newline"
+      />
     </Box>
   )
 }

@@ -91,7 +91,7 @@ describe('SecretDataEditor', () => {
     expect(onChange).toHaveBeenCalled()
   })
 
-  it('fires onChange with updated key on key change', () => {
+  it('fires onChange with updated key on key change (trailing newline added by default)', () => {
     const onChange = vi.fn()
     render(
       <SecretDataEditor
@@ -107,10 +107,10 @@ describe('SecretDataEditor', () => {
     expect(onChange).toHaveBeenCalled()
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
     expect(lastCall).toHaveProperty('renamed.env')
-    expect(new TextDecoder().decode(lastCall['renamed.env'])).toBe('KEY=val')
+    expect(new TextDecoder().decode(lastCall['renamed.env'])).toBe('KEY=val\n')
   })
 
-  it('fires onChange with new UTF-8 encoded bytes on content change', () => {
+  it('fires onChange with new UTF-8 encoded bytes on content change (trailing newline added by default)', () => {
     const onChange = vi.fn()
     render(
       <SecretDataEditor
@@ -125,7 +125,42 @@ describe('SecretDataEditor', () => {
 
     expect(onChange).toHaveBeenCalled()
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
-    expect(new TextDecoder().decode(lastCall['.env'])).toBe('NEW=content')
+    expect(new TextDecoder().decode(lastCall['.env'])).toBe('NEW=content\n')
+  })
+
+  it('does not add trailing newline to empty values', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataEditor
+        initialData={{ '.env': encode('KEY=val') }}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('value'), {
+      target: { value: '' },
+    })
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['.env'])).toBe('')
+  })
+
+  it('does not add trailing newline when checkbox is unchecked', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataEditor
+        initialData={{ '.env': encode('KEY=val') }}
+        onChange={onChange}
+      />,
+    )
+
+    // Uncheck the trailing newline checkbox
+    fireEvent.click(screen.getByRole('checkbox', { name: /ensure trailing newline/i }))
+
+    // The onChange should have been called with the updated data (no trailing newline)
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['.env'])).toBe('KEY=val')
   })
 
   it('shows error helper text for duplicate keys', () => {
