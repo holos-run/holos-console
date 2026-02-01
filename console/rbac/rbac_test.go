@@ -261,6 +261,261 @@ func TestCascadeNonChildPermission(t *testing.T) {
 	}
 }
 
+// --- Option B: Role-per-scope cascade table tests ---
+
+func TestProjectCascadeSecretPerms(t *testing.T) {
+	t.Run("project viewer can list secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleViewer, PermissionSecretsList, ProjectCascadeSecretPerms) {
+			t.Error("project viewer should have secrets:list via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot read secret data", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionSecretsRead, ProjectCascadeSecretPerms) {
+			t.Error("project viewer should not have secrets:read via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot write secrets", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionSecretsWrite, ProjectCascadeSecretPerms) {
+			t.Error("project viewer should not have secrets:write via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot delete secrets", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionSecretsDelete, ProjectCascadeSecretPerms) {
+			t.Error("project viewer should not have secrets:delete via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot admin secrets", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionSecretsAdmin, ProjectCascadeSecretPerms) {
+			t.Error("project viewer should not have secrets:admin via cascade")
+		}
+	})
+
+	t.Run("project editor can list secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleEditor, PermissionSecretsList, ProjectCascadeSecretPerms) {
+			t.Error("project editor should have secrets:list via cascade")
+		}
+	})
+
+	t.Run("project editor can write secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleEditor, PermissionSecretsWrite, ProjectCascadeSecretPerms) {
+			t.Error("project editor should have secrets:write via cascade")
+		}
+	})
+
+	t.Run("project editor cannot read secret data", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionSecretsRead, ProjectCascadeSecretPerms) {
+			t.Error("project editor should not have secrets:read via cascade")
+		}
+	})
+
+	t.Run("project editor cannot delete secrets", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionSecretsDelete, ProjectCascadeSecretPerms) {
+			t.Error("project editor should not have secrets:delete via cascade")
+		}
+	})
+
+	t.Run("project editor cannot admin secrets", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionSecretsAdmin, ProjectCascadeSecretPerms) {
+			t.Error("project editor should not have secrets:admin via cascade")
+		}
+	})
+
+	t.Run("project owner can list secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionSecretsList, ProjectCascadeSecretPerms) {
+			t.Error("project owner should have secrets:list via cascade")
+		}
+	})
+
+	t.Run("project owner can write secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionSecretsWrite, ProjectCascadeSecretPerms) {
+			t.Error("project owner should have secrets:write via cascade")
+		}
+	})
+
+	t.Run("project owner can delete secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionSecretsDelete, ProjectCascadeSecretPerms) {
+			t.Error("project owner should have secrets:delete via cascade")
+		}
+	})
+
+	t.Run("project owner can admin secrets", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionSecretsAdmin, ProjectCascadeSecretPerms) {
+			t.Error("project owner should have secrets:admin via cascade")
+		}
+	})
+
+	t.Run("project owner cannot read secret data via cascade", func(t *testing.T) {
+		if HasCascadePermission(RoleOwner, PermissionSecretsRead, ProjectCascadeSecretPerms) {
+			t.Error("project owner should not have secrets:read via cascade")
+		}
+	})
+
+	t.Run("unspecified role has no cascade permissions", func(t *testing.T) {
+		if HasCascadePermission(RoleUnspecified, PermissionSecretsList, ProjectCascadeSecretPerms) {
+			t.Error("unspecified role should not have any cascade permissions")
+		}
+	})
+}
+
+func TestOrgCascadeSecretPerms(t *testing.T) {
+	roles := []Role{RoleViewer, RoleEditor, RoleOwner}
+	perms := []Permission{
+		PermissionSecretsList,
+		PermissionSecretsRead,
+		PermissionSecretsWrite,
+		PermissionSecretsDelete,
+		PermissionSecretsAdmin,
+	}
+	for _, role := range roles {
+		for _, perm := range perms {
+			t.Run(role.String()+"_"+perm.String(), func(t *testing.T) {
+				if HasCascadePermission(role, perm, OrgCascadeSecretPerms) {
+					t.Errorf("org %v should not have %v via cascade to secrets", role, perm)
+				}
+			})
+		}
+	}
+}
+
+func TestOrgCascadeProjectPerms(t *testing.T) {
+	roles := []Role{RoleViewer, RoleEditor, RoleOwner}
+	perms := []Permission{
+		PermissionProjectsList,
+		PermissionProjectsRead,
+		PermissionProjectsWrite,
+		PermissionProjectsDelete,
+		PermissionProjectsAdmin,
+		PermissionProjectsCreate,
+	}
+	for _, role := range roles {
+		for _, perm := range perms {
+			t.Run(role.String()+"_"+perm.String(), func(t *testing.T) {
+				if HasCascadePermission(role, perm, OrgCascadeProjectPerms) {
+					t.Errorf("org %v should not have %v via cascade to projects", role, perm)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckCascadeAccess(t *testing.T) {
+	t.Run("project viewer can list secrets via cascade", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"alice@example.com",
+			nil,
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			PermissionSecretsList,
+			ProjectCascadeSecretPerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("project viewer cannot read secret data via cascade", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"alice@example.com",
+			nil,
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			PermissionSecretsRead,
+			ProjectCascadeSecretPerms,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+
+	t.Run("project editor can write secrets via cascade", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"bob@example.com",
+			nil,
+			map[string]string{"bob@example.com": "editor"},
+			nil,
+			PermissionSecretsWrite,
+			ProjectCascadeSecretPerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("project owner can delete secrets via cascade", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"carol@example.com",
+			nil,
+			map[string]string{"carol@example.com": "owner"},
+			nil,
+			PermissionSecretsDelete,
+			ProjectCascadeSecretPerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("group grant works with cascade", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"dave@example.com",
+			[]string{"engineering"},
+			nil,
+			map[string]string{"engineering": "editor"},
+			PermissionSecretsWrite,
+			ProjectCascadeSecretPerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via group cascade, got: %v", err)
+		}
+	})
+
+	t.Run("no grants denies cascade access", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"nobody@example.com",
+			nil,
+			nil,
+			nil,
+			PermissionSecretsList,
+			ProjectCascadeSecretPerms,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+
+	t.Run("org grants never cascade to secrets", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"alice@example.com",
+			nil,
+			map[string]string{"alice@example.com": "owner"},
+			nil,
+			PermissionSecretsList,
+			OrgCascadeSecretPerms,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied for org cascade to secrets, got nil")
+		}
+	})
+
+	t.Run("org grants never cascade to projects", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"alice@example.com",
+			nil,
+			map[string]string{"alice@example.com": "owner"},
+			nil,
+			PermissionProjectsRead,
+			OrgCascadeProjectPerms,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied for org cascade to projects, got nil")
+		}
+	})
+}
+
 func TestCheckAccessGrants(t *testing.T) {
 	t.Run("user grant allows access", func(t *testing.T) {
 		err := CheckAccessGrants(

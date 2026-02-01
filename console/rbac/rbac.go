@@ -251,6 +251,49 @@ func CascadeProjectToOrg(_ Permission) Permission {
 	return PermissionUnspecified
 }
 
+// CascadeTable defines which child-resource permissions each role grants when
+// applied as a parent-resource grant. This is the Option B approach from #77:
+// role-per-scope permission tables that make cascade policy explicit and
+// readable at a glance.
+type CascadeTable map[Role]map[Permission]bool
+
+// ProjectCascadeSecretPerms defines what secret permissions each project role
+// grants via cascade. Reading secret data (SecretsRead) is never cascaded —
+// it always requires a direct per-secret grant.
+var ProjectCascadeSecretPerms CascadeTable
+
+// OrgCascadeSecretPerms defines what secret permissions each org role grants
+// via cascade. Organization grants never cascade to secrets.
+var OrgCascadeSecretPerms CascadeTable
+
+// OrgCascadeProjectPerms defines what project permissions each org role grants
+// via cascade. Organization grants never cascade to projects.
+var OrgCascadeProjectPerms CascadeTable
+
+// HasCascadePermission returns true if the given role has the specified
+// permission in the provided cascade table.
+func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {
+	return false
+}
+
+// CheckCascadeAccess verifies access using cascade permission tables. It
+// resolves the best role from grants, then checks if that role has the
+// requested permission in the cascade table.
+// Returns nil if access is granted, or a PermissionDenied error.
+func CheckCascadeAccess(
+	userEmail string,
+	userGroups []string,
+	shareUsers map[string]string,
+	shareGroups map[string]string,
+	permission Permission,
+	table CascadeTable,
+) error {
+	return connect.NewError(
+		connect.CodePermissionDenied,
+		fmt.Errorf("RBAC: authorization denied"),
+	)
+}
+
 // roleLevel defines the hierarchy level of each role for comparison.
 var roleLevel = map[Role]int{
 	RoleUnspecified: 0,
