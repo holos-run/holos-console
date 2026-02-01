@@ -67,12 +67,11 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-default-org-" + name,
+			Name: "holos-p-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      name,
-				resolver.OrganizationLabel: "default-org",
 			},
 			Annotations: annotations,
 		},
@@ -281,10 +280,9 @@ func TestCreateProject_CreatesForAuthorizedUser(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		DisplayName:  "New Project",
-		Description:  "A new project",
-		Organization: "default-org",
+		Name:        "new-project",
+		DisplayName: "New Project",
+		Description: "A new project",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -304,8 +302,7 @@ func TestCreateProject_DeniesUserWithoutCreatePermission(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		Organization: "default-org",
+		Name: "new-project",
 	}))
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -329,15 +326,14 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 
 	// Create without explicit grants
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		Organization: "default-org",
+		Name: "new-project",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
 	// Verify the created namespace has alice as owner
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-default-org-new-project", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-p-new-project", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}

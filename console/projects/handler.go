@@ -152,10 +152,6 @@ func (h *Handler) CreateProject(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if req.Msg.Organization == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("organization is required"))
-	}
-
 	// Check create access: user must be owner on at least one existing project
 	// or have owner grant on the organization
 	allProjects, err := h.k8s.ListProjects(ctx, "")
