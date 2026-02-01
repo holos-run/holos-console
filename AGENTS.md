@@ -96,7 +96,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `oidc/` - Embedded Dex OIDC provider
   - `organizations/` - OrganizationService with K8s Namespace backend and annotation-based grants
   - `projects/` - ProjectService with K8s Namespace backend and annotation-based grants
-  - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names
+  - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (single `--namespace-prefix` flag)
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `ui/` - Embedded static files served at `/ui/` (build output, not source)
 - `proto/` - Protobuf source files
@@ -135,14 +135,16 @@ Backend auth: `LazyAuthInterceptor` in `console/rpc/auth.go` verifies JWTs and s
 Three-tier access control model evaluated in order (highest role wins):
 
 1. **Organization-level**: Per-org grants stored as JSON annotations on K8s Namespace objects (prefix `holos-org-`)
-2. **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (prefix `holos-prj-`)
+2. **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (prefix `{namespace-prefix}{org}-`)
 3. **Secret-level**: Per-secret grants stored as JSON annotations on K8s Secret objects
 
 Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-groups`
 
-Namespace prefix scheme (configurable via `--org-prefix` and `--project-prefix` CLI flags):
-- Organizations: `holos-org-{name}` (resource-type label: `organization`)
-- Projects: `holos-prj-{name}` (resource-type label: `project`, organization label links to parent org)
+Namespace prefix scheme (configurable via `--namespace-prefix` CLI flag, default `holos-`):
+- Organizations: `{prefix}org-{name}` (resource-type label: `organization`)
+- Projects: `{prefix}{org}-{project}` (resource-type label: `project`, organization label links to parent org, project label stores project name)
+
+Organization creation is controlled by `--org-creator-users` and `--org-creator-groups` CLI flags.
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 

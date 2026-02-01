@@ -4,26 +4,40 @@ holos-console uses a three-tier access control model combining **organization-le
 
 ## Organizations
 
-An **organization** is a Kubernetes Namespace with the prefix `holos-org-` and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
+An **organization** is a Kubernetes Namespace with the prefix `{namespace-prefix}org-` and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
 
 Organization grants cascade to all projects within the organization. Users see only organizations where they have at least viewer-level access.
 
+### Creating Organizations
+
+Organization creation is controlled by CLI flags rather than grant-based authorization:
+
+- `--org-creator-users`: Comma-separated email addresses allowed to create organizations
+- `--org-creator-groups`: Comma-separated OIDC group names allowed to create organizations
+
+The creator is automatically added as owner on the new organization.
+
 ## Projects
 
-A **project** is a Kubernetes Namespace with the prefix `holos-prj-` and the label `console.holos.run/resource-type=project`. Each project belongs to an organization, identified by the `console.holos.run/organization` label. Permission grants are stored as annotations on the Namespace resource.
+A **project** is a Kubernetes Namespace with the label `console.holos.run/resource-type=project`. Each project belongs to an organization, identified by the `console.holos.run/organization` label. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
 
 Project grants cascade to all secrets within the project. Users see only projects where they have at least viewer-level access (directly or via the parent organization).
 
 ## Namespace Prefix Scheme
 
-User-facing names are translated to Kubernetes namespace names using configurable prefixes:
+User-facing names are translated to Kubernetes namespace names using a configurable prefix (default: `holos-`):
 
-| Resource | Default Prefix | CLI Flag | Example |
+| Resource | Pattern | CLI Flag | Example |
 |---|---|---|---|
-| Organization | `holos-org-` | `--org-prefix` | `my-org` → `holos-org-my-org` |
-| Project | `holos-prj-` | `--project-prefix` | `my-project` → `holos-prj-my-project` |
+| Organization | `{prefix}org-{name}` | `--namespace-prefix` | `my-org` → `holos-org-my-org` |
+| Project | `{prefix}{org}-{project}` | `--namespace-prefix` | org=`acme`, project=`web` → `holos-acme-web` |
 
-Namespaces are distinguished by the `console.holos.run/resource-type` label (`organization` or `project`).
+Namespaces are distinguished by labels:
+- `console.holos.run/resource-type`: `organization` or `project`
+- `console.holos.run/organization`: the organization name (on project namespaces)
+- `console.holos.run/project`: the project name (on project namespaces)
+
+Project namespaces are looked up by label rather than by name derivation.
 
 ## Access Evaluation
 
@@ -66,11 +80,11 @@ When `nbf` or `exp` is omitted, the grant has no time restriction for that bound
 |---|---|---|---|
 | Viewer | List, Read | List, Read | List, Read |
 | Editor | List, Read, Write | List, Read, Write | List, Read, Write |
-| Owner | List, Read, Write, Delete, Admin | List, Read, Write, Delete, Admin, Create | List, Read, Write, Delete, Admin, Create |
+| Owner | List, Read, Write, Delete, Admin | List, Read, Write, Delete, Admin, Create | List, Read, Write, Delete, Admin |
 
-`PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** (not on the project being created).
+`PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization.
 
-`PERMISSION_ORGANIZATIONS_CREATE` requires owner on **at least one existing organization**.
+Organization creation is controlled by CLI flags (`--org-creator-users`, `--org-creator-groups`), not by grant-based authorization.
 
 ## Example: Organization with Project and Secrets
 
@@ -92,11 +106,12 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: holos-prj-my-project
+  name: holos-my-org-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
     console.holos.run/resource-type: project
     console.holos.run/organization: my-org
+    console.holos.run/project: my-project
   annotations:
     console.holos.run/display-name: "My Project"
     console.holos.run/description: "Production secrets"
@@ -107,7 +122,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: my-app-credentials
-  namespace: holos-prj-my-project
+  namespace: holos-my-org-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
@@ -119,24 +134,6 @@ In this example:
 - Members of `dev-team` have **editor** access to all projects and secrets via the organization group grant
 - Bob has **viewer** access to `my-project` and its secrets via the project grant (expires at the given timestamp)
 - Carol has **viewer** access to `my-app-credentials` only, via the per-secret grant
-
-## Bootstrap
-
-The first organization must be created via `kubectl` since no user has `PERMISSION_ORGANIZATIONS_CREATE` until they are an owner on at least one organization:
-
-```bash
-# Create the organization namespace with required labels
-kubectl create namespace holos-org-my-org
-kubectl label namespace holos-org-my-org \
-  app.kubernetes.io/managed-by=console.holos.run \
-  console.holos.run/resource-type=organization
-
-# Grant the bootstrap user owner access
-kubectl annotate namespace holos-org-my-org \
-  'console.holos.run/share-users=[{"principal":"admin@example.com","role":"owner"}]'
-```
-
-After bootstrap, the owner can create additional organizations and projects and manage sharing through the UI.
 
 ## Permission Matrix
 
@@ -160,7 +157,7 @@ After bootstrap, the owner can create additional organizations and projects and 
 | Update project metadata | - | Yes | Yes |
 | Delete project | - | - | Yes |
 | Update project sharing | - | - | Yes |
-| Create new projects | - | - | Yes (on any project) |
+| Create new projects | - | - | Yes (on any project or org) |
 
 ### Organization Permissions
 
@@ -171,4 +168,4 @@ After bootstrap, the owner can create additional organizations and projects and 
 | Update organization metadata | - | Yes | Yes |
 | Delete organization | - | - | Yes |
 | Update organization sharing | - | - | Yes |
-| Create new organizations | - | - | Yes (on any org) |
+| Create new organizations | - | - | Via CLI flags only |
