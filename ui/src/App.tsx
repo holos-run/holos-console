@@ -75,7 +75,7 @@ function OrgPicker() {
             navigate('/organizations')
           } else {
             setSelectedOrg(value)
-            navigate(`/organizations/${value}/projects`)
+            navigate('/projects')
           }
         }}
         displayEmpty
@@ -94,15 +94,12 @@ function OrgPicker() {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
-  const { selectedOrg } = useOrg()
   const isOrganizationsPage = location.pathname.startsWith('/organizations')
   const isProjectsPage = location.pathname.startsWith('/projects') || location.pathname.includes('/projects')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isVersionPage = location.pathname.startsWith('/version')
 
-  const projectsLink = selectedOrg
-    ? `/organizations/${selectedOrg}/projects`
-    : '/projects'
+  const projectsLink = '/projects'
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -224,7 +221,7 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/organizations" replace />} />
             <Route path="/organizations" element={<OrganizationsListPage />} />
             <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
-            <Route path="/organizations/:organizationName/projects" element={<ProjectsListPage />} />
+            <Route path="/organizations/:organizationName/projects" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:projectName" element={<ProjectPage />} />
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />

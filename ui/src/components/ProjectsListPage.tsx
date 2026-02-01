@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -47,9 +47,8 @@ function roleName(role: Role): string {
 }
 
 export function ProjectsListPage() {
-  const { organizationName } = useParams<{ organizationName?: string }>()
   const { selectedOrg } = useOrg()
-  const effectiveOrg = organizationName || selectedOrg || ''
+  const effectiveOrg = selectedOrg || ''
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
@@ -78,7 +77,7 @@ export function ProjectsListPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login(effectiveOrg ? `/organizations/${effectiveOrg}/projects` : '/projects')
+      login('/projects')
     }
   }, [authLoading, isAuthenticated, login, effectiveOrg])
 

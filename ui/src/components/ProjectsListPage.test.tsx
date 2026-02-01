@@ -94,6 +94,44 @@ describe('ProjectsListPage', () => {
     vi.clearAllMocks()
   })
 
+  describe('URL independence', () => {
+    it('uses selectedOrg from OrgProvider, not organizationName from URL params', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListProjects.mockResolvedValue({
+        projects: [],
+      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+
+      const orgValue: OrgContextValue = {
+        ...defaultOrgValue,
+        selectedOrg: 'from-provider',
+      }
+
+      render(
+        <MemoryRouter initialEntries={['/projects']}>
+          <AuthContext.Provider value={authValue}>
+            <OrgContext.Provider value={orgValue}>
+              <Routes>
+                <Route path="/projects" element={<ProjectsListPage />} />
+              </Routes>
+            </OrgContext.Provider>
+          </AuthContext.Provider>
+        </MemoryRouter>,
+      )
+
+      await waitFor(() => {
+        expect(mockListProjects).toHaveBeenCalledWith(
+          expect.objectContaining({ organization: 'from-provider' }),
+          expect.any(Object),
+        )
+      })
+    })
+  })
+
   describe('project list', () => {
     it('renders project list from listProjects RPC', async () => {
       const mockUser = createMockUser({})
