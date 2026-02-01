@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -363,6 +364,65 @@ func (h *Handler) UpdateProjectSharing(
 
 	return connect.NewResponse(&consolev1.UpdateProjectSharingResponse{
 		Project: h.buildProject(updated, updatedUsers, updatedGroups, userRole),
+	}), nil
+}
+
+// GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+func (h *Handler) GetProjectRaw(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetProjectRawRequest],
+) (*connect.Response[consolev1.GetProjectRawResponse], error) {
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	ns, err := h.k8s.GetProject(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareGroups, _ := GetShareGroups(ns)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+
+	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsRead); err != nil {
+		slog.WarnContext(ctx, "project raw access denied",
+			slog.String("action", "project_raw_denied"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("project", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "project raw accessed",
+		slog.String("action", "project_raw"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	// Set apiVersion and kind (not populated by client-go on fetched objects)
+	ns.APIVersion = "v1"
+	ns.Kind = "Namespace"
+
+	raw, err := json.Marshal(ns)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("marshaling namespace to JSON: %w", err))
+	}
+
+	return connect.NewResponse(&consolev1.GetProjectRawResponse{
+		Raw: string(raw),
 	}), nil
 }
 

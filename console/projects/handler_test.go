@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -533,6 +534,51 @@ func assertPermissionDenied(t *testing.T, err error) {
 	if connectErr.Code() != connect.CodePermissionDenied {
 		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
 	}
+}
+
+// ---- GetProjectRaw tests ----
+
+func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
+	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"viewer"}]`)
+	ns.Annotations[DisplayNameAnnotation] = "My Project"
+	handler, _ := newHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.GetProjectRaw(ctx, connect.NewRequest(&consolev1.GetProjectRawRequest{Name: "my-project"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(resp.Msg.Raw), &parsed); err != nil {
+		t.Fatalf("expected valid JSON, got parse error: %v", err)
+	}
+	if parsed["apiVersion"] != "v1" {
+		t.Errorf("expected apiVersion 'v1', got %v", parsed["apiVersion"])
+	}
+	if parsed["kind"] != "Namespace" {
+		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
+	}
+	metadata := parsed["metadata"].(map[string]interface{})
+	if metadata["name"] != "holos-p-my-project" {
+		t.Errorf("expected metadata.name 'holos-p-my-project', got %v", metadata["name"])
+	}
+	labels := metadata["labels"].(map[string]interface{})
+	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
+		t.Errorf("expected managed-by label, got %v", labels[secrets.ManagedByLabel])
+	}
+	if labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeProject {
+		t.Errorf("expected resource-type label, got %v", labels[resolver.ResourceTypeLabel])
+	}
+}
+
+func TestGetProjectRaw_DeniesUnauthorized(t *testing.T) {
+	ns := managedNS("my-project", `[{"principal":"bob@example.com","role":"owner"}]`)
+	handler, _ := newHandler(ns)
+	ctx := contextWithClaims("nobody@example.com")
+
+	_, err := handler.GetProjectRaw(ctx, connect.NewRequest(&consolev1.GetProjectRawRequest{Name: "my-project"}))
+	assertPermissionDenied(t, err)
 }
 
 // ---- Cascade permission tests (org grant fallback) ----
