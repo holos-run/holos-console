@@ -2622,3 +2622,219 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 	})
 }
+
+// ---- Cascade permission tests (project/org grant fallback) ----
+
+// mockProjectResolver implements ProjectResolver for testing.
+type mockProjectResolver struct {
+	users  map[string]string
+	groups map[string]string
+}
+
+func (m *mockProjectResolver) GetProjectGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return m.users, m.groups, nil
+}
+
+// mockOrgResolver implements OrgResolver for testing.
+type mockOrgResolver struct {
+	users  map[string]string
+	groups map[string]string
+}
+
+func (m *mockOrgResolver) GetOrgGrantsForProject(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return m.users, m.groups, nil
+}
+
+func TestGetSecret_ProjectViewerCannotReadData(t *testing.T) {
+	// Project viewer has no per-secret grant — should be denied GetSecret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "holos-p-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+		Data: map[string][]byte{"key": []byte("value")},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "viewer"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.GetSecret(ctx, connect.NewRequest(&consolev1.GetSecretRequest{
+		Name:    "my-secret",
+		Project: "test-namespace",
+	}))
+	if err == nil {
+		t.Fatal("expected PermissionDenied, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodePermissionDenied {
+		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+	}
+}
+
+func TestGetSecret_ProjectEditorCannotReadData(t *testing.T) {
+	// Project editor has no per-secret grant — should be denied GetSecret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "holos-p-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+		Data: map[string][]byte{"key": []byte("value")},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "editor"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.GetSecret(ctx, connect.NewRequest(&consolev1.GetSecretRequest{
+		Name:    "my-secret",
+		Project: "test-namespace",
+	}))
+	if err == nil {
+		t.Fatal("expected PermissionDenied, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodePermissionDenied {
+		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+	}
+}
+
+func TestListSecrets_ProjectViewerCanListMetadata(t *testing.T) {
+	// Project viewer can list secrets (metadata only)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "holos-p-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+		Data: map[string][]byte{"key": []byte("value")},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "viewer"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{
+		Project: "test-namespace",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Secrets) != 1 {
+		t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+	}
+	if !resp.Msg.Secrets[0].Accessible {
+		t.Error("expected secret to be accessible for project viewer listing")
+	}
+}
+
+func TestCreateSecret_ProjectEditorCanCreate(t *testing.T) {
+	// Project editor can create secrets via cascade
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "editor"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.CreateSecret(ctx, connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		StringData: map[string]string{"key": "value"},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestDeleteSecret_ProjectOwnerCanDelete(t *testing.T) {
+	// Project owner can delete secrets via cascade
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "holos-p-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.DeleteSecret(ctx, connect.NewRequest(&consolev1.DeleteSecretRequest{
+		Name:    "my-secret",
+		Project: "test-namespace",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
+	// Project owner can update secret sharing via cascade
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "holos-p-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+			UID:       types.UID("test-uid"),
+		},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	projResolver := &mockProjectResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.UpdateSharing(ctx, connect.NewRequest(&consolev1.UpdateSharingRequest{
+		Name:    "my-secret",
+		Project: "test-namespace",
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}

@@ -639,6 +639,8 @@ func (h *Handler) resolveProjectGrants(ctx context.Context, project string) (map
 }
 
 // checkAccess verifies access using per-secret grants, then project grants, then org grants.
+// Parent grants use scope-aware permission mapping: project/org grants only authorize
+// operations appropriate for that parent-child relationship.
 func (h *Handler) checkAccess(
 	email string,
 	groups []string,
@@ -647,22 +649,26 @@ func (h *Handler) checkAccess(
 	orgUsers, orgGroups map[string]string,
 	permission rbac.Permission,
 ) error {
-	// 1. Check per-secret grants
+	// 1. Check per-secret grants (full permission)
 	if err := rbac.CheckAccessGrants(email, groups, secretUsers, secretGroups, permission); err == nil {
 		return nil
 	}
 
-	// 2. Check project grants
+	// 2. Check project grants (scope-aware cascade)
 	if projUsers != nil || projGroups != nil {
-		if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, permission); err == nil {
-			return nil
+		if cascaded := rbac.CascadeSecretToProject(permission); cascaded != rbac.PermissionUnspecified {
+			if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, cascaded); err == nil {
+				return nil
+			}
 		}
 	}
 
-	// 3. Check organization grants
+	// 3. Check organization grants (scope-aware cascade)
 	if orgUsers != nil || orgGroups != nil {
-		if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, permission); err == nil {
-			return nil
+		if cascaded := rbac.CascadeSecretToOrg(permission); cascaded != rbac.PermissionUnspecified {
+			if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, cascaded); err == nil {
+				return nil
+			}
 		}
 	}
 
