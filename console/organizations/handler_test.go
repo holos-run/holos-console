@@ -38,7 +38,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-org-" + name,
+			Name: "holos-o-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -239,7 +239,7 @@ func TestCreateOrganization_AutoOwner(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-new-org", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-o-new-org", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
