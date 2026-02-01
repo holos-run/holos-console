@@ -218,6 +218,39 @@ func RoleLevel(role Role) int {
 	return roleLevel[role]
 }
 
+// CascadeSecretToProject maps a secret-level permission to the project-level
+// permission required when evaluating project grants as a fallback for secret
+// access. Returns PermissionUnspecified if project grants should never authorize
+// the given secret operation (e.g., reading secret data requires a direct grant).
+func CascadeSecretToProject(p Permission) Permission {
+	switch p {
+	case PermissionSecretsList:
+		return PermissionProjectsRead
+	case PermissionSecretsWrite:
+		return PermissionProjectsWrite
+	case PermissionSecretsDelete:
+		return PermissionProjectsAdmin
+	case PermissionSecretsAdmin:
+		return PermissionProjectsAdmin
+	default:
+		return PermissionUnspecified
+	}
+}
+
+// CascadeSecretToOrg maps a secret-level permission to the org-level permission
+// required when evaluating org grants as a fallback for secret access.
+// Org grants never cascade to secrets, so this always returns PermissionUnspecified.
+func CascadeSecretToOrg(_ Permission) Permission {
+	return PermissionUnspecified
+}
+
+// CascadeProjectToOrg maps a project-level permission to the org-level permission
+// required when evaluating org grants as a fallback for project access.
+// Org grants never cascade to projects, so this always returns PermissionUnspecified.
+func CascadeProjectToOrg(_ Permission) Permission {
+	return PermissionUnspecified
+}
+
 // roleLevel defines the hierarchy level of each role for comparison.
 var roleLevel = map[Role]int{
 	RoleUnspecified: 0,
