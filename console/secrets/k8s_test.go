@@ -15,23 +15,39 @@ import (
 )
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{OrgPrefix: "holos-org-", ProjectPrefix: "holos-prj-"}
+	return &resolver.Resolver{Prefix: "holos-"}
+}
+
+// projectNS creates a project namespace fixture for use with label-based lookup.
+func projectNS(org, project string) *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-" + org + "-" + project,
+			Labels: map[string]string{
+				ManagedByLabel:             ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      project,
+				resolver.OrganizationLabel: org,
+			},
+		},
+	}
 }
 
 func TestGetSecret(t *testing.T) {
 	t.Run("returns secret by name from current namespace", func(t *testing.T) {
 		// Given: Secret "my-secret" exists in namespace
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 			Data: map[string][]byte{
 				"username": []byte("admin"),
 				"password": []byte("secret123"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: GetSecret("my-secret") is called
@@ -54,7 +70,8 @@ func TestGetSecret(t *testing.T) {
 
 	t.Run("returns NotFound error for non-existent secret", func(t *testing.T) {
 		// Given: Secret "missing" does not exist
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: GetSecret("missing") is called
@@ -68,15 +85,26 @@ func TestGetSecret(t *testing.T) {
 			t.Errorf("expected NotFound error, got %v", err)
 		}
 	})
+
+	t.Run("returns error for non-existent project", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8sClient := NewK8sClient(fakeClient, testResolver())
+
+		_, err := k8sClient.GetSecret(context.Background(), "no-such-project", "my-secret")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
 }
 
 func TestUpdateSecret(t *testing.T) {
 	t.Run("replaces secret data", func(t *testing.T) {
 		// Given: Managed secret with original data
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -85,7 +113,7 @@ func TestUpdateSecret(t *testing.T) {
 				"old-key": []byte("old-value"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called with new data
@@ -108,7 +136,8 @@ func TestUpdateSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: No secrets exist
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called
@@ -125,16 +154,17 @@ func TestUpdateSecret(t *testing.T) {
 
 	t.Run("returns error for secret without managed-by label", func(t *testing.T) {
 		// Given: Secret without managed-by label
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 			Data: map[string][]byte{
 				"key": []byte("value"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: UpdateSecret is called
@@ -153,7 +183,8 @@ func TestUpdateSecret(t *testing.T) {
 func TestCreateSecret(t *testing.T) {
 	t.Run("creates secret with correct labels and sharing annotations", func(t *testing.T) {
 		// Given: No secrets exist
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: CreateSecret is called with sharing grants
@@ -195,13 +226,14 @@ func TestCreateSecret(t *testing.T) {
 
 	t.Run("returns AlreadyExists for duplicate name", func(t *testing.T) {
 		// Given: Secret already exists
+		ns := projectNS("testorg", "test-namespace")
 		existing := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "existing-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 		}
-		fakeClient := fake.NewClientset(existing)
+		fakeClient := fake.NewClientset(ns, existing)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: CreateSecret with same name
@@ -220,16 +252,17 @@ func TestCreateSecret(t *testing.T) {
 func TestDeleteSecret(t *testing.T) {
 	t.Run("deletes managed secret", func(t *testing.T) {
 		// Given: Managed secret exists
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		// When: DeleteSecret is called
@@ -248,7 +281,8 @@ func TestDeleteSecret(t *testing.T) {
 	})
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "missing")
@@ -262,13 +296,14 @@ func TestDeleteSecret(t *testing.T) {
 	})
 
 	t.Run("returns error for secret without managed-by label", func(t *testing.T) {
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "unmanaged-secret")
@@ -618,7 +653,8 @@ func TestGetURL(t *testing.T) {
 
 func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 	t.Run("stores description and URL annotations", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		data := map[string][]byte{"key": []byte("value")}
@@ -635,7 +671,8 @@ func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 	})
 
 	t.Run("omits annotations when empty", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		ns := projectNS("testorg", "test-namespace")
+		fakeClient := fake.NewClientset(ns)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		data := map[string][]byte{"key": []byte("value")}
@@ -654,15 +691,16 @@ func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 
 func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 	t.Run("updates description and URL annotations", func(t *testing.T) {
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		desc := "Updated description"
@@ -680,10 +718,11 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 	})
 
 	t.Run("preserves existing annotations when nil", func(t *testing.T) {
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
@@ -692,7 +731,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, nil, nil)
@@ -708,10 +747,11 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 	})
 
 	t.Run("clears annotations when set to empty string", func(t *testing.T) {
+		ns := projectNS("testorg", "test-namespace")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
@@ -720,7 +760,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(ns, secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 
 		empty := ""

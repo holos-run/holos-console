@@ -25,8 +25,7 @@ var (
 	clientID        string
 	idTokenTTL      string
 	refreshTokenTTL string
-	orgPrefix        string
-	projectPrefix    string
+	namespacePrefix  string
 	orgCreatorUsers  string
 	orgCreatorGroups string
 	logLevel         string
@@ -81,9 +80,8 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
 	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
 
-	// Namespace prefix flags
-	cmd.Flags().StringVar(&orgPrefix, "org-prefix", "holos-org-", "Prefix prepended to organization names to form Kubernetes namespace names")
-	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "holos-prj-", "Prefix prepended to project names to form Kubernetes namespace names")
+	// Namespace prefix flag
+	cmd.Flags().StringVar(&namespacePrefix, "namespace-prefix", "holos-", "Prefix for all console-managed Kubernetes namespaces")
 
 	// Organization creation permission flags
 	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
@@ -221,8 +219,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		ClientID:         clientID,
 		IDTokenTTL:       idTTL,
 		RefreshTokenTTL:  refreshTTL,
-		OrgPrefix:        orgPrefix,
-		ProjectPrefix:    projectPrefix,
+		NamespacePrefix:  namespacePrefix,
 		OrgCreatorUsers:  splitCSV(orgCreatorUsers),
 		OrgCreatorGroups: splitCSV(orgCreatorGroups),
 	}

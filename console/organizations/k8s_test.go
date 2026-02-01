@@ -14,7 +14,7 @@ import (
 )
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{OrgPrefix: "holos-org-", ProjectPrefix: "holos-prj-"}
+	return &resolver.Resolver{Prefix: "holos-"}
 }
 
 func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
@@ -29,10 +29,12 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	}
 	projectNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-foo",
+			Name: "holos-acme-foo",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "foo",
+				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}

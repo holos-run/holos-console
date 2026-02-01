@@ -373,7 +373,6 @@ func (h *Handler) UpdateProjectSharing(
 // buildProject creates a Project proto message from a namespace.
 func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, shareGroups []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
 	p := &consolev1.Project{
-		Name:        h.k8s.Resolver.ProjectFromNamespace(ns.GetName()),
 		UserGrants:  annotationGrantsToProto(shareUsers),
 		GroupGrants: annotationGrantsToProto(shareGroups),
 		UserRole:    consolev1.Role(userRole),
@@ -397,7 +396,12 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 		labels := l.GetLabels()
 		if labels != nil {
 			p.Organization = labels[resolver.OrganizationLabel]
+			p.Name = labels[resolver.ProjectLabel]
 		}
+	}
+	// Fallback: derive project name from namespace if label is missing
+	if p.Name == "" {
+		p.Name = h.k8s.Resolver.ProjectFromNamespace(ns.GetName(), p.Organization)
 	}
 
 	return p
