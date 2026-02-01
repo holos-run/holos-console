@@ -56,10 +56,10 @@ function createAuthContext(overrides: Partial<AuthContextValue> = {}): AuthConte
 
 function renderSecretsListPage(authValue: AuthContextValue) {
   return render(
-    <MemoryRouter initialEntries={['/secrets']}>
+    <MemoryRouter initialEntries={['/projects/test-project/secrets']}>
       <AuthContext.Provider value={authValue}>
         <Routes>
-          <Route path="/secrets" element={<SecretsListPage />} />
+          <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
         </Routes>
       </AuthContext.Provider>
     </MemoryRouter>,
@@ -171,7 +171,7 @@ describe('SecretsListPage', () => {
 
       await waitFor(() => {
         expect(mockCreateSecret).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'new-secret' }),
+          expect.objectContaining({ name: 'new-secret', project: 'test-project' }),
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer test-token',
@@ -323,7 +323,7 @@ describe('SecretsListPage', () => {
 
       await waitFor(() => {
         expect(mockDeleteSecret).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({ name: 'my-secret', project: 'test-project' }),
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer test-token',
@@ -365,6 +365,7 @@ describe('SecretsListPage', () => {
         expect(mockCreateSecret).toHaveBeenCalledWith(
           expect.objectContaining({
             name: 'new-secret',
+            project: 'test-project',
             userGrants: expect.arrayContaining([
               expect.objectContaining({ principal: 'alice@example.com', role: 3 }),
             ]),

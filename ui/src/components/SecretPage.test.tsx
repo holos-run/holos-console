@@ -64,10 +64,11 @@ function createAuthContext(overrides: Partial<AuthContextValue> = {}): AuthConte
 
 function renderSecretPage(authValue: AuthContextValue, secretName: string = 'test-secret') {
   return render(
-    <MemoryRouter initialEntries={[`/secrets/${secretName}`]}>
+    <MemoryRouter initialEntries={[`/projects/test-project/secrets/${secretName}`]}>
       <AuthContext.Provider value={authValue}>
         <Routes>
-          <Route path="/secrets/:name" element={<SecretPage />} />
+          <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
+          <Route path="/projects/:projectName/secrets" element={<div>Secrets List</div>} />
         </Routes>
       </AuthContext.Provider>
     </MemoryRouter>,
@@ -232,7 +233,7 @@ describe('SecretPage', () => {
 
       // Then: login is called with return path
       await waitFor(() => {
-        expect(loginMock).toHaveBeenCalledWith('/secrets/dummy-secret')
+        expect(loginMock).toHaveBeenCalledWith('/projects/test-project/secrets/dummy-secret')
       })
     })
 
@@ -343,7 +344,7 @@ describe('SecretPage', () => {
 
       await waitFor(() => {
         expect(mockUpdateSecret).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({ name: 'my-secret', project: 'test-project' }),
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer test-token',
@@ -481,7 +482,7 @@ describe('SecretPage', () => {
 
       await waitFor(() => {
         expect(mockDeleteSecret).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({ name: 'my-secret', project: 'test-project' }),
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer test-token',
@@ -540,7 +541,7 @@ describe('SecretPage', () => {
       // Then: API is called with correct secret name
       await waitFor(() => {
         expect(mockGetSecret).toHaveBeenCalledWith(
-          { name: 'specific-secret-name' },
+          { name: 'specific-secret-name', project: 'test-project' },
           expect.objectContaining({
             headers: expect.any(Object),
           }),
@@ -684,7 +685,7 @@ describe('SecretPage', () => {
 
       await waitFor(() => {
         expect(mockUpdateSharing).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'my-secret' }),
+          expect.objectContaining({ name: 'my-secret', project: 'test-project' }),
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: 'Bearer test-token',
@@ -867,6 +868,7 @@ describe('SecretPage', () => {
         expect(mockUpdateSecret).toHaveBeenCalledWith(
           expect.objectContaining({
             name: 'my-secret',
+            project: 'test-project',
             description: 'New desc',
             url: '',
           }),

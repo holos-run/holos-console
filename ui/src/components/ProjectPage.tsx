@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -30,7 +30,7 @@ import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { Project } from '../gen/holos/console/v1/projects_pb'
 
 export function ProjectPage() {
-  const { name } = useParams<{ name: string }>()
+  const { projectName: name } = useParams<{ projectName: string }>()
   const navigate = useNavigate()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
@@ -364,8 +364,15 @@ export function ProjectPage() {
         </Stack>
 
         {/* Actions */}
-        {isOwner && (
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to={`/projects/${name}/secrets`}
+          >
+            Secrets
+          </Button>
+          {isOwner && (
             <Button
               variant="outlined"
               color="error"
@@ -373,8 +380,8 @@ export function ProjectPage() {
             >
               Delete
             </Button>
-          </Stack>
-        )}
+          )}
+        </Stack>
 
         {/* Sharing */}
         <SharingPanel
