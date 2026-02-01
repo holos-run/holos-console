@@ -9,7 +9,9 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -50,27 +52,31 @@ func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Nam
 	return result, nil
 }
 
-// GetProject retrieves a managed project namespace by name.
+// GetProject retrieves a managed project namespace by name using label-based lookup.
 // The name is the user-facing project name (not the Kubernetes namespace).
 func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namespace, error) {
-	nsName := c.Resolver.ProjectNamespace(name)
+	labelSelector := secrets.ManagedByLabel + "=" + secrets.ManagedByValue + "," +
+		resolver.ResourceTypeLabel + "=" + resolver.ResourceTypeProject + "," +
+		resolver.ProjectLabel + "=" + name
 	slog.DebugContext(ctx, "getting project from kubernetes",
 		slog.String("name", name),
-		slog.String("namespace", nsName),
+		slog.String("labelSelector", labelSelector),
 	)
-	ns, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if ns.Labels == nil || ns.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
-		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, secrets.ManagedByValue)
+	if len(list.Items) == 0 {
+		return nil, errors.NewNotFound(schema.GroupResource{Resource: "namespaces"}, name)
 	}
-	return ns, nil
+	return &list.Items[0], nil
 }
 
 // CreateProject creates a new namespace with managed-by and resource-type labels.
 func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareGroups []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-	nsName := c.Resolver.ProjectNamespace(name)
+	nsName := c.Resolver.ProjectNamespace(org, name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
 		slog.String("namespace", nsName),
@@ -96,6 +102,7 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	labels := map[string]string{
 		secrets.ManagedByLabel:     secrets.ManagedByValue,
 		resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+		resolver.ProjectLabel:      name,
 	}
 	if org != "" {
 		labels[resolver.OrganizationLabel] = org

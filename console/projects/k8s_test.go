@@ -2,7 +2,6 @@ package projects
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/holos-run/holos-console/console/resolver"
@@ -16,19 +15,23 @@ import (
 func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 	managed1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-project-a",
+			Name: "holos-acme-project-a",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "project-a",
+				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
 	managed2 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-project-b",
+			Name: "holos-acme-project-b",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "project-b",
+				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
@@ -82,30 +85,33 @@ func TestListProjects_ReturnsEmptyListWhenNoManagedNamespaces(t *testing.T) {
 func TestListProjects_FilterByOrg(t *testing.T) {
 	prj1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-foo",
+			Name: "holos-acme-foo",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "foo",
 				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
 	prj2 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-bar",
+			Name: "holos-acme-bar",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "bar",
 				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
 	prj3 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-baz",
+			Name: "holos-beta-baz",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "baz",
 				resolver.OrganizationLabel: "beta",
 			},
 		},
@@ -122,13 +128,15 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 	}
 }
 
-func TestGetProject_UsesPrefix(t *testing.T) {
+func TestGetProject_UsesLabelLookup(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-my-project",
+			Name: "holos-acme-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
 				DisplayNameAnnotation:        "My Project",
@@ -143,8 +151,8 @@ func TestGetProject_UsesPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "holos-prj-my-project" {
-		t.Errorf("expected namespace 'holos-prj-my-project', got %q", result.Name)
+	if result.Name != "holos-acme-my-project" {
+		t.Errorf("expected namespace 'holos-acme-my-project', got %q", result.Name)
 	}
 	if result.Annotations[DisplayNameAnnotation] != "My Project" {
 		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[DisplayNameAnnotation])
@@ -154,10 +162,11 @@ func TestGetProject_UsesPrefix(t *testing.T) {
 func TestGetProject_ReturnsOrganization(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-my-project",
+			Name: "holos-acme-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
 				resolver.OrganizationLabel: "acme",
 			},
 		},
@@ -188,9 +197,10 @@ func TestGetProject_ReturnsNotFoundForMissingNamespace(t *testing.T) {
 }
 
 func TestGetProject_ReturnsNotFoundForUnmanagedNamespace(t *testing.T) {
+	// Namespace exists but without managed-by label, so label lookup won't find it
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-kube-system",
+			Name: "holos-acme-kube-system",
 		},
 	}
 	fakeClient := fake.NewClientset(ns)
@@ -200,12 +210,12 @@ func TestGetProject_ReturnsNotFoundForUnmanagedNamespace(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "not managed by") {
-		t.Errorf("expected 'not managed by' error, got %v", err)
+	if !errors.IsNotFound(err) {
+		t.Errorf("expected NotFound error, got %v", err)
 	}
 }
 
-func TestCreateProject_UsesPrefix(t *testing.T) {
+func TestCreateProject_UsesOrgProjectNamespace(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -216,14 +226,17 @@ func TestCreateProject_UsesPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "holos-prj-new-project" {
-		t.Errorf("expected namespace 'holos-prj-new-project', got %q", result.Name)
+	if result.Name != "holos-acme-new-project" {
+		t.Errorf("expected namespace 'holos-acme-new-project', got %q", result.Name)
 	}
 	if result.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
 		t.Errorf("expected managed-by label, got %v", result.Labels)
 	}
 	if result.Labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeProject {
 		t.Error("expected resource-type=project label")
+	}
+	if result.Labels[resolver.ProjectLabel] != "new-project" {
+		t.Errorf("expected project label 'new-project', got %q", result.Labels[resolver.ProjectLabel])
 	}
 	if result.Annotations[DisplayNameAnnotation] != "New Project" {
 		t.Errorf("expected display-name 'New Project', got %q", result.Annotations[DisplayNameAnnotation])
@@ -246,17 +259,19 @@ func TestCreateProject_SetsOrgLabel(t *testing.T) {
 func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 	existing := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-existing",
+			Name: "holos-acme-existing",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "existing",
+				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", nil, nil)
+	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "acme", nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -268,10 +283,12 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-my-project",
+			Name: "holos-acme-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
 				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
@@ -296,12 +313,8 @@ func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 }
 
 func TestUpdateProject_RejectsUnmanagedNamespace(t *testing.T) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-kube-system",
-		},
-	}
-	fakeClient := fake.NewClientset(ns)
+	// Without labels, label-based lookup won't find it
+	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	desc := "test"
@@ -309,18 +322,20 @@ func TestUpdateProject_RejectsUnmanagedNamespace(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "not managed by") {
-		t.Errorf("expected 'not managed by' error, got %v", err)
+	if !errors.IsNotFound(err) {
+		t.Errorf("expected NotFound error, got %v", err)
 	}
 }
 
 func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-my-project",
+			Name: "holos-acme-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+				resolver.OrganizationLabel: "acme",
 			},
 		},
 	}
@@ -332,19 +347,15 @@ func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-my-project", metav1.GetOptions{})
+	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-acme-my-project", metav1.GetOptions{})
 	if !errors.IsNotFound(err) {
 		t.Errorf("expected NotFound after delete, got %v", err)
 	}
 }
 
 func TestDeleteProject_RejectsUnmanagedNamespace(t *testing.T) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-kube-system",
-		},
-	}
-	fakeClient := fake.NewClientset(ns)
+	// Without labels, label-based lookup won't find it
+	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	err := k8s.DeleteProject(context.Background(), "kube-system")
@@ -356,10 +367,12 @@ func TestDeleteProject_RejectsUnmanagedNamespace(t *testing.T) {
 func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-my-project",
+			Name: "holos-acme-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
 				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,

@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -77,13 +78,28 @@ func assertResourceType(t *testing.T, r *slog.Record) {
 	}
 }
 
+// testProjectNS returns a project namespace fixture for the default test project.
+func testProjectNS() *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-testorg-test-namespace",
+			Labels: map[string]string{
+				ManagedByLabel:             ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "test-namespace",
+				resolver.OrganizationLabel: "testorg",
+			},
+		},
+	}
+}
+
 func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns secret data for authorized user", func(t *testing.T) {
 		// Given: Authenticated user in share-users, secret exists
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
@@ -93,7 +109,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				"password": []byte("secret123"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -133,10 +149,10 @@ func TestHandler_GetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -168,7 +184,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
@@ -177,7 +193,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				"username": []byte("admin"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -212,7 +228,7 @@ func TestHandler_GetSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: Authenticated user, secret does not exist
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -246,7 +262,7 @@ func TestHandler_GetSecret(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty secret name", func(t *testing.T) {
 		// Given: Request with empty secret name
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -285,7 +301,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
@@ -294,7 +310,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				"key": []byte("value"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -361,7 +377,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
@@ -370,7 +386,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				"key": []byte("value"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -438,7 +454,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -447,7 +463,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -468,7 +484,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	})
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -494,7 +510,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -503,7 +519,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -534,7 +550,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -543,7 +559,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -571,7 +587,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	})
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -599,7 +615,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	})
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -632,7 +648,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -641,7 +657,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -678,7 +694,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -687,7 +703,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -724,7 +740,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns success with created secret name for authorized editor", func(t *testing.T) {
 		// Given: No secrets exist, user is editor
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -757,7 +773,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	})
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -786,7 +802,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	})
 
 	t.Run("returns PermissionDenied for viewer", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -822,7 +838,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	})
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -858,7 +874,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 	t.Run("returns PermissionDenied for empty grants", func(t *testing.T) {
 		// No per-secret grants and user has no matching sharing grants
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -891,7 +907,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 	t.Run("returns success for editor with explicit grants on new secret", func(t *testing.T) {
 		// Given: User provides editor grants for the new secret
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -927,10 +943,10 @@ func TestHandler_CreateSecret(t *testing.T) {
 		existing := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "existing-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 		}
-		fakeClient := fake.NewClientset(existing)
+		fakeClient := fake.NewClientset(testProjectNS(), existing)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -967,7 +983,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 	t.Run("logs secret_create on success", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1008,7 +1024,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 	})
 
 	t.Run("logs secret_create_denied on RBAC failure", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1056,7 +1072,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1068,7 +1084,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 				"old-key": []byte("old-value"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1098,7 +1114,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		// Given: Request without claims
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1130,7 +1146,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1140,7 +1156,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 			},
 			Data: map[string][]byte{"k": []byte("v")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1175,7 +1191,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: Secret does not exist
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1210,7 +1226,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		// Given: Request with empty name
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1245,7 +1261,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty data", func(t *testing.T) {
 		// Given: Request with empty data
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1285,7 +1301,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1295,7 +1311,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 			},
 			Data: map[string][]byte{"k": []byte("v")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1339,7 +1355,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1349,7 +1365,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 			},
 			Data: map[string][]byte{"k": []byte("v")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1395,7 +1411,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "multi-key-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
@@ -1406,7 +1422,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				"api-key":  []byte("test-api-key-12345"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1450,7 +1466,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "labeled-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1462,13 +1478,13 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithoutLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unlabeled-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secretWithLabel, secretWithoutLabel)
+		fakeClient := fake.NewClientset(testProjectNS(), secretWithLabel, secretWithoutLabel)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1507,7 +1523,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		accessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "accessible-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1519,7 +1535,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		inaccessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "inaccessible-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1528,7 +1544,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(accessibleSecret, inaccessibleSecret)
+		fakeClient := fake.NewClientset(testProjectNS(), accessibleSecret, inaccessibleSecret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1580,7 +1596,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		// Given: Request without claims in context
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1608,10 +1624,10 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithoutLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unlabeled-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 			},
 		}
-		fakeClient := fake.NewClientset(secretWithoutLabel)
+		fakeClient := fake.NewClientset(testProjectNS(), secretWithoutLabel)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1643,7 +1659,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1653,7 +1669,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1727,7 +1743,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1737,7 +1753,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1773,7 +1789,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	})
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1798,7 +1814,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	})
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1829,7 +1845,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	})
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1865,7 +1881,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
@@ -1874,7 +1890,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 				"username": []byte("admin"),
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1915,7 +1931,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:              "my-secret",
-				Namespace:         "holos-prj-test-namespace",
+				Namespace:         "holos-testorg-test-namespace",
 				UID:               types.UID(uid),
 				ResourceVersion:   rv,
 				CreationTimestamp: metav1.Now(),
@@ -1925,7 +1941,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -1966,14 +1982,14 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2001,7 +2017,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	})
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2023,7 +2039,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	})
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2051,7 +2067,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	})
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2081,7 +2097,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 
 func TestHandler_CreateSecret_StringData(t *testing.T) {
 	t.Run("string_data values are base64-encoded into data", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2123,7 +2139,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 	})
 
 	t.Run("string_data takes precedence over data for same key", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2164,7 +2180,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2174,7 +2190,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			},
 			Data: map[string][]byte{"old-key": []byte("old-value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2213,7 +2229,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2223,7 +2239,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			},
 			Data: map[string][]byte{"k": []byte("v")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2261,7 +2277,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2271,7 +2287,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2314,7 +2330,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2324,7 +2340,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2369,7 +2385,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2378,7 +2394,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2417,7 +2433,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2426,7 +2442,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2453,14 +2469,14 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2481,7 +2497,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 	})
 
 	t.Run("CreateSecret stores description and url", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
+		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2523,7 +2539,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2532,7 +2548,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
@@ -2570,7 +2586,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-prj-test-namespace",
+				Namespace: "holos-testorg-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2579,7 +2595,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 				},
 			},
 		}
-		fakeClient := fake.NewClientset(secret)
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 

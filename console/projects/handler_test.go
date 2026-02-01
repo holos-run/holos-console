@@ -67,10 +67,11 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-prj-" + name,
+			Name: "holos-default-org-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      name,
 				resolver.OrganizationLabel: "default-org",
 			},
 			Annotations: annotations,
@@ -79,7 +80,7 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 }
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{OrgPrefix: "holos-org-", ProjectPrefix: "holos-prj-"}
+	return &resolver.Resolver{Prefix: "holos-"}
 }
 
 func newHandler(namespaces ...*corev1.Namespace) (*Handler, *testLogHandler) {
@@ -336,7 +337,7 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 	}
 
 	// Verify the created namespace has alice as owner
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-default-org-new-project", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
