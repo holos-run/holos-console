@@ -219,14 +219,12 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/organizations" element={<OrganizationsListPage />} />
             <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
-            <Route path="/organizations/:organizationName/projects" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:projectName" element={<ProjectPage />} />
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
             <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
             <Route path="/home" element={<VersionCard />} />
-            <Route path="/version" element={<Navigate to="/home" replace />} />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Stack>

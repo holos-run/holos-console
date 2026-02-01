@@ -76,15 +76,6 @@ describe('navigation', () => {
     })
   })
 
-  it('redirects /organizations/:orgName/projects to /projects', async () => {
-    renderApp('/ui/organizations/my-org/projects')
-    // The org-scoped projects route should redirect to /projects
-    await waitFor(() => {
-      const projectsLink = screen.getByRole('link', { name: 'Projects' })
-      expect(projectsLink).toHaveAttribute('href', '/ui/projects')
-    })
-  })
-
   it('links the projects page from sidebar', async () => {
     renderApp('/ui/home')
     await waitFor(() => {
