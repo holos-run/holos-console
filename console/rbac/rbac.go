@@ -112,8 +112,8 @@ func RoleFromString(s string) Role {
 	}
 }
 
-// CheckAccessGrants verifies access using only per-user and per-group sharing grants
-// (no platform role fallback). Returns nil if access is granted, or a PermissionDenied error.
+// CheckAccessGrants verifies access using per-user and per-group sharing grants.
+// Returns nil if access is granted, or a PermissionDenied error.
 func CheckAccessGrants(
 	userEmail string,
 	userGroups []string,
