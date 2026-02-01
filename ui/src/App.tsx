@@ -28,6 +28,8 @@ import { VersionCard } from './components/VersionCard'
 import { AuthDebugPage } from './components/AuthDebugPage'
 import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
+import { ProjectsListPage } from './components/ProjectsListPage'
+import { ProjectPage } from './components/ProjectPage'
 import { AuthProvider } from './auth'
 
 const theme = createTheme({
@@ -40,6 +42,7 @@ const DRAWER_WIDTH = 240
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
+  const isProjectsPage = location.pathname.startsWith('/projects')
   const isSecretsPage = location.pathname.startsWith('/secrets')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isVersionPage = location.pathname.startsWith('/version')
@@ -53,6 +56,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </Box>
       <Divider />
       <List sx={{ px: 1 }}>
+        <ListItemButton
+          component={Link}
+          to="/projects"
+          selected={isProjectsPage}
+          onClick={onNavigate}
+        >
+          <ListItemText primary="Projects" />
+        </ListItemButton>
         <ListItemButton
           component={Link}
           to="/secrets"
@@ -151,12 +162,14 @@ function MainLayout() {
         {isMobile && <Toolbar />}
         <Stack spacing={3}>
           <Routes>
-            <Route path="/" element={<Navigate to="/secrets" replace />} />
+            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/projects" element={<ProjectsListPage />} />
+            <Route path="/projects/:name" element={<ProjectPage />} />
             <Route path="/secrets" element={<SecretsListPage />} />
             <Route path="/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
             <Route path="/version" element={<VersionCard />} />
-            <Route path="*" element={<Navigate to="/secrets" replace />} />
+            <Route path="*" element={<Navigate to="/projects" replace />} />
           </Routes>
         </Stack>
       </Box>
