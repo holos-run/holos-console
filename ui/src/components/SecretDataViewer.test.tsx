@@ -110,7 +110,7 @@ describe('SecretDataViewer', () => {
     expect(input).toBeInTheDocument()
   })
 
-  it('Edit mode shows Save/Cancel; Save calls onChange with updated data', () => {
+  it('Edit mode shows Save/Cancel; Save calls onChange with updated data (trailing newline added by default)', () => {
     const onChange = vi.fn()
     render(
       <SecretDataViewer
@@ -125,6 +125,46 @@ describe('SecretDataViewer', () => {
     fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: 'root' } })
 
     // Save
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['username'])).toBe('root\n')
+  })
+
+  it('does not add trailing newline to empty values', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataViewer
+        data={{ username: encode('admin') }}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['username'])).toBe('')
+  })
+
+  it('does not add trailing newline when checkbox is unchecked', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataViewer
+        data={{ username: encode('admin') }}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: 'root' } })
+
+    // Uncheck the trailing newline checkbox
+    fireEvent.click(screen.getByRole('checkbox', { name: /ensure trailing newline/i }))
+
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
     expect(onChange).toHaveBeenCalled()
