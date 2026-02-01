@@ -535,6 +535,66 @@ func assertPermissionDenied(t *testing.T, err error) {
 	}
 }
 
+// ---- Cascade permission tests (org grant fallback) ----
+
+// mockOrgResolver implements OrgResolver for testing.
+type mockOrgResolver struct {
+	users  map[string]string
+	groups map[string]string
+}
+
+func (m *mockOrgResolver) GetOrgGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return m.users, m.groups, nil
+}
+
+func newHandlerWithOrg(orgResolver OrgResolver, namespaces ...*corev1.Namespace) *Handler {
+	objs := make([]runtime.Object, len(namespaces))
+	for i, ns := range namespaces {
+		objs[i] = ns
+	}
+	fakeClient := fake.NewClientset(objs...)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	return NewHandler(k8s, orgResolver)
+}
+
+// managedNSWithOrg creates a managed project namespace associated with an org.
+func managedNSWithOrg(name, org, shareUsersJSON string) *corev1.Namespace {
+	ns := managedNS(name, shareUsersJSON)
+	ns.Labels[resolver.OrganizationLabel] = org
+	return ns
+}
+
+func TestGetProject_OrgViewerCannotReadProject(t *testing.T) {
+	// Org viewer has no per-project grant — should be denied GetProject
+	ns := managedNSWithOrg("my-project", "acme", "")
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "viewer"},
+	}
+	handler := newHandlerWithOrg(orgResolver, ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
+	assertPermissionDenied(t, err)
+}
+
+func TestListProjects_OrgViewerCannotListProjects(t *testing.T) {
+	// Org viewer has no per-project grant — should not see any projects
+	ns := managedNSWithOrg("my-project", "acme", "")
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "viewer"},
+	}
+	handler := newHandlerWithOrg(orgResolver, ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.ListProjects(ctx, connect.NewRequest(&consolev1.ListProjectsRequest{}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Projects) != 0 {
+		t.Errorf("expected 0 projects for org viewer, got %d", len(resp.Msg.Projects))
+	}
+}
+
 func assertInvalidArgument(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
