@@ -346,6 +346,46 @@ export declare type UpdateOrganizationSharingResponse = Message<"holos.console.v
 export declare const UpdateOrganizationSharingResponseSchema: GenMessage<UpdateOrganizationSharingResponse>;
 
 /**
+ * GetOrganizationRawRequest contains the name of the organization to retrieve as raw JSON.
+ *
+ * @generated from message holos.console.v1.GetOrganizationRawRequest
+ */
+export declare type GetOrganizationRawRequest = Message<"holos.console.v1.GetOrganizationRawRequest"> & {
+  /**
+   * name is the name of the organization to retrieve.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetOrganizationRawRequest.
+ * Use `create(GetOrganizationRawRequestSchema)` to create a new message.
+ */
+export declare const GetOrganizationRawRequestSchema: GenMessage<GetOrganizationRawRequest>;
+
+/**
+ * GetOrganizationRawResponse contains the full Kubernetes Namespace object as JSON.
+ *
+ * @generated from message holos.console.v1.GetOrganizationRawResponse
+ */
+export declare type GetOrganizationRawResponse = Message<"holos.console.v1.GetOrganizationRawResponse"> & {
+  /**
+   * raw is the verbatim JSON-serialized Namespace object from the K8s API.
+   *
+   * @generated from field: string raw = 1;
+   */
+  raw: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetOrganizationRawResponse.
+ * Use `create(GetOrganizationRawResponseSchema)` to create a new message.
+ */
+export declare const GetOrganizationRawResponseSchema: GenMessage<GetOrganizationRawResponse>;
+
+/**
  * OrganizationService provides CRUD operations for organizations.
  * An organization is a top-level administrative boundary backed by a Kubernetes
  * Namespace with a configurable prefix.
@@ -416,6 +456,18 @@ export declare const OrganizationService: GenService<{
     methodKind: "unary";
     input: typeof UpdateOrganizationSharingRequestSchema;
     output: typeof UpdateOrganizationSharingResponseSchema;
+  },
+  /**
+   * GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+   * The backend returns the Namespace exactly as the K8s API provides it, with no
+   * field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
+   *
+   * @generated from rpc holos.console.v1.OrganizationService.GetOrganizationRaw
+   */
+  getOrganizationRaw: {
+    methodKind: "unary";
+    input: typeof GetOrganizationRawRequestSchema;
+    output: typeof GetOrganizationRawResponseSchema;
   },
 }>;
 

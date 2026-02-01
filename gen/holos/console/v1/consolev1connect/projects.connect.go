@@ -51,6 +51,9 @@ const (
 	// ProjectServiceUpdateProjectSharingProcedure is the fully-qualified name of the ProjectService's
 	// UpdateProjectSharing RPC.
 	ProjectServiceUpdateProjectSharingProcedure = "/holos.console.v1.ProjectService/UpdateProjectSharing"
+	// ProjectServiceGetProjectRawProcedure is the fully-qualified name of the ProjectService's
+	// GetProjectRaw RPC.
+	ProjectServiceGetProjectRawProcedure = "/holos.console.v1.ProjectService/GetProjectRaw"
 )
 
 // ProjectServiceClient is a client for the holos.console.v1.ProjectService service.
@@ -71,6 +74,10 @@ type ProjectServiceClient interface {
 	// UpdateProjectSharing updates the sharing grants on a project.
 	// Requires PERMISSION_PROJECTS_ADMIN on the project.
 	UpdateProjectSharing(context.Context, *connect.Request[v1.UpdateProjectSharingRequest]) (*connect.Response[v1.UpdateProjectSharingResponse], error)
+	// GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+	// The backend returns the Namespace exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
+	GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error)
 }
 
 // NewProjectServiceClient constructs a client for the holos.console.v1.ProjectService service. By
@@ -120,6 +127,12 @@ func NewProjectServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(projectServiceMethods.ByName("UpdateProjectSharing")),
 			connect.WithClientOptions(opts...),
 		),
+		getProjectRaw: connect.NewClient[v1.GetProjectRawRequest, v1.GetProjectRawResponse](
+			httpClient,
+			baseURL+ProjectServiceGetProjectRawProcedure,
+			connect.WithSchema(projectServiceMethods.ByName("GetProjectRaw")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -131,6 +144,7 @@ type projectServiceClient struct {
 	updateProject        *connect.Client[v1.UpdateProjectRequest, v1.UpdateProjectResponse]
 	deleteProject        *connect.Client[v1.DeleteProjectRequest, v1.DeleteProjectResponse]
 	updateProjectSharing *connect.Client[v1.UpdateProjectSharingRequest, v1.UpdateProjectSharingResponse]
+	getProjectRaw        *connect.Client[v1.GetProjectRawRequest, v1.GetProjectRawResponse]
 }
 
 // ListProjects calls holos.console.v1.ProjectService.ListProjects.
@@ -163,6 +177,11 @@ func (c *projectServiceClient) UpdateProjectSharing(ctx context.Context, req *co
 	return c.updateProjectSharing.CallUnary(ctx, req)
 }
 
+// GetProjectRaw calls holos.console.v1.ProjectService.GetProjectRaw.
+func (c *projectServiceClient) GetProjectRaw(ctx context.Context, req *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error) {
+	return c.getProjectRaw.CallUnary(ctx, req)
+}
+
 // ProjectServiceHandler is an implementation of the holos.console.v1.ProjectService service.
 type ProjectServiceHandler interface {
 	// ListProjects returns all projects the user has access to.
@@ -181,6 +200,10 @@ type ProjectServiceHandler interface {
 	// UpdateProjectSharing updates the sharing grants on a project.
 	// Requires PERMISSION_PROJECTS_ADMIN on the project.
 	UpdateProjectSharing(context.Context, *connect.Request[v1.UpdateProjectSharingRequest]) (*connect.Response[v1.UpdateProjectSharingResponse], error)
+	// GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+	// The backend returns the Namespace exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
+	GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error)
 }
 
 // NewProjectServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -226,6 +249,12 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 		connect.WithSchema(projectServiceMethods.ByName("UpdateProjectSharing")),
 		connect.WithHandlerOptions(opts...),
 	)
+	projectServiceGetProjectRawHandler := connect.NewUnaryHandler(
+		ProjectServiceGetProjectRawProcedure,
+		svc.GetProjectRaw,
+		connect.WithSchema(projectServiceMethods.ByName("GetProjectRaw")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.ProjectService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ProjectServiceListProjectsProcedure:
@@ -240,6 +269,8 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 			projectServiceDeleteProjectHandler.ServeHTTP(w, r)
 		case ProjectServiceUpdateProjectSharingProcedure:
 			projectServiceUpdateProjectSharingHandler.ServeHTTP(w, r)
+		case ProjectServiceGetProjectRawProcedure:
+			projectServiceGetProjectRawHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -271,4 +302,8 @@ func (UnimplementedProjectServiceHandler) DeleteProject(context.Context, *connec
 
 func (UnimplementedProjectServiceHandler) UpdateProjectSharing(context.Context, *connect.Request[v1.UpdateProjectSharingRequest]) (*connect.Response[v1.UpdateProjectSharingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.UpdateProjectSharing is not implemented"))
+}
+
+func (UnimplementedProjectServiceHandler) GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.GetProjectRaw is not implemented"))
 }

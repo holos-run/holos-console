@@ -32,6 +32,11 @@ service OrganizationService {
   // UpdateOrganizationSharing updates the sharing grants on an organization.
   // Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
   rpc UpdateOrganizationSharing(UpdateOrganizationSharingRequest) returns (UpdateOrganizationSharingResponse);
+
+  // GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+  // The backend returns the Namespace exactly as the K8s API provides it, with no
+  // field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
+  rpc GetOrganizationRaw(GetOrganizationRawRequest) returns (GetOrganizationRawResponse);
 }
 
 // Organization represents an organization with its metadata and grants.
@@ -127,4 +132,16 @@ message UpdateOrganizationSharingRequest {
 message UpdateOrganizationSharingResponse {
   // organization is the updated organization with new sharing grants.
   Organization organization = 1;
+}
+
+// GetOrganizationRawRequest contains the name of the organization to retrieve as raw JSON.
+message GetOrganizationRawRequest {
+  // name is the name of the organization to retrieve.
+  string name = 1;
+}
+
+// GetOrganizationRawResponse contains the full Kubernetes Namespace object as JSON.
+message GetOrganizationRawResponse {
+  // raw is the verbatim JSON-serialized Namespace object from the K8s API.
+  string raw = 1;
 }

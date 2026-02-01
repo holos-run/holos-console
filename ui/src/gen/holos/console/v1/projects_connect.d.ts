@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectRequest, UpdateProjectResponse, UpdateProjectSharingRequest, UpdateProjectSharingResponse } from "./projects_pb.js";
+import { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRawRequest, GetProjectRawResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectRequest, UpdateProjectResponse, UpdateProjectSharingRequest, UpdateProjectSharingResponse } from "./projects_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -83,6 +83,19 @@ export declare const ProjectService: {
       readonly name: "UpdateProjectSharing",
       readonly I: typeof UpdateProjectSharingRequest,
       readonly O: typeof UpdateProjectSharingResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+     * The backend returns the Namespace exactly as the K8s API provides it, with no
+     * field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
+     *
+     * @generated from rpc holos.console.v1.ProjectService.GetProjectRaw
+     */
+    readonly getProjectRaw: {
+      readonly name: "GetProjectRaw",
+      readonly I: typeof GetProjectRawRequest,
+      readonly O: typeof GetProjectRawResponse,
       readonly kind: MethodKind.Unary,
     },
   }

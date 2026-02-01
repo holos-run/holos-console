@@ -31,6 +31,11 @@ service ProjectService {
   // UpdateProjectSharing updates the sharing grants on a project.
   // Requires PERMISSION_PROJECTS_ADMIN on the project.
   rpc UpdateProjectSharing(UpdateProjectSharingRequest) returns (UpdateProjectSharingResponse);
+
+  // GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+  // The backend returns the Namespace exactly as the K8s API provides it, with no
+  // field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
+  rpc GetProjectRaw(GetProjectRawRequest) returns (GetProjectRawResponse);
 }
 
 // Project represents a project with its metadata and grants.
@@ -133,4 +138,16 @@ message UpdateProjectSharingRequest {
 message UpdateProjectSharingResponse {
   // project is the updated project with new sharing grants.
   Project project = 1;
+}
+
+// GetProjectRawRequest contains the name of the project to retrieve as raw JSON.
+message GetProjectRawRequest {
+  // name is the name of the project to retrieve.
+  string name = 1;
+}
+
+// GetProjectRawResponse contains the full Kubernetes Namespace object as JSON.
+message GetProjectRawResponse {
+  // raw is the verbatim JSON-serialized Namespace object from the K8s API.
+  string raw = 1;
 }

@@ -51,6 +51,9 @@ const (
 	// OrganizationServiceUpdateOrganizationSharingProcedure is the fully-qualified name of the
 	// OrganizationService's UpdateOrganizationSharing RPC.
 	OrganizationServiceUpdateOrganizationSharingProcedure = "/holos.console.v1.OrganizationService/UpdateOrganizationSharing"
+	// OrganizationServiceGetOrganizationRawProcedure is the fully-qualified name of the
+	// OrganizationService's GetOrganizationRaw RPC.
+	OrganizationServiceGetOrganizationRawProcedure = "/holos.console.v1.OrganizationService/GetOrganizationRaw"
 )
 
 // OrganizationServiceClient is a client for the holos.console.v1.OrganizationService service.
@@ -71,6 +74,10 @@ type OrganizationServiceClient interface {
 	// UpdateOrganizationSharing updates the sharing grants on an organization.
 	// Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
 	UpdateOrganizationSharing(context.Context, *connect.Request[v1.UpdateOrganizationSharingRequest]) (*connect.Response[v1.UpdateOrganizationSharingResponse], error)
+	// GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+	// The backend returns the Namespace exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
+	GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error)
 }
 
 // NewOrganizationServiceClient constructs a client for the holos.console.v1.OrganizationService
@@ -120,6 +127,12 @@ func NewOrganizationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(organizationServiceMethods.ByName("UpdateOrganizationSharing")),
 			connect.WithClientOptions(opts...),
 		),
+		getOrganizationRaw: connect.NewClient[v1.GetOrganizationRawRequest, v1.GetOrganizationRawResponse](
+			httpClient,
+			baseURL+OrganizationServiceGetOrganizationRawProcedure,
+			connect.WithSchema(organizationServiceMethods.ByName("GetOrganizationRaw")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -131,6 +144,7 @@ type organizationServiceClient struct {
 	updateOrganization        *connect.Client[v1.UpdateOrganizationRequest, v1.UpdateOrganizationResponse]
 	deleteOrganization        *connect.Client[v1.DeleteOrganizationRequest, v1.DeleteOrganizationResponse]
 	updateOrganizationSharing *connect.Client[v1.UpdateOrganizationSharingRequest, v1.UpdateOrganizationSharingResponse]
+	getOrganizationRaw        *connect.Client[v1.GetOrganizationRawRequest, v1.GetOrganizationRawResponse]
 }
 
 // ListOrganizations calls holos.console.v1.OrganizationService.ListOrganizations.
@@ -163,6 +177,11 @@ func (c *organizationServiceClient) UpdateOrganizationSharing(ctx context.Contex
 	return c.updateOrganizationSharing.CallUnary(ctx, req)
 }
 
+// GetOrganizationRaw calls holos.console.v1.OrganizationService.GetOrganizationRaw.
+func (c *organizationServiceClient) GetOrganizationRaw(ctx context.Context, req *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error) {
+	return c.getOrganizationRaw.CallUnary(ctx, req)
+}
+
 // OrganizationServiceHandler is an implementation of the holos.console.v1.OrganizationService
 // service.
 type OrganizationServiceHandler interface {
@@ -182,6 +201,10 @@ type OrganizationServiceHandler interface {
 	// UpdateOrganizationSharing updates the sharing grants on an organization.
 	// Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
 	UpdateOrganizationSharing(context.Context, *connect.Request[v1.UpdateOrganizationSharingRequest]) (*connect.Response[v1.UpdateOrganizationSharingResponse], error)
+	// GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+	// The backend returns the Namespace exactly as the K8s API provides it, with no
+	// field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
+	GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error)
 }
 
 // NewOrganizationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -227,6 +250,12 @@ func NewOrganizationServiceHandler(svc OrganizationServiceHandler, opts ...conne
 		connect.WithSchema(organizationServiceMethods.ByName("UpdateOrganizationSharing")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationServiceGetOrganizationRawHandler := connect.NewUnaryHandler(
+		OrganizationServiceGetOrganizationRawProcedure,
+		svc.GetOrganizationRaw,
+		connect.WithSchema(organizationServiceMethods.ByName("GetOrganizationRaw")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.OrganizationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrganizationServiceListOrganizationsProcedure:
@@ -241,6 +270,8 @@ func NewOrganizationServiceHandler(svc OrganizationServiceHandler, opts ...conne
 			organizationServiceDeleteOrganizationHandler.ServeHTTP(w, r)
 		case OrganizationServiceUpdateOrganizationSharingProcedure:
 			organizationServiceUpdateOrganizationSharingHandler.ServeHTTP(w, r)
+		case OrganizationServiceGetOrganizationRawProcedure:
+			organizationServiceGetOrganizationRawHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -272,4 +303,8 @@ func (UnimplementedOrganizationServiceHandler) DeleteOrganization(context.Contex
 
 func (UnimplementedOrganizationServiceHandler) UpdateOrganizationSharing(context.Context, *connect.Request[v1.UpdateOrganizationSharingRequest]) (*connect.Response[v1.UpdateOrganizationSharingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.OrganizationService.UpdateOrganizationSharing is not implemented"))
+}
+
+func (UnimplementedOrganizationServiceHandler) GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.OrganizationService.GetOrganizationRaw is not implemented"))
 }
