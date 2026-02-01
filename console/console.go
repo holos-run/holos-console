@@ -81,6 +81,14 @@ type Config struct {
 	// internal HTTP client (e.g., for OIDC discovery). This allows the server
 	// to trust certificates signed by a custom CA such as mkcert.
 	CACertFile string
+
+	// OrgPrefix is prepended to organization names to form Kubernetes namespace names.
+	// Default: "holos-org-"
+	OrgPrefix string
+
+	// ProjectPrefix is prepended to project names to form Kubernetes namespace names.
+	// Default: "holos-prj-"
+	ProjectPrefix string
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -114,6 +122,14 @@ func New(cfg Config) *Server {
 
 // Serve starts the HTTPS server and blocks until the context is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
+	// Apply defaults for namespace prefixes
+	if s.cfg.OrgPrefix == "" {
+		s.cfg.OrgPrefix = "holos-org-"
+	}
+	if s.cfg.ProjectPrefix == "" {
+		s.cfg.ProjectPrefix = "holos-prj-"
+	}
+
 	// Load custom CA certificate pool for internal HTTP client (OIDC discovery, etc.)
 	caPool, err := loadCACertPool(s.cfg.CACertFile)
 	if err != nil {
