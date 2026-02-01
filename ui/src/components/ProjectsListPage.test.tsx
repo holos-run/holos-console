@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ProjectsListPage } from './ProjectsListPage'
 import { AuthContext, type AuthContextValue } from '../auth'
+import { OrgContext, type OrgContextValue } from '../OrgProvider'
 import type { User } from 'oidc-client-ts'
 import { vi } from 'vitest'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
@@ -65,15 +66,24 @@ function CaptureNavigate() {
   return null
 }
 
-function renderProjectsListPage(authValue: AuthContextValue) {
+const defaultOrgValue: OrgContextValue = {
+  organizations: [],
+  selectedOrg: null,
+  setSelectedOrg: vi.fn(),
+  isLoading: false,
+}
+
+function renderProjectsListPage(authValue: AuthContextValue, orgValue: OrgContextValue = defaultOrgValue) {
   navigatedTo = null
   return render(
     <MemoryRouter initialEntries={['/projects']}>
       <AuthContext.Provider value={authValue}>
-        <Routes>
-          <Route path="/projects" element={<ProjectsListPage />} />
-          <Route path="/projects/:projectName" element={<CaptureNavigate />} />
-        </Routes>
+        <OrgContext.Provider value={orgValue}>
+          <Routes>
+            <Route path="/projects" element={<ProjectsListPage />} />
+            <Route path="/projects/:projectName" element={<CaptureNavigate />} />
+          </Routes>
+        </OrgContext.Provider>
       </AuthContext.Provider>
     </MemoryRouter>,
   )
@@ -154,6 +164,24 @@ describe('ProjectsListPage', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+    })
+
+    it('disables Create Project button when no organization is selected', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListProjects.mockResolvedValue({
+        projects: [],
+      } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
+
+      renderProjectsListPage(authValue, { ...defaultOrgValue, selectedOrg: null })
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeDisabled()
       })
     })
 
@@ -258,6 +286,11 @@ describe('ProjectsListPage', () => {
   })
 
   describe('create project', () => {
+    const orgWithSelection: OrgContextValue = {
+      ...defaultOrgValue,
+      selectedOrg: 'test-org',
+    }
+
     it('opens create dialog when Create Project is clicked', async () => {
       const mockUser = createMockUser({})
       const authValue = createAuthContext({
@@ -269,7 +302,7 @@ describe('ProjectsListPage', () => {
         projects: [],
       } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -299,7 +332,7 @@ describe('ProjectsListPage', () => {
         name: 'new-project',
       } as unknown as Awaited<ReturnType<typeof projectsClient.createProject>>)
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -319,6 +352,7 @@ describe('ProjectsListPage', () => {
             name: 'new-project',
             displayName: 'New Project',
             description: 'A new project',
+            organization: 'test-org',
             userGrants: expect.arrayContaining([
               expect.objectContaining({ principal: 'alice@example.com', role: Role.OWNER }),
             ]),
@@ -343,7 +377,7 @@ describe('ProjectsListPage', () => {
         projects: [],
       } as unknown as Awaited<ReturnType<typeof projectsClient.listProjects>>)
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -372,7 +406,7 @@ describe('ProjectsListPage', () => {
 
       mockCreateProject.mockRejectedValue(new Error('already exists'))
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
@@ -402,7 +436,7 @@ describe('ProjectsListPage', () => {
         name: 'new-project',
       } as unknown as Awaited<ReturnType<typeof projectsClient.createProject>>)
 
-      renderProjectsListPage(authValue)
+      renderProjectsListPage(authValue, orgWithSelection)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
