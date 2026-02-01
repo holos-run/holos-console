@@ -39,18 +39,34 @@ Namespaces are distinguished by labels:
 
 ## Access Evaluation
 
-Access to a secret is evaluated in this order (highest role wins):
+Grants on a resource authorize operations on **that resource level only**. Parent grants use scope-aware cascade — they do not implicitly grant full access to child resources.
 
-1. Per-secret grants (`share-users`/`share-groups` annotations on the Secret)
-2. Project grants (`share-users`/`share-groups` annotations on the project Namespace)
-3. Organization grants (`share-users`/`share-groups` annotations on the organization Namespace, looked up via the project's optional org label)
+### Secret access
 
-If no grant matches at any tier, access is denied. The org tier is only consulted when the project has a `console.holos.run/organization` label.
+Access to a secret is evaluated in this order:
 
-Access to a project is evaluated similarly:
+1. **Per-secret grants** — Full secret permissions (read, write, delete, admin)
+2. **Project grants (cascade)** — Limited: list metadata only (viewer), create/update (editor), delete/admin (owner). **Reading secret data always requires a direct per-secret grant.**
+3. **Organization grants** — Never cascade to secrets
 
-1. Project grants (annotations on the project Namespace)
-2. Organization grants (annotations on the organization Namespace)
+If no grant matches at any tier, access is denied.
+
+### Project access
+
+Access to a project is evaluated in this order:
+
+1. **Project grants** — Full project permissions
+2. **Organization grants** — Never cascade to projects. Org grants only authorize viewing the org resource itself.
+
+### Secret cascade mapping (project grants)
+
+| Secret Permission | Required Project Permission |
+|---|---|
+| `SECRETS_LIST` | `PROJECTS_READ` (viewer) |
+| `SECRETS_READ` | Not cascaded (direct grant required) |
+| `SECRETS_WRITE` | `PROJECTS_WRITE` (editor) |
+| `SECRETS_DELETE` | `PROJECTS_ADMIN` (owner) |
+| `SECRETS_ADMIN` | `PROJECTS_ADMIN` (owner) |
 
 ## Grant Annotations
 
@@ -74,13 +90,27 @@ When `nbf` or `exp` is omitted, the grant has no time restriction for that bound
 
 ## Roles
 
+### Direct grant permissions
+
+When a role is granted directly on a resource, it authorizes these operations:
+
 | Role | Secrets Permissions | Project Permissions | Organization Permissions |
 |---|---|---|---|
 | Viewer | List, Read | List, Read | List, Read |
 | Editor | List, Read, Write | List, Read, Write | List, Read, Write |
 | Owner | List, Read, Write, Delete, Admin | List, Read, Write, Delete, Admin, Create | List, Read, Write, Delete, Admin |
 
-`PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization.
+### Cascade permissions (parent → child)
+
+Parent grants do **not** implicitly grant full access to child resources:
+
+| Parent Grant | Child: List metadata | Child: Read data | Child: Write | Child: Delete/Admin |
+|---|---|---|---|---|
+| Project → Secret | Viewer | Never | Editor | Owner |
+| Org → Project | Never | Never | Never | Never |
+| Org → Secret | Never | Never | Never | Never |
+
+`PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization (checked via a separate authorization path, not cascade).
 
 Organization creation is controlled by CLI flags (`--org-creator-users`, `--org-creator-groups`), not by grant-based authorization.
 
@@ -128,10 +158,10 @@ metadata:
 ```
 
 In this example:
-- Alice has **owner** access to all associated projects and secrets in `my-org` via the organization grant
-- Members of `dev-team` have **editor** access to all associated projects and secrets via the organization group grant
-- Bob has **viewer** access to `my-project` and its secrets via the project grant (expires at the given timestamp)
-- Carol has **viewer** access to `my-app-credentials` only, via the per-secret grant
+- Alice has **owner** on `my-org` — this grants access to the org resource itself only; it does not cascade to projects or secrets
+- Members of `dev-team` have **editor** on `my-org` — same scope restriction as above
+- Bob has **viewer** on `my-project` — can view the project and list secret metadata, but **cannot read secret data** (requires a direct per-secret grant)
+- Carol has **viewer** on `my-app-credentials` — can read the secret data via the direct per-secret grant
 
 ## Permission Matrix
 
