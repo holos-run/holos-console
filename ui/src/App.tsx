@@ -97,9 +97,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const isOrganizationsPage = location.pathname.startsWith('/organizations')
   const isProjectsPage = location.pathname.startsWith('/projects') || location.pathname.includes('/projects')
   const isProfilePage = location.pathname.startsWith('/profile')
-  const isVersionPage = location.pathname.startsWith('/version')
-
-  const projectsLink = '/projects'
+  const isHomePage = location.pathname.startsWith('/home')
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -114,6 +112,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <List sx={{ px: 1 }}>
         <ListItemButton
           component={Link}
+          to="/home"
+          selected={isHomePage}
+          onClick={onNavigate}
+        >
+          <ListItemText primary="Home" />
+        </ListItemButton>
+        <ListItemButton
+          component={Link}
           to="/organizations"
           selected={isOrganizationsPage}
           onClick={onNavigate}
@@ -122,19 +128,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </ListItemButton>
         <ListItemButton
           component={Link}
-          to={projectsLink}
+          to="/projects"
           selected={isProjectsPage}
           onClick={onNavigate}
         >
           <ListItemText primary="Projects" />
-        </ListItemButton>
-        <ListItemButton
-          component={Link}
-          to="/profile"
-          selected={isProfilePage}
-          onClick={onNavigate}
-        >
-          <ListItemText primary="Profile" />
         </ListItemButton>
       </List>
       <Box sx={{ flexGrow: 1 }} />
@@ -142,11 +140,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <List sx={{ px: 1 }}>
         <ListItemButton
           component={Link}
-          to="/version"
-          selected={isVersionPage}
+          to="/profile"
+          selected={isProfilePage}
           onClick={onNavigate}
         >
-          <ListItemText primary="Version" />
+          <ListItemText primary="Profile" />
         </ListItemButton>
       </List>
     </Box>
@@ -218,7 +216,7 @@ function MainLayout() {
         {isMobile && <Toolbar />}
         <Stack spacing={3}>
           <Routes>
-            <Route path="/" element={<Navigate to="/organizations" replace />} />
+            <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/organizations" element={<OrganizationsListPage />} />
             <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
             <Route path="/organizations/:organizationName/projects" element={<Navigate to="/projects" replace />} />
@@ -227,8 +225,9 @@ function MainLayout() {
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
             <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
-            <Route path="/version" element={<VersionCard />} />
-            <Route path="*" element={<Navigate to="/organizations" replace />} />
+            <Route path="/home" element={<VersionCard />} />
+            <Route path="/version" element={<Navigate to="/home" replace />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Stack>
       </Box>

@@ -86,7 +86,7 @@ describe('navigation', () => {
   })
 
   it('links the projects page from sidebar', async () => {
-    renderApp('/ui/version')
+    renderApp('/ui/home')
     await waitFor(() => {
       const projectsLink = screen.getByRole('link', { name: 'Projects' })
       expect(projectsLink).toHaveAttribute('href', '/ui/projects')
@@ -94,18 +94,45 @@ describe('navigation', () => {
   })
 
   it('links the profile page from sidebar', async () => {
-    renderApp('/ui/version')
+    renderApp('/ui/home')
     await waitFor(() => {
       const profileLink = screen.getByRole('link', { name: 'Profile' })
       expect(profileLink).toHaveAttribute('href', '/ui/profile')
     })
   })
 
-  it('links the version page from sidebar', async () => {
-    renderApp('/ui/version')
+  it('links the Home page from sidebar at /ui/home', async () => {
+    renderApp('/ui/home')
     await waitFor(() => {
-      const versionLink = screen.getByRole('link', { name: 'Version' })
-      expect(versionLink).toHaveAttribute('href', '/ui/version')
+      const homeLink = screen.getByRole('link', { name: 'Home' })
+      expect(homeLink).toHaveAttribute('href', '/ui/home')
+    })
+  })
+
+  it('shows Home at the top and Profile at the bottom of the sidebar', async () => {
+    renderApp('/ui/home')
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    })
+
+    // Get all navigation links in order
+    const links = screen.getAllByRole('link')
+    const linkNames = links.map((l) => l.textContent)
+    const homeIdx = linkNames.indexOf('Home')
+    const profileIdx = linkNames.indexOf('Profile')
+    const orgIdx = linkNames.indexOf('Organizations')
+
+    // Home should appear before Organizations
+    expect(homeIdx).toBeLessThan(orgIdx)
+    // Profile should appear after Organizations and Projects
+    expect(profileIdx).toBeGreaterThan(orgIdx)
+  })
+
+  it('redirects / to /home', async () => {
+    renderApp('/ui/')
+    await waitFor(() => {
+      const homeLink = screen.getByRole('link', { name: 'Home' })
+      expect(homeLink).toHaveAttribute('href', '/ui/home')
     })
   })
 })
@@ -115,7 +142,7 @@ describe('responsive layout', () => {
     // Mobile: max-width queries match (below md breakpoint)
     const cleanup = mockMatchMedia(/max-width/)
     try {
-      renderApp('/ui/version')
+      renderApp('/ui/home')
       await waitFor(() => {
         expect(screen.getByLabelText(/open menu/i)).toBeInTheDocument()
       })
@@ -131,7 +158,7 @@ describe('responsive layout', () => {
     const user = userEvent.setup()
     const cleanup = mockMatchMedia(/max-width/)
     try {
-      renderApp('/ui/version')
+      renderApp('/ui/home')
       await waitFor(() => {
         expect(screen.getByLabelText(/open menu/i)).toBeInTheDocument()
       })
@@ -149,7 +176,7 @@ describe('responsive layout', () => {
 
   it('shows permanent sidebar and no hamburger on desktop', async () => {
     // Desktop: default matchMedia returns matches=false (no max-width match)
-    renderApp('/ui/version')
+    renderApp('/ui/home')
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
     })
@@ -160,6 +187,6 @@ describe('responsive layout', () => {
     // Sidebar nav should be visible with expected links
     expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Version' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
   })
 })
