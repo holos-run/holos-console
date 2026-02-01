@@ -25,7 +25,9 @@ const (
 type GetSecretRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name is the name of the secret to retrieve.
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -63,6 +65,13 @@ func (*GetSecretRequest) Descriptor() ([]byte, []int) {
 func (x *GetSecretRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *GetSecretRequest) GetProject() string {
+	if x != nil {
+		return x.Project
 	}
 	return ""
 }
@@ -116,7 +125,9 @@ func (x *GetSecretResponse) GetData() map[string][]byte {
 
 // ListSecretsRequest contains optional filters for listing secrets.
 type ListSecretsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// project is the project (namespace) to list secrets from.
+	Project       string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,6 +160,13 @@ func (x *ListSecretsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListSecretsRequest.ProtoReflect.Descriptor instead.
 func (*ListSecretsRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_secrets_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListSecretsRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
 }
 
 // ListSecretsResponse contains the list of secrets in the namespace.
@@ -215,7 +233,9 @@ type UpdateSecretRequest struct {
 	Description *string `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// url is a URL associated with the secret.
 	// When set, updates the URL annotation. When unset, preserves the existing value.
-	Url           *string `protobuf:"bytes,5,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	Url *string `protobuf:"bytes,5,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,6,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -285,6 +305,13 @@ func (x *UpdateSecretRequest) GetUrl() string {
 	return ""
 }
 
+func (x *UpdateSecretRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
 // UpdateSecretResponse is empty on success.
 type UpdateSecretResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -342,7 +369,9 @@ type CreateSecretRequest struct {
 	// description is a human-readable description of the secret's purpose.
 	Description *string `protobuf:"bytes,6,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// url is a URL associated with the secret (e.g. link to the service that uses it).
-	Url           *string `protobuf:"bytes,7,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	Url *string `protobuf:"bytes,7,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,8,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -426,6 +455,13 @@ func (x *CreateSecretRequest) GetUrl() string {
 	return ""
 }
 
+func (x *CreateSecretRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
 // CreateSecretResponse contains the name of the created secret.
 type CreateSecretResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -476,7 +512,9 @@ func (x *CreateSecretResponse) GetName() string {
 type DeleteSecretRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name is the name of the secret to delete.
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -514,6 +552,13 @@ func (*DeleteSecretRequest) Descriptor() ([]byte, []int) {
 func (x *DeleteSecretRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteSecretRequest) GetProject() string {
+	if x != nil {
+		return x.Project
 	}
 	return ""
 }
@@ -729,7 +774,9 @@ type UpdateSharingRequest struct {
 	// user_grants are the per-user sharing grants to set.
 	UserGrants []*ShareGrant `protobuf:"bytes,2,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// group_grants are the per-group sharing grants to set.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,3,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	GroupGrants []*ShareGrant `protobuf:"bytes,3,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,4,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -785,6 +832,13 @@ func (x *UpdateSharingRequest) GetGroupGrants() []*ShareGrant {
 	return nil
 }
 
+func (x *UpdateSharingRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
 // UpdateSharingResponse contains the updated secret metadata.
 type UpdateSharingResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -835,7 +889,9 @@ func (x *UpdateSharingResponse) GetMetadata() *SecretMetadata {
 type GetSecretRawRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name is the name of the secret to retrieve.
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// project is the project (namespace) containing the secret.
+	Project       string `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -873,6 +929,13 @@ func (*GetSecretRawRequest) Descriptor() ([]byte, []int) {
 func (x *GetSecretRawRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *GetSecretRawRequest) GetProject() string {
+	if x != nil {
+		return x.Project
 	}
 	return ""
 }
@@ -927,24 +990,27 @@ var File_holos_console_v1_secrets_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\n" +
-	"\x1eholos/console/v1/secrets.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\"&\n" +
+	"\x1eholos/console/v1/secrets.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\"@\n" +
 	"\x10GetSecretRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x8f\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"\x8f\x01\n" +
 	"\x11GetSecretResponse\x12A\n" +
 	"\x04data\x18\x01 \x03(\v2-.holos.console.v1.GetSecretResponse.DataEntryR\x04data\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
-	"\x12ListSecretsRequest\"Q\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\".\n" +
+	"\x12ListSecretsRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\x94\x03\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\xae\x03\n" +
 	"\x13UpdateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
 	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.UpdateSecretRequest.DataEntryR\x04data\x12V\n" +
 	"\vstring_data\x18\x03 \x03(\v25.holos.console.v1.UpdateSecretRequest.StringDataEntryR\n" +
 	"stringData\x12%\n" +
 	"\vdescription\x18\x04 \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
-	"\x03url\x18\x05 \x01(\tH\x01R\x03url\x88\x01\x01\x1a7\n" +
+	"\x03url\x18\x05 \x01(\tH\x01R\x03url\x88\x01\x01\x12\x18\n" +
+	"\aproject\x18\x06 \x01(\tR\aproject\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
@@ -953,7 +1019,7 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\f_descriptionB\x06\n" +
 	"\x04_url\"\x16\n" +
-	"\x14UpdateSecretResponse\"\x94\x04\n" +
+	"\x14UpdateSecretResponse\"\xae\x04\n" +
 	"\x13CreateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
 	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12V\n" +
@@ -963,7 +1029,8 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12%\n" +
 	"\vdescription\x18\x06 \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
-	"\x03url\x18\a \x01(\tH\x01R\x03url\x88\x01\x01\x1a7\n" +
+	"\x03url\x18\a \x01(\tH\x01R\x03url\x88\x01\x01\x12\x18\n" +
+	"\aproject\x18\b \x01(\tR\aproject\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
@@ -973,9 +1040,10 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\f_descriptionB\x06\n" +
 	"\x04_url\"*\n" +
 	"\x14CreateSecretResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\")\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"C\n" +
 	"\x13DeleteSecretRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"\x16\n" +
 	"\x14DeleteSecretResponse\"\x9a\x02\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
@@ -996,16 +1064,18 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x03nbf\x18\x03 \x01(\x03H\x00R\x03nbf\x88\x01\x01\x12\x15\n" +
 	"\x03exp\x18\x04 \x01(\x03H\x01R\x03exp\x88\x01\x01B\x06\n" +
 	"\x04_nbfB\x06\n" +
-	"\x04_exp\"\xaa\x01\n" +
+	"\x04_exp\"\xc4\x01\n" +
 	"\x14UpdateSharingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\vuser_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"U\n" +
+	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12\x18\n" +
+	"\aproject\x18\x04 \x01(\tR\aproject\"U\n" +
 	"\x15UpdateSharingResponse\x12<\n" +
-	"\bmetadata\x18\x01 \x01(\v2 .holos.console.v1.SecretMetadataR\bmetadata\")\n" +
+	"\bmetadata\x18\x01 \x01(\v2 .holos.console.v1.SecretMetadataR\bmetadata\"C\n" +
 	"\x13GetSecretRawRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"(\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"(\n" +
 	"\x14GetSecretRawResponse\x12\x10\n" +
 	"\x03raw\x18\x01 \x01(\tR\x03raw2\xa0\x05\n" +
 	"\x0eSecretsService\x12Z\n" +

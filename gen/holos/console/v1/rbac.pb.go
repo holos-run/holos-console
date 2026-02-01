@@ -94,25 +94,49 @@ const (
 	Permission_PERMISSION_SECRETS_DELETE Permission = 4
 	// PERMISSION_SECRETS_ADMIN allows administrative operations on secrets.
 	Permission_PERMISSION_SECRETS_ADMIN Permission = 5
+	// PERMISSION_PROJECTS_READ allows reading project metadata.
+	Permission_PERMISSION_PROJECTS_READ Permission = 6
+	// PERMISSION_PROJECTS_LIST allows listing projects.
+	Permission_PERMISSION_PROJECTS_LIST Permission = 7
+	// PERMISSION_PROJECTS_WRITE allows updating project metadata.
+	Permission_PERMISSION_PROJECTS_WRITE Permission = 8
+	// PERMISSION_PROJECTS_DELETE allows deleting projects.
+	Permission_PERMISSION_PROJECTS_DELETE Permission = 9
+	// PERMISSION_PROJECTS_ADMIN allows administrative operations on projects.
+	Permission_PERMISSION_PROJECTS_ADMIN Permission = 10
+	// PERMISSION_PROJECTS_CREATE allows creating new projects.
+	Permission_PERMISSION_PROJECTS_CREATE Permission = 11
 )
 
 // Enum value maps for Permission.
 var (
 	Permission_name = map[int32]string{
-		0: "PERMISSION_UNSPECIFIED",
-		1: "PERMISSION_SECRETS_READ",
-		2: "PERMISSION_SECRETS_LIST",
-		3: "PERMISSION_SECRETS_WRITE",
-		4: "PERMISSION_SECRETS_DELETE",
-		5: "PERMISSION_SECRETS_ADMIN",
+		0:  "PERMISSION_UNSPECIFIED",
+		1:  "PERMISSION_SECRETS_READ",
+		2:  "PERMISSION_SECRETS_LIST",
+		3:  "PERMISSION_SECRETS_WRITE",
+		4:  "PERMISSION_SECRETS_DELETE",
+		5:  "PERMISSION_SECRETS_ADMIN",
+		6:  "PERMISSION_PROJECTS_READ",
+		7:  "PERMISSION_PROJECTS_LIST",
+		8:  "PERMISSION_PROJECTS_WRITE",
+		9:  "PERMISSION_PROJECTS_DELETE",
+		10: "PERMISSION_PROJECTS_ADMIN",
+		11: "PERMISSION_PROJECTS_CREATE",
 	}
 	Permission_value = map[string]int32{
-		"PERMISSION_UNSPECIFIED":    0,
-		"PERMISSION_SECRETS_READ":   1,
-		"PERMISSION_SECRETS_LIST":   2,
-		"PERMISSION_SECRETS_WRITE":  3,
-		"PERMISSION_SECRETS_DELETE": 4,
-		"PERMISSION_SECRETS_ADMIN":  5,
+		"PERMISSION_UNSPECIFIED":     0,
+		"PERMISSION_SECRETS_READ":    1,
+		"PERMISSION_SECRETS_LIST":    2,
+		"PERMISSION_SECRETS_WRITE":   3,
+		"PERMISSION_SECRETS_DELETE":  4,
+		"PERMISSION_SECRETS_ADMIN":   5,
+		"PERMISSION_PROJECTS_READ":   6,
+		"PERMISSION_PROJECTS_LIST":   7,
+		"PERMISSION_PROJECTS_WRITE":  8,
+		"PERMISSION_PROJECTS_DELETE": 9,
+		"PERMISSION_PROJECTS_ADMIN":  10,
+		"PERMISSION_PROJECTS_CREATE": 11,
 	}
 )
 
@@ -153,7 +177,7 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_EDITOR\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x03*\xbd\x01\n" +
+	"ROLE_OWNER\x10\x03*\xf7\x02\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -161,7 +185,14 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\x17PERMISSION_SECRETS_LIST\x10\x02\x12\x1c\n" +
 	"\x18PERMISSION_SECRETS_WRITE\x10\x03\x12\x1d\n" +
 	"\x19PERMISSION_SECRETS_DELETE\x10\x04\x12\x1c\n" +
-	"\x18PERMISSION_SECRETS_ADMIN\x10\x05BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x18PERMISSION_SECRETS_ADMIN\x10\x05\x12\x1c\n" +
+	"\x18PERMISSION_PROJECTS_READ\x10\x06\x12\x1c\n" +
+	"\x18PERMISSION_PROJECTS_LIST\x10\a\x12\x1d\n" +
+	"\x19PERMISSION_PROJECTS_WRITE\x10\b\x12\x1e\n" +
+	"\x1aPERMISSION_PROJECTS_DELETE\x10\t\x12\x1d\n" +
+	"\x19PERMISSION_PROJECTS_ADMIN\x10\n" +
+	"\x12\x1e\n" +
+	"\x1aPERMISSION_PROJECTS_CREATE\x10\vBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_rbac_proto_rawDescOnce sync.Once

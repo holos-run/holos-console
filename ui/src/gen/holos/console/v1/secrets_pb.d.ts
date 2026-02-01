@@ -23,6 +23,13 @@ export declare type GetSecretRequest = Message<"holos.console.v1.GetSecretReques
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 2;
+   */
+  project: string;
 };
 
 /**
@@ -55,11 +62,15 @@ export declare const GetSecretResponseSchema: GenMessage<GetSecretResponse>;
 /**
  * ListSecretsRequest contains optional filters for listing secrets.
  *
- * Reserved for future filtering options.
- *
  * @generated from message holos.console.v1.ListSecretsRequest
  */
 export declare type ListSecretsRequest = Message<"holos.console.v1.ListSecretsRequest"> & {
+  /**
+   * project is the project (namespace) to list secrets from.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
 };
 
 /**
@@ -134,6 +145,13 @@ export declare type UpdateSecretRequest = Message<"holos.console.v1.UpdateSecret
    * @generated from field: optional string url = 5;
    */
   url?: string;
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 6;
+   */
+  project: string;
 };
 
 /**
@@ -214,6 +232,13 @@ export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecret
    * @generated from field: optional string url = 7;
    */
   url?: string;
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 8;
+   */
+  project: string;
 };
 
 /**
@@ -254,6 +279,13 @@ export declare type DeleteSecretRequest = Message<"holos.console.v1.DeleteSecret
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 2;
+   */
+  project: string;
 };
 
 /**
@@ -400,6 +432,13 @@ export declare type UpdateSharingRequest = Message<"holos.console.v1.UpdateShari
    * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 3;
    */
   groupGrants: ShareGrant[];
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 4;
+   */
+  project: string;
 };
 
 /**
@@ -440,6 +479,13 @@ export declare type GetSecretRawRequest = Message<"holos.console.v1.GetSecretRaw
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * project is the project (namespace) containing the secret.
+   *
+   * @generated from field: string project = 2;
+   */
+  project: string;
 };
 
 /**

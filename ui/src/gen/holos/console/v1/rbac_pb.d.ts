@@ -96,6 +96,48 @@ export enum Permission {
    * @generated from enum value: PERMISSION_SECRETS_ADMIN = 5;
    */
   SECRETS_ADMIN = 5,
+
+  /**
+   * PERMISSION_PROJECTS_READ allows reading project metadata.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_READ = 6;
+   */
+  PROJECTS_READ = 6,
+
+  /**
+   * PERMISSION_PROJECTS_LIST allows listing projects.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_LIST = 7;
+   */
+  PROJECTS_LIST = 7,
+
+  /**
+   * PERMISSION_PROJECTS_WRITE allows updating project metadata.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_WRITE = 8;
+   */
+  PROJECTS_WRITE = 8,
+
+  /**
+   * PERMISSION_PROJECTS_DELETE allows deleting projects.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_DELETE = 9;
+   */
+  PROJECTS_DELETE = 9,
+
+  /**
+   * PERMISSION_PROJECTS_ADMIN allows administrative operations on projects.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_ADMIN = 10;
+   */
+  PROJECTS_ADMIN = 10,
+
+  /**
+   * PERMISSION_PROJECTS_CREATE allows creating new projects.
+   *
+   * @generated from enum value: PERMISSION_PROJECTS_CREATE = 11;
+   */
+  PROJECTS_CREATE = 11,
 }
 
 /**
