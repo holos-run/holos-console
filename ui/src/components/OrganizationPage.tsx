@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -25,6 +25,7 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '../auth'
 import { organizationsClient } from '../client'
+import { useOrg } from '../OrgProvider'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { Organization } from '../gen/holos/console/v1/organizations_pb'
@@ -32,6 +33,7 @@ import type { Organization } from '../gen/holos/console/v1/organizations_pb'
 export function OrganizationPage() {
   const { organizationName: name } = useParams<{ organizationName: string }>()
   const navigate = useNavigate()
+  const { setSelectedOrg } = useOrg()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
@@ -367,8 +369,10 @@ export function OrganizationPage() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <Button
             variant="contained"
-            component={RouterLink}
-            to={`/organizations/${name}/projects`}
+            onClick={() => {
+              setSelectedOrg(name || null)
+              navigate('/projects')
+            }}
           >
             Projects
           </Button>

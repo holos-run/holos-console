@@ -29,7 +29,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import LinkIcon from '@mui/icons-material/Link'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
-import { SecretDataEditor } from './SecretDataEditor'
+import { SecretDataViewer } from './SecretDataViewer'
 import { SecretRawView } from './SecretRawView'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
@@ -457,7 +457,7 @@ export function SecretPage() {
           <ToggleButton value="raw">Raw</ToggleButton>
         </ToggleButtonGroup>
         {viewMode === 'editor' && (
-          <SecretDataEditor initialData={originalData} onChange={setSecretData} />
+          <SecretDataViewer data={secretData} onChange={setSecretData} />
         )}
         {viewMode === 'raw' && rawJson && (
           <SecretRawView
