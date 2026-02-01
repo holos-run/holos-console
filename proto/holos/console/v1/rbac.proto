@@ -30,4 +30,16 @@ enum Permission {
   PERMISSION_SECRETS_DELETE = 4;
   // PERMISSION_SECRETS_ADMIN allows administrative operations on secrets.
   PERMISSION_SECRETS_ADMIN = 5;
+  // PERMISSION_PROJECTS_READ allows reading project metadata.
+  PERMISSION_PROJECTS_READ = 6;
+  // PERMISSION_PROJECTS_LIST allows listing projects.
+  PERMISSION_PROJECTS_LIST = 7;
+  // PERMISSION_PROJECTS_WRITE allows updating project metadata.
+  PERMISSION_PROJECTS_WRITE = 8;
+  // PERMISSION_PROJECTS_DELETE allows deleting projects.
+  PERMISSION_PROJECTS_DELETE = 9;
+  // PERMISSION_PROJECTS_ADMIN allows administrative operations on projects.
+  PERMISSION_PROJECTS_ADMIN = 10;
+  // PERMISSION_PROJECTS_CREATE allows creating new projects.
+  PERMISSION_PROJECTS_CREATE = 11;
 }
