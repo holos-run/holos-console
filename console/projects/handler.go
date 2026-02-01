@@ -401,7 +401,7 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 	}
 	// Fallback: derive project name from namespace if label is missing
 	if p.Name == "" {
-		p.Name = h.k8s.Resolver.ProjectFromNamespace(ns.GetName(), p.Organization)
+		p.Name = h.k8s.Resolver.ProjectFromNamespace(ns.GetName())
 	}
 
 	return p
