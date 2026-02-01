@@ -517,6 +517,61 @@ describe('SecretsListPage', () => {
     })
   })
 
+  describe('link icon', () => {
+    it('shows link icon when secret has URL', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [],
+            groupGrants: [],
+            url: 'https://example.com/service',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/open my-secret url/i)).toBeInTheDocument()
+      })
+    })
+
+    it('does not show link icon when secret has no URL', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText('my-secret')).toBeInTheDocument()
+      })
+
+      expect(screen.queryByLabelText(/open my-secret url/i)).not.toBeInTheDocument()
+    })
+  })
+
   describe('list sharing summary', () => {
     it('shows sharing grant counts in list items', async () => {
       const mockUser = createMockUser({ groups: ['owner'] })

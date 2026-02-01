@@ -723,12 +723,65 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        const descField = screen.getByLabelText('Description') as HTMLInputElement
-        expect(descField.value).toBe('Database credentials')
+        expect(screen.getByText('Database credentials')).toBeInTheDocument()
       })
 
-      const urlField = screen.getByLabelText('URL') as HTMLInputElement
-      expect(urlField.value).toBe('https://db.example.com')
+      // URL should be displayed as a clickable link
+      const urlLink = screen.getByText('https://db.example.com')
+      expect(urlLink.closest('a')).toHaveAttribute('href', 'https://db.example.com')
+    })
+
+    it('shows edit button next to description', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('edit description')).toBeInTheDocument()
+      })
+    })
+
+    it('clicking edit shows TextField for description', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+            description: 'Database credentials',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByText('Database credentials')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText('edit description'))
+
+      expect(screen.getByLabelText('Description')).toBeInTheDocument()
+      expect((screen.getByLabelText('Description') as HTMLInputElement).value).toBe('Database credentials')
     })
 
     it('enables Save when description changes', async () => {
@@ -757,15 +810,16 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        const descField = screen.getByLabelText('Description') as HTMLInputElement
-        expect(descField.value).toBe('Old description')
+        expect(screen.getByText('Old description')).toBeInTheDocument()
       })
 
       // Save should be disabled initially
       expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
 
-      // Change description
+      // Click edit, change description, then confirm
+      fireEvent.click(screen.getByLabelText('edit description'))
       fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New description' } })
+      fireEvent.click(screen.getByLabelText('save description'))
 
       // Save should now be enabled
       expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled()
@@ -799,11 +853,14 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        expect(screen.getByLabelText('Description')).toBeInTheDocument()
+        expect(screen.getByLabelText('edit description')).toBeInTheDocument()
       })
 
-      // Change description to trigger dirty state
+      // Click edit, change description, confirm
+      fireEvent.click(screen.getByLabelText('edit description'))
       fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New desc' } })
+      fireEvent.click(screen.getByLabelText('save description'))
+
       fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
       await waitFor(() => {
@@ -818,7 +875,7 @@ describe('SecretPage', () => {
       })
     })
 
-    it('shows Open link when URL is set', async () => {
+    it('shows URL as clickable link when URL is set', async () => {
       const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
       const authValue = createAuthContext({
         user: mockUser,
@@ -844,9 +901,39 @@ describe('SecretPage', () => {
       renderSecretPage(authValue, 'my-secret')
 
       await waitFor(() => {
-        const openLink = screen.getByText('Open')
-        expect(openLink).toBeInTheDocument()
-        expect(openLink.closest('a')).toHaveAttribute('href', 'https://example.com/service')
+        const urlLink = screen.getByText('https://example.com/service')
+        expect(urlLink).toBeInTheDocument()
+        expect(urlLink.closest('a')).toHaveAttribute('href', 'https://example.com/service')
+      })
+    })
+
+    it('shows placeholder text when no description or URL', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByText('No description')).toBeInTheDocument()
+        expect(screen.getByText('No URL')).toBeInTheDocument()
       })
     })
   })
