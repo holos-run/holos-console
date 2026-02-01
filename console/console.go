@@ -200,7 +200,8 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	var secretsK8s *secrets.K8sClient
 	if k8sClientset != nil {
-		secretsK8s = secrets.NewK8sClient(k8sClientset)
+		secretsResolver := &resolver.Resolver{OrgPrefix: s.cfg.OrgPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		secretsK8s = secrets.NewK8sClient(k8sClientset, secretsResolver)
 		slog.Info("kubernetes client initialized")
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
@@ -216,12 +217,12 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Create project-scoped secrets handler with project grant resolver
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
 		// Fallback: secrets handler without K8s (no project resolver)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, nil)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, nil, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
