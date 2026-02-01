@@ -5,22 +5,22 @@ import "testing"
 func TestOrgNamespace(t *testing.T) {
 	r := &Resolver{Prefix: "holos-"}
 	got := r.OrgNamespace("acme")
-	if got != "holos-org-acme" {
-		t.Errorf("expected %q, got %q", "holos-org-acme", got)
+	if got != "holos-o-acme" {
+		t.Errorf("expected %q, got %q", "holos-o-acme", got)
 	}
 }
 
 func TestOrgNamespace_CustomPrefix(t *testing.T) {
 	r := &Resolver{Prefix: "myco-"}
 	got := r.OrgNamespace("acme")
-	if got != "myco-org-acme" {
-		t.Errorf("expected %q, got %q", "myco-org-acme", got)
+	if got != "myco-o-acme" {
+		t.Errorf("expected %q, got %q", "myco-o-acme", got)
 	}
 }
 
 func TestOrgFromNamespace(t *testing.T) {
 	r := &Resolver{Prefix: "holos-"}
-	got := r.OrgFromNamespace("holos-org-acme")
+	got := r.OrgFromNamespace("holos-o-acme")
 	if got != "acme" {
 		t.Errorf("expected %q, got %q", "acme", got)
 	}
@@ -28,41 +28,39 @@ func TestOrgFromNamespace(t *testing.T) {
 
 func TestProjectNamespace(t *testing.T) {
 	r := &Resolver{Prefix: "holos-"}
-	got := r.ProjectNamespace("acme", "api")
-	if got != "holos-acme-api" {
-		t.Errorf("expected %q, got %q", "holos-acme-api", got)
+	got := r.ProjectNamespace("api")
+	if got != "holos-p-api" {
+		t.Errorf("expected %q, got %q", "holos-p-api", got)
 	}
 }
 
 func TestProjectNamespace_CustomPrefix(t *testing.T) {
 	r := &Resolver{Prefix: "myco-"}
-	got := r.ProjectNamespace("acme", "api")
-	if got != "myco-acme-api" {
-		t.Errorf("expected %q, got %q", "myco-acme-api", got)
+	got := r.ProjectNamespace("api")
+	if got != "myco-p-api" {
+		t.Errorf("expected %q, got %q", "myco-p-api", got)
 	}
 }
 
 func TestProjectFromNamespace(t *testing.T) {
 	r := &Resolver{Prefix: "holos-"}
-	got := r.ProjectFromNamespace("holos-acme-api", "acme")
+	got := r.ProjectFromNamespace("holos-p-api")
 	if got != "api" {
 		t.Errorf("expected %q, got %q", "api", got)
 	}
 }
 
-func TestProjectNamespace_MultipleOrgs(t *testing.T) {
+func TestOrgAndProjectSameNameDifferentNamespaces(t *testing.T) {
 	r := &Resolver{Prefix: "holos-"}
-	tests := []struct {
-		org, project, want string
-	}{
-		{"acme", "api", "holos-acme-api"},
-		{"acme", "frontend", "holos-acme-frontend"},
-		{"beta", "api", "holos-beta-api"},
+	orgNS := r.OrgNamespace("acme")
+	projNS := r.ProjectNamespace("acme")
+	if orgNS == projNS {
+		t.Errorf("org and project with same name should have different namespaces, both got %q", orgNS)
 	}
-	for _, tt := range tests {
-		got := r.ProjectNamespace(tt.org, tt.project)
-		if got != tt.want {
-			t.Errorf("ProjectNamespace(%q, %q) = %q, want %q", tt.org, tt.project, got, tt.want)
-		}
+	if orgNS != "holos-o-acme" {
+		t.Errorf("expected org namespace %q, got %q", "holos-o-acme", orgNS)
+	}
+	if projNS != "holos-p-acme" {
+		t.Errorf("expected project namespace %q, got %q", "holos-p-acme", projNS)
 	}
 }

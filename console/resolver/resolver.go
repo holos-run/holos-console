@@ -19,29 +19,28 @@ const (
 )
 
 // Resolver translates between user-facing resource names and Kubernetes namespace names.
-// Organization namespaces: {Prefix}org-{name}
-// Project namespaces: {Prefix}{org}-{project}
+// Organization namespaces: {Prefix}o-{name}
+// Project namespaces: {Prefix}p-{name}
 type Resolver struct {
 	Prefix string // default "holos-"
 }
 
 // OrgNamespace returns the Kubernetes namespace name for an organization.
 func (r *Resolver) OrgNamespace(org string) string {
-	return r.Prefix + "org-" + org
+	return r.Prefix + "o-" + org
 }
 
 // OrgFromNamespace extracts the organization name from a Kubernetes namespace name.
 func (r *Resolver) OrgFromNamespace(ns string) string {
-	return strings.TrimPrefix(ns, r.Prefix+"org-")
+	return strings.TrimPrefix(ns, r.Prefix+"o-")
 }
 
-// ProjectNamespace returns the Kubernetes namespace name for a project within an organization.
-func (r *Resolver) ProjectNamespace(org, project string) string {
-	return r.Prefix + org + "-" + project
+// ProjectNamespace returns the Kubernetes namespace name for a project.
+func (r *Resolver) ProjectNamespace(project string) string {
+	return r.Prefix + "p-" + project
 }
 
-// ProjectFromNamespace extracts the project name from a Kubernetes namespace name,
-// given the organization name.
-func (r *Resolver) ProjectFromNamespace(ns, org string) string {
-	return strings.TrimPrefix(ns, r.Prefix+org+"-")
+// ProjectFromNamespace extracts the project name from a Kubernetes namespace name.
+func (r *Resolver) ProjectFromNamespace(ns string) string {
+	return strings.TrimPrefix(ns, r.Prefix+"p-")
 }
