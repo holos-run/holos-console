@@ -13,8 +13,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Link,
   Snackbar,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   useMediaQuery,
@@ -57,6 +59,12 @@ export function SecretPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  // Description and URL state
+  const [description, setDescription] = useState('')
+  const [originalDescription, setOriginalDescription] = useState('')
+  const [url, setUrl] = useState('')
+  const [originalUrl, setOriginalUrl] = useState('')
+
   // View mode state
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
   const [rawJson, setRawJson] = useState<string | null>(null)
@@ -67,7 +75,10 @@ export function SecretPage() {
   const [groupGrants, setGroupGrants] = useState<ShareGrant[]>([])
   const [isSavingSharing, setIsSavingSharing] = useState(false)
 
-  const isDirty = serializeData(secretData) !== serializeData(originalData)
+  const isDirty =
+    serializeData(secretData) !== serializeData(originalData) ||
+    description !== originalDescription ||
+    url !== originalUrl
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -127,6 +138,10 @@ export function SecretPage() {
         if (meta) {
           setUserGrants(meta.userGrants)
           setGroupGrants(meta.groupGrants)
+          setDescription(meta.description ?? '')
+          setOriginalDescription(meta.description ?? '')
+          setUrl(meta.url ?? '')
+          setOriginalUrl(meta.url ?? '')
         }
       } catch {
         // Sharing metadata is non-critical; don't block page
@@ -198,7 +213,7 @@ export function SecretPage() {
     try {
       const token = getAccessToken()
       await secretsClient.updateSecret(
-        { name, data: secretData },
+        { name, data: secretData, description, url },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -206,6 +221,8 @@ export function SecretPage() {
         },
       )
       setOriginalData({ ...secretData })
+      setOriginalDescription(description)
+      setOriginalUrl(url)
       setSaveSuccess(true)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
@@ -283,6 +300,33 @@ export function SecretPage() {
         <Typography variant="h6" gutterBottom>
           Secret: {name}
         </Typography>
+        <TextField
+          label="Description"
+          fullWidth
+          size="small"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What is this secret used for?"
+          sx={{ mb: 1 }}
+        />
+        <TextField
+          label="URL"
+          fullWidth
+          size="small"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com/service"
+          sx={{ mb: 1 }}
+          slotProps={{
+            input: {
+              endAdornment: url ? (
+                <Link href={url} target="_blank" rel="noopener noreferrer" sx={{ whiteSpace: 'nowrap' }}>
+                  Open
+                </Link>
+              ) : undefined,
+            },
+          }}
+        />
         <ToggleButtonGroup
           value={viewMode}
           exclusive
