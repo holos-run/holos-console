@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Card,
@@ -17,16 +17,22 @@ import {
   Snackbar,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
+import { createClient } from '@connectrpc/connect'
+import { useTransport } from '@connectrpc/connect-query'
 import { useAuth } from '../auth'
 import { SharingPanel, type Grant } from './SharingPanel'
+import { RawView } from './RawView'
 import { useGetProject, useDeleteProject, useUpdateProject, useUpdateProjectSharing } from '../queries/projects'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
+import { ProjectService } from '../gen/holos/console/v1/projects_pb.js'
 
 export function ProjectPage() {
   const { projectName: name } = useParams<{ projectName: string }>()
@@ -34,6 +40,7 @@ export function ProjectPage() {
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const { isAuthenticated, isLoading: authLoading, login } = useAuth()
+  const transport = useTransport()
 
   const { data, isLoading, error } = useGetProject(name ?? '')
   const project = data?.project
@@ -41,6 +48,8 @@ export function ProjectPage() {
   const deleteProjectMutation = useDeleteProject()
   const updateProjectMutation = useUpdateProject()
   const updateSharingMutation = useUpdateProjectSharing()
+
+  const projectsClient = useMemo(() => createClient(ProjectService, transport), [transport])
 
   // Inline edit state for display name
   const [editingDisplayName, setEditingDisplayName] = useState(false)
@@ -52,6 +61,12 @@ export function ProjectPage() {
 
   // Save success snackbar
   const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
+  const [rawJson, setRawJson] = useState<string | null>(null)
+  const [rawError, setRawError] = useState<Error | null>(null)
+  const [includeAllFields, setIncludeAllFields] = useState(false)
 
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -113,6 +128,20 @@ export function ProjectPage() {
     }
   }
 
+  const handleViewModeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'editor' | 'raw' | null) => {
+    if (newMode === null) return
+    setViewMode(newMode)
+
+    if (newMode === 'raw' && rawJson === null && name) {
+      try {
+        const response = await projectsClient.getProjectRaw({ name })
+        setRawJson(response.raw)
+      } catch (err) {
+        setRawError(err instanceof Error ? err : new Error(String(err)))
+      }
+    }
+  }
+
   const handleDelete = async () => {
     if (!name) return
 
@@ -140,9 +169,10 @@ export function ProjectPage() {
   }
 
   // Show error state
-  if (error) {
-    const errorMessage = error.message.toLowerCase()
-    let displayMessage = error.message
+  const displayError = error || rawError
+  if (displayError) {
+    const errorMessage = displayError.message.toLowerCase()
+    let displayMessage = displayError.message
 
     if (errorMessage.includes('not found') || errorMessage.includes('not_found')) {
       displayMessage = `Project "${name}" not found`
@@ -296,25 +326,46 @@ export function ProjectPage() {
           )}
         </Stack>
 
-        {/* Actions */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
-          <Button
-            variant="contained"
-            component={RouterLink}
-            to={`/projects/${name}/secrets`}
-          >
-            Secrets
-          </Button>
-          {isOwner && (
-            <Button
-              variant="outlined"
-              color="error"
-              onClick={() => setDeleteOpen(true)}
-            >
-              Delete
-            </Button>
-          )}
-        </Stack>
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={handleViewModeChange}
+          size="small"
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="editor">Editor</ToggleButton>
+          <ToggleButton value="raw">Raw</ToggleButton>
+        </ToggleButtonGroup>
+        {viewMode === 'raw' && rawJson && (
+          <RawView
+            raw={rawJson}
+            includeAllFields={includeAllFields}
+            onToggleIncludeAllFields={() => setIncludeAllFields((prev) => !prev)}
+          />
+        )}
+        {viewMode === 'editor' && (
+          <>
+            {/* Actions */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to={`/projects/${name}/secrets`}
+              >
+                Secrets
+              </Button>
+              {isOwner && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </Button>
+              )}
+            </Stack>
+          </>
+        )}
 
         {/* Sharing */}
         <SharingPanel

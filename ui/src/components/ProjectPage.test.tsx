@@ -11,6 +11,7 @@ import { vi } from 'vitest'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import {
   DeleteProjectResponseSchema,
+  GetProjectRawResponseSchema,
   GetProjectResponseSchema,
   ListProjectsResponseSchema,
   ProjectSchema,
@@ -63,7 +64,7 @@ function createProjectTransport(project: {
   userGrants?: Array<{ principal: string; role: Role }>
   groupGrants?: Array<{ principal: string; role: Role }>
   organization?: string
-}) {
+}, rawJson?: string) {
   return createRouterTransport(({ service }) => {
     service(ProjectService, {
       listProjects: () => create(ListProjectsResponseSchema, { projects: [] }),
@@ -79,6 +80,7 @@ function createProjectTransport(project: {
       deleteProject: () => create(DeleteProjectResponseSchema),
       updateProject: () => create(UpdateProjectResponseSchema),
       updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+      getProjectRaw: () => create(GetProjectRawResponseSchema, { raw: rawJson ?? '' }),
     })
   })
 }
@@ -253,6 +255,108 @@ describe('ProjectPage', () => {
     })
   })
 
+  describe('raw view toggle', () => {
+    it('shows Editor/Raw toggle buttons', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      const transport = createProjectTransport({
+        name: 'prod',
+        displayName: 'Production',
+        description: 'Prod env',
+        userRole: Role.VIEWER,
+      })
+
+      renderProjectPage(authValue, 'prod', transport)
+
+      await waitFor(() => {
+        expect(screen.getByText('Production')).toBeInTheDocument()
+      })
+
+      expect(screen.getByRole('button', { name: /editor/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /raw/i })).toBeInTheDocument()
+    })
+
+    it('fetches and displays raw JSON when Raw toggle is clicked', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Namespace',
+        metadata: { name: 'holos-p-prod' },
+      })
+
+      const transport = createProjectTransport({
+        name: 'prod',
+        displayName: 'Production',
+        description: 'Prod env',
+        userRole: Role.VIEWER,
+      }, rawJson)
+
+      renderProjectPage(authValue, 'prod', transport)
+
+      await waitFor(() => {
+        expect(screen.getByText('Production')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /raw/i }))
+
+      await waitFor(() => {
+        const pre = screen.getByRole('code')
+        expect(pre).toBeInTheDocument()
+        const parsed = JSON.parse(pre.textContent || '')
+        expect(parsed.kind).toBe('Namespace')
+      })
+    })
+
+    it('switches back to editor view when Editor toggle is clicked', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Namespace',
+        metadata: { name: 'holos-p-prod' },
+      })
+
+      const transport = createProjectTransport({
+        name: 'prod',
+        displayName: 'Production',
+        description: 'Prod env',
+        userRole: Role.EDITOR,
+      }, rawJson)
+
+      renderProjectPage(authValue, 'prod', transport)
+
+      await waitFor(() => {
+        expect(screen.getByText('Production')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /raw/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('code')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /editor/i }))
+
+      await waitFor(() => {
+        expect(screen.queryByRole('code')).not.toBeInTheDocument()
+        expect(screen.getByText('Production')).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('error handling', () => {
     it('shows not-found error message', async () => {
       const mockUser = createMockUser({})
@@ -270,6 +374,7 @@ describe('ProjectPage', () => {
           deleteProject: () => create(DeleteProjectResponseSchema),
           updateProject: () => create(UpdateProjectResponseSchema),
           updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+          getProjectRaw: () => create(GetProjectRawResponseSchema),
         })
       })
 
@@ -296,6 +401,7 @@ describe('ProjectPage', () => {
           deleteProject: () => create(DeleteProjectResponseSchema),
           updateProject: () => create(UpdateProjectResponseSchema),
           updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+          getProjectRaw: () => create(GetProjectRawResponseSchema),
         })
       })
 
@@ -336,6 +442,7 @@ describe('ProjectPage', () => {
             return create(UpdateProjectResponseSchema)
           },
           updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+          getProjectRaw: () => create(GetProjectRawResponseSchema),
         })
       })
 
@@ -384,6 +491,7 @@ describe('ProjectPage', () => {
             return create(UpdateProjectResponseSchema)
           },
           updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+          getProjectRaw: () => create(GetProjectRawResponseSchema),
         })
       })
 
@@ -432,6 +540,7 @@ describe('ProjectPage', () => {
           },
           updateProject: () => create(UpdateProjectResponseSchema),
           updateProjectSharing: () => create(UpdateProjectSharingResponseSchema),
+          getProjectRaw: () => create(GetProjectRawResponseSchema),
         })
       })
 
