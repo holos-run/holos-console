@@ -35,7 +35,7 @@ The UI handles base64 encoding/decoding transparently -- you work with plaintext
 
 ### Secrets List
 
-The `/secrets` page displays all secrets in the configured namespace that have the label `app.kubernetes.io/managed-by=console.holos.run`. Each secret shows:
+The `/projects/:projectName/secrets` page displays all secrets in the project's namespace (prefixed with `holos-prj-` by default) that have the label `app.kubernetes.io/managed-by=console.holos.run`. Each secret shows:
 
 - The secret name (links to the detail page)
 - A description of the secret's purpose (when set), or a sharing summary (e.g., "2 users, 1 group") as secondary text

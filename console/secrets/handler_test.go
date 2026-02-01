@@ -856,8 +856,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns PermissionDenied for empty grants and no platform role", func(t *testing.T) {
-		// No per-secret grants and user not in any platform role group
+	t.Run("returns PermissionDenied for empty grants", func(t *testing.T) {
+		// No per-secret grants and user has no matching sharing grants
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
@@ -889,9 +889,8 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 	})
 
-	t.Run("returns success for platform editor with no per-secret grants", func(t *testing.T) {
-		// Given: User is in the "editor" OIDC group (platform editor role),
-		// and provides grants for the new secret (required for the secret itself)
+	t.Run("returns success for editor with explicit grants on new secret", func(t *testing.T) {
+		// Given: User provides editor grants for the new secret
 		fakeClient := fake.NewClientset()
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
@@ -915,7 +914,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		// When: CreateSecret RPC is called
 		resp, err := handler.CreateSecret(ctx, req)
 
-		// Then: Returns success — platform editor role grants write permission
+		// Then: Returns success — explicit editor grant allows write permission
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -1504,7 +1503,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 	})
 
 	t.Run("returns all secrets with accessibility info", func(t *testing.T) {
-		// Given: Two labeled secrets, user can only access one (no platform role)
+		// Given: Two labeled secrets, user can only access one (no sharing grants on the other)
 		accessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "accessible-secret",
@@ -1536,7 +1535,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"some-team"}, // Not a platform role group
+			Groups: []string{"some-team"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 

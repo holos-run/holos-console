@@ -234,8 +234,8 @@ func TestCheckAccessGrants(t *testing.T) {
 		}
 	})
 
-	t.Run("does not use platform roles", func(t *testing.T) {
-		// User is in "owner" OIDC group but has no grants
+	t.Run("denies access without explicit grants", func(t *testing.T) {
+		// User is in "owner" OIDC group but has no explicit grants
 		err := CheckAccessGrants(
 			"nobody@example.com",
 			[]string{"owner"},
@@ -244,7 +244,7 @@ func TestCheckAccessGrants(t *testing.T) {
 			PermissionProjectsRead,
 		)
 		if err == nil {
-			t.Fatal("expected PermissionDenied (no platform role fallback), got nil")
+			t.Fatal("expected PermissionDenied without explicit grants, got nil")
 		}
 	})
 }
