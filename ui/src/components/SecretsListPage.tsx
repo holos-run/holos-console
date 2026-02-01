@@ -53,6 +53,8 @@ export function SecretsListPage() {
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
+  const [createDescription, setCreateDescription] = useState('')
+  const [createUrl, setCreateUrl] = useState('')
   const [createData, setCreateData] = useState<Record<string, Uint8Array>>({})
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -136,6 +138,8 @@ export function SecretsListPage() {
 
   const handleCreateOpen = () => {
     setCreateName('')
+    setCreateDescription('')
+    setCreateUrl('')
     setCreateData({})
     setCreateError(null)
     setCreateOpen(true)
@@ -161,6 +165,8 @@ export function SecretsListPage() {
           name: createName.trim(),
           data: createData,
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
+          description: createDescription.trim() || undefined,
+          url: createUrl.trim() || undefined,
         },
         {
           headers: {
@@ -257,8 +263,16 @@ export function SecretsListPage() {
                   >
                     <ListItemText
                       primary={secret.name}
-                      secondary={sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
+                      secondary={secret.description || sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
                     />
+                    {secret.description && sharingSummary(secret.userGrants.length, secret.groupGrants.length) && (
+                      <Chip
+                        label={sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
+                        size="small"
+                        variant="outlined"
+                        sx={{ ml: 1, flexShrink: 0 }}
+                      />
+                    )}
                   </ListItemButton>
                 </ListItem>
               ))}
@@ -279,6 +293,22 @@ export function SecretsListPage() {
             onChange={(e) => setCreateName(e.target.value)}
             placeholder="my-secret"
             helperText="Lowercase alphanumeric and hyphens only"
+          />
+          <TextField
+            margin="dense"
+            label="Description"
+            fullWidth
+            value={createDescription}
+            onChange={(e) => setCreateDescription(e.target.value)}
+            placeholder="What is this secret used for?"
+          />
+          <TextField
+            margin="dense"
+            label="URL"
+            fullWidth
+            value={createUrl}
+            onChange={(e) => setCreateUrl(e.target.value)}
+            placeholder="https://example.com/service"
           />
           <Box sx={{ mt: 1 }}>
             <SecretDataEditor initialData={createData} onChange={setCreateData} />
