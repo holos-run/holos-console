@@ -397,6 +397,108 @@ func TestRoleFromString(t *testing.T) {
 	}
 }
 
+func TestHasPermission_ProjectPermissions(t *testing.T) {
+	t.Run("viewer can read and list projects", func(t *testing.T) {
+		if !HasPermission(RoleViewer, PermissionProjectsRead) {
+			t.Error("viewer should have projects:read permission")
+		}
+		if !HasPermission(RoleViewer, PermissionProjectsList) {
+			t.Error("viewer should have projects:list permission")
+		}
+	})
+
+	t.Run("viewer cannot write projects", func(t *testing.T) {
+		if HasPermission(RoleViewer, PermissionProjectsWrite) {
+			t.Error("viewer should not have projects:write permission")
+		}
+	})
+
+	t.Run("editor can write projects", func(t *testing.T) {
+		if !HasPermission(RoleEditor, PermissionProjectsWrite) {
+			t.Error("editor should have projects:write permission")
+		}
+	})
+
+	t.Run("editor cannot create projects", func(t *testing.T) {
+		if HasPermission(RoleEditor, PermissionProjectsCreate) {
+			t.Error("editor should not have projects:create permission")
+		}
+	})
+
+	t.Run("owner can create projects", func(t *testing.T) {
+		if !HasPermission(RoleOwner, PermissionProjectsCreate) {
+			t.Error("owner should have projects:create permission")
+		}
+	})
+
+	t.Run("owner can delete projects", func(t *testing.T) {
+		if !HasPermission(RoleOwner, PermissionProjectsDelete) {
+			t.Error("owner should have projects:delete permission")
+		}
+	})
+
+	t.Run("owner can admin projects", func(t *testing.T) {
+		if !HasPermission(RoleOwner, PermissionProjectsAdmin) {
+			t.Error("owner should have projects:admin permission")
+		}
+	})
+}
+
+func TestCheckAccessGrants(t *testing.T) {
+	t.Run("user grant allows access", func(t *testing.T) {
+		err := CheckAccessGrants(
+			"alice@example.com",
+			nil,
+			map[string]string{"alice@example.com": "viewer"},
+			nil,
+			PermissionProjectsRead,
+		)
+		if err != nil {
+			t.Errorf("expected access granted, got: %v", err)
+		}
+	})
+
+	t.Run("group grant allows access", func(t *testing.T) {
+		err := CheckAccessGrants(
+			"bob@example.com",
+			[]string{"engineering"},
+			nil,
+			map[string]string{"engineering": "editor"},
+			PermissionProjectsWrite,
+		)
+		if err != nil {
+			t.Errorf("expected access granted via group, got: %v", err)
+		}
+	})
+
+	t.Run("no grants denies access", func(t *testing.T) {
+		err := CheckAccessGrants(
+			"nobody@example.com",
+			[]string{"unknown"},
+			nil,
+			nil,
+			PermissionProjectsRead,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied, got nil")
+		}
+	})
+
+	t.Run("does not use platform roles", func(t *testing.T) {
+		// User is in "owner" OIDC group but has no grants
+		err := CheckAccessGrants(
+			"nobody@example.com",
+			[]string{"owner"},
+			nil,
+			nil,
+			PermissionProjectsRead,
+		)
+		if err == nil {
+			t.Fatal("expected PermissionDenied (no platform role fallback), got nil")
+		}
+	})
+}
+
 func TestCheckAccessSharing(t *testing.T) {
 	gm := NewGroupMapping(nil, nil, nil)
 
