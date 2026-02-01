@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { SecretRawView } from './SecretRawView'
+import { RawView } from './RawView'
 import { vi } from 'vitest'
 
 // Sample raw JSON as returned by GetSecretRaw
@@ -27,10 +27,10 @@ const sampleRaw = JSON.stringify({
   type: 'Opaque',
 })
 
-describe('SecretRawView', () => {
+describe('SecretRawView (via RawView)', () => {
   describe('data conversion', () => {
     it('converts data (base64) to stringData (plaintext) and removes data field', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
 
       const pre = screen.getByRole('code')
       const parsed = JSON.parse(pre.textContent || '')
@@ -44,7 +44,7 @@ describe('SecretRawView', () => {
 
   describe('formatting', () => {
     it('pretty-prints JSON with 2-space indentation', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={true} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={true} onToggleIncludeAllFields={vi.fn()} />)
 
       const pre = screen.getByRole('code')
       const text = pre.textContent || ''
@@ -57,7 +57,7 @@ describe('SecretRawView', () => {
 
   describe('field filtering', () => {
     it('strips server-managed metadata fields when includeAllFields is off', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
 
       const pre = screen.getByRole('code')
       const parsed = JSON.parse(pre.textContent || '')
@@ -79,7 +79,7 @@ describe('SecretRawView', () => {
     })
 
     it('preserves all fields when includeAllFields is on', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={true} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={true} onToggleIncludeAllFields={vi.fn()} />)
 
       const pre = screen.getByRole('code')
       const parsed = JSON.parse(pre.textContent || '')
@@ -93,7 +93,7 @@ describe('SecretRawView', () => {
 
   describe('toggle', () => {
     it('has an Include all fields toggle with tooltip', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
 
       expect(screen.getByText('Include all fields')).toBeInTheDocument()
       expect(screen.getByRole('switch')).toBeInTheDocument()
@@ -101,7 +101,7 @@ describe('SecretRawView', () => {
 
     it('calls onToggleIncludeAllFields when toggle is clicked', () => {
       const onToggle = vi.fn()
-      render(<SecretRawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={onToggle} />)
+      render(<RawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={onToggle} />)
 
       const toggle = screen.getByRole('switch')
       fireEvent.click(toggle)
@@ -111,7 +111,7 @@ describe('SecretRawView', () => {
 
   describe('copy to clipboard', () => {
     it('has a Copy to Clipboard button', () => {
-      render(<SecretRawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+      render(<RawView raw={sampleRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
 
       const button = screen.getByRole('button', { name: /copy to clipboard/i })
       expect(button).toBeInTheDocument()
