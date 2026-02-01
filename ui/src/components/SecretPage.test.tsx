@@ -695,6 +695,162 @@ describe('SecretPage', () => {
     })
   })
 
+  describe('description and URL fields', () => {
+    it('displays description and URL from metadata', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+            description: 'Database credentials',
+            url: 'https://db.example.com',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        const descField = screen.getByLabelText('Description') as HTMLInputElement
+        expect(descField.value).toBe('Database credentials')
+      })
+
+      const urlField = screen.getByLabelText('URL') as HTMLInputElement
+      expect(urlField.value).toBe('https://db.example.com')
+    })
+
+    it('enables Save when description changes', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+            description: 'Old description',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        const descField = screen.getByLabelText('Description') as HTMLInputElement
+        expect(descField.value).toBe('Old description')
+      })
+
+      // Save should be disabled initially
+      expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
+
+      // Change description
+      fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New description' } })
+
+      // Save should now be enabled
+      expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled()
+    })
+
+    it('includes description and URL in update request', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      mockUpdateSecret.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof secretsClient.updateSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Description')).toBeInTheDocument()
+      })
+
+      // Change description to trigger dirty state
+      fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New desc' } })
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+      await waitFor(() => {
+        expect(mockUpdateSecret).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'my-secret',
+            description: 'New desc',
+            url: '',
+          }),
+          expect.any(Object),
+        )
+      })
+    })
+
+    it('shows Open link when URL is set', async () => {
+      const mockUser = createMockUser({ email: 'alice@example.com', groups: [] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: { key: new TextEncoder().encode('value') },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+            url: 'https://example.com/service',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      await waitFor(() => {
+        const openLink = screen.getByText('Open')
+        expect(openLink).toBeInTheDocument()
+        expect(openLink.closest('a')).toHaveAttribute('href', 'https://example.com/service')
+      })
+    })
+  })
+
   describe('view mode toggle', () => {
     it('displays Editor and Raw toggle buttons', async () => {
       const mockUser = createMockUser({ groups: ['owner'] })
