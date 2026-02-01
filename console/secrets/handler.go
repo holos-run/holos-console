@@ -201,8 +201,17 @@ func (h *Handler) CreateSecret(
 	// Merge string_data into data (string_data takes precedence)
 	data := mergeStringData(req.Msg.Data, req.Msg.StringData)
 
+	// Extract description and url
+	var description, url string
+	if req.Msg.Description != nil {
+		description = *req.Msg.Description
+	}
+	if req.Msg.Url != nil {
+		url = *req.Msg.Url
+	}
+
 	// Create the secret
-	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, data, shareUsers, shareGroups)
+	_, err := h.k8s.CreateSecret(ctx, req.Msg.Name, data, shareUsers, shareGroups, description, url)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -267,7 +276,7 @@ func (h *Handler) UpdateSecret(
 	data := mergeStringData(req.Msg.Data, req.Msg.StringData)
 
 	// Perform the update
-	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, data); err != nil {
+	if _, err := h.k8s.UpdateSecret(ctx, req.Msg.Name, data, req.Msg.Description, req.Msg.Url); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -451,12 +460,19 @@ func buildSecretMetadata(secret *corev1.Secret, shareUsers, shareGroups []Annota
 	// Build group grants
 	groupGrants := annotationGrantsToProto(shareGroups)
 
-	return &consolev1.SecretMetadata{
+	md := &consolev1.SecretMetadata{
 		Name:        secret.Name,
 		Accessible:  accessible,
 		UserGrants:  userGrants,
 		GroupGrants: groupGrants,
 	}
+	if desc := GetDescription(secret); desc != "" {
+		md.Description = &desc
+	}
+	if u := GetURL(secret); u != "" {
+		md.Url = &u
+	}
+	return md
 }
 
 // annotationGrantsToProto converts []AnnotationGrant to []*consolev1.ShareGrant.
