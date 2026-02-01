@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -58,7 +59,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 	return rpc.ContextWithClaims(context.Background(), claims)
 }
 
-// managedNS creates a managed namespace with share-users annotation.
+// managedNS creates a managed project namespace with share-users annotation.
 func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	annotations := map[string]string{}
 	if shareUsersJSON != "" {
@@ -66,11 +67,19 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Labels:      map[string]string{secrets.ManagedByLabel: secrets.ManagedByValue},
+			Name: "holos-prj-" + name,
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.OrganizationLabel: "default-org",
+			},
 			Annotations: annotations,
 		},
 	}
+}
+
+func testResolver() *resolver.Resolver {
+	return &resolver.Resolver{OrgPrefix: "holos-org-", ProjectPrefix: "holos-prj-"}
 }
 
 func newHandler(namespaces ...*corev1.Namespace) (*Handler, *testLogHandler) {
@@ -79,8 +88,8 @@ func newHandler(namespaces ...*corev1.Namespace) (*Handler, *testLogHandler) {
 		objs[i] = ns
 	}
 	fakeClient := fake.NewClientset(objs...)
-	k8s := NewK8sClient(fakeClient)
-	handler := NewHandler(k8s)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, nil)
 	logHandler := &testLogHandler{}
 	slog.SetDefault(slog.New(logHandler))
 	return handler, logHandler
@@ -271,9 +280,10 @@ func TestCreateProject_CreatesForAuthorizedUser(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:        "new-project",
-		DisplayName: "New Project",
-		Description: "A new project",
+		Name:         "new-project",
+		DisplayName:  "New Project",
+		Description:  "A new project",
+		Organization: "default-org",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -293,7 +303,8 @@ func TestCreateProject_DeniesUserWithoutCreatePermission(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "new-project",
+		Name:         "new-project",
+		Organization: "default-org",
 	}))
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -308,8 +319,8 @@ func TestCreateProject_DeniesUserWithoutCreatePermission(t *testing.T) {
 func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	fakeClient := fake.NewClientset(existing)
-	k8s := NewK8sClient(fakeClient)
-	handler := NewHandler(k8s)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, nil)
 	logHandler := &testLogHandler{}
 	slog.SetDefault(slog.New(logHandler))
 
@@ -317,14 +328,15 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 
 	// Create without explicit grants
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "new-project",
+		Name:         "new-project",
+		Organization: "default-org",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
 	// Verify the created namespace has alice as owner
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "new-project", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
