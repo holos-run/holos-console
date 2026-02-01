@@ -9,6 +9,7 @@ import {
 import { User } from 'oidc-client-ts'
 import { getUserManager } from './userManager'
 import { isBFFMode, BFF_ENDPOINTS } from './config'
+import { tokenRef } from '../client'
 
 // BFF mode user type (simpler than oidc-client-ts User)
 export interface BFFUser {
@@ -130,6 +131,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       userManager.events.removeSilentRenewError(handleSilentRenewError)
     }
   }, [isBFF, userManager])
+
+  // Keep the shared tokenRef in sync so the transport interceptor can inject
+  // the Authorization header on every outgoing RPC.
+  useEffect(() => {
+    tokenRef.current = user?.access_token ?? null
+  }, [user])
 
   const login = useCallback(
     async (returnTo?: string) => {
