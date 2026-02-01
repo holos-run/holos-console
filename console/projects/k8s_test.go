@@ -82,6 +82,44 @@ func TestListProjects_ReturnsEmptyListWhenNoManagedNamespaces(t *testing.T) {
 	}
 }
 
+func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
+	now := metav1.Now()
+	active := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-p-active",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "active",
+			},
+		},
+	}
+	terminating := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-p-terminating",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "terminating",
+			},
+			DeletionTimestamp: &now,
+		},
+	}
+	fakeClient := fake.NewClientset(active, terminating)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	projects, err := k8s.ListProjects(context.Background(), "")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project (excluding terminating), got %d", len(projects))
+	}
+	if projects[0].Name != "holos-p-active" {
+		t.Errorf("expected active project, got %q", projects[0].Name)
+	}
+}
+
 func TestListProjects_FilterByOrg(t *testing.T) {
 	prj1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

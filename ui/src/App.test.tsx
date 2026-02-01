@@ -12,9 +12,6 @@ vi.mock('./client', () => ({
   organizationsClient: {
     listOrganizations: vi.fn().mockResolvedValue({ organizations: [] }),
   },
-  projectsClient: {
-    listProjects: vi.fn().mockResolvedValue({ projects: [] }),
-  },
   versionClient: {
     getVersion: vi.fn().mockResolvedValue({}),
   },

@@ -43,9 +43,12 @@ func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Nam
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*corev1.Namespace, len(list.Items))
+	result := make([]*corev1.Namespace, 0, len(list.Items))
 	for i := range list.Items {
-		result[i] = &list.Items[i]
+		if list.Items[i].DeletionTimestamp != nil {
+			continue
+		}
+		result = append(result, &list.Items[i])
 	}
 	return result, nil
 }

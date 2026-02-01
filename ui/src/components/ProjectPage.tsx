@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Card,
@@ -24,21 +24,23 @@ import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import { useAuth } from '../auth'
-import { projectsClient } from '../client'
 import { SharingPanel, type Grant } from './SharingPanel'
+import { useGetProject, useDeleteProject, useUpdateProject, useUpdateProjectSharing } from '../queries/projects'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Project } from '../gen/holos/console/v1/projects_pb'
 
 export function ProjectPage() {
   const { projectName: name } = useParams<{ projectName: string }>()
   const navigate = useNavigate()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
-  const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth()
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const { data, isLoading, error } = useGetProject(name ?? '')
+  const project = data?.project
+
+  const deleteProjectMutation = useDeleteProject()
+  const updateProjectMutation = useUpdateProject()
+  const updateSharingMutation = useUpdateProjectSharing()
 
   // Inline edit state for display name
   const [editingDisplayName, setEditingDisplayName] = useState(false)
@@ -48,152 +50,78 @@ export function ProjectPage() {
   const [editingDescription, setEditingDescription] = useState(false)
   const [draftDescription, setDraftDescription] = useState('')
 
-  // Save state
-  const [isSaving, setIsSaving] = useState(false)
+  // Save success snackbar
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  // Sharing state
-  const [isSavingSharing, setIsSavingSharing] = useState(false)
-
-  // Delete state
+  // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Local project overrides for optimistic display after update
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
+  const [localDescription, setLocalDescription] = useState<string | null>(null)
+  const [localProject, setLocalProject] = useState<typeof project | null>(null)
 
   // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      login(`/projects/${name}`)
-    }
-  }, [authLoading, isAuthenticated, login, name])
+  if (!authLoading && !isAuthenticated) {
+    login(`/projects/${name}`)
+  }
 
-  // Fetch project data
-  useEffect(() => {
-    if (!isAuthenticated || !name) return
+  const effectiveProject = localProject ?? project
+  const displayName = localDisplayName ?? effectiveProject?.displayName
+  const description = localDescription ?? effectiveProject?.description
 
-    const fetchProject = async () => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const token = getAccessToken()
-        const response = await projectsClient.getProject(
-          { name },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        )
-
-        if (response.project) {
-          setProject(response.project)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)))
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchProject()
-  }, [isAuthenticated, name, getAccessToken])
-
-  const isOwner = project?.userRole === Role.OWNER
-  const isEditorOrAbove = project != null && project.userRole >= Role.EDITOR
+  const isOwner = effectiveProject?.userRole === Role.OWNER
+  const isEditorOrAbove = effectiveProject != null && effectiveProject.userRole >= Role.EDITOR
 
   const handleSaveDisplayName = async (newDisplayName: string) => {
     if (!name) return
-    setIsSaving(true)
     try {
-      const token = getAccessToken()
-      await projectsClient.updateProject(
-        { name, displayName: newDisplayName },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-      setProject((prev) => prev ? { ...prev, displayName: newDisplayName } : prev)
+      await updateProjectMutation.mutateAsync({ name, displayName: newDisplayName })
+      setLocalDisplayName(newDisplayName)
       setEditingDisplayName(false)
       setSaveSuccess(true)
     } catch {
       // Keep editing state on failure
-    } finally {
-      setIsSaving(false)
     }
   }
 
   const handleSaveDescription = async (newDescription: string) => {
     if (!name) return
-    setIsSaving(true)
     try {
-      const token = getAccessToken()
-      await projectsClient.updateProject(
-        { name, description: newDescription },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-      setProject((prev) => prev ? { ...prev, description: newDescription } : prev)
+      await updateProjectMutation.mutateAsync({ name, description: newDescription })
+      setLocalDescription(newDescription)
       setEditingDescription(false)
       setSaveSuccess(true)
     } catch {
       // Keep editing state on failure
-    } finally {
-      setIsSaving(false)
     }
   }
 
   const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
     if (!name) return
-    setIsSavingSharing(true)
     try {
-      const token = getAccessToken()
-      const response = await projectsClient.updateProjectSharing(
-        {
-          name,
-          userGrants: newUserGrants,
-          groupGrants: newGroupGrants,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      const response = await updateSharingMutation.mutateAsync({
+        name,
+        userGrants: newUserGrants,
+        groupGrants: newGroupGrants,
+      })
       if (response.project) {
-        setProject(response.project)
+        setLocalProject(response.project)
       }
-    } finally {
-      setIsSavingSharing(false)
+    } catch {
+      // Error handling could be added here
     }
   }
 
   const handleDelete = async () => {
     if (!name) return
-    setIsDeleting(true)
-    setDeleteError(null)
 
     try {
-      const token = getAccessToken()
-      await projectsClient.deleteProject(
-        { name },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await deleteProjectMutation.mutateAsync({ name })
       setDeleteOpen(false)
       navigate('/projects')
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsDeleting(false)
+    } catch {
+      // Error is available via deleteProjectMutation.error
     }
   }
 
@@ -216,12 +144,11 @@ export function ProjectPage() {
     const errorMessage = error.message.toLowerCase()
     let displayMessage = error.message
 
-    if (errorMessage.includes('not found') || (error as Error & { code?: string }).code === 'not_found') {
+    if (errorMessage.includes('not found') || errorMessage.includes('not_found')) {
       displayMessage = `Project "${name}" not found`
     } else if (
       errorMessage.includes('permission') ||
-      errorMessage.includes('denied') ||
-      (error as Error & { code?: string }).code === 'permission_denied'
+      errorMessage.includes('denied')
     ) {
       displayMessage = 'Permission denied: You are not authorized to view this project'
     }
@@ -235,19 +162,19 @@ export function ProjectPage() {
     )
   }
 
-  if (!project) return null
+  if (!effectiveProject) return null
 
   return (
     <Card variant="outlined">
       <CardContent>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          {project.organization ? (
-            <RouterLink to={`/organizations/${project.organization}`} style={{ color: 'inherit' }}>
-              {project.organization}
+          {effectiveProject.organization ? (
+            <RouterLink to={`/organizations/${effectiveProject.organization}`} style={{ color: 'inherit' }}>
+              {effectiveProject.organization}
             </RouterLink>
           ) : null}
-          {project.organization ? ' / ' : ''}
-          {project.name}
+          {effectiveProject.organization ? ' / ' : ''}
+          {effectiveProject.name}
         </Typography>
 
         {/* Display Name */}
@@ -262,7 +189,7 @@ export function ProjectPage() {
                 value={draftDisplayName}
                 onChange={(e) => setDraftDisplayName(e.target.value)}
                 placeholder="Display name"
-                disabled={isSaving}
+                disabled={updateProjectMutation.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSaveDisplayName(draftDisplayName)
@@ -273,7 +200,7 @@ export function ProjectPage() {
                 aria-label="save display name"
                 size="small"
                 onClick={() => handleSaveDisplayName(draftDisplayName)}
-                disabled={isSaving}
+                disabled={updateProjectMutation.isPending}
               >
                 <CheckIcon fontSize="small" />
               </IconButton>
@@ -291,14 +218,14 @@ export function ProjectPage() {
                 variant="h6"
                 sx={{ flexGrow: 1 }}
               >
-                {project.displayName || project.name}
+                {displayName || effectiveProject.name}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit display name"
                   size="small"
                   onClick={() => {
-                    setDraftDisplayName(project.displayName || '')
+                    setDraftDisplayName(displayName || '')
                     setEditingDisplayName(true)
                   }}
                 >
@@ -321,7 +248,7 @@ export function ProjectPage() {
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
                 placeholder="What is this project for?"
-                disabled={isSaving}
+                disabled={updateProjectMutation.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSaveDescription(draftDescription)
@@ -332,7 +259,7 @@ export function ProjectPage() {
                 aria-label="save description"
                 size="small"
                 onClick={() => handleSaveDescription(draftDescription)}
-                disabled={isSaving}
+                disabled={updateProjectMutation.isPending}
               >
                 <CheckIcon fontSize="small" />
               </IconButton>
@@ -348,17 +275,17 @@ export function ProjectPage() {
             <>
               <Typography
                 variant="body2"
-                color={project.description ? 'text.primary' : 'text.secondary'}
+                color={description ? 'text.primary' : 'text.secondary'}
                 sx={{ flexGrow: 1 }}
               >
-                {project.description || 'No description'}
+                {description || 'No description'}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit description"
                   size="small"
                   onClick={() => {
-                    setDraftDescription(project.description || '')
+                    setDraftDescription(description || '')
                     setEditingDescription(true)
                   }}
                 >
@@ -391,11 +318,11 @@ export function ProjectPage() {
 
         {/* Sharing */}
         <SharingPanel
-          userGrants={project.userGrants}
-          groupGrants={project.groupGrants}
+          userGrants={(localProject ?? effectiveProject).userGrants}
+          groupGrants={(localProject ?? effectiveProject).groupGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
-          isSaving={isSavingSharing}
+          isSaving={updateSharingMutation.isPending}
         />
 
         <Snackbar
@@ -412,16 +339,16 @@ export function ProjectPage() {
           <DialogContentText>
             Are you sure you want to delete project &quot;{name}&quot;? This will delete the namespace and all resources within it. This action cannot be undone.
           </DialogContentText>
-          {deleteError && (
+          {deleteProjectMutation.error && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteError}
+              {deleteProjectMutation.error.message}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error" variant="contained" disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Delete'}
+          <Button onClick={handleDelete} color="error" variant="contained" disabled={deleteProjectMutation.isPending}>
+            {deleteProjectMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
