@@ -28,6 +28,7 @@ import {
 } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
 import DeleteIcon from '@mui/icons-material/Delete'
+import LinkIcon from '@mui/icons-material/Link'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import { SecretDataEditor } from './SecretDataEditor'
@@ -265,6 +266,20 @@ export function SecretsListPage() {
                       primary={secret.name}
                       secondary={secret.description || sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
                     />
+                    {secret.url && (
+                      <IconButton
+                        size="small"
+                        aria-label={`open ${secret.name} url`}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          window.open(secret.url, '_blank', 'noopener,noreferrer')
+                        }}
+                        sx={{ ml: 1, flexShrink: 0 }}
+                      >
+                        <LinkIcon fontSize="small" />
+                      </IconButton>
+                    )}
                     {secret.description && sharingSummary(secret.userGrants.length, secret.groupGrants.length) && (
                       <Chip
                         label={sharingSummary(secret.userGrants.length, secret.groupGrants.length)}

@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  IconButton,
   Link,
   Snackbar,
   Stack,
@@ -22,6 +23,10 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
+import EditIcon from '@mui/icons-material/Edit'
+import CheckIcon from '@mui/icons-material/Check'
+import CloseIcon from '@mui/icons-material/Close'
+import LinkIcon from '@mui/icons-material/Link'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import { SecretDataEditor } from './SecretDataEditor'
@@ -64,6 +69,12 @@ export function SecretPage() {
   const [originalDescription, setOriginalDescription] = useState('')
   const [url, setUrl] = useState('')
   const [originalUrl, setOriginalUrl] = useState('')
+
+  // Inline edit state
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [editingUrl, setEditingUrl] = useState(false)
+  const [draftDescription, setDraftDescription] = useState('')
+  const [draftUrl, setDraftUrl] = useState('')
 
   // View mode state
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
@@ -300,33 +311,137 @@ export function SecretPage() {
         <Typography variant="h6" gutterBottom>
           Secret: {name}
         </Typography>
-        <TextField
-          label="Description"
-          fullWidth
-          size="small"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What is this secret used for?"
-          sx={{ mb: 1 }}
-        />
-        <TextField
-          label="URL"
-          fullWidth
-          size="small"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com/service"
-          sx={{ mb: 1 }}
-          slotProps={{
-            input: {
-              endAdornment: url ? (
-                <Link href={url} target="_blank" rel="noopener noreferrer" sx={{ whiteSpace: 'nowrap' }}>
-                  Open
-                </Link>
-              ) : undefined,
-            },
-          }}
-        />
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          {editingDescription ? (
+            <>
+              <TextField
+                label="Description"
+                fullWidth
+                size="small"
+                autoFocus
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                placeholder="What is this secret used for?"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setDescription(draftDescription)
+                    setEditingDescription(false)
+                  }
+                }}
+              />
+              <IconButton
+                aria-label="save description"
+                size="small"
+                onClick={() => {
+                  setDescription(draftDescription)
+                  setEditingDescription(false)
+                }}
+              >
+                <CheckIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                aria-label="cancel editing description"
+                size="small"
+                onClick={() => setEditingDescription(false)}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <Typography
+                variant="body2"
+                color={description ? 'text.primary' : 'text.secondary'}
+                sx={{ flexGrow: 1 }}
+              >
+                {description || 'No description'}
+              </Typography>
+              <IconButton
+                aria-label="edit description"
+                size="small"
+                onClick={() => {
+                  setDraftDescription(description)
+                  setEditingDescription(true)
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </>
+          )}
+        </Stack>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          {editingUrl ? (
+            <>
+              <TextField
+                label="URL"
+                fullWidth
+                size="small"
+                autoFocus
+                value={draftUrl}
+                onChange={(e) => setDraftUrl(e.target.value)}
+                placeholder="https://example.com/service"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setUrl(draftUrl)
+                    setEditingUrl(false)
+                  }
+                }}
+              />
+              <IconButton
+                aria-label="save url"
+                size="small"
+                onClick={() => {
+                  setUrl(draftUrl)
+                  setEditingUrl(false)
+                }}
+              >
+                <CheckIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                aria-label="cancel editing url"
+                size="small"
+                onClick={() => setEditingUrl(false)}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              {url ? (
+                <>
+                  <LinkIcon fontSize="small" color="action" />
+                  <Link
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="body2"
+                    sx={{ flexGrow: 1 }}
+                  >
+                    {url}
+                  </Link>
+                </>
+              ) : (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ flexGrow: 1 }}
+                >
+                  No URL
+                </Typography>
+              )}
+              <IconButton
+                aria-label="edit url"
+                size="small"
+                onClick={() => {
+                  setDraftUrl(url)
+                  setEditingUrl(true)
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </>
+          )}
+        </Stack>
         <ToggleButtonGroup
           value={viewMode}
           exclusive
