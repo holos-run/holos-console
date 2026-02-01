@@ -42,40 +42,39 @@ type AnnotationGrant struct {
 
 // K8sClient wraps Kubernetes client operations for secrets.
 type K8sClient struct {
-	client    kubernetes.Interface
-	namespace string
+	client kubernetes.Interface
 }
 
-// NewK8sClient creates a client for the given namespace.
-func NewK8sClient(client kubernetes.Interface, namespace string) *K8sClient {
-	return &K8sClient{client: client, namespace: namespace}
+// NewK8sClient creates a client for secrets operations.
+func NewK8sClient(client kubernetes.Interface) *K8sClient {
+	return &K8sClient{client: client}
 }
 
-// GetSecret retrieves a secret by name from the configured namespace.
-func (c *K8sClient) GetSecret(ctx context.Context, name string) (*corev1.Secret, error) {
+// GetSecret retrieves a secret by name from the given namespace.
+func (c *K8sClient) GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "getting secret from kubernetes",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	return c.client.CoreV1().Secrets(c.namespace).Get(ctx, name, metav1.GetOptions{})
+	return c.client.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
-// ListSecrets retrieves secrets with the console label from the configured namespace.
-func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error) {
+// ListSecrets retrieves secrets with the console label from the given namespace.
+func (c *K8sClient) ListSecrets(ctx context.Context, namespace string) (*corev1.SecretList, error) {
 	labelSelector := ManagedByLabel + "=" + ManagedByValue
 	slog.DebugContext(ctx, "listing secrets from kubernetes",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("labelSelector", labelSelector),
 	)
-	return c.client.CoreV1().Secrets(c.namespace).List(ctx, metav1.ListOptions{
+	return c.client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 }
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
-func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
+func (c *K8sClient) CreateSecret(ctx context.Context, namespace, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "creating secret in kubernetes",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
 	usersJSON, err := json.Marshal(shareUsers)
@@ -99,7 +98,7 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: c.namespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				ManagedByLabel: ManagedByValue,
 			},
@@ -107,18 +106,18 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 		},
 		Data: data,
 	}
-	return c.client.CoreV1().Secrets(c.namespace).Create(ctx, secret, metav1.CreateOptions{})
+	return c.client.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
 }
 
 // UpdateSecret replaces the data of an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
 // description and url are optional pointers: nil preserves the existing value, non-nil updates it.
-func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte, description, url *string) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSecret(ctx context.Context, namespace, name string, data map[string][]byte, description, url *string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating secret in kubernetes",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, name)
+	secret, err := c.GetSecret(ctx, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -145,34 +144,34 @@ func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[stri
 			}
 		}
 	}
-	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	return c.client.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
 // DeleteSecret deletes a secret by name.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) DeleteSecret(ctx context.Context, name string) error {
+func (c *K8sClient) DeleteSecret(ctx context.Context, namespace, name string) error {
 	slog.DebugContext(ctx, "deleting secret from kubernetes",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, name)
+	secret, err := c.GetSecret(ctx, namespace, name)
 	if err != nil {
 		return err
 	}
 	if secret.Labels == nil || secret.Labels[ManagedByLabel] != ManagedByValue {
 		return fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
 	}
-	return c.client.CoreV1().Secrets(c.namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 // UpdateSharing updates the sharing annotations on an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSharing(ctx context.Context, namespace, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating sharing on kubernetes secret",
-		slog.String("namespace", c.namespace),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	secret, err := c.GetSecret(ctx, name)
+	secret, err := c.GetSecret(ctx, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +191,7 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, name string, shareUsers, 
 	}
 	secret.Annotations[ShareUsersAnnotation] = string(usersJSON)
 	secret.Annotations[ShareGroupsAnnotation] = string(groupsJSON)
-	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	return c.client.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
 // GetShareUsers parses the console.holos.run/share-users annotation from a secret.
