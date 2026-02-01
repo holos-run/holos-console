@@ -4,9 +4,9 @@ holos-console uses a three-tier access control model combining **organization-le
 
 ## Organizations
 
-An **organization** is a Kubernetes Namespace with the prefix `{namespace-prefix}org-` and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
+An **organization** is a Kubernetes Namespace with the prefix `{namespace-prefix}o-` and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
 
-Organization grants cascade to all projects within the organization. Users see only organizations where they have at least viewer-level access.
+Organization grants cascade to all projects associated with the organization. Users see only organizations where they have at least viewer-level access.
 
 ### Creating Organizations
 
@@ -19,25 +19,23 @@ The creator is automatically added as owner on the new organization.
 
 ## Projects
 
-A **project** is a Kubernetes Namespace with the label `console.holos.run/resource-type=project`. Each project belongs to an organization, identified by the `console.holos.run/organization` label. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
+A **project** is a Kubernetes Namespace with the prefix `{namespace-prefix}p-` and the label `console.holos.run/resource-type=project`. Projects are global resources — the `console.holos.run/organization` label is optional and represents an IAM association, not a containment relationship. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
 
-Project grants cascade to all secrets within the project. Users see only projects where they have at least viewer-level access (directly or via the parent organization).
+Project grants cascade to all secrets within the project. Users see only projects where they have at least viewer-level access (directly or via an associated organization).
 
 ## Namespace Prefix Scheme
 
-User-facing names are translated to Kubernetes namespace names using a configurable prefix (default: `holos-`):
+User-facing names are translated to Kubernetes namespace names using a configurable prefix (default: `holos-`). Resource type is encoded as a single character after the prefix (`o-` for organizations, `p-` for projects) to prevent collisions between orgs and projects sharing the same name:
 
 | Resource | Pattern | CLI Flag | Example |
 |---|---|---|---|
-| Organization | `{prefix}org-{name}` | `--namespace-prefix` | `my-org` → `holos-org-my-org` |
-| Project | `{prefix}{org}-{project}` | `--namespace-prefix` | org=`acme`, project=`web` → `holos-acme-web` |
+| Organization | `{prefix}o-{name}` | `--namespace-prefix` | `acme` → `holos-o-acme` |
+| Project | `{prefix}p-{name}` | `--namespace-prefix` | `api` → `holos-p-api` |
 
 Namespaces are distinguished by labels:
 - `console.holos.run/resource-type`: `organization` or `project`
-- `console.holos.run/organization`: the organization name (on project namespaces)
+- `console.holos.run/organization`: the organization name (optional, on project namespaces)
 - `console.holos.run/project`: the project name (on project namespaces)
-
-Project namespaces are looked up by label rather than by name derivation.
 
 ## Access Evaluation
 
@@ -45,9 +43,9 @@ Access to a secret is evaluated in this order (highest role wins):
 
 1. Per-secret grants (`share-users`/`share-groups` annotations on the Secret)
 2. Project grants (`share-users`/`share-groups` annotations on the project Namespace)
-3. Organization grants (`share-users`/`share-groups` annotations on the organization Namespace)
+3. Organization grants (`share-users`/`share-groups` annotations on the organization Namespace, looked up via the project's optional org label)
 
-If no grant matches at any tier, access is denied.
+If no grant matches at any tier, access is denied. The org tier is only consulted when the project has a `console.holos.run/organization` label.
 
 Access to a project is evaluated similarly:
 
@@ -93,7 +91,7 @@ Organization creation is controlled by CLI flags (`--org-creator-users`, `--org-
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: holos-org-my-org
+  name: holos-o-my-org
   labels:
     app.kubernetes.io/managed-by: console.holos.run
     console.holos.run/resource-type: organization
@@ -102,11 +100,11 @@ metadata:
     console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
     console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
 ---
-# Project namespace within the organization
+# Project namespace (optionally associated with the organization)
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: holos-my-org-my-project
+  name: holos-p-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
     console.holos.run/resource-type: project
@@ -122,7 +120,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: my-app-credentials
-  namespace: holos-my-org-my-project
+  namespace: holos-p-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
@@ -130,8 +128,8 @@ metadata:
 ```
 
 In this example:
-- Alice has **owner** access to all projects and secrets in `my-org` via the organization grant
-- Members of `dev-team` have **editor** access to all projects and secrets via the organization group grant
+- Alice has **owner** access to all associated projects and secrets in `my-org` via the organization grant
+- Members of `dev-team` have **editor** access to all associated projects and secrets via the organization group grant
 - Bob has **viewer** access to `my-project` and its secrets via the project grant (expires at the given timestamp)
 - Carol has **viewer** access to `my-app-credentials` only, via the per-secret grant
 
