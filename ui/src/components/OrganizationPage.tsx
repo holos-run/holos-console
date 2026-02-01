@@ -17,6 +17,8 @@ import {
   Snackbar,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
@@ -27,6 +29,7 @@ import { useAuth } from '../auth'
 import { organizationsClient } from '../client'
 import { useOrg } from '../OrgProvider'
 import { SharingPanel, type Grant } from './SharingPanel'
+import { RawView } from './RawView'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { Organization } from '../gen/holos/console/v1/organizations_pb'
 
@@ -56,6 +59,11 @@ export function OrganizationPage() {
 
   // Sharing state
   const [isSavingSharing, setIsSavingSharing] = useState(false)
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
+  const [rawJson, setRawJson] = useState<string | null>(null)
+  const [includeAllFields, setIncludeAllFields] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -172,6 +180,28 @@ export function OrganizationPage() {
       }
     } finally {
       setIsSavingSharing(false)
+    }
+  }
+
+  const handleViewModeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'editor' | 'raw' | null) => {
+    if (newMode === null) return
+    setViewMode(newMode)
+
+    if (newMode === 'raw' && rawJson === null && name) {
+      try {
+        const token = getAccessToken()
+        const response = await organizationsClient.getOrganizationRaw(
+          { name },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        )
+        setRawJson(response.raw)
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)))
+      }
     }
   }
 
@@ -365,27 +395,48 @@ export function OrganizationPage() {
           )}
         </Stack>
 
-        {/* Actions */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setSelectedOrg(name || null)
-              navigate('/projects')
-            }}
-          >
-            Projects
-          </Button>
-          {isOwner && (
-            <Button
-              variant="outlined"
-              color="error"
-              onClick={() => setDeleteOpen(true)}
-            >
-              Delete
-            </Button>
-          )}
-        </Stack>
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={handleViewModeChange}
+          size="small"
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="editor">Editor</ToggleButton>
+          <ToggleButton value="raw">Raw</ToggleButton>
+        </ToggleButtonGroup>
+        {viewMode === 'raw' && rawJson && (
+          <RawView
+            raw={rawJson}
+            includeAllFields={includeAllFields}
+            onToggleIncludeAllFields={() => setIncludeAllFields((prev) => !prev)}
+          />
+        )}
+        {viewMode === 'editor' && (
+          <>
+            {/* Actions */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setSelectedOrg(name || null)
+                  navigate('/projects')
+                }}
+              >
+                Projects
+              </Button>
+              {isOwner && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </Button>
+              )}
+            </Stack>
+          </>
+        )}
 
         {/* Sharing */}
         <SharingPanel
