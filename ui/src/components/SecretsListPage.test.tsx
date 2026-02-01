@@ -436,6 +436,87 @@ describe('SecretsListPage', () => {
     })
   })
 
+  describe('description display', () => {
+    it('shows description as secondary text when present', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+            description: 'Database credentials for production',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText('Database credentials for production')).toBeInTheDocument()
+      })
+    })
+
+    it('shows sharing summary as chip when description is present', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [{ principal: 'dev-team', role: 2 }],
+            description: 'Database credentials',
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText('Database credentials')).toBeInTheDocument()
+        // Sharing summary should appear as a chip
+        expect(screen.getByText('1 user, 1 group')).toBeInTheDocument()
+      })
+    })
+
+    it('falls back to sharing summary when no description', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      mockListSecrets.mockResolvedValue({
+        secrets: [
+          {
+            name: 'my-secret',
+            accessible: true,
+            userGrants: [{ principal: 'alice@example.com', role: 3 }],
+            groupGrants: [],
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
+
+      renderSecretsListPage(authValue)
+
+      await waitFor(() => {
+        expect(screen.getByText('1 user')).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('list sharing summary', () => {
     it('shows sharing grant counts in list items', async () => {
       const mockUser = createMockUser({ groups: ['owner'] })
