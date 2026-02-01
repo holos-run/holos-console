@@ -433,12 +433,10 @@ func (h *Handler) checkAccessWithOrg(
 	if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, permission); err == nil {
 		return nil
 	}
-	// 2. Check org grants (scope-aware cascade)
+	// 2. Check org grants (role-per-scope cascade table)
 	if orgUsers != nil || orgGroups != nil {
-		if cascaded := rbac.CascadeProjectToOrg(permission); cascaded != rbac.PermissionUnspecified {
-			if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, cascaded); err == nil {
-				return nil
-			}
+		if err := rbac.CheckCascadeAccess(email, groups, orgUsers, orgGroups, permission, rbac.OrgCascadeProjectPerms); err == nil {
+			return nil
 		}
 	}
 	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
