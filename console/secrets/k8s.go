@@ -20,6 +20,12 @@ const ShareUsersAnnotation = "console.holos.run/share-users"
 // Value is a JSON object mapping OIDC group name → role name.
 const ShareGroupsAnnotation = "console.holos.run/share-groups"
 
+// DescriptionAnnotation is the annotation key for a human-readable description.
+const DescriptionAnnotation = "console.holos.run/description"
+
+// URLAnnotation is the annotation key for a URL associated with the secret.
+const URLAnnotation = "console.holos.run/url"
+
 // ManagedByLabel is the label key used to identify secrets managed by the console.
 const ManagedByLabel = "app.kubernetes.io/managed-by"
 
@@ -67,7 +73,7 @@ func (c *K8sClient) ListSecrets(ctx context.Context) (*corev1.SecretList, error)
 }
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
-func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
+func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "creating secret in kubernetes",
 		slog.String("namespace", c.namespace),
 		slog.String("name", name),
@@ -80,6 +86,16 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
+	annotations := map[string]string{
+		ShareUsersAnnotation:  string(usersJSON),
+		ShareGroupsAnnotation: string(groupsJSON),
+	}
+	if description != "" {
+		annotations[DescriptionAnnotation] = description
+	}
+	if url != "" {
+		annotations[URLAnnotation] = url
+	}
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -87,10 +103,7 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 			Labels: map[string]string{
 				ManagedByLabel: ManagedByValue,
 			},
-			Annotations: map[string]string{
-				ShareUsersAnnotation:  string(usersJSON),
-				ShareGroupsAnnotation: string(groupsJSON),
-			},
+			Annotations: annotations,
 		},
 		Data: data,
 	}
@@ -99,7 +112,8 @@ func (c *K8sClient) CreateSecret(ctx context.Context, name string, data map[stri
 
 // UpdateSecret replaces the data of an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte) (*corev1.Secret, error) {
+// description and url are optional pointers: nil preserves the existing value, non-nil updates it.
+func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[string][]byte, description, url *string) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating secret in kubernetes",
 		slog.String("namespace", c.namespace),
 		slog.String("name", name),
@@ -112,6 +126,25 @@ func (c *K8sClient) UpdateSecret(ctx context.Context, name string, data map[stri
 		return nil, fmt.Errorf("secret %q is not managed by %s", name, ManagedByValue)
 	}
 	secret.Data = data
+	if description != nil || url != nil {
+		if secret.Annotations == nil {
+			secret.Annotations = make(map[string]string)
+		}
+		if description != nil {
+			if *description == "" {
+				delete(secret.Annotations, DescriptionAnnotation)
+			} else {
+				secret.Annotations[DescriptionAnnotation] = *description
+			}
+		}
+		if url != nil {
+			if *url == "" {
+				delete(secret.Annotations, URLAnnotation)
+			} else {
+				secret.Annotations[URLAnnotation] = *url
+			}
+		}
+	}
 	return c.client.CoreV1().Secrets(c.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
@@ -174,6 +207,24 @@ func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
 // Returns an error if the annotation contains invalid JSON.
 func GetShareGroups(secret *corev1.Secret) ([]AnnotationGrant, error) {
 	return parseGrantAnnotation(secret, ShareGroupsAnnotation)
+}
+
+// GetDescription returns the description annotation value from a secret.
+// Returns an empty string if the annotation is absent.
+func GetDescription(secret *corev1.Secret) string {
+	if secret.Annotations == nil {
+		return ""
+	}
+	return secret.Annotations[DescriptionAnnotation]
+}
+
+// GetURL returns the URL annotation value from a secret.
+// Returns an empty string if the annotation is absent.
+func GetURL(secret *corev1.Secret) string {
+	if secret.Annotations == nil {
+		return ""
+	}
+	return secret.Annotations[URLAnnotation]
 }
 
 // parseGrantAnnotation parses a JSON annotation value into a slice of AnnotationGrant.
