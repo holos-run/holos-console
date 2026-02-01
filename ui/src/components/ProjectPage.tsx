@@ -241,6 +241,12 @@ export function ProjectPage() {
     <Card variant="outlined">
       <CardContent>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+          {project.organization ? (
+            <RouterLink to={`/organizations/${project.organization}`} style={{ color: 'inherit' }}>
+              {project.organization}
+            </RouterLink>
+          ) : null}
+          {project.organization ? ' / ' : ''}
           {project.name}
         </Typography>
 
