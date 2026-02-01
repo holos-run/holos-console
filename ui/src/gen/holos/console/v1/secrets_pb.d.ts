@@ -118,6 +118,22 @@ export declare type UpdateSecretRequest = Message<"holos.console.v1.UpdateSecret
    * @generated from field: map<string, string> string_data = 3;
    */
   stringData: { [key: string]: string };
+
+  /**
+   * description is a human-readable description of the secret's purpose.
+   * When set, updates the description annotation. When unset, preserves the existing value.
+   *
+   * @generated from field: optional string description = 4;
+   */
+  description?: string;
+
+  /**
+   * url is a URL associated with the secret.
+   * When set, updates the URL annotation. When unset, preserves the existing value.
+   *
+   * @generated from field: optional string url = 5;
+   */
+  url?: string;
 };
 
 /**
@@ -184,6 +200,20 @@ export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecret
    * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
    */
   groupGrants: ShareGrant[];
+
+  /**
+   * description is a human-readable description of the secret's purpose.
+   *
+   * @generated from field: optional string description = 6;
+   */
+  description?: string;
+
+  /**
+   * url is a URL associated with the secret (e.g. link to the service that uses it).
+   *
+   * @generated from field: optional string url = 7;
+   */
+  url?: string;
 };
 
 /**
@@ -279,6 +309,20 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
    * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 6;
    */
   groupGrants: ShareGrant[];
+
+  /**
+   * description is a human-readable description of the secret's purpose.
+   *
+   * @generated from field: optional string description = 7;
+   */
+  description?: string;
+
+  /**
+   * url is a URL associated with the secret (e.g. link to the service that uses it).
+   *
+   * @generated from field: optional string url = 8;
+   */
+  url?: string;
 };
 
 /**

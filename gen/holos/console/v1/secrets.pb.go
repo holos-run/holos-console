@@ -209,7 +209,13 @@ type UpdateSecretRequest struct {
 	// Values are encoded to bytes before storage, matching Kubernetes stringData
 	// semantics. When both data and string_data contain the same key, string_data
 	// takes precedence.
-	StringData    map[string]string `protobuf:"bytes,3,rep,name=string_data,json=stringData,proto3" json:"string_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	StringData map[string]string `protobuf:"bytes,3,rep,name=string_data,json=stringData,proto3" json:"string_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// description is a human-readable description of the secret's purpose.
+	// When set, updates the description annotation. When unset, preserves the existing value.
+	Description *string `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// url is a URL associated with the secret.
+	// When set, updates the URL annotation. When unset, preserves the existing value.
+	Url           *string `protobuf:"bytes,5,opt,name=url,proto3,oneof" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -265,6 +271,20 @@ func (x *UpdateSecretRequest) GetStringData() map[string]string {
 	return nil
 }
 
+func (x *UpdateSecretRequest) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *UpdateSecretRequest) GetUrl() string {
+	if x != nil && x.Url != nil {
+		return *x.Url
+	}
+	return ""
+}
+
 // UpdateSecretResponse is empty on success.
 type UpdateSecretResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -318,7 +338,11 @@ type CreateSecretRequest struct {
 	// user_grants are the per-user sharing grants to set on the created secret.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// group_grants are the per-group sharing grants to set on the created secret.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// description is a human-readable description of the secret's purpose.
+	Description *string `protobuf:"bytes,6,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// url is a URL associated with the secret (e.g. link to the service that uses it).
+	Url           *string `protobuf:"bytes,7,opt,name=url,proto3,oneof" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -386,6 +410,20 @@ func (x *CreateSecretRequest) GetGroupGrants() []*ShareGrant {
 		return x.GroupGrants
 	}
 	return nil
+}
+
+func (x *CreateSecretRequest) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *CreateSecretRequest) GetUrl() string {
+	if x != nil && x.Url != nil {
+		return *x.Url
+	}
+	return ""
 }
 
 // CreateSecretResponse contains the name of the created secret.
@@ -527,7 +565,11 @@ type SecretMetadata struct {
 	// user_grants contains per-user sharing grants on this secret.
 	UserGrants []*ShareGrant `protobuf:"bytes,5,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// group_grants contains per-group sharing grants on this secret.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,6,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	GroupGrants []*ShareGrant `protobuf:"bytes,6,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// description is a human-readable description of the secret's purpose.
+	Description *string `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// url is a URL associated with the secret (e.g. link to the service that uses it).
+	Url           *string `protobuf:"bytes,8,opt,name=url,proto3,oneof" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -588,6 +630,20 @@ func (x *SecretMetadata) GetGroupGrants() []*ShareGrant {
 		return x.GroupGrants
 	}
 	return nil
+}
+
+func (x *SecretMetadata) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *SecretMetadata) GetUrl() string {
+	if x != nil && x.Url != nil {
+		return *x.Url
+	}
+	return ""
 }
 
 // ShareGrant represents a sharing grant for a principal (user email or group name).
@@ -881,19 +937,23 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x14\n" +
 	"\x12ListSecretsRequest\"Q\n" +
 	"\x13ListSecretsResponse\x12:\n" +
-	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\xbe\x02\n" +
+	"\asecrets\x18\x01 \x03(\v2 .holos.console.v1.SecretMetadataR\asecrets\"\x94\x03\n" +
 	"\x13UpdateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
 	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.UpdateSecretRequest.DataEntryR\x04data\x12V\n" +
 	"\vstring_data\x18\x03 \x03(\v25.holos.console.v1.UpdateSecretRequest.StringDataEntryR\n" +
-	"stringData\x1a7\n" +
+	"stringData\x12%\n" +
+	"\vdescription\x18\x04 \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
+	"\x03url\x18\x05 \x01(\tH\x01R\x03url\x88\x01\x01\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
 	"\x0fStringDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x16\n" +
-	"\x14UpdateSecretResponse\"\xbe\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
+	"\f_descriptionB\x06\n" +
+	"\x04_url\"\x16\n" +
+	"\x14UpdateSecretResponse\"\x94\x04\n" +
 	"\x13CreateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
 	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12V\n" +
@@ -901,18 +961,22 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"stringData\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x1a7\n" +
+	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12%\n" +
+	"\vdescription\x18\x06 \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
+	"\x03url\x18\a \x01(\tH\x01R\x03url\x88\x01\x01\x1a7\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
 	"\x0fStringDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
+	"\f_descriptionB\x06\n" +
+	"\x04_url\"*\n" +
 	"\x14CreateSecretResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\")\n" +
 	"\x13DeleteSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14DeleteSecretResponse\"\xc4\x01\n" +
+	"\x14DeleteSecretResponse\"\x9a\x02\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
@@ -920,7 +984,11 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"accessible\x12=\n" +
 	"\vuser_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"\x94\x01\n" +
+	"\fgroup_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12%\n" +
+	"\vdescription\x18\a \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
+	"\x03url\x18\b \x01(\tH\x01R\x03url\x88\x01\x01B\x0e\n" +
+	"\f_descriptionB\x06\n" +
+	"\x04_url\"\x94\x01\n" +
 	"\n" +
 	"ShareGrant\x12\x1c\n" +
 	"\tprincipal\x18\x01 \x01(\tR\tprincipal\x12*\n" +
@@ -1028,6 +1096,9 @@ func file_holos_console_v1_secrets_proto_init() {
 		return
 	}
 	file_holos_console_v1_rbac_proto_init()
+	file_holos_console_v1_secrets_proto_msgTypes[4].OneofWrappers = []any{}
+	file_holos_console_v1_secrets_proto_msgTypes[6].OneofWrappers = []any{}
+	file_holos_console_v1_secrets_proto_msgTypes[10].OneofWrappers = []any{}
 	file_holos_console_v1_secrets_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
