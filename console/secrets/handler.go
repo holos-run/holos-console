@@ -654,21 +654,17 @@ func (h *Handler) checkAccess(
 		return nil
 	}
 
-	// 2. Check project grants (scope-aware cascade)
+	// 2. Check project grants (role-per-scope cascade table)
 	if projUsers != nil || projGroups != nil {
-		if cascaded := rbac.CascadeSecretToProject(permission); cascaded != rbac.PermissionUnspecified {
-			if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, cascaded); err == nil {
-				return nil
-			}
+		if err := rbac.CheckCascadeAccess(email, groups, projUsers, projGroups, permission, rbac.ProjectCascadeSecretPerms); err == nil {
+			return nil
 		}
 	}
 
-	// 3. Check organization grants (scope-aware cascade)
+	// 3. Check organization grants (role-per-scope cascade table)
 	if orgUsers != nil || orgGroups != nil {
-		if cascaded := rbac.CascadeSecretToOrg(permission); cascaded != rbac.PermissionUnspecified {
-			if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, cascaded); err == nil {
-				return nil
-			}
+		if err := rbac.CheckCascadeAccess(email, groups, orgUsers, orgGroups, permission, rbac.OrgCascadeSecretPerms); err == nil {
+			return nil
 		}
 	}
 
