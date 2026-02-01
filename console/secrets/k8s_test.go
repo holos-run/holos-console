@@ -26,10 +26,10 @@ func TestGetSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: GetSecret("my-secret") is called
-		result, err := k8sClient.GetSecret(context.Background(), "my-secret")
+		result, err := k8sClient.GetSecret(context.Background(), "test-namespace", "my-secret")
 
 		// Then: Returns the Secret object
 		if err != nil {
@@ -49,10 +49,10 @@ func TestGetSecret(t *testing.T) {
 	t.Run("returns NotFound error for non-existent secret", func(t *testing.T) {
 		// Given: Secret "missing" does not exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: GetSecret("missing") is called
-		_, err := k8sClient.GetSecret(context.Background(), "missing")
+		_, err := k8sClient.GetSecret(context.Background(), "test-namespace", "missing")
 
 		// Then: Returns NotFound error
 		if err == nil {
@@ -80,13 +80,13 @@ func TestUpdateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: UpdateSecret is called with new data
 		newData := map[string][]byte{
 			"new-key": []byte("new-value"),
 		}
-		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", newData, nil, nil)
+		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", newData, nil, nil)
 
 		// Then: Returns updated secret with new data
 		if err != nil {
@@ -103,10 +103,10 @@ func TestUpdateSecret(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: No secrets exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: UpdateSecret is called
-		_, err := k8sClient.UpdateSecret(context.Background(), "missing", map[string][]byte{"k": []byte("v")}, nil, nil)
+		_, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "missing", map[string][]byte{"k": []byte("v")}, nil, nil)
 
 		// Then: Returns NotFound error
 		if err == nil {
@@ -129,10 +129,10 @@ func TestUpdateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: UpdateSecret is called
-		_, err := k8sClient.UpdateSecret(context.Background(), "unmanaged-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
+		_, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "unmanaged-secret", map[string][]byte{"k": []byte("v")}, nil, nil)
 
 		// Then: Returns error about managed-by label
 		if err == nil {
@@ -148,13 +148,13 @@ func TestCreateSecret(t *testing.T) {
 	t.Run("creates secret with correct labels and sharing annotations", func(t *testing.T) {
 		// Given: No secrets exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: CreateSecret is called with sharing grants
 		data := map[string][]byte{"key": []byte("value")}
 		shareUsers := []AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
 		shareGroups := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
-		result, err := k8sClient.CreateSecret(context.Background(), "new-secret", data, shareUsers, shareGroups, "", "")
+		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "new-secret", data, shareUsers, shareGroups, "", "")
 
 		// Then: Returns created secret with labels and sharing annotations
 		if err != nil {
@@ -196,10 +196,10 @@ func TestCreateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(existing)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: CreateSecret with same name
-		_, err := k8sClient.CreateSecret(context.Background(), "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil, "", "")
+		_, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "existing-secret", map[string][]byte{"k": []byte("v")}, nil, nil, "", "")
 
 		// Then: Returns AlreadyExists error
 		if err == nil {
@@ -224,10 +224,10 @@ func TestDeleteSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		// When: DeleteSecret is called
-		err := k8sClient.DeleteSecret(context.Background(), "my-secret")
+		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "my-secret")
 
 		// Then: No error
 		if err != nil {
@@ -235,7 +235,7 @@ func TestDeleteSecret(t *testing.T) {
 		}
 
 		// Verify secret is gone
-		_, err = k8sClient.GetSecret(context.Background(), "my-secret")
+		_, err = k8sClient.GetSecret(context.Background(), "test-namespace", "my-secret")
 		if !errors.IsNotFound(err) {
 			t.Errorf("expected NotFound after delete, got %v", err)
 		}
@@ -243,9 +243,9 @@ func TestDeleteSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
-		err := k8sClient.DeleteSecret(context.Background(), "missing")
+		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "missing")
 
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -263,9 +263,9 @@ func TestDeleteSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
-		err := k8sClient.DeleteSecret(context.Background(), "unmanaged-secret")
+		err := k8sClient.DeleteSecret(context.Background(), "test-namespace", "unmanaged-secret")
 
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -613,10 +613,10 @@ func TestGetURL(t *testing.T) {
 func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 	t.Run("stores description and URL annotations", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		data := map[string][]byte{"key": []byte("value")}
-		result, err := k8sClient.CreateSecret(context.Background(), "my-secret", data, nil, nil, "DB creds", "https://db.example.com")
+		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "my-secret", data, nil, nil, "DB creds", "https://db.example.com")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -630,10 +630,10 @@ func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 
 	t.Run("omits annotations when empty", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		data := map[string][]byte{"key": []byte("value")}
-		result, err := k8sClient.CreateSecret(context.Background(), "my-secret", data, nil, nil, "", "")
+		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "my-secret", data, nil, nil, "", "")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -657,11 +657,11 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		desc := "Updated description"
 		url := "https://updated.example.com"
-		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, &desc, &url)
+		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, &desc, &url)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -687,9 +687,9 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
-		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, nil, nil)
+		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -715,10 +715,10 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 
 		empty := ""
-		result, err := k8sClient.UpdateSecret(context.Background(), "my-secret", secret.Data, &empty, &empty)
+		result, err := k8sClient.UpdateSecret(context.Background(), "test-namespace", "my-secret", secret.Data, &empty, &empty)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

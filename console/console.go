@@ -200,12 +200,8 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	var secretsK8s *secrets.K8sClient
 	if k8sClientset != nil {
-		namespace := s.cfg.Namespace
-		if namespace == "" {
-			namespace = "holos-console"
-		}
-		secretsK8s = secrets.NewK8sClient(k8sClientset, namespace)
-		slog.Info("kubernetes client initialized", "namespace", namespace)
+		secretsK8s = secrets.NewK8sClient(k8sClientset)
+		slog.Info("kubernetes client initialized")
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 	}
@@ -213,17 +209,23 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Create RBAC group mapping from configuration
 	groupMapping := rbac.NewGroupMapping(s.cfg.PlatformViewers, s.cfg.PlatformEditors, s.cfg.PlatformOwners)
 
-	// Register SecretsService (protected - requires auth)
-	secretsHandler := secrets.NewHandler(secretsK8s, groupMapping)
-	secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
-	mux.Handle(secretsPath, secretsHTTPHandler)
-
-	// Register ProjectService (protected - requires auth)
+	// Register ProjectService and SecretsService (protected - requires auth)
 	if k8sClientset != nil {
 		projectsK8s := projects.NewK8sClient(k8sClientset)
 		projectsHandler := projects.NewHandler(projectsK8s)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
+
+		// Create project-scoped secrets handler with project grant resolver
+		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
+		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
+		mux.Handle(secretsPath, secretsHTTPHandler)
+	} else {
+		// Fallback: secrets handler with group mapping only (no project resolver)
+		secretsHandler := secrets.NewHandler(secretsK8s, groupMapping)
+		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
+		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
 
 	// Register gRPC reflection for introspection (grpcurl, etc.)

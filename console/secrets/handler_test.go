@@ -95,7 +95,7 @@ func TestHandler_GetSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		// Create authenticated context with matching email
@@ -107,7 +107,8 @@ func TestHandler_GetSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -137,13 +138,14 @@ func TestHandler_GetSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		// Context without claims
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -177,7 +179,7 @@ func TestHandler_GetSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		// Create authenticated context with non-matching email
@@ -189,7 +191,8 @@ func TestHandler_GetSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -211,7 +214,7 @@ func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: Authenticated user, secret does not exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -222,7 +225,8 @@ func TestHandler_GetSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "missing-secret",
+			Name:    "missing-secret",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -244,7 +248,7 @@ func TestHandler_GetSecret(t *testing.T) {
 	t.Run("returns InvalidArgument for empty secret name", func(t *testing.T) {
 		// Given: Request with empty secret name
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -255,7 +259,8 @@ func TestHandler_GetSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "",
+			Name:    "",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -291,7 +296,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		// Capture logs
@@ -308,7 +313,8 @@ func TestHandler_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		// When: Request completes successfully
@@ -366,7 +372,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		// Capture logs
@@ -383,7 +389,8 @@ func TestHandler_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		// When: Request is denied
@@ -442,7 +449,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -452,7 +459,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -463,11 +470,11 @@ func TestHandler_DeleteSecret(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -498,7 +505,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -508,7 +515,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -538,7 +545,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -548,7 +555,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -566,7 +573,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -576,7 +583,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "missing"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "missing", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -594,7 +601,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -604,7 +611,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: ""})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 
@@ -636,7 +643,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -651,7 +658,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 		if err != nil {
@@ -682,7 +689,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -697,7 +704,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.DeleteSecret(ctx, req)
 		if err == nil {
@@ -719,7 +726,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns success with created secret name for authorized editor", func(t *testing.T) {
 		// Given: No secrets exist, user is editor
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -730,8 +737,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"key": []byte("value")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"key": []byte("value")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -751,13 +759,14 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -779,7 +788,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 	t.Run("returns PermissionDenied for viewer", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -791,8 +800,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 		// Grants give viewer role to the caller — insufficient for write
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_VIEWER},
 			},
@@ -814,7 +824,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -825,8 +835,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -849,7 +860,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns PermissionDenied for empty grants and no platform role", func(t *testing.T) {
 		// No per-secret grants and user not in any platform role group
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -860,8 +871,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		_, err := handler.CreateSecret(ctx, req)
@@ -882,7 +894,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		// Given: User is in the "editor" OIDC group (platform editor role),
 		// and provides grants for the new secret (required for the secret itself)
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -893,8 +905,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "platform-editor-secret",
-			Data: map[string][]byte{"key": []byte("value")},
+			Name:    "platform-editor-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"key": []byte("value")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "platformeditor@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -920,7 +933,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(existing)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -931,8 +944,9 @@ func TestHandler_CreateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "existing-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "existing-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -956,7 +970,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 	t.Run("logs secret_create on success", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -972,8 +986,9 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
 			},
@@ -996,7 +1011,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 
 	t.Run("logs secret_create_denied on RBAC failure", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -1013,8 +1028,9 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 
 		// Grants give viewer role — insufficient for write
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
-			Name: "new-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "new-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "other@example.com", Role: consolev1.Role_ROLE_VIEWER},
 			},
@@ -1055,7 +1071,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1066,7 +1082,8 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			Data: map[string][]byte{
 				"new-key": []byte("new-value"),
 			},
@@ -1084,13 +1101,14 @@ func TestHandler_UpdateSecret(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		// Given: Request without claims
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "my-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		// When: UpdateSecret RPC is called
@@ -1125,7 +1143,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 			Data: map[string][]byte{"k": []byte("v")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1136,8 +1154,9 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "my-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		// When: UpdateSecret RPC is called
@@ -1159,7 +1178,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		// Given: Secret does not exist
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1170,8 +1189,9 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "missing",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "missing",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		// When: UpdateSecret RPC is called
@@ -1193,7 +1213,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		// Given: Request with empty name
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1204,8 +1224,9 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		// When: UpdateSecret RPC is called
@@ -1227,7 +1248,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 	t.Run("returns InvalidArgument for empty data", func(t *testing.T) {
 		// Given: Request with empty data
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1238,8 +1259,9 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
-			Data: map[string][]byte{},
+			Name:    "my-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{},
 		})
 
 		// When: UpdateSecret RPC is called
@@ -1276,7 +1298,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 			Data: map[string][]byte{"k": []byte("v")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -1292,8 +1314,9 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
-			Data: map[string][]byte{"new-key": []byte("new-value")},
+			Name:    "my-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"new-key": []byte("new-value")},
 		})
 
 		// When: UpdateSecret succeeds
@@ -1329,7 +1352,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 			Data: map[string][]byte{"k": []byte("v")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -1345,8 +1368,9 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
-			Name: "my-secret",
-			Data: map[string][]byte{"k": []byte("v")},
+			Name:    "my-secret",
+			Project: "test-namespace",
+			Data:    map[string][]byte{"k": []byte("v")},
 		})
 
 		// When: UpdateSecret is denied
@@ -1385,7 +1409,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1396,7 +1420,8 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.GetSecretRequest{
-			Name: "multi-key-secret",
+			Name:    "multi-key-secret",
+			Project: "test-namespace",
 		})
 
 		// When: GetSecret RPC is called
@@ -1446,7 +1471,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secretWithLabel, secretWithoutLabel)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1456,7 +1481,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
 
 		// When: ListSecrets RPC is called
 		resp, err := handler.ListSecrets(ctx, req)
@@ -1506,7 +1531,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(accessibleSecret, inaccessibleSecret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1516,7 +1541,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
 
 		// When: ListSecrets RPC is called
 		resp, err := handler.ListSecrets(ctx, req)
@@ -1558,11 +1583,11 @@ func TestHandler_ListSecrets(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		// Given: Request without claims in context
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
-		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
 
 		// When: ListSecrets RPC is called
 		_, err := handler.ListSecrets(ctx, req)
@@ -1589,7 +1614,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secretWithoutLabel)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1599,7 +1624,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
 
 		// When: ListSecrets RPC is called
 		resp, err := handler.ListSecrets(ctx, req)
@@ -1631,7 +1656,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1642,7 +1667,8 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
 				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
@@ -1667,7 +1693,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		}
 
 		// Verify annotations were persisted
-		updated, err := k8sClient.GetSecret(ctx, "my-secret")
+		updated, err := k8sClient.GetSecret(ctx, "test-namespace", "my-secret")
 		if err != nil {
 			t.Fatalf("failed to get updated secret: %v", err)
 		}
@@ -1714,7 +1740,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1725,7 +1751,8 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_OWNER},
 			},
@@ -1749,12 +1776,13 @@ func TestHandler_UpdateSharing(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 		})
 
 		_, err := handler.UpdateSharing(ctx, req)
@@ -1773,7 +1801,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1784,7 +1812,8 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "",
+			Name:    "",
+			Project: "test-namespace",
 		})
 
 		_, err := handler.UpdateSharing(ctx, req)
@@ -1803,7 +1832,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1814,7 +1843,8 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "missing-secret",
+			Name:    "missing-secret",
+			Project: "test-namespace",
 		})
 
 		_, err := handler.UpdateSharing(ctx, req)
@@ -1847,7 +1877,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1857,7 +1887,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret", Project: "test-namespace"})
 
 		resp, err := handler.GetSecretRaw(ctx, req)
 
@@ -1898,7 +1928,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1908,7 +1938,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret", Project: "test-namespace"})
 
 		resp, err := handler.GetSecretRaw(ctx, req)
 		if err != nil {
@@ -1946,7 +1976,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -1956,7 +1986,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.GetSecretRaw(ctx, req)
 
@@ -1974,11 +2004,11 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		ctx := context.Background()
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret"})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret", Project: "test-namespace"})
 
 		_, err := handler.GetSecretRaw(ctx, req)
 
@@ -1996,7 +2026,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2006,7 +2036,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: ""})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "", Project: "test-namespace"})
 
 		_, err := handler.GetSecretRaw(ctx, req)
 
@@ -2024,7 +2054,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2034,7 +2064,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "missing"})
+		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "missing", Project: "test-namespace"})
 
 		_, err := handler.GetSecretRaw(ctx, req)
 
@@ -2054,7 +2084,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 func TestHandler_CreateSecret_StringData(t *testing.T) {
 	t.Run("string_data values are base64-encoded into data", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2066,6 +2096,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
 			Name:       "sd-secret",
+			Project:    "test-namespace",
 			StringData: map[string]string{"username": "admin", "password": "secret123"},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_EDITOR},
@@ -2081,7 +2112,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 		}
 
 		// Verify the stored secret has the data encoded as bytes
-		stored, err := k8sClient.GetSecret(ctx, "sd-secret")
+		stored, err := k8sClient.GetSecret(ctx, "test-namespace", "sd-secret")
 		if err != nil {
 			t.Fatalf("failed to get stored secret: %v", err)
 		}
@@ -2095,7 +2126,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 
 	t.Run("string_data takes precedence over data for same key", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2107,6 +2138,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
 			Name:       "precedence-secret",
+			Project:    "test-namespace",
 			Data:       map[string][]byte{"key": []byte("from-data")},
 			StringData: map[string]string{"key": "from-string-data"},
 			UserGrants: []*consolev1.ShareGrant{
@@ -2119,7 +2151,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		stored, err := k8sClient.GetSecret(ctx, "precedence-secret")
+		stored, err := k8sClient.GetSecret(ctx, "test-namespace", "precedence-secret")
 		if err != nil {
 			t.Fatalf("failed to get stored secret: %v", err)
 		}
@@ -2145,7 +2177,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			Data: map[string][]byte{"old-key": []byte("old-value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2157,6 +2189,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
 			Name:       "my-secret",
+			Project:    "test-namespace",
 			Data:       map[string][]byte{"existing": []byte("value")},
 			StringData: map[string]string{"new-key": "new-value"},
 		})
@@ -2166,7 +2199,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		stored, err := k8sClient.GetSecret(ctx, "my-secret")
+		stored, err := k8sClient.GetSecret(ctx, "test-namespace", "my-secret")
 		if err != nil {
 			t.Fatalf("failed to get stored secret: %v", err)
 		}
@@ -2193,7 +2226,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			Data: map[string][]byte{"k": []byte("v")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{
@@ -2205,6 +2238,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
 			Name:       "my-secret",
+			Project:    "test-namespace",
 			Data:       map[string][]byte{"key": []byte("from-data")},
 			StringData: map[string]string{"key": "from-string-data"},
 		})
@@ -2214,7 +2248,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		stored, err := k8sClient.GetSecret(ctx, "my-secret")
+		stored, err := k8sClient.GetSecret(ctx, "test-namespace", "my-secret")
 		if err != nil {
 			t.Fatalf("failed to get stored secret: %v", err)
 		}
@@ -2240,7 +2274,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -2256,7 +2290,8 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
 			},
@@ -2292,7 +2327,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -2308,7 +2343,8 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_OWNER},
 			},
@@ -2345,7 +2381,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		logHandler := &testLogHandler{}
@@ -2360,7 +2396,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		req := connect.NewRequest(&consolev1.ListSecretsRequest{})
+		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
 
 		_, err := handler.ListSecrets(ctx, req)
 		if err != nil {
@@ -2393,13 +2429,13 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{}))
+		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2427,13 +2463,13 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
-		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{}))
+		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2448,7 +2484,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 
 	t.Run("CreateSecret stores description and url", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
@@ -2458,6 +2494,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		url := "https://staging.example.com"
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
 			Name:       "new-secret",
+			Project:    "test-namespace",
 			StringData: map[string]string{"key": "value"},
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_OWNER},
@@ -2472,7 +2509,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 
 		// Verify annotations persisted by reading back via K8s
-		secret, err := k8sClient.GetSecret(context.Background(), "new-secret")
+		secret, err := k8sClient.GetSecret(context.Background(), "test-namespace", "new-secret")
 		if err != nil {
 			t.Fatalf("failed to get created secret: %v", err)
 		}
@@ -2498,7 +2535,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			Data: map[string][]byte{"key": []byte("value")},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
@@ -2508,6 +2545,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		url := "https://new.example.com"
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
 			Name:        "my-secret",
+			Project:     "test-namespace",
 			StringData:  map[string]string{"key": "value"},
 			Description: &desc,
 			Url:         &url,
@@ -2518,7 +2556,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		updated, err := k8sClient.GetSecret(context.Background(), "my-secret")
+		updated, err := k8sClient.GetSecret(context.Background(), "test-namespace", "my-secret")
 		if err != nil {
 			t.Fatalf("failed to get updated secret: %v", err)
 		}
@@ -2544,14 +2582,15 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(secret)
-		k8sClient := NewK8sClient(fakeClient, "test-namespace")
+		k8sClient := NewK8sClient(fakeClient)
 		handler := NewHandler(k8sClient, rbac.NewGroupMapping(nil, nil, nil))
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
-			Name: "my-secret",
+			Name:    "my-secret",
+			Project: "test-namespace",
 			UserGrants: []*consolev1.ShareGrant{
 				{Principal: "user@example.com", Role: consolev1.Role_ROLE_OWNER},
 			},
