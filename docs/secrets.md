@@ -20,6 +20,9 @@ metadata:
   name: my-app-credentials
   labels:
     app.kubernetes.io/managed-by: console.holos.run
+  annotations:
+    console.holos.run/description: "Production database and API credentials"
+    console.holos.run/url: "https://myapp.example.com"
 type: Opaque
 data:
   database-url: cG9zdGdyZXM6Ly9sb2NhbGhvc3QvbXlkYg==    # base64-encoded
@@ -35,21 +38,23 @@ The UI handles base64 encoding/decoding transparently -- you work with plaintext
 The `/secrets` page displays all secrets in the configured namespace that have the label `app.kubernetes.io/managed-by=console.holos.run`. Each secret shows:
 
 - The secret name (links to the detail page)
-- A sharing summary (e.g., "2 users, 1 group")
+- A description of the secret's purpose (when set), or a sharing summary (e.g., "2 users, 1 group") as secondary text
+- A sharing summary chip alongside the description (when both are present)
 - An accessibility indicator -- secrets you cannot access show a "No access" chip with a lock icon
 
 ### Creating a Secret
 
 1. Click **Create Secret** on the secrets list page.
 2. Enter a **Name** (lowercase alphanumeric and hyphens only).
-3. Add one or more key-value entries using the file-based editor. Each entry has a **Key** field (the filename) and a **Value** field (multiline content area with monospace font).
-4. Click **Create**. You are automatically added as the Owner of the new secret.
+3. Optionally enter a **Description** (human-readable purpose of the secret) and **URL** (link to the service that uses it).
+4. Add one or more key-value entries using the file-based editor. Each entry has a **Key** field (the filename) and a **Value** field (multiline content area with monospace font).
+5. Click **Create**. You are automatically added as the Owner of the new secret.
 
 Duplicate keys are detected and flagged in the editor before submission.
 
 ### Viewing and Editing a Secret
 
-Navigate to `/secrets/<name>` to view a secret's data. The detail page provides two view modes toggled at the top of the card:
+Navigate to `/secrets/<name>` to view a secret's data. The detail page shows editable **Description** and **URL** fields at the top, followed by two view modes toggled via a button group:
 
 - **Editor** (default) — Individual key-value entries in the file-based editor. Each entry shows the key (filename) and value (file content) as separate fields. Modify fields directly; the **Save** button enables when changes are detected (dirty checking). Saving replaces the entire secret data map.
 - **Raw** — The full Kubernetes Secret manifest as pretty-printed JSON. The raw view converts `data` (base64) to `stringData` (plaintext) for readability. An "Include all fields" toggle controls whether server-managed metadata fields (uid, resourceVersion, creationTimestamp, etc.) are shown. A "Copy to Clipboard" button copies the rendered JSON. The raw view is read-only; Save is disabled while it is active.
@@ -153,4 +158,4 @@ The `SecretsService` ConnectRPC API provides programmatic access to secrets. All
 | `DeleteSecret` | Owner | Delete a secret by name |
 | `UpdateSharing` | Owner | Update sharing grants without touching data |
 
-Secret data is transmitted as `map<string, bytes>` -- values are raw bytes, not base64-encoded, in the protobuf wire format. `CreateSecret` and `UpdateSecret` also accept a `string_data` field (`map<string, string>`) for plaintext values that are merged into `data` (with `string_data` taking precedence), matching Kubernetes `stringData` semantics.
+Secret data is transmitted as `map<string, bytes>` -- values are raw bytes, not base64-encoded, in the protobuf wire format. `CreateSecret` and `UpdateSecret` also accept a `string_data` field (`map<string, string>`) for plaintext values that are merged into `data` (with `string_data` taking precedence), matching Kubernetes `stringData` semantics. Both RPCs also accept optional `description` and `url` fields stored as Kubernetes annotations (`console.holos.run/description` and `console.holos.run/url`).
