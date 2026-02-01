@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Button, IconButton, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, Checkbox, FormControlLabel, IconButton, Stack, TextField, Typography } from '@mui/material'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -17,6 +17,7 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [trailingNewline, setTrailingNewline] = useState(true)
 
   const toggleReveal = (key: string) => {
     setRevealedKeys((prev) => {
@@ -41,7 +42,11 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
   }
 
   const handleEditSave = (key: string) => {
-    const newData = { ...data, [key]: encoder.encode(editValue) }
+    let value = editValue
+    if (trailingNewline && value.length > 0 && !value.endsWith('\n')) {
+      value += '\n'
+    }
+    const newData = { ...data, [key]: encoder.encode(value) }
     onChange(newData)
     setEditingKey(null)
   }
@@ -79,6 +84,17 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
                       sx: { fontFamily: 'monospace' },
                     },
                   }}
+                  sx={{ mb: 1 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={trailingNewline}
+                      onChange={(e) => setTrailingNewline(e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label="Ensure trailing newline"
                   sx={{ mb: 1 }}
                 />
                 <Stack direction="row" spacing={1}>
