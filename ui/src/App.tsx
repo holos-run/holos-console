@@ -30,6 +30,8 @@ import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
 import { ProjectsListPage } from './components/ProjectsListPage'
 import { ProjectPage } from './components/ProjectPage'
+import { OrganizationsListPage } from './components/OrganizationsListPage'
+import { OrganizationPage } from './components/OrganizationPage'
 import { AuthProvider } from './auth'
 
 const theme = createTheme({
@@ -42,6 +44,7 @@ const DRAWER_WIDTH = 240
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
+  const isOrganizationsPage = location.pathname.startsWith('/organizations')
   const isProjectsPage = location.pathname.startsWith('/projects')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isVersionPage = location.pathname.startsWith('/version')
@@ -55,6 +58,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </Box>
       <Divider />
       <List sx={{ px: 1 }}>
+        <ListItemButton
+          component={Link}
+          to="/organizations"
+          selected={isOrganizationsPage}
+          onClick={onNavigate}
+        >
+          <ListItemText primary="Organizations" />
+        </ListItemButton>
         <ListItemButton
           component={Link}
           to="/projects"
@@ -153,14 +164,17 @@ function MainLayout() {
         {isMobile && <Toolbar />}
         <Stack spacing={3}>
           <Routes>
-            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/" element={<Navigate to="/organizations" replace />} />
+            <Route path="/organizations" element={<OrganizationsListPage />} />
+            <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
+            <Route path="/organizations/:organizationName/projects" element={<ProjectsListPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:projectName" element={<ProjectPage />} />
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
             <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
             <Route path="/version" element={<VersionCard />} />
-            <Route path="*" element={<Navigate to="/projects" replace />} />
+            <Route path="*" element={<Navigate to="/organizations" replace />} />
           </Routes>
         </Stack>
       </Box>
