@@ -52,29 +52,9 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 	return &K8sClient{client: client, Resolver: r}
 }
 
-// resolveProjectNS finds the Kubernetes namespace for a project by label lookup.
-func (c *K8sClient) resolveProjectNS(ctx context.Context, project string) (string, error) {
-	labelSelector := ManagedByLabel + "=" + ManagedByValue + "," +
-		resolver.ResourceTypeLabel + "=" + resolver.ResourceTypeProject + "," +
-		resolver.ProjectLabel + "=" + project
-	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
-	if err != nil {
-		return "", err
-	}
-	if len(list.Items) == 0 {
-		return "", fmt.Errorf("project %q not found", project)
-	}
-	return list.Items[0].Name, nil
-}
-
 // GetSecret retrieves a secret by name from the project's namespace.
 func (c *K8sClient) GetSecret(ctx context.Context, project, name string) (*corev1.Secret, error) {
-	ns, err := c.resolveProjectNS(ctx, project)
-	if err != nil {
-		return nil, err
-	}
+	ns := c.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "getting secret from kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
@@ -85,10 +65,7 @@ func (c *K8sClient) GetSecret(ctx context.Context, project, name string) (*corev
 
 // ListSecrets retrieves secrets with the console label from the project's namespace.
 func (c *K8sClient) ListSecrets(ctx context.Context, project string) (*corev1.SecretList, error) {
-	ns, err := c.resolveProjectNS(ctx, project)
-	if err != nil {
-		return nil, err
-	}
+	ns := c.Resolver.ProjectNamespace(project)
 	labelSelector := ManagedByLabel + "=" + ManagedByValue
 	slog.DebugContext(ctx, "listing secrets from kubernetes",
 		slog.String("project", project),
@@ -102,10 +79,7 @@ func (c *K8sClient) ListSecrets(ctx context.Context, project string) (*corev1.Se
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
 func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
-	ns, err := c.resolveProjectNS(ctx, project)
-	if err != nil {
-		return nil, err
-	}
+	ns := c.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating secret in kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
