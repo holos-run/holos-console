@@ -421,6 +421,7 @@ func (h *Handler) resolveOrgGrants(ctx context.Context, org string) (map[string]
 }
 
 // checkAccessWithOrg checks project-level grants first, then org-level grants.
+// Org grants use scope-aware cascade: org grants never authorize project operations.
 func (h *Handler) checkAccessWithOrg(
 	email string,
 	groups []string,
@@ -428,14 +429,16 @@ func (h *Handler) checkAccessWithOrg(
 	orgUsers, orgGroups map[string]string,
 	permission rbac.Permission,
 ) error {
-	// 1. Check project grants
+	// 1. Check project grants (full permission)
 	if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, permission); err == nil {
 		return nil
 	}
-	// 2. Check org grants
+	// 2. Check org grants (scope-aware cascade)
 	if orgUsers != nil || orgGroups != nil {
-		if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, permission); err == nil {
-			return nil
+		if cascaded := rbac.CascadeProjectToOrg(permission); cascaded != rbac.PermissionUnspecified {
+			if err := rbac.CheckAccessGrants(email, groups, orgUsers, orgGroups, cascaded); err == nil {
+				return nil
+			}
 		}
 	}
 	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
