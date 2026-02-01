@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/oidc"
+	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
@@ -217,10 +218,19 @@ func (s *Server) Serve(ctx context.Context) error {
 	secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 	mux.Handle(secretsPath, secretsHTTPHandler)
 
+	// Register ProjectService (protected - requires auth)
+	if k8sClientset != nil {
+		projectsK8s := projects.NewK8sClient(k8sClientset)
+		projectsHandler := projects.NewHandler(projectsK8s)
+		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
+		mux.Handle(projectsPath, projectsHTTPHandler)
+	}
+
 	// Register gRPC reflection for introspection (grpcurl, etc.)
 	reflector := grpcreflect.NewStaticReflector(
 		consolev1connect.VersionServiceName,
 		consolev1connect.SecretsServiceName,
+		consolev1connect.ProjectServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
