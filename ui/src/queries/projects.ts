@@ -76,3 +76,11 @@ export function useCreateProject() {
     },
   })
 }
+
+export function useUpdateProject() {
+  return useMutation(ProjectService.method.updateProject)
+}
+
+export function useUpdateProjectSharing() {
+  return useMutation(ProjectService.method.updateProjectSharing)
+}
