@@ -34,7 +34,6 @@ import (
 
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/projects"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -76,22 +75,6 @@ type Config struct {
 	// After this duration, users must re-authenticate.
 	// Default: 12 hours
 	RefreshTokenTTL time.Duration
-
-	// Namespace is the Kubernetes namespace for secrets.
-	// Default: "holos-console"
-	Namespace string
-
-	// PlatformViewers are the OIDC groups with platform viewer role.
-	// When nil, defaults to ["viewer"].
-	PlatformViewers []string
-
-	// PlatformEditors are the OIDC groups with platform editor role.
-	// When nil, defaults to ["editor"].
-	PlatformEditors []string
-
-	// PlatformOwners are the OIDC groups with platform owner role.
-	// When nil, defaults to ["owner"].
-	PlatformOwners []string
 
 	// CACertFile is the path to a PEM-encoded CA certificate file.
 	// When set, this CA is added to the TLS root CAs used by the server's
@@ -206,9 +189,6 @@ func (s *Server) Serve(ctx context.Context) error {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 	}
 
-	// Create RBAC group mapping from configuration
-	groupMapping := rbac.NewGroupMapping(s.cfg.PlatformViewers, s.cfg.PlatformEditors, s.cfg.PlatformOwners)
-
 	// Register ProjectService and SecretsService (protected - requires auth)
 	if k8sClientset != nil {
 		projectsK8s := projects.NewK8sClient(k8sClientset)
@@ -222,8 +202,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
-		// Fallback: secrets handler with group mapping only (no project resolver)
-		secretsHandler := secrets.NewHandler(secretsK8s, groupMapping)
+		// Fallback: secrets handler without K8s (no project resolver, no platform roles)
+		secretsHandler := secrets.NewHandler(secretsK8s, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
