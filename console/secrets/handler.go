@@ -30,13 +30,7 @@ type ProjectResolver interface {
 type Handler struct {
 	consolev1connect.UnimplementedSecretsServiceHandler
 	k8s             *K8sClient
-	groupMapping    *rbac.GroupMapping
 	projectResolver ProjectResolver
-}
-
-// NewHandler creates a new SecretsService handler.
-func NewHandler(k8s *K8sClient, groupMapping *rbac.GroupMapping) *Handler {
-	return &Handler{k8s: k8s, groupMapping: groupMapping}
 }
 
 // NewProjectScopedHandler creates a SecretsService handler that resolves access
@@ -614,8 +608,7 @@ func (h *Handler) resolveProjectGrants(ctx context.Context, project string) (map
 	return users, groups
 }
 
-// checkAccess verifies access using per-secret grants first, then project grants,
-// and finally platform roles (GroupMapping) as fallback.
+// checkAccess verifies access using per-secret grants first, then project grants.
 func (h *Handler) checkAccess(
 	email string,
 	groups []string,
@@ -633,11 +626,6 @@ func (h *Handler) checkAccess(
 		if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, permission); err == nil {
 			return nil
 		}
-	}
-
-	// 3. Fall back to platform roles (GroupMapping) if configured
-	if h.groupMapping != nil {
-		return h.groupMapping.CheckAccessSharing(email, groups, secretUsers, secretGroups, permission)
 	}
 
 	return connect.NewError(

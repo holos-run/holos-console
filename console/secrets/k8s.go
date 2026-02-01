@@ -243,7 +243,7 @@ func parseGrantAnnotation(secret *corev1.Secret, key string) ([]AnnotationGrant,
 }
 
 // ActiveGrantsMap filters grants by time window and returns a map of principal → role
-// suitable for passing to CheckAccessSharing. Grants with nbf > now or exp <= now are
+// suitable for passing to CheckAccessGrants. Grants with nbf > now or exp <= now are
 // excluded. Grants with nil nbf/exp have no time restriction.
 func ActiveGrantsMap(grants []AnnotationGrant, now time.Time) map[string]string {
 	nowUnix := now.Unix()

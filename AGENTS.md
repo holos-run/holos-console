@@ -94,6 +94,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `version.go` - Version info with embedded version files and ldflags
   - `rpc/` - ConnectRPC handler implementations and auth interceptor
   - `oidc/` - Embedded Dex OIDC provider
+  - `projects/` - ProjectService with K8s Namespace backend and annotation-based grants
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `ui/` - Embedded static files served at `/ui/` (build output, not source)
 - `proto/` - Protobuf source files
@@ -129,7 +130,7 @@ Backend auth: `LazyAuthInterceptor` in `console/rpc/auth.go` verifies JWTs and s
 
 ### RBAC
 
-- **Platform-level**: OIDC groups mapped to system roles (viewer/editor/owner) via CLI flags
+- **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (`console.holos.run/share-users`, `console.holos.run/share-groups`)
 - **Secret-level**: Per-secret grants stored as JSON annotations on K8s Secret objects (`console.holos.run/share-users`, `console.holos.run/share-groups`)
 - **Roles**: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 
