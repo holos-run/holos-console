@@ -1,39 +1,25 @@
 # Role-Based Access Control (RBAC)
 
-holos-console uses a two-tier access control model combining **platform roles** and **per-secret sharing grants**.
+holos-console uses a two-tier access control model combining **project-level grants** and **per-secret sharing grants**.
 
-## Platform Roles
+## Projects
 
-Platform roles provide baseline access across all secrets. They are assigned by mapping OIDC groups to roles via CLI flags.
+A **project** is a Kubernetes Namespace labeled `app.kubernetes.io/managed-by=console.holos.run`. Permission grants are stored as annotations on the Namespace resource.
 
-| Platform Role | Permissions | Use Case |
-|---|---|---|
-| Viewer | List, Read | Audit, read-only users |
-| Editor | List, Read, Write | Developers who create and update secrets |
-| Owner | List, Read, Write, Delete, Admin | Platform administrators |
+Users see only projects where they have at least viewer-level access.
 
-### Configuration
+## Access Evaluation
 
-```bash
-holos-console \
-  --platform-viewers=audit-team,readonly-users \
-  --platform-editors=developers,sre-team \
-  --platform-owners=platform-admins
-```
+Access to a secret is evaluated in this order (highest role wins):
 
-| Flag | Default Group | Description |
-|---|---|---|
-| `--platform-viewers` | `viewer` | OIDC groups with platform viewer role |
-| `--platform-editors` | `editor` | OIDC groups with platform editor role |
-| `--platform-owners` | `owner` | OIDC groups with platform owner role |
+1. Per-secret grants (`share-users`/`share-groups` annotations on the Secret)
+2. Project grants (`share-users`/`share-groups` annotations on the Namespace)
 
-When a flag is not set, the default group name is used (e.g., users in the OIDC group `viewer` automatically get the viewer platform role).
+If no grant matches, access is denied.
 
-## Per-Secret Sharing Grants
+## Grant Annotations
 
-Sharing grants provide fine-grained access to individual secrets. They are stored as Kubernetes annotations on the secret.
-
-### Annotations
+Grants are stored as JSON annotations on both Namespace and Secret resources:
 
 | Annotation | Format | Description |
 |---|---|---|
@@ -51,39 +37,67 @@ Each grant is a JSON object with:
 
 When `nbf` or `exp` is omitted, the grant has no time restriction for that bound.
 
-### Example
+## Roles
+
+| Role | Secrets Permissions | Project Permissions |
+|---|---|---|
+| Viewer | List, Read | List, Read |
+| Editor | List, Read, Write | List, Read, Write |
+| Owner | List, Read, Write, Delete, Admin | List, Read, Write, Delete, Admin, Create |
+
+`PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** (not on the project being created).
+
+## Example: Project with Secrets
 
 ```yaml
+# Project namespace with grants
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: my-project
+  labels:
+    app.kubernetes.io/managed-by: console.holos.run
+  annotations:
+    console.holos.run/display-name: "My Project"
+    console.holos.run/description: "Production secrets"
+    console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
+    console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
+---
+# Secret within the project
 apiVersion: v1
 kind: Secret
 metadata:
   name: my-app-credentials
-  namespace: holos-console
+  namespace: my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
-    console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"},{"principal":"bob@example.com","role":"viewer","exp":1735689600}]'
-    console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
+    console.holos.run/share-users: '[{"principal":"bob@example.com","role":"viewer","exp":1735689600}]'
 ```
 
-## How Roles Combine
+In this example:
+- Alice has **owner** access to all secrets in `my-project` via the project grant
+- Members of `dev-team` have **editor** access to all secrets via the project group grant
+- Bob has **viewer** access to `my-app-credentials` only, via the per-secret grant (expires at the given timestamp)
 
-When a user has roles from multiple sources, the **highest role wins**.
+## Bootstrap
 
-Evaluation order:
-1. Check per-user sharing grants (`share-users` annotation)
-2. Check per-group sharing grants (`share-groups` annotation)
-3. Check platform roles (OIDC group mapping)
+The first project must be created via `kubectl` since no user has `PERMISSION_PROJECTS_CREATE` until they are an owner on at least one project:
 
-The highest role found across all three sources determines access.
+```bash
+# Label the namespace as managed by console
+kubectl label namespace my-project app.kubernetes.io/managed-by=console.holos.run
 
-### Example
+# Grant the bootstrap user owner access
+kubectl annotate namespace my-project \
+  'console.holos.run/share-users=[{"principal":"admin@example.com","role":"owner"}]'
+```
 
-Alice is in the OIDC group `viewer` (platform viewer role). A secret has `share-users: [{"principal":"alice@example.com","role":"editor"}]`. Alice gets **editor** access to that secret because editor > viewer.
-
-Bob is in the OIDC group `owner` (platform owner role). A secret has no sharing grants for Bob. Bob still gets **owner** access via his platform role.
+After bootstrap, the owner can create additional projects and manage sharing through the UI.
 
 ## Permission Matrix
+
+### Secret Permissions
 
 | Permission | Viewer | Editor | Owner |
 |---|---|---|---|
@@ -93,3 +107,14 @@ Bob is in the OIDC group `owner` (platform owner role). A secret has no sharing 
 | Update secret data | - | Yes | Yes |
 | Delete secrets | - | - | Yes |
 | Update sharing grants | - | - | Yes |
+
+### Project Permissions
+
+| Permission | Viewer | Editor | Owner |
+|---|---|---|---|
+| List projects | Yes | Yes | Yes |
+| Read project metadata | Yes | Yes | Yes |
+| Update project metadata | - | Yes | Yes |
+| Delete project | - | - | Yes |
+| Update project sharing | - | - | Yes |
+| Create new projects | - | - | Yes (on any project) |

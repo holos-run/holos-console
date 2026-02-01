@@ -202,8 +202,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
-		// Fallback: secrets handler without K8s (no project resolver, no platform roles)
-		secretsHandler := secrets.NewHandler(secretsK8s, nil)
+		// Fallback: secrets handler without K8s (no project resolver)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}

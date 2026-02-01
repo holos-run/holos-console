@@ -18,7 +18,7 @@ Open <https://localhost:8443/ui> in your browser. The embedded Dex OIDC provider
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, build commands, testing, and commit message format |
 | [AGENTS.md](AGENTS.md) | Agent and CI guidance for working with this codebase |
 | [docs/authentication.md](docs/authentication.md) | OIDC authentication modes (embedded Dex PKCE and BFF oauth2-proxy) |
-| [docs/rbac.md](docs/rbac.md) | Platform roles, per-secret sharing grants, and permission model |
+| [docs/rbac.md](docs/rbac.md) | Project-level grants, per-secret sharing grants, and permission model |
 | [docs/secrets.md](docs/secrets.md) | Secret data model, UI workflows, and consuming secrets in pods |
 | [docs/dev-server.md](docs/dev-server.md) | Two-server development setup (Go backend + Vite dev server) |
 | [docs/hostname-configuration.md](docs/hostname-configuration.md) | Hostname and port configuration, reverse proxy setup |
