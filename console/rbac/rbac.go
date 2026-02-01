@@ -36,38 +36,55 @@ const (
 	PermissionProjectsWrite  = consolev1.Permission_PERMISSION_PROJECTS_WRITE
 	PermissionProjectsDelete = consolev1.Permission_PERMISSION_PROJECTS_DELETE
 	PermissionProjectsAdmin  = consolev1.Permission_PERMISSION_PROJECTS_ADMIN
-	PermissionProjectsCreate = consolev1.Permission_PERMISSION_PROJECTS_CREATE
+	PermissionProjectsCreate       = consolev1.Permission_PERMISSION_PROJECTS_CREATE
+	PermissionOrganizationsRead    = consolev1.Permission_PERMISSION_ORGANIZATIONS_READ
+	PermissionOrganizationsList    = consolev1.Permission_PERMISSION_ORGANIZATIONS_LIST
+	PermissionOrganizationsWrite   = consolev1.Permission_PERMISSION_ORGANIZATIONS_WRITE
+	PermissionOrganizationsDelete  = consolev1.Permission_PERMISSION_ORGANIZATIONS_DELETE
+	PermissionOrganizationsAdmin   = consolev1.Permission_PERMISSION_ORGANIZATIONS_ADMIN
+	PermissionOrganizationsCreate  = consolev1.Permission_PERMISSION_ORGANIZATIONS_CREATE
 )
 
 // rolePermissions defines which permissions each role has.
 // Higher-level roles inherit all permissions from lower-level roles.
 var rolePermissions = map[Role]map[Permission]bool{
 	RoleViewer: {
-		PermissionSecretsRead:  true,
-		PermissionSecretsList:  true,
-		PermissionProjectsRead: true,
-		PermissionProjectsList: true,
+		PermissionSecretsRead:        true,
+		PermissionSecretsList:        true,
+		PermissionProjectsRead:       true,
+		PermissionProjectsList:       true,
+		PermissionOrganizationsRead:  true,
+		PermissionOrganizationsList:  true,
 	},
 	RoleEditor: {
-		PermissionSecretsRead:   true,
-		PermissionSecretsList:   true,
-		PermissionSecretsWrite:  true,
-		PermissionProjectsRead:  true,
-		PermissionProjectsList:  true,
-		PermissionProjectsWrite: true,
+		PermissionSecretsRead:         true,
+		PermissionSecretsList:         true,
+		PermissionSecretsWrite:        true,
+		PermissionProjectsRead:        true,
+		PermissionProjectsList:        true,
+		PermissionProjectsWrite:       true,
+		PermissionOrganizationsRead:   true,
+		PermissionOrganizationsList:   true,
+		PermissionOrganizationsWrite:  true,
 	},
 	RoleOwner: {
-		PermissionSecretsRead:    true,
-		PermissionSecretsList:    true,
-		PermissionSecretsWrite:   true,
-		PermissionSecretsDelete:  true,
-		PermissionSecretsAdmin:   true,
-		PermissionProjectsRead:   true,
-		PermissionProjectsList:   true,
-		PermissionProjectsWrite:  true,
-		PermissionProjectsDelete: true,
-		PermissionProjectsAdmin:  true,
-		PermissionProjectsCreate: true,
+		PermissionSecretsRead:          true,
+		PermissionSecretsList:          true,
+		PermissionSecretsWrite:         true,
+		PermissionSecretsDelete:        true,
+		PermissionSecretsAdmin:         true,
+		PermissionProjectsRead:         true,
+		PermissionProjectsList:         true,
+		PermissionProjectsWrite:        true,
+		PermissionProjectsDelete:       true,
+		PermissionProjectsAdmin:        true,
+		PermissionProjectsCreate:       true,
+		PermissionOrganizationsRead:    true,
+		PermissionOrganizationsList:    true,
+		PermissionOrganizationsWrite:   true,
+		PermissionOrganizationsDelete:  true,
+		PermissionOrganizationsAdmin:   true,
+		PermissionOrganizationsCreate:  true,
 	},
 }
 
