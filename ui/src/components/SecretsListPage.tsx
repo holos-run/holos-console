@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink, useParams } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -43,6 +43,7 @@ function sharingSummary(userCount: number, groupCount: number): string | undefin
 }
 
 export function SecretsListPage() {
+  const { projectName } = useParams<{ projectName: string }>()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
@@ -71,7 +72,7 @@ export function SecretsListPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login('/secrets')
+      login(`/projects/${projectName}/secrets`)
     }
   }, [authLoading, isAuthenticated, login])
 
@@ -84,7 +85,7 @@ export function SecretsListPage() {
     try {
       const token = getAccessToken()
       const response = await secretsClient.listSecrets(
-        {},
+        { project: projectName || '' },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -119,7 +120,7 @@ export function SecretsListPage() {
     try {
       const token = getAccessToken()
       await secretsClient.deleteSecret(
-        { name: deleteTarget },
+        { name: deleteTarget, project: projectName || '' },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -164,6 +165,7 @@ export function SecretsListPage() {
       await secretsClient.createSecret(
         {
           name: createName.trim(),
+          project: projectName || '',
           data: createData,
           userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
           description: createDescription.trim() || undefined,
@@ -217,7 +219,9 @@ export function SecretsListPage() {
       <Card variant="outlined">
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
-            <Typography variant="h6">Secrets</Typography>
+            <Typography variant="h6">
+              {projectName ? `${projectName} / Secrets` : 'Secrets'}
+            </Typography>
             <Button variant="contained" size="small" onClick={handleCreateOpen}>
               Create Secret
             </Button>
@@ -259,7 +263,7 @@ export function SecretsListPage() {
                 >
                   <ListItemButton
                     component={RouterLink}
-                    to={`/secrets/${secret.name}`}
+                    to={`/projects/${projectName}/secrets/${secret.name}`}
                     disabled={!secret.accessible}
                   >
                     <ListItemText

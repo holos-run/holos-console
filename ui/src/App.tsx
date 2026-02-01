@@ -43,7 +43,6 @@ const DRAWER_WIDTH = 240
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
   const isProjectsPage = location.pathname.startsWith('/projects')
-  const isSecretsPage = location.pathname.startsWith('/secrets')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isVersionPage = location.pathname.startsWith('/version')
 
@@ -63,14 +62,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
         >
           <ListItemText primary="Projects" />
-        </ListItemButton>
-        <ListItemButton
-          component={Link}
-          to="/secrets"
-          selected={isSecretsPage}
-          onClick={onNavigate}
-        >
-          <ListItemText primary="Secrets" />
         </ListItemButton>
         <ListItemButton
           component={Link}
@@ -164,9 +155,9 @@ function MainLayout() {
           <Routes>
             <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsListPage />} />
-            <Route path="/projects/:name" element={<ProjectPage />} />
-            <Route path="/secrets" element={<SecretsListPage />} />
-            <Route path="/secrets/:name" element={<SecretPage />} />
+            <Route path="/projects/:projectName" element={<ProjectPage />} />
+            <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
+            <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
             <Route path="/version" element={<VersionCard />} />
             <Route path="*" element={<Navigate to="/projects" replace />} />

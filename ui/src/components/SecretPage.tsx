@@ -47,7 +47,7 @@ function serializeData(data: Record<string, Uint8Array>): string {
 }
 
 export function SecretPage() {
-  const { name } = useParams<{ name: string }>()
+  const { name, projectName } = useParams<{ name: string; projectName: string }>()
   const navigate = useNavigate()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
@@ -94,7 +94,7 @@ export function SecretPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      login(`/secrets/${name}`)
+      login(`/projects/${projectName}/secrets/${name}`)
     }
   }, [authLoading, isAuthenticated, login, name])
 
@@ -109,7 +109,7 @@ export function SecretPage() {
       try {
         const token = getAccessToken()
         const response = await secretsClient.getSecret(
-          { name },
+          { name, project: projectName || '' },
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -138,7 +138,7 @@ export function SecretPage() {
       try {
         const token = getAccessToken()
         const response = await secretsClient.listSecrets(
-          {},
+          { project: projectName || '' },
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -175,6 +175,7 @@ export function SecretPage() {
       const response = await secretsClient.updateSharing(
         {
           name,
+          project: projectName || '',
           userGrants: newUserGrants,
           groupGrants: newGroupGrants,
         },
@@ -201,7 +202,7 @@ export function SecretPage() {
       try {
         const token = getAccessToken()
         const response = await secretsClient.getSecretRaw(
-          { name },
+          { name, project: projectName || '' },
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -224,7 +225,7 @@ export function SecretPage() {
     try {
       const token = getAccessToken()
       await secretsClient.updateSecret(
-        { name, data: secretData, description, url },
+        { name, project: projectName || '', data: secretData, description, url },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -250,7 +251,7 @@ export function SecretPage() {
     try {
       const token = getAccessToken()
       await secretsClient.deleteSecret(
-        { name },
+        { name, project: projectName || '' },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -258,7 +259,7 @@ export function SecretPage() {
         },
       )
       setDeleteOpen(false)
-      navigate('/secrets')
+      navigate(`/projects/${projectName}/secrets`)
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -308,8 +309,11 @@ export function SecretPage() {
   return (
     <Card variant="outlined">
       <CardContent>
+        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+          {projectName} / Secrets
+        </Typography>
         <Typography variant="h6" gutterBottom>
-          Secret: {name}
+          {name}
         </Typography>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
           {editingDescription ? (

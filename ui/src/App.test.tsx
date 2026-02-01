@@ -51,11 +51,11 @@ function mockMatchMedia(matchPattern: RegExp): () => void {
 }
 
 describe('navigation', () => {
-  it('links the secrets page from sidebar', async () => {
+  it('links the projects page from sidebar', async () => {
     renderApp('/ui/version')
     await waitFor(() => {
-      const secretsLink = screen.getByRole('link', { name: 'Secrets' })
-      expect(secretsLink).toHaveAttribute('href', '/ui/secrets')
+      const projectsLink = screen.getByRole('link', { name: 'Projects' })
+      expect(projectsLink).toHaveAttribute('href', '/ui/projects')
     })
   })
 
@@ -106,7 +106,7 @@ describe('responsive layout', () => {
 
       // Navigation links should become visible in the drawer
       await waitFor(() => {
-        expect(screen.getByRole('link', { name: 'Secrets' })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
       })
     } finally {
       cleanup()
@@ -117,14 +117,14 @@ describe('responsive layout', () => {
     // Desktop: default matchMedia returns matches=false (no max-width match)
     renderApp('/ui/version')
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: 'Secrets' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
     })
 
     // Hamburger should not be present
     expect(screen.queryByLabelText(/open menu/i)).toBeNull()
 
     // Sidebar nav should be visible with expected links
-    expect(screen.getByRole('link', { name: 'Secrets' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Version' })).toBeInTheDocument()
   })

@@ -72,7 +72,7 @@ function renderProjectsListPage(authValue: AuthContextValue) {
       <AuthContext.Provider value={authValue}>
         <Routes>
           <Route path="/projects" element={<ProjectsListPage />} />
-          <Route path="/projects/:name" element={<CaptureNavigate />} />
+          <Route path="/projects/:projectName" element={<CaptureNavigate />} />
         </Routes>
       </AuthContext.Provider>
     </MemoryRouter>,

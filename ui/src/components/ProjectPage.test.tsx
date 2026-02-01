@@ -61,7 +61,7 @@ function renderProjectPage(authValue: AuthContextValue, projectName = 'test-proj
     <MemoryRouter initialEntries={[`/projects/${projectName}`]}>
       <AuthContext.Provider value={authValue}>
         <Routes>
-          <Route path="/projects/:name" element={<ProjectPage />} />
+          <Route path="/projects/:projectName" element={<ProjectPage />} />
           <Route path="/projects" element={<div>Projects List</div>} />
         </Routes>
       </AuthContext.Provider>
