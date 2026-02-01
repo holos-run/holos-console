@@ -194,6 +194,73 @@ func TestHasPermission_ProjectPermissions(t *testing.T) {
 	})
 }
 
+func TestCascadeSecretToProject(t *testing.T) {
+	tests := []struct {
+		name string
+		perm Permission
+		want Permission
+	}{
+		{"list maps to projects:read", PermissionSecretsList, PermissionProjectsRead},
+		{"read maps to unspecified", PermissionSecretsRead, PermissionUnspecified},
+		{"write maps to projects:write", PermissionSecretsWrite, PermissionProjectsWrite},
+		{"delete maps to projects:admin", PermissionSecretsDelete, PermissionProjectsAdmin},
+		{"admin maps to projects:admin", PermissionSecretsAdmin, PermissionProjectsAdmin},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CascadeSecretToProject(tt.perm)
+			if got != tt.want {
+				t.Errorf("CascadeSecretToProject(%v) = %v, want %v", tt.perm, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCascadeSecretToOrg(t *testing.T) {
+	perms := []Permission{
+		PermissionSecretsList,
+		PermissionSecretsRead,
+		PermissionSecretsWrite,
+		PermissionSecretsDelete,
+		PermissionSecretsAdmin,
+	}
+	for _, p := range perms {
+		t.Run(p.String(), func(t *testing.T) {
+			got := CascadeSecretToOrg(p)
+			if got != PermissionUnspecified {
+				t.Errorf("CascadeSecretToOrg(%v) = %v, want PermissionUnspecified", p, got)
+			}
+		})
+	}
+}
+
+func TestCascadeProjectToOrg(t *testing.T) {
+	perms := []Permission{
+		PermissionProjectsList,
+		PermissionProjectsRead,
+		PermissionProjectsWrite,
+		PermissionProjectsDelete,
+		PermissionProjectsAdmin,
+		PermissionProjectsCreate,
+	}
+	for _, p := range perms {
+		t.Run(p.String(), func(t *testing.T) {
+			got := CascadeProjectToOrg(p)
+			if got != PermissionUnspecified {
+				t.Errorf("CascadeProjectToOrg(%v) = %v, want PermissionUnspecified", p, got)
+			}
+		})
+	}
+}
+
+func TestCascadeNonChildPermission(t *testing.T) {
+	// Non-secret permissions should return Unspecified from CascadeSecretToProject
+	got := CascadeSecretToProject(PermissionProjectsRead)
+	if got != PermissionUnspecified {
+		t.Errorf("CascadeSecretToProject(ProjectsRead) = %v, want PermissionUnspecified", got)
+	}
+}
+
 func TestCheckAccessGrants(t *testing.T) {
 	t.Run("user grant allows access", func(t *testing.T) {
 		err := CheckAccessGrants(
