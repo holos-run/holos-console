@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,17 +18,22 @@ const DisplayNameAnnotation = "console.holos.run/display-name"
 
 // K8sClient wraps Kubernetes client operations for projects (namespaces).
 type K8sClient struct {
-	client kubernetes.Interface
+	client   kubernetes.Interface
+	Resolver *resolver.Resolver
 }
 
 // NewK8sClient creates a client for project operations.
-func NewK8sClient(client kubernetes.Interface) *K8sClient {
-	return &K8sClient{client: client}
+func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
+	return &K8sClient{client: client, Resolver: r}
 }
 
-// ListProjects returns all namespaces with the console managed-by label.
-func (c *K8sClient) ListProjects(ctx context.Context) ([]*corev1.Namespace, error) {
-	labelSelector := secrets.ManagedByLabel + "=" + secrets.ManagedByValue
+// ListProjects returns all project namespaces. When org is non-empty, filters by organization.
+func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Namespace, error) {
+	labelSelector := secrets.ManagedByLabel + "=" + secrets.ManagedByValue + "," +
+		resolver.ResourceTypeLabel + "=" + resolver.ResourceTypeProject
+	if org != "" {
+		labelSelector += "," + resolver.OrganizationLabel + "=" + org
+	}
 	slog.DebugContext(ctx, "listing projects from kubernetes",
 		slog.String("labelSelector", labelSelector),
 	)
@@ -44,26 +50,30 @@ func (c *K8sClient) ListProjects(ctx context.Context) ([]*corev1.Namespace, erro
 	return result, nil
 }
 
-// GetProject retrieves a managed namespace by name.
-// Returns an error if the namespace does not have the managed-by label.
+// GetProject retrieves a managed project namespace by name.
+// The name is the user-facing project name (not the Kubernetes namespace).
 func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namespace, error) {
+	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "getting project from kubernetes",
 		slog.String("name", name),
+		slog.String("namespace", nsName),
 	)
-	ns, err := c.client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	ns, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 	if ns.Labels == nil || ns.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
-		return nil, fmt.Errorf("namespace %q is not managed by %s", name, secrets.ManagedByValue)
+		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, secrets.ManagedByValue)
 	}
 	return ns, nil
 }
 
-// CreateProject creates a new namespace with the managed-by label and annotations.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description string, shareUsers, shareGroups []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+// CreateProject creates a new namespace with managed-by and resource-type labels.
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareGroups []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
+		slog.String("namespace", nsName),
 	)
 	usersJSON, err := json.Marshal(shareUsers)
 	if err != nil {
@@ -83,12 +93,17 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	if description != "" {
 		annotations[secrets.DescriptionAnnotation] = description
 	}
+	labels := map[string]string{
+		secrets.ManagedByLabel:     secrets.ManagedByValue,
+		resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+	}
+	if org != "" {
+		labels[resolver.OrganizationLabel] = org
+	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				secrets.ManagedByLabel: secrets.ManagedByValue,
-			},
+			Name:        nsName,
+			Labels:      labels,
 			Annotations: annotations,
 		},
 	}
@@ -125,17 +140,18 @@ func (c *K8sClient) UpdateProject(ctx context.Context, name string, displayName,
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
-// DeleteProject deletes a managed namespace.
+// DeleteProject deletes a managed project namespace.
 // Returns an error if the namespace does not have the managed-by label.
 func (c *K8sClient) DeleteProject(ctx context.Context, name string) error {
 	slog.DebugContext(ctx, "deleting project from kubernetes",
 		slog.String("name", name),
 	)
 	// Verify the namespace is managed before deleting.
-	if _, err := c.GetProject(ctx, name); err != nil {
+	ns, err := c.GetProject(ctx, name)
+	if err != nil {
 		return err
 	}
-	return c.client.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})
+	return c.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 }
 
 // UpdateProjectSharing updates the sharing annotations on a managed namespace.
@@ -161,6 +177,14 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	ns.Annotations[secrets.ShareUsersAnnotation] = string(usersJSON)
 	ns.Annotations[secrets.ShareGroupsAnnotation] = string(groupsJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
+// GetOrganization returns the organization label value from a namespace.
+func GetOrganization(ns *corev1.Namespace) string {
+	if ns.Labels == nil {
+		return ""
+	}
+	return ns.Labels[resolver.OrganizationLabel]
 }
 
 // GetDisplayName returns the display-name annotation value from a namespace.

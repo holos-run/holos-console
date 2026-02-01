@@ -212,8 +212,13 @@ func BestRoleFromGrants(
 	return RoleUnspecified
 }
 
-// roleLevel defines the hierarchy level of each role for comparison.
+// RoleLevel returns the hierarchy level of a role for comparison.
 // Higher values indicate more privileged roles.
+func RoleLevel(role Role) int {
+	return roleLevel[role]
+}
+
+// roleLevel defines the hierarchy level of each role for comparison.
 var roleLevel = map[Role]int{
 	RoleUnspecified: 0,
 	RoleViewer:      1,

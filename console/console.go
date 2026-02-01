@@ -34,6 +34,7 @@ import (
 
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/projects"
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -207,8 +208,9 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Register ProjectService and SecretsService (protected - requires auth)
 	if k8sClientset != nil {
-		projectsK8s := projects.NewK8sClient(k8sClientset)
-		projectsHandler := projects.NewHandler(projectsK8s)
+		nsResolver := &resolver.Resolver{OrgPrefix: s.cfg.OrgPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
+		projectsHandler := projects.NewHandler(projectsK8s, nil)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 

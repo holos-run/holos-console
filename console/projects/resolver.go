@@ -19,8 +19,9 @@ func NewProjectGrantResolver(k8s *K8sClient) *ProjectGrantResolver {
 }
 
 // GetProjectGrants returns the active user and group grant maps for a project.
+// The project parameter is the user-facing project name (not the Kubernetes namespace).
 func (r *ProjectGrantResolver) GetProjectGrants(ctx context.Context, project string) (map[string]string, map[string]string, error) {
-	ns, err := r.k8s.GetProject(ctx, project)
+	ns, err := r.k8s.GetProject(ctx, project) // GetProject handles prefix resolution
 	if err != nil {
 		return nil, nil, err
 	}
