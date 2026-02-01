@@ -260,20 +260,38 @@ type CascadeTable map[Role]map[Permission]bool
 // ProjectCascadeSecretPerms defines what secret permissions each project role
 // grants via cascade. Reading secret data (SecretsRead) is never cascaded —
 // it always requires a direct per-secret grant.
-var ProjectCascadeSecretPerms CascadeTable
+var ProjectCascadeSecretPerms = CascadeTable{
+	RoleViewer: {
+		PermissionSecretsList: true,
+	},
+	RoleEditor: {
+		PermissionSecretsList:  true,
+		PermissionSecretsWrite: true,
+	},
+	RoleOwner: {
+		PermissionSecretsList:   true,
+		PermissionSecretsWrite:  true,
+		PermissionSecretsDelete: true,
+		PermissionSecretsAdmin:  true,
+	},
+}
 
 // OrgCascadeSecretPerms defines what secret permissions each org role grants
 // via cascade. Organization grants never cascade to secrets.
-var OrgCascadeSecretPerms CascadeTable
+var OrgCascadeSecretPerms = CascadeTable{}
 
 // OrgCascadeProjectPerms defines what project permissions each org role grants
 // via cascade. Organization grants never cascade to projects.
-var OrgCascadeProjectPerms CascadeTable
+var OrgCascadeProjectPerms = CascadeTable{}
 
 // HasCascadePermission returns true if the given role has the specified
 // permission in the provided cascade table.
 func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {
-	return false
+	perms, ok := table[role]
+	if !ok {
+		return false
+	}
+	return perms[perm]
 }
 
 // CheckCascadeAccess verifies access using cascade permission tables. It
@@ -288,6 +306,10 @@ func CheckCascadeAccess(
 	permission Permission,
 	table CascadeTable,
 ) error {
+	role := BestRoleFromGrants(userEmail, userGroups, shareUsers, shareGroups)
+	if HasCascadePermission(role, permission, table) {
+		return nil
+	}
 	return connect.NewError(
 		connect.CodePermissionDenied,
 		fmt.Errorf("RBAC: authorization denied"),
