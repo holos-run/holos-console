@@ -35,7 +35,9 @@ type Project struct {
 	// group_grants are the per-group sharing grants on this project.
 	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
 	// user_role is the calling user's effective role on this project.
-	UserRole      Role `protobuf:"varint,6,opt,name=user_role,json=userRole,proto3,enum=holos.console.v1.Role" json:"user_role,omitempty"`
+	UserRole Role `protobuf:"varint,6,opt,name=user_role,json=userRole,proto3,enum=holos.console.v1.Role" json:"user_role,omitempty"`
+	// organization is the organization this project belongs to.
+	Organization  string `protobuf:"bytes,7,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -112,9 +114,18 @@ func (x *Project) GetUserRole() Role {
 	return Role_ROLE_UNSPECIFIED
 }
 
+func (x *Project) GetOrganization() string {
+	if x != nil {
+		return x.Organization
+	}
+	return ""
+}
+
 // ListProjectsRequest contains optional filters for listing projects.
 type ListProjectsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// organization filters projects by organization. When empty, returns all accessible projects.
+	Organization  string `protobuf:"bytes,1,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,6 +158,13 @@ func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListProjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListProjectsRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_projects_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListProjectsRequest) GetOrganization() string {
+	if x != nil {
+		return x.Organization
+	}
+	return ""
 }
 
 // ListProjectsResponse contains the list of projects the user can access.
@@ -299,7 +317,9 @@ type CreateProjectRequest struct {
 	// user_grants are the initial per-user sharing grants.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// group_grants are the initial per-group sharing grants.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// organization is the organization to create this project in.
+	Organization  string `protobuf:"bytes,6,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -367,6 +387,13 @@ func (x *CreateProjectRequest) GetGroupGrants() []*ShareGrant {
 		return x.GroupGrants
 	}
 	return nil
+}
+
+func (x *CreateProjectRequest) GetOrganization() string {
+	if x != nil {
+		return x.Organization
+	}
+	return ""
 }
 
 // CreateProjectResponse contains the name of the created project.
@@ -713,7 +740,7 @@ var File_holos_console_v1_projects_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\n" +
-	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\x97\x02\n" +
+	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xbb\x02\n" +
 	"\aProject\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -721,21 +748,24 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x123\n" +
-	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\"\x15\n" +
-	"\x13ListProjectsRequest\"M\n" +
+	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\x12\"\n" +
+	"\forganization\x18\a \x01(\tR\forganization\"9\n" +
+	"\x13ListProjectsRequest\x12\"\n" +
+	"\forganization\x18\x01 \x01(\tR\forganization\"M\n" +
 	"\x14ListProjectsResponse\x125\n" +
 	"\bprojects\x18\x01 \x03(\v2\x19.holos.console.v1.ProjectR\bprojects\"'\n" +
 	"\x11GetProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"I\n" +
 	"\x12GetProjectResponse\x123\n" +
-	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"\xef\x01\n" +
+	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"\x93\x02\n" +
 	"\x14CreateProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"+\n" +
+	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12\"\n" +
+	"\forganization\x18\x06 \x01(\tR\forganization\"+\n" +
 	"\x15CreateProjectResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x9a\x01\n" +
 	"\x14UpdateProjectRequest\x12\x12\n" +
