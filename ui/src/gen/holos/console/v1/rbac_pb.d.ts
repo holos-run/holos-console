@@ -138,6 +138,48 @@ export enum Permission {
    * @generated from enum value: PERMISSION_PROJECTS_CREATE = 11;
    */
   PROJECTS_CREATE = 11,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_READ allows reading organization metadata.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_READ = 12;
+   */
+  ORGANIZATIONS_READ = 12,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_LIST allows listing organizations.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_LIST = 13;
+   */
+  ORGANIZATIONS_LIST = 13,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_WRITE allows updating organization metadata.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_WRITE = 14;
+   */
+  ORGANIZATIONS_WRITE = 14,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_DELETE allows deleting organizations.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_DELETE = 15;
+   */
+  ORGANIZATIONS_DELETE = 15,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_ADMIN allows administrative operations on organizations.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_ADMIN = 16;
+   */
+  ORGANIZATIONS_ADMIN = 16,
+
+  /**
+   * PERMISSION_ORGANIZATIONS_CREATE allows creating new organizations.
+   *
+   * @generated from enum value: PERMISSION_ORGANIZATIONS_CREATE = 17;
+   */
+  ORGANIZATIONS_CREATE = 17,
 }
 
 /**

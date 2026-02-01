@@ -59,6 +59,13 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
    * @generated from field: holos.console.v1.Role user_role = 6;
    */
   userRole: Role;
+
+  /**
+   * organization is the organization this project belongs to.
+   *
+   * @generated from field: string organization = 7;
+   */
+  organization: string;
 };
 
 /**
@@ -73,6 +80,12 @@ export declare const ProjectSchema: GenMessage<Project>;
  * @generated from message holos.console.v1.ListProjectsRequest
  */
 export declare type ListProjectsRequest = Message<"holos.console.v1.ListProjectsRequest"> & {
+  /**
+   * organization filters projects by organization. When empty, returns all accessible projects.
+   *
+   * @generated from field: string organization = 1;
+   */
+  organization: string;
 };
 
 /**
@@ -181,6 +194,13 @@ export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProje
    * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
    */
   groupGrants: ShareGrant[];
+
+  /**
+   * organization is the organization to create this project in.
+   *
+   * @generated from field: string organization = 6;
+   */
+  organization: string;
 };
 
 /**
