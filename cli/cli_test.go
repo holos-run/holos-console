@@ -119,39 +119,15 @@ func TestDeriveIssuer(t *testing.T) {
 	}
 }
 
-func TestPlatformRoleFlags(t *testing.T) {
-	t.Run("platform-viewers flag is registered", func(t *testing.T) {
-		cmd := Command()
-		f := cmd.Flags().Lookup("platform-viewers")
-		if f == nil {
-			t.Fatal("expected --platform-viewers flag to be registered")
-		}
-		if f.DefValue != "" {
-			t.Errorf("expected empty default, got %q", f.DefValue)
-		}
-	})
-
-	t.Run("platform-editors flag is registered", func(t *testing.T) {
-		cmd := Command()
-		f := cmd.Flags().Lookup("platform-editors")
-		if f == nil {
-			t.Fatal("expected --platform-editors flag to be registered")
-		}
-		if f.DefValue != "" {
-			t.Errorf("expected empty default, got %q", f.DefValue)
-		}
-	})
-
-	t.Run("platform-owners flag is registered", func(t *testing.T) {
-		cmd := Command()
-		f := cmd.Flags().Lookup("platform-owners")
-		if f == nil {
-			t.Fatal("expected --platform-owners flag to be registered")
-		}
-		if f.DefValue != "" {
-			t.Errorf("expected empty default, got %q", f.DefValue)
-		}
-	})
+func TestPlatformRoleFlagsRemoved(t *testing.T) {
+	cmd := Command()
+	for _, flag := range []string{"platform-viewers", "platform-editors", "platform-owners", "namespace"} {
+		t.Run(flag+" flag is removed", func(t *testing.T) {
+			if f := cmd.Flags().Lookup(flag); f != nil {
+				t.Fatalf("--%s flag should have been removed", flag)
+			}
+		})
+	}
 }
 
 func TestTTLParsing(t *testing.T) {

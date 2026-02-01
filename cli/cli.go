@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/holos-run/holos-console/console"
-	"github.com/holos-run/holos-console/console/rbac"
 )
 
 var (
@@ -26,11 +25,7 @@ var (
 	clientID        string
 	idTokenTTL      string
 	refreshTokenTTL string
-	namespace       string
-	logLevel        string
-	platformViewers string
-	platformEditors string
-	platformOwners  string
+	logLevel string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -81,14 +76,6 @@ func Command() *cobra.Command {
 	// Token TTL flags
 	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
 	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
-
-	// Kubernetes flags
-	cmd.Flags().StringVar(&namespace, "namespace", "holos-console", "Kubernetes namespace for secrets")
-
-	// RBAC platform role flags
-	cmd.Flags().StringVar(&platformViewers, "platform-viewers", "", "OIDC groups with platform viewer role (default: viewer)")
-	cmd.Flags().StringVar(&platformEditors, "platform-editors", "", "OIDC groups with platform editor role (default: editor)")
-	cmd.Flags().StringVar(&platformOwners, "platform-owners", "", "OIDC groups with platform owner role (default: owner)")
 
 	// Logging flags
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -205,10 +192,6 @@ func Run(cmd *cobra.Command, args []string) error {
 		ClientID:        clientID,
 		IDTokenTTL:      idTTL,
 		RefreshTokenTTL: refreshTTL,
-		Namespace:       namespace,
-		PlatformViewers: rbac.ParseGroups(platformViewers),
-		PlatformEditors: rbac.ParseGroups(platformEditors),
-		PlatformOwners:  rbac.ParseGroups(platformOwners),
 	}
 
 	server := console.New(cfg)
