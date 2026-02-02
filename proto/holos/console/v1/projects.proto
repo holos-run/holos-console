@@ -40,7 +40,7 @@ service ProjectService {
 
 // Project represents a project with its metadata and grants.
 message Project {
-  // name is the Kubernetes namespace name.
+  // name is the project name (not the Kubernetes namespace name).
   string name = 1;
   // display_name is a human-readable display name for the project.
   string display_name = 2;
@@ -82,7 +82,7 @@ message GetProjectResponse {
 
 // CreateProjectRequest contains the fields for creating a new project.
 message CreateProjectRequest {
-  // name is the Kubernetes namespace name for the project.
+  // name is the project name.
   string name = 1;
   // display_name is a human-readable display name for the project.
   string display_name = 2;

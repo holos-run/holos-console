@@ -23,7 +23,7 @@ const (
 // Organization namespaces: {NamespacePrefix}{OrganizationPrefix}{name}
 // Project namespaces: {NamespacePrefix}{ProjectPrefix}{name}
 type Resolver struct {
-	NamespacePrefix    string // default "" (empty, no global prefix)
+	NamespacePrefix    string // default "holos-"
 	OrganizationPrefix string // default "org-"
 	ProjectPrefix      string // default "prj-"
 }
