@@ -52,6 +52,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 type testHandlerOpts struct {
 	creatorUsers  []string
 	creatorGroups []string
+	projectLister ProjectLister
 }
 
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
@@ -65,7 +66,7 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, opts.creatorUsers, opts.creatorGroups)
+	handler := NewHandler(k8s, opts.projectLister, opts.creatorUsers, opts.creatorGroups)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
 }
@@ -230,7 +231,7 @@ func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
 func TestCreateOrganization_AutoOwner(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, []string{"alice@example.com"}, nil)
+	handler := NewHandler(k8s, nil, []string{"alice@example.com"}, nil)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
@@ -310,6 +311,51 @@ func TestDeleteOrganization_EditorDenies(t *testing.T) {
 
 	_, err := handler.DeleteOrganization(ctx, connect.NewRequest(&consolev1.DeleteOrganizationRequest{Name: "acme"}))
 	assertPermissionDenied(t, err)
+}
+
+func TestDeleteOrganization_FailsWithLinkedProjects(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		projectLister: &mockProjectLister{
+			projects: []*corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: "holos-p-myproject"}}},
+		},
+	}, ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.DeleteOrganization(ctx, connect.NewRequest(&consolev1.DeleteOrganizationRequest{Name: "acme"}))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodeFailedPrecondition {
+		t.Errorf("expected CodeFailedPrecondition, got %v", connectErr.Code())
+	}
+}
+
+func TestDeleteOrganization_SucceedsWithNoLinkedProjects(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		projectLister: &mockProjectLister{projects: nil},
+	}, ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.DeleteOrganization(ctx, connect.NewRequest(&consolev1.DeleteOrganizationRequest{Name: "acme"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+// mockProjectLister implements ProjectLister for testing.
+type mockProjectLister struct {
+	projects []*corev1.Namespace
+	err      error
+}
+
+func (m *mockProjectLister) ListProjects(_ context.Context, _ string) ([]*corev1.Namespace, error) {
+	return m.projects, m.err
 }
 
 // ---- UpdateOrganizationSharing tests ----

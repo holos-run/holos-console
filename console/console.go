@@ -203,15 +203,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		nsResolver := &resolver.Resolver{Prefix: s.cfg.NamespacePrefix}
 		slog.Info("kubernetes client initialized")
 
-		// Organization service
+		// Organization service (projectsK8s created first for linked-project precondition check)
 		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
-		orgsHandler := organizations.NewHandler(orgsK8s, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
+		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
+		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 
 		// Project service with org grant fallback
-		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
