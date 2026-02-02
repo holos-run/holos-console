@@ -4,7 +4,7 @@ holos-console uses a three-tier access control model combining **organization-le
 
 ## Organizations
 
-An **organization** is a Kubernetes Namespace with the prefix `{namespace-prefix}o-` and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
+An **organization** is a Kubernetes Namespace with the prefix `{organization-prefix}` (default `org-`) and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
 
 Organization grants cascade to all projects associated with the organization. Users see only organizations where they have at least viewer-level access.
 
@@ -19,18 +19,18 @@ The creator is automatically added as owner on the new organization.
 
 ## Projects
 
-A **project** is a Kubernetes Namespace with the prefix `{namespace-prefix}p-` and the label `console.holos.run/resource-type=project`. Projects are global resources — the `console.holos.run/organization` label is optional and represents an IAM association, not a containment relationship. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
+A **project** is a Kubernetes Namespace with the prefix `{project-prefix}` (default `prj-`) and the label `console.holos.run/resource-type=project`. Projects are global resources — the `console.holos.run/organization` label is optional and represents an IAM association, not a containment relationship. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
 
 Project grants cascade to all secrets within the project. Users see only projects where they have at least viewer-level access (directly or via an associated organization).
 
 ## Namespace Prefix Scheme
 
-User-facing names are translated to Kubernetes namespace names using a configurable prefix (default: `holos-`). Resource type is encoded as a single character after the prefix (`o-` for organizations, `p-` for projects) to prevent collisions between orgs and projects sharing the same name:
+User-facing names are translated to Kubernetes namespace names using independently configurable prefixes for each resource type. Each prefix is prepended directly to the resource name, preventing collisions between orgs and projects sharing the same name:
 
-| Resource | Pattern | CLI Flag | Example |
-|---|---|---|---|
-| Organization | `{prefix}o-{name}` | `--namespace-prefix` | `acme` → `holos-o-acme` |
-| Project | `{prefix}p-{name}` | `--namespace-prefix` | `api` → `holos-p-api` |
+| Resource | Pattern | CLI Flag | Default | Example |
+|---|---|---|---|---|
+| Organization | `{prefix}{name}` | `--organization-prefix` | `org-` | `acme` → `org-acme` |
+| Project | `{prefix}{name}` | `--project-prefix` | `prj-` | `api` → `prj-api` |
 
 Namespaces are distinguished by labels:
 - `console.holos.run/resource-type`: `organization` or `project`
@@ -129,7 +129,7 @@ Organization creation is controlled by CLI flags (`--org-creator-users`, `--org-
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: holos-o-my-org
+  name: org-my-org
   labels:
     app.kubernetes.io/managed-by: console.holos.run
     console.holos.run/resource-type: organization
@@ -142,7 +142,7 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: holos-p-my-project
+  name: prj-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
     console.holos.run/resource-type: project
@@ -158,7 +158,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: my-app-credentials
-  namespace: holos-p-my-project
+  namespace: prj-my-project
   labels:
     app.kubernetes.io/managed-by: console.holos.run
   annotations:
