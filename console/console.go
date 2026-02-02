@@ -84,9 +84,13 @@ type Config struct {
 	// to trust certificates signed by a custom CA such as mkcert.
 	CACertFile string
 
-	// NamespacePrefix is prepended to all console-managed namespace names.
-	// Default: "holos-"
-	NamespacePrefix string
+	// OrganizationPrefix is prepended to organization namespace names.
+	// Default: "org-"
+	OrganizationPrefix string
+
+	// ProjectPrefix is prepended to project namespace names.
+	// Default: "prj-"
+	ProjectPrefix string
 
 	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
 	OrgCreatorUsers []string
@@ -126,9 +130,12 @@ func New(cfg Config) *Server {
 
 // Serve starts the HTTPS server and blocks until the context is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
-	// Apply default for namespace prefix
-	if s.cfg.NamespacePrefix == "" {
-		s.cfg.NamespacePrefix = "holos-"
+	// Apply defaults for namespace prefixes
+	if s.cfg.OrganizationPrefix == "" {
+		s.cfg.OrganizationPrefix = "org-"
+	}
+	if s.cfg.ProjectPrefix == "" {
+		s.cfg.ProjectPrefix = "prj-"
 	}
 
 	// Load custom CA certificate pool for internal HTTP client (OIDC discovery, etc.)
@@ -200,7 +207,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Register services (protected - requires auth)
 	if k8sClientset != nil {
-		nsResolver := &resolver.Resolver{Prefix: s.cfg.NamespacePrefix}
+		nsResolver := &resolver.Resolver{OrganizationPrefix: s.cfg.OrganizationPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
 		slog.Info("kubernetes client initialized")
 
 		// Organization service (projectsK8s created first for linked-project precondition check)
