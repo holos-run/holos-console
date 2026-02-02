@@ -50,9 +50,10 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 }
 
 type testHandlerOpts struct {
-	creatorUsers  []string
-	creatorGroups []string
-	projectLister ProjectLister
+	disableOrgCreation bool
+	creatorUsers       []string
+	creatorGroups      []string
+	projectLister      ProjectLister
 }
 
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
@@ -221,6 +222,32 @@ func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
 	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	handler := newTestHandlerWithOpts(testHandlerOpts{}, existing)
 	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestCreateOrganization_DisabledOverridesCreatorUsers(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		disableOrgCreation: true,
+		creatorUsers:       []string{"alice@example.com"},
+	})
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestCreateOrganization_DisabledOverridesCreatorGroups(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		disableOrgCreation: true,
+		creatorGroups:      []string{"platform-admins"},
+	})
+	ctx := contextWithClaims("bob@example.com", "platform-admins")
 
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
 		Name: "new-org",
