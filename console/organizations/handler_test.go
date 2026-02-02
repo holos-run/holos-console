@@ -32,6 +32,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 }
 
 // orgNS creates an organization namespace with share-users annotation.
+// Uses the default "holos-" namespace prefix matching testResolver().
 func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	annotations := map[string]string{}
 	if shareUsersJSON != "" {
@@ -39,7 +40,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "org-" + name,
+			Name: "holos-org-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -269,7 +270,7 @@ func TestCreateOrganization_AutoOwner(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "org-new-org", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-new-org", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
@@ -446,8 +447,8 @@ func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
 	}
 	metadata := parsed["metadata"].(map[string]interface{})
-	if metadata["name"] != "org-acme" {
-		t.Errorf("expected metadata.name 'org-acme', got %v", metadata["name"])
+	if metadata["name"] != "holos-org-acme" {
+		t.Errorf("expected metadata.name 'holos-org-acme', got %v", metadata["name"])
 	}
 	labels := metadata["labels"].(map[string]interface{})
 	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {

@@ -15,7 +15,7 @@ import (
 func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 	managed1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-project-a",
+			Name: "holos-prj-project-a",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -26,7 +26,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 	}
 	managed2 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-project-b",
+			Name: "holos-prj-project-b",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -37,7 +37,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 	}
 	orgNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "org-acme",
+			Name: "holos-org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -86,7 +86,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 	now := metav1.Now()
 	active := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-active",
+			Name: "holos-prj-active",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -96,7 +96,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 	}
 	terminating := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-terminating",
+			Name: "holos-prj-terminating",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -115,7 +115,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 	if len(projects) != 1 {
 		t.Fatalf("expected 1 project (excluding terminating), got %d", len(projects))
 	}
-	if projects[0].Name != "prj-active" {
+	if projects[0].Name != "holos-prj-active" {
 		t.Errorf("expected active project, got %q", projects[0].Name)
 	}
 }
@@ -123,7 +123,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 func TestListProjects_FilterByOrg(t *testing.T) {
 	prj1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-foo",
+			Name: "holos-prj-foo",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -134,7 +134,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 	}
 	prj2 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-bar",
+			Name: "holos-prj-bar",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -145,7 +145,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 	}
 	prj3 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-baz",
+			Name: "holos-prj-baz",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -169,7 +169,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-my-project",
+			Name: "holos-prj-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -189,8 +189,8 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "prj-my-project" {
-		t.Errorf("expected namespace 'prj-my-project', got %q", result.Name)
+	if result.Name != "holos-prj-my-project" {
+		t.Errorf("expected namespace 'holos-prj-my-project', got %q", result.Name)
 	}
 	if result.Annotations[DisplayNameAnnotation] != "My Project" {
 		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[DisplayNameAnnotation])
@@ -200,7 +200,7 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 func TestGetProject_ReturnsOrganization(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-my-project",
+			Name: "holos-prj-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -237,7 +237,7 @@ func TestGetProject_ReturnsNotFoundForMissingNamespace(t *testing.T) {
 func TestGetProject_ReturnsErrorForUnmanagedNamespace(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-kube-system",
+			Name: "holos-prj-kube-system",
 		},
 	}
 	fakeClient := fake.NewClientset(ns)
@@ -260,8 +260,8 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "prj-new-project" {
-		t.Errorf("expected namespace 'prj-new-project', got %q", result.Name)
+	if result.Name != "holos-prj-new-project" {
+		t.Errorf("expected namespace 'holos-prj-new-project', got %q", result.Name)
 	}
 	if result.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
 		t.Errorf("expected managed-by label, got %v", result.Labels)
@@ -306,7 +306,7 @@ func TestCreateProject_OmitsOrgLabelWhenEmpty(t *testing.T) {
 func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 	existing := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-existing",
+			Name: "holos-prj-existing",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -329,7 +329,7 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-my-project",
+			Name: "holos-prj-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -374,7 +374,7 @@ func TestUpdateProject_RejectsUnmanagedNamespace(t *testing.T) {
 func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-my-project",
+			Name: "holos-prj-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -390,7 +390,7 @@ func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "prj-my-project", metav1.GetOptions{})
+	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-my-project", metav1.GetOptions{})
 	if !errors.IsNotFound(err) {
 		t.Errorf("expected NotFound after delete, got %v", err)
 	}
@@ -409,7 +409,7 @@ func TestDeleteProject_RejectsUnmanagedNamespace(t *testing.T) {
 func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-my-project",
+			Name: "holos-prj-my-project",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,

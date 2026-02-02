@@ -34,6 +34,9 @@ func (r *Resolver) OrgNamespace(org string) string {
 }
 
 // OrgFromNamespace extracts the organization name from a Kubernetes namespace name.
+// Deprecated: Use the OrganizationLabel on the namespace instead. This method
+// uses strings.TrimPrefix which produces incorrect results when the namespace
+// prefix + organization prefix appears within the resource name itself.
 func (r *Resolver) OrgFromNamespace(ns string) string {
 	return strings.TrimPrefix(ns, r.NamespacePrefix+r.OrganizationPrefix)
 }
@@ -44,6 +47,9 @@ func (r *Resolver) ProjectNamespace(project string) string {
 }
 
 // ProjectFromNamespace extracts the project name from a Kubernetes namespace name.
+// Deprecated: Use the ProjectLabel on the namespace instead. This method
+// uses strings.TrimPrefix which produces incorrect results when the namespace
+// prefix + project prefix appears within the resource name itself.
 func (r *Resolver) ProjectFromNamespace(ns string) string {
 	return strings.TrimPrefix(ns, r.NamespacePrefix+r.ProjectPrefix)
 }

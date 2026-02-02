@@ -62,6 +62,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 }
 
 // managedNS creates a managed project namespace with share-users annotation.
+// Uses the default "holos-" namespace prefix matching testResolver().
 func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	annotations := map[string]string{}
 	if shareUsersJSON != "" {
@@ -69,7 +70,7 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-" + name,
+			Name: "holos-prj-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -81,7 +82,7 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 }
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	return &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 }
 
 func newHandler(namespaces ...*corev1.Namespace) (*Handler, *testLogHandler) {
@@ -335,7 +336,7 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 	}
 
 	// Verify the created namespace has alice as owner
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "prj-new-project", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
@@ -664,7 +665,7 @@ func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
 	}
 	metadata := parsed["metadata"].(map[string]interface{})
-	if metadata["name"] != "prj-my-project" {
+	if metadata["name"] != "holos-prj-my-project" {
 		t.Errorf("expected metadata.name 'prj-my-project', got %v", metadata["name"])
 	}
 	labels := metadata["labels"].(map[string]interface{})

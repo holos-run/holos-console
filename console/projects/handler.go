@@ -455,9 +455,13 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 			p.Name = labels[resolver.ProjectLabel]
 		}
 	}
-	// Fallback: derive project name from namespace if label is missing
+	// Fallback: derive project name from namespace if label is missing (pre-label namespaces)
 	if p.Name == "" {
 		p.Name = h.k8s.Resolver.ProjectFromNamespace(ns.GetName())
+		slog.Warn("project namespace missing label, falling back to namespace parsing",
+			slog.String("namespace", ns.GetName()),
+			slog.String("label", resolver.ProjectLabel),
+		)
 	}
 
 	return p

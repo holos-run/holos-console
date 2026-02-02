@@ -84,7 +84,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
 
 	// Namespace prefix flags
-	cmd.Flags().StringVar(&namespacePrefix, "namespace-prefix", "", "Global prefix for all namespace names, enabling multi-instance isolation (e.g., prod-, ci-)")
+	cmd.Flags().StringVar(&namespacePrefix, "namespace-prefix", "holos-", "Global prefix for all namespace names (default \"holos-\"), enabling multi-instance isolation (e.g., prod-, ci-)")
 	cmd.Flags().StringVar(&organizationPrefix, "organization-prefix", "org-", "Prefix for organization namespace names")
 	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "prj-", "Prefix for project namespace names")
 
