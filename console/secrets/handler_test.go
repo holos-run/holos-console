@@ -82,7 +82,7 @@ func assertResourceType(t *testing.T, r *slog.Record) {
 func testProjectNS() *corev1.Namespace {
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-p-test-namespace",
+			Name: "prj-test-namespace",
 			Labels: map[string]string{
 				ManagedByLabel:             ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -98,7 +98,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
@@ -148,7 +148,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
@@ -183,7 +183,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
@@ -300,7 +300,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
@@ -376,7 +376,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
@@ -453,7 +453,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -509,7 +509,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -549,7 +549,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -647,7 +647,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -693,7 +693,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -942,7 +942,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		existing := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "existing-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), existing)
@@ -1071,7 +1071,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1145,7 +1145,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1300,7 +1300,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1354,7 +1354,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1410,7 +1410,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "multi-key-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
@@ -1465,7 +1465,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "labeled-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1477,7 +1477,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithoutLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unlabeled-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
@@ -1522,7 +1522,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		accessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "accessible-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1534,7 +1534,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		inaccessibleSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "inaccessible-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1623,7 +1623,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		secretWithoutLabel := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unlabeled-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secretWithoutLabel)
@@ -1658,7 +1658,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1742,7 +1742,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -1880,7 +1880,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
@@ -1930,7 +1930,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:              "my-secret",
-				Namespace:         "holos-p-test-namespace",
+				Namespace:         "prj-test-namespace",
 				UID:               types.UID(uid),
 				ResourceVersion:   rv,
 				CreationTimestamp: metav1.Now(),
@@ -1981,7 +1981,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
@@ -2179,7 +2179,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2228,7 +2228,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2276,7 +2276,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2329,7 +2329,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2384,7 +2384,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -2432,7 +2432,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2468,7 +2468,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation: `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2538,7 +2538,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2585,7 +2585,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					ShareUsersAnnotation:  `[{"principal":"user@example.com","role":"owner"}]`,
@@ -2650,7 +2650,7 @@ func TestGetSecret_ProjectViewerCannotReadData(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
-			Namespace: "holos-p-test-namespace",
+			Namespace: "prj-test-namespace",
 			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
@@ -2687,7 +2687,7 @@ func TestGetSecret_ProjectEditorCannotReadData(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
-			Namespace: "holos-p-test-namespace",
+			Namespace: "prj-test-namespace",
 			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
@@ -2724,7 +2724,7 @@ func TestListSecrets_ProjectViewerCanListMetadata(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
-			Namespace: "holos-p-test-namespace",
+			Namespace: "prj-test-namespace",
 			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
@@ -2782,7 +2782,7 @@ func TestDeleteSecret_ProjectOwnerCanDelete(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
-			Namespace: "holos-p-test-namespace",
+			Namespace: "prj-test-namespace",
 			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 		},
 	}
@@ -2811,7 +2811,7 @@ func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
-			Namespace: "holos-p-test-namespace",
+			Namespace: "prj-test-namespace",
 			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 			UID:       types.UID("test-uid"),
 		},

@@ -39,7 +39,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-" + name,
+			Name: "org-" + name,
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -241,7 +241,7 @@ func TestCreateOrganization_AutoOwner(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-o-new-org", metav1.GetOptions{})
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "org-new-org", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
@@ -317,7 +317,7 @@ func TestDeleteOrganization_FailsWithLinkedProjects(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		projectLister: &mockProjectLister{
-			projects: []*corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: "holos-p-myproject"}}},
+			projects: []*corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: "prj-myproject"}}},
 		},
 	}, ns)
 	ctx := contextWithClaims("alice@example.com")
@@ -418,8 +418,8 @@ func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
 	}
 	metadata := parsed["metadata"].(map[string]interface{})
-	if metadata["name"] != "holos-o-acme" {
-		t.Errorf("expected metadata.name 'holos-o-acme', got %v", metadata["name"])
+	if metadata["name"] != "org-acme" {
+		t.Errorf("expected metadata.name 'org-acme', got %v", metadata["name"])
 	}
 	labels := metadata["labels"].(map[string]interface{})
 	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {

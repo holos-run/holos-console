@@ -15,14 +15,14 @@ import (
 )
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{Prefix: "holos-"}
+	return &resolver.Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 }
 
 // projectNS creates a project namespace fixture.
 func projectNS(project string) *corev1.Namespace {
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-p-" + project,
+			Name: "prj-" + project,
 			Labels: map[string]string{
 				ManagedByLabel:             ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -39,7 +39,7 @@ func TestGetSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 			Data: map[string][]byte{
 				"username": []byte("admin"),
@@ -103,7 +103,7 @@ func TestUpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -157,7 +157,7 @@ func TestUpdateSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 			Data: map[string][]byte{
 				"key": []byte("value"),
@@ -229,7 +229,7 @@ func TestCreateSecret(t *testing.T) {
 		existing := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "existing-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(ns, existing)
@@ -255,7 +255,7 @@ func TestDeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
 					ManagedByLabel: ManagedByValue,
 				},
@@ -299,7 +299,7 @@ func TestDeleteSecret(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "unmanaged-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 			},
 		}
 		fakeClient := fake.NewClientset(ns, secret)
@@ -694,7 +694,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -721,7 +721,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
@@ -750,7 +750,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
-				Namespace: "holos-p-test-namespace",
+				Namespace: "prj-test-namespace",
 				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
 				Annotations: map[string]string{
 					DescriptionAnnotation: "Original desc",
