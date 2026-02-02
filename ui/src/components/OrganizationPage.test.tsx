@@ -13,6 +13,7 @@ import {
   DeleteOrganizationResponseSchema,
   GetOrganizationRawResponseSchema,
   GetOrganizationResponseSchema,
+  ListOrganizationsResponseSchema,
   OrganizationSchema,
   OrganizationService,
   UpdateOrganizationResponseSchema,
@@ -85,7 +86,7 @@ function createOrgTransport(org: {
 }, rawJson?: string) {
   return createRouterTransport(({ service }) => {
     service(OrganizationService, {
-      listOrganizations: () => create(GetOrganizationResponseSchema, {}),
+      listOrganizations: () => create(ListOrganizationsResponseSchema, {}),
       getOrganization: () =>
         create(GetOrganizationResponseSchema, {
           organization: create(OrganizationSchema, {

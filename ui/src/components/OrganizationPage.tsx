@@ -169,12 +169,11 @@ export function OrganizationPage() {
     const errorMessage = error.message.toLowerCase()
     let displayMessage = error.message
 
-    if (errorMessage.includes('not found') || (error as Error & { code?: string }).code === 'not_found') {
+    if (errorMessage.includes('not found') || errorMessage.includes('not_found')) {
       displayMessage = `Organization "${name}" not found`
     } else if (
       errorMessage.includes('permission') ||
-      errorMessage.includes('denied') ||
-      (error as Error & { code?: string }).code === 'permission_denied'
+      errorMessage.includes('denied')
     ) {
       displayMessage = 'Permission denied: You are not authorized to view this organization'
     }
