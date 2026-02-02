@@ -198,8 +198,9 @@ func TestCreateOrganization_AuthorizedByCreatorGroups(t *testing.T) {
 
 func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
 	handler := newTestHandlerWithOpts(testHandlerOpts{
-		creatorUsers:  []string{"admin@example.com"},
-		creatorGroups: []string{"platform-admins"},
+		disableOrgCreation: true,
+		creatorUsers:       []string{"admin@example.com"},
+		creatorGroups:      []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("alice@example.com", "developers")
 
@@ -209,20 +210,28 @@ func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
 	assertPermissionDenied(t, err)
 }
 
-func TestCreateOrganization_DeniedEmptyCreatorLists(t *testing.T) {
+func TestCreateOrganization_ImplicitGrantAllAuthenticated(t *testing.T) {
+	// With disableOrgCreation=false (default) and empty creator lists,
+	// all authenticated users get an implicit grant to create orgs.
 	handler := newTestHandlerWithOpts(testHandlerOpts{})
 	ctx := contextWithClaims("alice@example.com")
 
-	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
 		Name: "new-org",
 	}))
-	assertPermissionDenied(t, err)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-org" {
+		t.Errorf("expected name 'new-org', got %q", resp.Msg.Name)
+	}
 }
 
 func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
 	// Being owner on an existing org should NOT grant create permission
+	// when --disable-org-creation is set and user is not in creator lists.
 	existing := orgNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	handler := newTestHandlerWithOpts(testHandlerOpts{}, existing)
+	handler := newTestHandlerWithOpts(testHandlerOpts{disableOrgCreation: true}, existing)
 	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
@@ -231,25 +240,50 @@ func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
 	assertPermissionDenied(t, err)
 }
 
-func TestCreateOrganization_DisabledOverridesCreatorUsers(t *testing.T) {
+func TestCreateOrganization_DisabledHonorsCreatorUsers(t *testing.T) {
+	// With disableOrgCreation=true, explicit --org-creator-users grants are still honored.
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
 		creatorUsers:       []string{"alice@example.com"},
 	})
 	ctx := contextWithClaims("alice@example.com")
 
-	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
 		Name: "new-org",
 	}))
-	assertPermissionDenied(t, err)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-org" {
+		t.Errorf("expected name 'new-org', got %q", resp.Msg.Name)
+	}
 }
 
-func TestCreateOrganization_DisabledOverridesCreatorGroups(t *testing.T) {
+func TestCreateOrganization_DisabledHonorsCreatorGroups(t *testing.T) {
+	// With disableOrgCreation=true, explicit --org-creator-groups grants are still honored.
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
 		creatorGroups:      []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("bob@example.com", "platform-admins")
+
+	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-org" {
+		t.Errorf("expected name 'new-org', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateOrganization_DisabledDeniesWithoutExplicitGrant(t *testing.T) {
+	// With disableOrgCreation=true and user NOT in any creator list, creation is denied.
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		disableOrgCreation: true,
+	})
+	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
 		Name: "new-org",

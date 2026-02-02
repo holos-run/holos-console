@@ -147,7 +147,7 @@ Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{nam
 
 The `--namespace-prefix` flag (default `"holos-"`) prefixes all console-managed namespace names, enabling multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
 
-Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags.
+Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags. By default all authenticated principals can create organizations (implicit grant). Setting `--disable-org-creation` disables this implicit grant; explicit `--org-creator-users` and `--org-creator-groups` lists are still honored.
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 

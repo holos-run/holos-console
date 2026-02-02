@@ -38,9 +38,9 @@ type Handler struct {
 }
 
 // NewHandler creates a new OrganizationService handler.
-// disableCreation unconditionally blocks CreateOrganization when true.
-// creatorUsers and creatorGroups are the email addresses and OIDC group names
-// allowed to create organizations (configured via CLI flags).
+// disableCreation disables the implicit organization creation grant to all
+// authenticated principals. When true, only explicit creatorUsers and
+// creatorGroups are allowed to create organizations.
 func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorGroups []string) *Handler {
 	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
 }
@@ -154,9 +154,9 @@ func (h *Handler) CreateOrganization(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Check create access: blocked when --disable-org-creation is set, otherwise
-	// caller must be in --org-creator-users or --org-creator-groups.
-	if h.disableCreation || !h.isOrgCreator(claims.Email, claims.Groups) {
+	// Implicit grant: all authenticated principals can create orgs unless disabled.
+	// Explicit grants via --org-creator-users/--org-creator-groups always apply.
+	if h.disableCreation && !h.isOrgCreator(claims.Email, claims.Groups) {
 		slog.WarnContext(ctx, "organization create denied",
 			slog.String("action", "organization_create_denied"),
 			slog.String("resource_type", auditResourceType),

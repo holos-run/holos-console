@@ -90,7 +90,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "prj-", "Prefix for project namespace names")
 
 	// Organization creation permission flags
-	cmd.Flags().BoolVar(&disableOrgCreation, "disable-org-creation", false, "Unconditionally block organization creation regardless of creator lists")
+	cmd.Flags().BoolVar(&disableOrgCreation, "disable-org-creation", false, "Disable the implicit organization creation grant to all authenticated principals")
 	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
 	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "owner", "Comma-separated OIDC group names allowed to create organizations")
 
