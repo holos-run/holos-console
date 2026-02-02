@@ -31,6 +31,7 @@ import {
 } from 'react-router-dom'
 import { VersionCard } from './components/VersionCard'
 import { AuthDebugPage } from './components/AuthDebugPage'
+import { useVersion } from './queries/version'
 import { SecretsListPage } from './components/SecretsListPage'
 import { SecretPage } from './components/SecretPage'
 import { ProjectsListPage } from './components/ProjectsListPage'
@@ -98,6 +99,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const isProjectsPage = location.pathname.startsWith('/projects') || location.pathname.includes('/projects')
   const isProfilePage = location.pathname.startsWith('/profile')
   const isHomePage = location.pathname.startsWith('/home')
+  const isVersionPage = location.pathname.startsWith('/version')
+  const { data: versionData } = useVersion()
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -105,6 +108,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <Typography variant="h6" component="div">
           Holos Console
         </Typography>
+        {versionData?.version && (
+          <Typography variant="caption" color="text.secondary">
+            {versionData.version}
+          </Typography>
+        )}
       </Box>
       <Divider />
       <OrgPicker />
@@ -145,6 +153,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
         >
           <ListItemText primary="Profile" />
+        </ListItemButton>
+        <ListItemButton
+          component={Link}
+          to="/version"
+          selected={isVersionPage}
+          onClick={onNavigate}
+        >
+          <ListItemText primary="Version" />
         </ListItemButton>
       </List>
     </Box>
@@ -224,7 +240,8 @@ function MainLayout() {
             <Route path="/projects/:projectName/secrets" element={<SecretsListPage />} />
             <Route path="/projects/:projectName/secrets/:name" element={<SecretPage />} />
             <Route path="/profile" element={<AuthDebugPage />} />
-            <Route path="/home" element={<VersionCard />} />
+            <Route path="/version" element={<VersionCard />} />
+            <Route path="/home" element={<AuthDebugPage />} />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Stack>

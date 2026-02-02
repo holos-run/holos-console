@@ -2,13 +2,11 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
-import { useAuth } from './auth'
-import { organizationsClient } from './client'
+import { useListOrganizations } from './queries/organizations'
 import type { Organization } from './gen/holos/console/v1/organizations_pb'
 
 const SESSION_STORAGE_KEY = 'holos-selected-org'
@@ -35,9 +33,9 @@ interface OrgProviderProps {
 }
 
 export function OrgProvider({ children }: OrgProviderProps) {
-  const { isAuthenticated, getAccessToken } = useAuth()
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { data, isLoading } = useListOrganizations()
+  const organizations = data?.organizations ?? []
+
   const [selectedOrg, setSelectedOrgState] = useState<string | null>(() => {
     return sessionStorage.getItem(SESSION_STORAGE_KEY)
   })
@@ -50,44 +48,6 @@ export function OrgProvider({ children }: OrgProviderProps) {
       sessionStorage.removeItem(SESSION_STORAGE_KEY)
     }
   }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setIsLoading(false)
-      return
-    }
-
-    let cancelled = false
-
-    const fetchOrgs = async () => {
-      setIsLoading(true)
-      try {
-        const token = getAccessToken()
-        const response = await organizationsClient.listOrganizations(
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        )
-        if (!cancelled) {
-          setOrganizations(response.organizations)
-        }
-      } catch {
-        // Silently fail - orgs will be empty
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    fetchOrgs()
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated, getAccessToken])
 
   const value = useMemo<OrgContextValue>(
     () => ({

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -25,13 +25,15 @@ import {
 import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
+import { createClient } from '@connectrpc/connect'
+import { useTransport } from '@connectrpc/connect-query'
 import { useAuth } from '../auth'
-import { organizationsClient } from '../client'
 import { useOrg } from '../OrgProvider'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { RawView } from './RawView'
+import { useGetOrganization, useDeleteOrganization, useUpdateOrganization, useUpdateOrganizationSharing } from '../queries/organizations'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Organization } from '../gen/holos/console/v1/organizations_pb'
+import { OrganizationService } from '../gen/holos/console/v1/organizations_pb.js'
 
 export function OrganizationPage() {
   const { organizationName: name } = useParams<{ organizationName: string }>()
@@ -39,11 +41,17 @@ export function OrganizationPage() {
   const { setSelectedOrg } = useOrg()
   const muiTheme = useTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
-  const { isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth()
+  const transport = useTransport()
 
-  const [organization, setOrganization] = useState<Organization | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const { data, isLoading, error } = useGetOrganization(name ?? '')
+  const organization = data?.organization
+
+  const deleteOrganizationMutation = useDeleteOrganization()
+  const updateOrganizationMutation = useUpdateOrganization()
+  const updateSharingMutation = useUpdateOrganizationSharing()
+
+  const organizationsClient = useMemo(() => createClient(OrganizationService, transport), [transport])
 
   // Inline edit state for display name
   const [editingDisplayName, setEditingDisplayName] = useState(false)
@@ -53,133 +61,72 @@ export function OrganizationPage() {
   const [editingDescription, setEditingDescription] = useState(false)
   const [draftDescription, setDraftDescription] = useState('')
 
-  // Save state
-  const [isSaving, setIsSaving] = useState(false)
+  // Save success snackbar
   const [saveSuccess, setSaveSuccess] = useState(false)
-
-  // Sharing state
-  const [isSavingSharing, setIsSavingSharing] = useState(false)
 
   // View mode state
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
   const [rawJson, setRawJson] = useState<string | null>(null)
+  const [rawError, setRawError] = useState<Error | null>(null)
   const [includeAllFields, setIncludeAllFields] = useState(false)
 
-  // Delete state
+  // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Local overrides for optimistic display after update
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
+  const [localDescription, setLocalDescription] = useState<string | null>(null)
+  const [localOrganization, setLocalOrganization] = useState<typeof organization | null>(null)
 
   // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      login(`/organizations/${name}`)
-    }
-  }, [authLoading, isAuthenticated, login, name])
+  if (!authLoading && !isAuthenticated) {
+    login(`/organizations/${name}`)
+  }
 
-  // Fetch organization data
-  useEffect(() => {
-    if (!isAuthenticated || !name) return
+  const effectiveOrg = localOrganization ?? organization
+  const displayName = localDisplayName ?? effectiveOrg?.displayName
+  const description = localDescription ?? effectiveOrg?.description
 
-    const fetchOrganization = async () => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const token = getAccessToken()
-        const response = await organizationsClient.getOrganization(
-          { name },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        )
-
-        if (response.organization) {
-          setOrganization(response.organization)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)))
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchOrganization()
-  }, [isAuthenticated, name, getAccessToken])
-
-  const isOwner = organization?.userRole === Role.OWNER
-  const isEditorOrAbove = organization != null && organization.userRole >= Role.EDITOR
+  const isOwner = effectiveOrg?.userRole === Role.OWNER
+  const isEditorOrAbove = effectiveOrg != null && effectiveOrg.userRole >= Role.EDITOR
 
   const handleSaveDisplayName = async (newDisplayName: string) => {
     if (!name) return
-    setIsSaving(true)
     try {
-      const token = getAccessToken()
-      await organizationsClient.updateOrganization(
-        { name, displayName: newDisplayName },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-      setOrganization((prev) => prev ? { ...prev, displayName: newDisplayName } : prev)
+      await updateOrganizationMutation.mutateAsync({ name, displayName: newDisplayName })
+      setLocalDisplayName(newDisplayName)
       setEditingDisplayName(false)
       setSaveSuccess(true)
     } catch {
       // Keep editing state on failure
-    } finally {
-      setIsSaving(false)
     }
   }
 
   const handleSaveDescription = async (newDescription: string) => {
     if (!name) return
-    setIsSaving(true)
     try {
-      const token = getAccessToken()
-      await organizationsClient.updateOrganization(
-        { name, description: newDescription },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-      setOrganization((prev) => prev ? { ...prev, description: newDescription } : prev)
+      await updateOrganizationMutation.mutateAsync({ name, description: newDescription })
+      setLocalDescription(newDescription)
       setEditingDescription(false)
       setSaveSuccess(true)
     } catch {
       // Keep editing state on failure
-    } finally {
-      setIsSaving(false)
     }
   }
 
   const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
     if (!name) return
-    setIsSavingSharing(true)
     try {
-      const token = getAccessToken()
-      const response = await organizationsClient.updateOrganizationSharing(
-        {
-          name,
-          userGrants: newUserGrants,
-          groupGrants: newGroupGrants,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      const response = await updateSharingMutation.mutateAsync({
+        name,
+        userGrants: newUserGrants,
+        groupGrants: newGroupGrants,
+      })
       if (response.organization) {
-        setOrganization(response.organization)
+        setLocalOrganization(response.organization)
       }
-    } finally {
-      setIsSavingSharing(false)
+    } catch {
+      // Error handling could be added here
     }
   }
 
@@ -189,43 +136,23 @@ export function OrganizationPage() {
 
     if (newMode === 'raw' && rawJson === null && name) {
       try {
-        const token = getAccessToken()
-        const response = await organizationsClient.getOrganizationRaw(
-          { name },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        )
+        const response = await organizationsClient.getOrganizationRaw({ name })
         setRawJson(response.raw)
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)))
+        setRawError(err instanceof Error ? err : new Error(String(err)))
       }
     }
   }
 
   const handleDelete = async () => {
     if (!name) return
-    setIsDeleting(true)
-    setDeleteError(null)
 
     try {
-      const token = getAccessToken()
-      await organizationsClient.deleteOrganization(
-        { name },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await deleteOrganizationMutation.mutateAsync({ name })
       setDeleteOpen(false)
       navigate('/organizations')
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsDeleting(false)
+    } catch {
+      // Error is available via deleteOrganizationMutation.error
     }
   }
 
@@ -244,16 +171,16 @@ export function OrganizationPage() {
   }
 
   // Show error state
-  if (error) {
-    const errorMessage = error.message.toLowerCase()
-    let displayMessage = error.message
+  const displayError = error || rawError
+  if (displayError) {
+    const errorMessage = displayError.message.toLowerCase()
+    let displayMessage = displayError.message
 
-    if (errorMessage.includes('not found') || (error as Error & { code?: string }).code === 'not_found') {
+    if (errorMessage.includes('not found') || errorMessage.includes('not_found')) {
       displayMessage = `Organization "${name}" not found`
     } else if (
       errorMessage.includes('permission') ||
-      errorMessage.includes('denied') ||
-      (error as Error & { code?: string }).code === 'permission_denied'
+      errorMessage.includes('denied')
     ) {
       displayMessage = 'Permission denied: You are not authorized to view this organization'
     }
@@ -267,13 +194,13 @@ export function OrganizationPage() {
     )
   }
 
-  if (!organization) return null
+  if (!effectiveOrg) return null
 
   return (
     <Card variant="outlined">
       <CardContent>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          {organization.name}
+          {effectiveOrg.name}
         </Typography>
 
         {/* Display Name */}
@@ -288,7 +215,7 @@ export function OrganizationPage() {
                 value={draftDisplayName}
                 onChange={(e) => setDraftDisplayName(e.target.value)}
                 placeholder="Display name"
-                disabled={isSaving}
+                disabled={updateOrganizationMutation.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSaveDisplayName(draftDisplayName)
@@ -299,7 +226,7 @@ export function OrganizationPage() {
                 aria-label="save display name"
                 size="small"
                 onClick={() => handleSaveDisplayName(draftDisplayName)}
-                disabled={isSaving}
+                disabled={updateOrganizationMutation.isPending}
               >
                 <CheckIcon fontSize="small" />
               </IconButton>
@@ -317,14 +244,14 @@ export function OrganizationPage() {
                 variant="h6"
                 sx={{ flexGrow: 1 }}
               >
-                {organization.displayName || organization.name}
+                {displayName || effectiveOrg.name}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit display name"
                   size="small"
                   onClick={() => {
-                    setDraftDisplayName(organization.displayName || '')
+                    setDraftDisplayName(displayName || '')
                     setEditingDisplayName(true)
                   }}
                 >
@@ -347,7 +274,7 @@ export function OrganizationPage() {
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
                 placeholder="What is this organization for?"
-                disabled={isSaving}
+                disabled={updateOrganizationMutation.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSaveDescription(draftDescription)
@@ -358,7 +285,7 @@ export function OrganizationPage() {
                 aria-label="save description"
                 size="small"
                 onClick={() => handleSaveDescription(draftDescription)}
-                disabled={isSaving}
+                disabled={updateOrganizationMutation.isPending}
               >
                 <CheckIcon fontSize="small" />
               </IconButton>
@@ -374,17 +301,17 @@ export function OrganizationPage() {
             <>
               <Typography
                 variant="body2"
-                color={organization.description ? 'text.primary' : 'text.secondary'}
+                color={description ? 'text.primary' : 'text.secondary'}
                 sx={{ flexGrow: 1 }}
               >
-                {organization.description || 'No description'}
+                {description || 'No description'}
               </Typography>
               {isEditorOrAbove && (
                 <IconButton
                   aria-label="edit description"
                   size="small"
                   onClick={() => {
-                    setDraftDescription(organization.description || '')
+                    setDraftDescription(description || '')
                     setEditingDescription(true)
                   }}
                 >
@@ -440,11 +367,11 @@ export function OrganizationPage() {
 
         {/* Sharing */}
         <SharingPanel
-          userGrants={organization.userGrants}
-          groupGrants={organization.groupGrants}
+          userGrants={(localOrganization ?? effectiveOrg).userGrants}
+          groupGrants={(localOrganization ?? effectiveOrg).groupGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
-          isSaving={isSavingSharing}
+          isSaving={updateSharingMutation.isPending}
         />
 
         <Snackbar
@@ -461,16 +388,16 @@ export function OrganizationPage() {
           <DialogContentText>
             Are you sure you want to delete organization &quot;{name}&quot;? This action cannot be undone.
           </DialogContentText>
-          {deleteError && (
+          {deleteOrganizationMutation.error && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteError}
+              {deleteOrganizationMutation.error.message}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error" variant="contained" disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Delete'}
+          <Button onClick={handleDelete} color="error" variant="contained" disabled={deleteOrganizationMutation.isPending}>
+            {deleteOrganizationMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

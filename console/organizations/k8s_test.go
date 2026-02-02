@@ -58,6 +58,44 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	}
 }
 
+func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
+	now := metav1.Now()
+	active := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-o-active",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "active",
+			},
+		},
+	}
+	terminating := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-o-terminating",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "terminating",
+			},
+			DeletionTimestamp: &now,
+		},
+	}
+	fakeClient := fake.NewClientset(active, terminating)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	orgs, err := k8s.ListOrganizations(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(orgs) != 1 {
+		t.Fatalf("expected 1 org (excluding terminating), got %d", len(orgs))
+	}
+	if orgs[0].Name != "holos-o-active" {
+		t.Errorf("expected holos-o-active, got %s", orgs[0].Name)
+	}
+}
+
 func TestListOrganizations_EmptyList(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())

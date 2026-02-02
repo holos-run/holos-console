@@ -2,7 +2,6 @@ import { createClient, type Interceptor } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-web'
 import { VersionService } from './gen/holos/console/v1/version_pb.js'
 import { SecretsService } from './gen/holos/console/v1/secrets_pb.js'
-import { OrganizationService } from './gen/holos/console/v1/organizations_pb.js'
 
 // Shared ref for the current access token. Set by AuthProvider when the user
 // changes so the transport interceptor can inject Authorization headers.
@@ -25,4 +24,3 @@ export const transport = createConnectTransport({
 
 export const versionClient = createClient(VersionService, transport)
 export const secretsClient = createClient(SecretsService, transport)
-export const organizationsClient = createClient(OrganizationService, transport)
