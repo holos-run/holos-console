@@ -99,7 +99,7 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
                 />
                 <Stack direction="row" spacing={1}>
                   <Button size="small" variant="contained" onClick={() => handleEditSave(key)}>
-                    Save
+                    Done
                   </Button>
                   <Button size="small" onClick={handleEditCancel}>
                     Cancel

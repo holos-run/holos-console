@@ -110,7 +110,7 @@ describe('SecretDataViewer', () => {
     expect(input).toBeInTheDocument()
   })
 
-  it('Edit mode shows Save/Cancel; Save calls onChange with updated data (trailing newline added by default)', () => {
+  it('Edit mode shows Done/Cancel; Done calls onChange with updated data (trailing newline added by default)', () => {
     const onChange = vi.fn()
     render(
       <SecretDataViewer
@@ -124,8 +124,8 @@ describe('SecretDataViewer', () => {
     // Change value
     fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: 'root' } })
 
-    // Save
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    // Done
+    fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
     expect(onChange).toHaveBeenCalled()
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
@@ -143,7 +143,7 @@ describe('SecretDataViewer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
     fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
     expect(onChange).toHaveBeenCalled()
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
@@ -165,7 +165,7 @@ describe('SecretDataViewer', () => {
     // Uncheck the trailing newline checkbox
     fireEvent.click(screen.getByRole('checkbox', { name: /ensure trailing newline/i }))
 
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
     expect(onChange).toHaveBeenCalled()
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]

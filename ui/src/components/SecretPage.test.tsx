@@ -311,10 +311,8 @@ describe('SecretPage', () => {
       // Change the content in the inline editor
       fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
 
-      // Save the inline edit
-      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
-      const inlineSave = saveButtons.find((btn) => btn.closest('[class*="MuiBox"]') && btn.textContent === 'Save')
-      fireEvent.click(inlineSave!)
+      // Confirm the inline edit
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
       // Top-level Save should now be enabled
       const topSave = screen.getByRole('button', { name: /^save$/i })
@@ -346,9 +344,8 @@ describe('SecretPage', () => {
       // Use Edit affordance to change value
       fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
       fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
-      // Save inline edit
-      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
-      fireEvent.click(saveButtons[0])
+      // Confirm inline edit
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
       // Click top-level Save
       await waitFor(() => {
@@ -391,8 +388,7 @@ describe('SecretPage', () => {
       // Use Edit affordance to make a change
       fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
       fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
-      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
-      fireEvent.click(saveButtons[0])
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
       await waitFor(() => {
         const topSave = screen.getByRole('button', { name: /^save$/i })
@@ -427,8 +423,7 @@ describe('SecretPage', () => {
       // Use Edit affordance to make a change
       fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
       fireEvent.change(screen.getByDisplayValue('value'), { target: { value: 'new-value' } })
-      const saveButtons = screen.getAllByRole('button', { name: /^save$/i })
-      fireEvent.click(saveButtons[0])
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
 
       await waitFor(() => {
         const topSave = screen.getByRole('button', { name: /^save$/i })
@@ -1086,6 +1081,75 @@ describe('SecretPage', () => {
         expect(screen.getByText('username')).toBeInTheDocument()
       })
       expect(screen.queryByRole('code')).not.toBeInTheDocument()
+    })
+
+    it('re-fetches raw JSON after a successful save', async () => {
+      const mockUser = createMockUser({ groups: ['owner'] })
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+        getAccessToken: vi.fn(() => 'test-token'),
+      })
+
+      mockGetSecret.mockResolvedValue({
+        data: {
+          username: new TextEncoder().encode('admin'),
+        },
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecret>>)
+
+      const rawJson = JSON.stringify({
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: { name: 'my-secret', namespace: 'default' },
+        data: { username: btoa('admin') },
+        type: 'Opaque',
+      })
+      mockGetSecretRaw.mockResolvedValue({
+        raw: rawJson,
+      } as unknown as Awaited<ReturnType<typeof secretsClient.getSecretRaw>>)
+
+      mockUpdateSecret.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof secretsClient.updateSecret>>)
+
+      renderSecretPage(authValue, 'my-secret')
+
+      // Wait for editor to load
+      await waitFor(() => {
+        expect(screen.getByText('username')).toBeInTheDocument()
+      })
+
+      // Step 1: Switch to Raw view (triggers first getSecretRaw call)
+      fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
+      await waitFor(() => {
+        expect(mockGetSecretRaw).toHaveBeenCalledTimes(1)
+      })
+
+      // Step 2: Switch back to Editor, edit a value, save
+      fireEvent.click(screen.getByRole('button', { name: /^editor$/i }))
+      await waitFor(() => {
+        expect(screen.getByText('username')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+      fireEvent.change(screen.getByDisplayValue('admin'), { target: { value: 'new-admin' } })
+      // Click the per-key Done button to stage the edit
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
+
+      // Click page-level Save
+      await waitFor(() => {
+        const topSave = screen.getByRole('button', { name: /^save$/i })
+        expect(topSave).toBeEnabled()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+      await waitFor(() => {
+        expect(mockUpdateSecret).toHaveBeenCalled()
+      })
+
+      // Step 3: Switch back to Raw view — should trigger a second getSecretRaw call
+      fireEvent.click(screen.getByRole('button', { name: /^raw$/i }))
+      await waitFor(() => {
+        expect(mockGetSecretRaw).toHaveBeenCalledTimes(2)
+      })
     })
 
     it('Save button is disabled when raw view is active', async () => {

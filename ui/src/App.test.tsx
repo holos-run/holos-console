@@ -7,6 +7,34 @@ import { MemoryRouter } from 'react-router-dom'
 import { vi } from 'vitest'
 import App from './App'
 
+// Mock the auth module so AuthProvider doesn't make real OIDC calls
+const { MockAuthContext } = vi.hoisted(() => {
+  const { createContext } = require('react')
+  return { MockAuthContext: createContext(null) }
+})
+
+const mockAuthValue = {
+  user: null,
+  bffUser: null,
+  isBFF: false,
+  isLoading: false,
+  error: null,
+  isAuthenticated: false,
+  login: vi.fn(),
+  logout: vi.fn(),
+  getAccessToken: vi.fn(() => null),
+  refreshTokens: vi.fn(),
+  lastRefreshStatus: 'idle' as const,
+  lastRefreshTime: null,
+  lastRefreshError: null,
+}
+
+vi.mock('./auth', () => ({
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+  AuthContext: MockAuthContext,
+  useAuth: () => mockAuthValue,
+}))
+
 // Mock the client module so OrgProvider doesn't make real RPC calls
 vi.mock('./client', () => ({
   tokenRef: { current: null },
