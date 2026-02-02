@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Box, CircularProgress, Typography, Alert, ThemeProvider, createTheme, CssBaseline } from '@mui/material'
+import { Box, CircularProgress, Typography, Alert, ThemeProvider, CssBaseline } from '@mui/material'
 import { getUserManager } from './userManager'
-
-const theme = createTheme({ palette: { mode: 'light' } })
+import theme from '../theme'
 
 /**
  * PKCEVerify handles the OIDC PKCE callback at /pkce/verify.
