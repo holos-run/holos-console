@@ -12,7 +12,7 @@ Organization grants cascade to all projects associated with the organization. Us
 
 Organization creation is controlled by CLI flags rather than grant-based authorization:
 
-- `--disable-org-creation`: When set, unconditionally blocks organization creation regardless of other flags
+- `--disable-org-creation`: Disables the implicit grant that allows all authenticated principals to create organizations. Explicit creator lists are still honored when this flag is set.
 - `--org-creator-users`: Comma-separated email addresses allowed to create organizations
 - `--org-creator-groups`: Comma-separated OIDC group names allowed to create organizations
 
