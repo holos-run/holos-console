@@ -66,7 +66,7 @@ WINDOW_NAME="i${ISSUE}"
 tmux new-window -n "$WINDOW_NAME" -c "$WORKTREE_PATH"
 
 # Send claude command to the new window
-tmux send-keys -t "$WINDOW_NAME" "cd '$WORKTREE_PATH' && claude 'execute the plan in issue #${ISSUE}'" Enter
+tmux send-keys -t "$WINDOW_NAME" "cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions --allow-dangerously-skip-permissions 'execute the plan in issue #${ISSUE}'" Enter
 
 echo "Dispatched issue #$ISSUE"
 echo "  Worktree: $WORKTREE_PATH"
