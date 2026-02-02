@@ -1,13 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ThemeProvider, createTheme } from '@mui/material'
+import { ThemeProvider } from '@mui/material'
 import { ThemeModeToggle } from './ThemeModeToggle'
-
-// Create a CSS vars theme so useColorScheme works
-const theme = createTheme({
-  cssVariables: true,
-  colorSchemes: { light: true, dark: true },
-})
+import theme from '../theme'
 
 function renderToggle() {
   return render(

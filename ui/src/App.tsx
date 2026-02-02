@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   ThemeProvider,
-  createTheme,
   CssBaseline,
   Typography,
   Box,
@@ -40,12 +39,8 @@ import { OrganizationsListPage } from './components/OrganizationsListPage'
 import { OrganizationPage } from './components/OrganizationPage'
 import { AuthProvider } from './auth'
 import { OrgProvider, useOrg } from './OrgProvider'
-
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-  },
-})
+import { ThemeModeToggle } from './components/ThemeModeToggle'
+import theme from './theme'
 
 const DRAWER_WIDTH = 240
 
@@ -163,6 +158,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <ListItemText primary="Version" />
         </ListItemButton>
       </List>
+      <Divider />
+      <Box sx={{ px: 2, py: 1, display: 'flex', justifyContent: 'flex-end' }}>
+        <ThemeModeToggle />
+      </Box>
     </Box>
   )
 }
