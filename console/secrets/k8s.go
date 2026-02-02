@@ -17,8 +17,12 @@ import (
 // Value is a JSON object mapping email address → role name.
 const ShareUsersAnnotation = "console.holos.run/share-users"
 
-// ShareGroupsAnnotation is the annotation key for per-group sharing grants.
-// Value is a JSON object mapping OIDC group name → role name.
+// ShareRolesAnnotation is the annotation key for per-role sharing grants.
+// Value is a JSON object mapping OIDC role name → role name.
+const ShareRolesAnnotation = "console.holos.run/share-roles"
+
+// ShareGroupsAnnotation is the legacy annotation key for backward compatibility.
+// On read, falls back to this if ShareRolesAnnotation is absent.
 const ShareGroupsAnnotation = "console.holos.run/share-groups"
 
 // DescriptionAnnotation is the annotation key for a human-readable description.
@@ -78,7 +82,7 @@ func (c *K8sClient) ListSecrets(ctx context.Context, project string) (*corev1.Se
 }
 
 // CreateSecret creates a new secret with the console managed-by label and sharing grants.
-func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data map[string][]byte, shareUsers, shareGroups []AnnotationGrant, description, url string) (*corev1.Secret, error) {
+func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data map[string][]byte, shareUsers, shareRoles []AnnotationGrant, description, url string) (*corev1.Secret, error) {
 	ns := c.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating secret in kubernetes",
 		slog.String("project", project),
@@ -89,13 +93,13 @@ func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-users: %w", err)
 	}
-	groupsJSON, err := json.Marshal(shareGroups)
+	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
 	annotations := map[string]string{
 		ShareUsersAnnotation:  string(usersJSON),
-		ShareGroupsAnnotation: string(groupsJSON),
+		ShareRolesAnnotation: string(rolesJSON),
 	}
 	if description != "" {
 		annotations[DescriptionAnnotation] = description
@@ -174,7 +178,7 @@ func (c *K8sClient) DeleteSecret(ctx context.Context, project, name string) erro
 
 // UpdateSharing updates the sharing annotations on an existing secret.
 // Returns FailedPrecondition if the secret does not have the console managed-by label.
-func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, shareUsers, shareGroups []AnnotationGrant) (*corev1.Secret, error) {
+func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, shareUsers, shareRoles []AnnotationGrant) (*corev1.Secret, error) {
 	slog.DebugContext(ctx, "updating sharing on kubernetes secret",
 		slog.String("project", project),
 		slog.String("name", name),
@@ -193,12 +197,12 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, sha
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-users: %w", err)
 	}
-	groupsJSON, err := json.Marshal(shareGroups)
+	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
 	secret.Annotations[ShareUsersAnnotation] = string(usersJSON)
-	secret.Annotations[ShareGroupsAnnotation] = string(groupsJSON)
+	secret.Annotations[ShareRolesAnnotation] = string(rolesJSON)
 	return c.client.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
@@ -209,10 +213,18 @@ func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
 	return parseGrantAnnotation(secret, ShareUsersAnnotation)
 }
 
-// GetShareGroups parses the console.holos.run/share-groups annotation from a secret.
-// Returns an empty slice if the annotation is missing.
+// GetShareRoles parses the console.holos.run/share-roles annotation from a secret.
+// Falls back to the legacy console.holos.run/share-groups annotation if share-roles is absent.
+// Returns an empty slice if neither annotation is present.
 // Returns an error if the annotation contains invalid JSON.
-func GetShareGroups(secret *corev1.Secret) ([]AnnotationGrant, error) {
+func GetShareRoles(secret *corev1.Secret) ([]AnnotationGrant, error) {
+	grants, err := parseGrantAnnotation(secret, ShareRolesAnnotation)
+	if err != nil {
+		return nil, err
+	}
+	if grants != nil {
+		return grants, nil
+	}
 	return parseGrantAnnotation(secret, ShareGroupsAnnotation)
 }
 

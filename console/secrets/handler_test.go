@@ -1686,7 +1686,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 				{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
 				{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
 			},
-			GroupGrants: []*consolev1.ShareGrant{
+			RoleGrants: []*consolev1.ShareGrant{
 				{Principal: "dev-team", Role: consolev1.Role_ROLE_EDITOR},
 			},
 		})
@@ -1724,12 +1724,12 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		if userMap["bob@example.com"] != "viewer" {
 			t.Errorf("expected bob=viewer, got %q", userMap["bob@example.com"])
 		}
-		shareGroups, err := GetShareGroups(updated)
+		shareRoles, err := GetShareRoles(updated)
 		if err != nil {
 			t.Fatalf("failed to parse share-groups: %v", err)
 		}
 		groupMap := make(map[string]string)
-		for _, g := range shareGroups {
+		for _, g := range shareRoles {
 			groupMap[g.Principal] = g.Role
 		}
 		if groupMap["dev-team"] != "editor" {

@@ -268,7 +268,7 @@ export function SecretsListPage() {
                   >
                     <ListItemText
                       primary={secret.name}
-                      secondary={secret.description || sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
+                      secondary={secret.description || sharingSummary(secret.userGrants.length, secret.roleGrants.length)}
                     />
                     {secret.url && (
                       <IconButton
@@ -284,9 +284,9 @@ export function SecretsListPage() {
                         <LinkIcon fontSize="small" />
                       </IconButton>
                     )}
-                    {secret.description && sharingSummary(secret.userGrants.length, secret.groupGrants.length) && (
+                    {secret.description && sharingSummary(secret.userGrants.length, secret.roleGrants.length) && (
                       <Chip
-                        label={sharingSummary(secret.userGrants.length, secret.groupGrants.length)}
+                        label={sharingSummary(secret.userGrants.length, secret.roleGrants.length)}
                         size="small"
                         variant="outlined"
                         sx={{ ml: 1, flexShrink: 0 }}

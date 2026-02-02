@@ -366,7 +366,7 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 	if len(users) != 2 {
 		t.Fatalf("expected 2 user grants, got %d", len(users))
 	}
-	groups, err := GetShareGroups(result)
+	groups, err := GetShareRoles(result)
 	if err != nil {
 		t.Fatalf("failed to parse share-groups: %v", err)
 	}

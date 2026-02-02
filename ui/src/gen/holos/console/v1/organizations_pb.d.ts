@@ -47,11 +47,11 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants on this organization.
+   * role_grants are the per-role sharing grants on this organization.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * user_role is the calling user's effective role on this organization.
@@ -176,11 +176,11 @@ export declare type CreateOrganizationRequest = Message<"holos.console.v1.Create
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the initial per-group sharing grants.
+   * role_grants are the initial per-role sharing grants.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 };
 
 /**
@@ -312,11 +312,11 @@ export declare type UpdateOrganizationSharingRequest = Message<"holos.console.v1
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants to set.
+   * role_grants are the per-role sharing grants to set.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 3;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 3;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 };
 
 /**

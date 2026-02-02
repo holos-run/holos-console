@@ -5,26 +5,26 @@ import (
 )
 
 // CheckOrgReadAccess verifies the user has read permission on the organization.
-func CheckOrgReadAccess(email string, groups []string, shareUsers, shareGroups map[string]string) error {
-	return rbac.CheckAccessGrants(email, groups, shareUsers, shareGroups, rbac.PermissionOrganizationsRead)
+func CheckOrgReadAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
+	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionOrganizationsRead)
 }
 
 // CheckOrgWriteAccess verifies the user has write permission on the organization.
-func CheckOrgWriteAccess(email string, groups []string, shareUsers, shareGroups map[string]string) error {
-	return rbac.CheckAccessGrants(email, groups, shareUsers, shareGroups, rbac.PermissionOrganizationsWrite)
+func CheckOrgWriteAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
+	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionOrganizationsWrite)
 }
 
 // CheckOrgDeleteAccess verifies the user has delete permission on the organization.
-func CheckOrgDeleteAccess(email string, groups []string, shareUsers, shareGroups map[string]string) error {
-	return rbac.CheckAccessGrants(email, groups, shareUsers, shareGroups, rbac.PermissionOrganizationsDelete)
+func CheckOrgDeleteAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
+	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionOrganizationsDelete)
 }
 
 // CheckOrgAdminAccess verifies the user has admin permission on the organization.
-func CheckOrgAdminAccess(email string, groups []string, shareUsers, shareGroups map[string]string) error {
-	return rbac.CheckAccessGrants(email, groups, shareUsers, shareGroups, rbac.PermissionOrganizationsAdmin)
+func CheckOrgAdminAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
+	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionOrganizationsAdmin)
 }
 
 // CheckOrgListAccess verifies the user has list permission on the organization.
-func CheckOrgListAccess(email string, groups []string, shareUsers, shareGroups map[string]string) error {
-	return rbac.CheckAccessGrants(email, groups, shareUsers, shareGroups, rbac.PermissionOrganizationsList)
+func CheckOrgListAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
+	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionOrganizationsList)
 }

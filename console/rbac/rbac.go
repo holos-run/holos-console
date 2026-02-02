@@ -112,13 +112,13 @@ func RoleFromString(s string) Role {
 	}
 }
 
-// CheckAccessGrants verifies access using per-user and per-group sharing grants.
+// CheckAccessGrants verifies access using per-user and per-role sharing grants.
 // Returns nil if access is granted, or a PermissionDenied error.
 func CheckAccessGrants(
 	userEmail string,
-	userGroups []string,
+	userRoles []string,
 	shareUsers map[string]string,
-	shareGroups map[string]string,
+	shareRoles map[string]string,
 	permission Permission,
 ) error {
 	bestLevel := -1
@@ -136,12 +136,12 @@ func CheckAccessGrants(
 		}
 	}
 
-	// Check per-group sharing grants
-	if shareGroups != nil {
-		for _, ug := range userGroups {
-			ugLower := strings.ToLower(ug)
-			for group, roleName := range shareGroups {
-				if strings.ToLower(group) == ugLower {
+	// Check per-role sharing grants
+	if shareRoles != nil {
+		for _, ur := range userRoles {
+			urLower := strings.ToLower(ur)
+			for roleClaim, roleName := range shareRoles {
+				if strings.ToLower(roleClaim) == urLower {
 					role := RoleFromString(roleName)
 					if level := roleLevel[role]; level > bestLevel {
 						bestLevel = level
@@ -172,9 +172,9 @@ func CheckAccessGrants(
 // Returns RoleUnspecified if no grants match.
 func BestRoleFromGrants(
 	userEmail string,
-	userGroups []string,
+	userRoles []string,
 	shareUsers map[string]string,
-	shareGroups map[string]string,
+	shareRoles map[string]string,
 ) Role {
 	bestLevel := 0
 
@@ -190,11 +190,11 @@ func BestRoleFromGrants(
 		}
 	}
 
-	if shareGroups != nil {
-		for _, ug := range userGroups {
-			ugLower := strings.ToLower(ug)
-			for group, roleName := range shareGroups {
-				if strings.ToLower(group) == ugLower {
+	if shareRoles != nil {
+		for _, ur := range userRoles {
+			urLower := strings.ToLower(ur)
+			for roleClaim, roleName := range shareRoles {
+				if strings.ToLower(roleClaim) == urLower {
 					role := RoleFromString(roleName)
 					if level := roleLevel[role]; level > bestLevel {
 						bestLevel = level
@@ -268,13 +268,13 @@ func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {
 // Returns nil if access is granted, or a PermissionDenied error.
 func CheckCascadeAccess(
 	userEmail string,
-	userGroups []string,
+	userRoles []string,
 	shareUsers map[string]string,
-	shareGroups map[string]string,
+	shareRoles map[string]string,
 	permission Permission,
 	table CascadeTable,
 ) error {
-	role := BestRoleFromGrants(userEmail, userGroups, shareUsers, shareGroups)
+	role := BestRoleFromGrants(userEmail, userRoles, shareUsers, shareRoles)
 	if HasCascadePermission(role, permission, table) {
 		return nil
 	}

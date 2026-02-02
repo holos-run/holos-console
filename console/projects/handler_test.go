@@ -465,7 +465,7 @@ func TestUpdateProjectSharing_UpdatesGrantsForOwner(t *testing.T) {
 			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
 			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
 		},
-		GroupGrants: []*consolev1.ShareGrant{
+		RoleGrants: []*consolev1.ShareGrant{
 			{Principal: "engineering", Role: consolev1.Role_ROLE_VIEWER},
 		},
 	}))
@@ -475,8 +475,8 @@ func TestUpdateProjectSharing_UpdatesGrantsForOwner(t *testing.T) {
 	if len(resp.Msg.Project.UserGrants) != 2 {
 		t.Errorf("expected 2 user grants, got %d", len(resp.Msg.Project.UserGrants))
 	}
-	if len(resp.Msg.Project.GroupGrants) != 1 {
-		t.Errorf("expected 1 group grant, got %d", len(resp.Msg.Project.GroupGrants))
+	if len(resp.Msg.Project.RoleGrants) != 1 {
+		t.Errorf("expected 1 group grant, got %d", len(resp.Msg.Project.RoleGrants))
 	}
 
 	if r := logHandler.findRecord("project_sharing_update"); r == nil {

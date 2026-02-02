@@ -129,7 +129,7 @@ export function OrganizationsListPage() {
         displayName: createDisplayName.trim(),
         description: createDescription.trim(),
         userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
-        groupGrants: [],
+        roleGrants: [],
       })
 
       setCreateOpen(false)

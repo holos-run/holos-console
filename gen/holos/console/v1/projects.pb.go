@@ -32,8 +32,8 @@ type Project struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// user_grants are the per-user sharing grants on this project.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants on this project.
-	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants on this project.
+	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// user_role is the calling user's effective role on this project.
 	UserRole Role `protobuf:"varint,6,opt,name=user_role,json=userRole,proto3,enum=holos.console.v1.Role" json:"user_role,omitempty"`
 	// organization is the organization this project belongs to.
@@ -100,9 +100,9 @@ func (x *Project) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *Project) GetGroupGrants() []*ShareGrant {
+func (x *Project) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -316,8 +316,8 @@ type CreateProjectRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// user_grants are the initial per-user sharing grants.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the initial per-group sharing grants.
-	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the initial per-role sharing grants.
+	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// organization is the organization to create this project in.
 	Organization  string `protobuf:"bytes,6,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -382,9 +382,9 @@ func (x *CreateProjectRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *CreateProjectRequest) GetGroupGrants() []*ShareGrant {
+func (x *CreateProjectRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -633,8 +633,8 @@ type UpdateProjectSharingRequest struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// user_grants are the per-user sharing grants to set.
 	UserGrants []*ShareGrant `protobuf:"bytes,2,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants to set.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,3,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants to set.
+	RoleGrants    []*ShareGrant `protobuf:"bytes,3,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -683,9 +683,9 @@ func (x *UpdateProjectSharingRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *UpdateProjectSharingRequest) GetGroupGrants() []*ShareGrant {
+func (x *UpdateProjectSharingRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -832,14 +832,15 @@ var File_holos_console_v1_projects_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\n" +
-	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xbb\x02\n" +
+	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xb9\x02\n" +
 	"\aProject\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x123\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x123\n" +
 	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\x12\"\n" +
 	"\forganization\x18\a \x01(\tR\forganization\"9\n" +
 	"\x13ListProjectsRequest\x12\"\n" +
@@ -849,14 +850,15 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\x11GetProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"I\n" +
 	"\x12GetProjectResponse\x123\n" +
-	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"\x93\x02\n" +
+	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"\x91\x02\n" +
 	"\x14CreateProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12\"\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x12\"\n" +
 	"\forganization\x18\x06 \x01(\tR\forganization\"+\n" +
 	"\x15CreateProjectResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x9a\x01\n" +
@@ -869,12 +871,13 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\x15UpdateProjectResponse\"*\n" +
 	"\x14DeleteProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x17\n" +
-	"\x15DeleteProjectResponse\"\xb1\x01\n" +
+	"\x15DeleteProjectResponse\"\xaf\x01\n" +
 	"\x1bUpdateProjectSharingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\vuser_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"S\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\"S\n" +
 	"\x1cUpdateProjectSharingResponse\x123\n" +
 	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"*\n" +
 	"\x14GetProjectRawRequest\x12\x12\n" +
@@ -925,14 +928,14 @@ var file_holos_console_v1_projects_proto_goTypes = []any{
 }
 var file_holos_console_v1_projects_proto_depIdxs = []int32{
 	15, // 0: holos.console.v1.Project.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 1: holos.console.v1.Project.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 1: holos.console.v1.Project.role_grants:type_name -> holos.console.v1.ShareGrant
 	16, // 2: holos.console.v1.Project.user_role:type_name -> holos.console.v1.Role
 	0,  // 3: holos.console.v1.ListProjectsResponse.projects:type_name -> holos.console.v1.Project
 	0,  // 4: holos.console.v1.GetProjectResponse.project:type_name -> holos.console.v1.Project
 	15, // 5: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 6: holos.console.v1.CreateProjectRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 6: holos.console.v1.CreateProjectRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	15, // 7: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 8: holos.console.v1.UpdateProjectSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 8: holos.console.v1.UpdateProjectSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 9: holos.console.v1.UpdateProjectSharingResponse.project:type_name -> holos.console.v1.Project
 	1,  // 10: holos.console.v1.ProjectService.ListProjects:input_type -> holos.console.v1.ListProjectsRequest
 	3,  // 11: holos.console.v1.ProjectService.GetProject:input_type -> holos.console.v1.GetProjectRequest

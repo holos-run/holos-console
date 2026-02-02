@@ -86,7 +86,7 @@ func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namesp
 }
 
 // CreateProject creates a new namespace with managed-by and resource-type labels.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareGroups []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
@@ -96,13 +96,13 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-users: %w", err)
 	}
-	groupsJSON, err := json.Marshal(shareGroups)
+	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
 	annotations := map[string]string{
 		secrets.ShareUsersAnnotation:  string(usersJSON),
-		secrets.ShareGroupsAnnotation: string(groupsJSON),
+		secrets.ShareRolesAnnotation: string(rolesJSON),
 	}
 	if displayName != "" {
 		annotations[DisplayNameAnnotation] = displayName
@@ -173,7 +173,7 @@ func (c *K8sClient) DeleteProject(ctx context.Context, name string) error {
 }
 
 // UpdateProjectSharing updates the sharing annotations on a managed namespace.
-func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, shareUsers, shareGroups []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating project sharing in kubernetes",
 		slog.String("name", name),
 	)
@@ -188,12 +188,12 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-users: %w", err)
 	}
-	groupsJSON, err := json.Marshal(shareGroups)
+	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-groups: %w", err)
 	}
 	ns.Annotations[secrets.ShareUsersAnnotation] = string(usersJSON)
-	ns.Annotations[secrets.ShareGroupsAnnotation] = string(groupsJSON)
+	ns.Annotations[secrets.ShareRolesAnnotation] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -226,8 +226,16 @@ func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 	return parseGrantAnnotation(ns, secrets.ShareUsersAnnotation)
 }
 
-// GetShareGroups parses the share-groups annotation from a namespace.
-func GetShareGroups(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
+// GetShareRoles parses the share-roles annotation from a namespace.
+// Falls back to the legacy share-groups annotation if share-roles is absent.
+func GetShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
+	grants, err := parseGrantAnnotation(ns, secrets.ShareRolesAnnotation)
+	if err != nil {
+		return nil, err
+	}
+	if grants != nil {
+		return grants, nil
+	}
 	return parseGrantAnnotation(ns, secrets.ShareGroupsAnnotation)
 }
 

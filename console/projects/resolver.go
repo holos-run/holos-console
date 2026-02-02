@@ -18,7 +18,7 @@ func NewProjectGrantResolver(k8s *K8sClient) *ProjectGrantResolver {
 	return &ProjectGrantResolver{k8s: k8s}
 }
 
-// GetProjectGrants returns the active user and group grant maps for a project.
+// GetProjectGrants returns the active user and role grant maps for a project.
 // The project parameter is the user-facing project name (not the Kubernetes namespace).
 func (r *ProjectGrantResolver) GetProjectGrants(ctx context.Context, project string) (map[string]string, map[string]string, error) {
 	ns, err := r.k8s.GetProject(ctx, project) // GetProject handles prefix resolution
@@ -26,11 +26,11 @@ func (r *ProjectGrantResolver) GetProjectGrants(ctx context.Context, project str
 		return nil, nil, err
 	}
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
-	return activeUsers, activeGroups, nil
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+	return activeUsers, activeRoles, nil
 }
 
 // OrgGrantResolverForProject implements secrets.OrgResolver by looking up

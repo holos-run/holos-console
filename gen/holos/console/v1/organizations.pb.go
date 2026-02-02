@@ -32,8 +32,8 @@ type Organization struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// user_grants are the per-user sharing grants on this organization.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants on this organization.
-	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants on this organization.
+	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// user_role is the calling user's effective role on this organization.
 	UserRole      Role `protobuf:"varint,6,opt,name=user_role,json=userRole,proto3,enum=holos.console.v1.Role" json:"user_role,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -98,9 +98,9 @@ func (x *Organization) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *Organization) GetGroupGrants() []*ShareGrant {
+func (x *Organization) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -298,8 +298,8 @@ type CreateOrganizationRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// user_grants are the initial per-user sharing grants.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the initial per-group sharing grants.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the initial per-role sharing grants.
+	RoleGrants    []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -362,9 +362,9 @@ func (x *CreateOrganizationRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *CreateOrganizationRequest) GetGroupGrants() []*ShareGrant {
+func (x *CreateOrganizationRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -606,8 +606,8 @@ type UpdateOrganizationSharingRequest struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// user_grants are the per-user sharing grants to set.
 	UserGrants []*ShareGrant `protobuf:"bytes,2,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants to set.
-	GroupGrants   []*ShareGrant `protobuf:"bytes,3,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants to set.
+	RoleGrants    []*ShareGrant `protobuf:"bytes,3,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -656,9 +656,9 @@ func (x *UpdateOrganizationSharingRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *UpdateOrganizationSharingRequest) GetGroupGrants() []*ShareGrant {
+func (x *UpdateOrganizationSharingRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -805,14 +805,15 @@ var File_holos_console_v1_organizations_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\n" +
-	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\x9c\x02\n" +
+	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\x9a\x02\n" +
 	"\fOrganization\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x123\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x123\n" +
 	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\"\x1a\n" +
 	"\x18ListOrganizationsRequest\"a\n" +
 	"\x19ListOrganizationsResponse\x12D\n" +
@@ -820,14 +821,15 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\x16GetOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"]\n" +
 	"\x17GetOrganizationResponse\x12B\n" +
-	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xf4\x01\n" +
+	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xf2\x01\n" +
 	"\x19CreateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"0\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\"0\n" +
 	"\x1aCreateOrganizationResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x9f\x01\n" +
 	"\x19UpdateOrganizationRequest\x12\x12\n" +
@@ -839,12 +841,13 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\x1aUpdateOrganizationResponse\"/\n" +
 	"\x19DeleteOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x1c\n" +
-	"\x1aDeleteOrganizationResponse\"\xb6\x01\n" +
+	"\x1aDeleteOrganizationResponse\"\xb4\x01\n" +
 	" UpdateOrganizationSharingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\vuser_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"g\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\"g\n" +
 	"!UpdateOrganizationSharingResponse\x12B\n" +
 	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"/\n" +
 	"\x19GetOrganizationRawRequest\x12\x12\n" +
@@ -894,14 +897,14 @@ var file_holos_console_v1_organizations_proto_goTypes = []any{
 }
 var file_holos_console_v1_organizations_proto_depIdxs = []int32{
 	15, // 0: holos.console.v1.Organization.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 1: holos.console.v1.Organization.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 1: holos.console.v1.Organization.role_grants:type_name -> holos.console.v1.ShareGrant
 	16, // 2: holos.console.v1.Organization.user_role:type_name -> holos.console.v1.Role
 	0,  // 3: holos.console.v1.ListOrganizationsResponse.organizations:type_name -> holos.console.v1.Organization
 	0,  // 4: holos.console.v1.GetOrganizationResponse.organization:type_name -> holos.console.v1.Organization
 	15, // 5: holos.console.v1.CreateOrganizationRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 6: holos.console.v1.CreateOrganizationRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 6: holos.console.v1.CreateOrganizationRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	15, // 7: holos.console.v1.UpdateOrganizationSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	15, // 8: holos.console.v1.UpdateOrganizationSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 8: holos.console.v1.UpdateOrganizationSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 9: holos.console.v1.UpdateOrganizationSharingResponse.organization:type_name -> holos.console.v1.Organization
 	1,  // 10: holos.console.v1.OrganizationService.ListOrganizations:input_type -> holos.console.v1.ListOrganizationsRequest
 	3,  // 11: holos.console.v1.OrganizationService.GetOrganization:input_type -> holos.console.v1.GetOrganizationRequest

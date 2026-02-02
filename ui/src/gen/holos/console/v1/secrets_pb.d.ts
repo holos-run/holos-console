@@ -213,11 +213,11 @@ export declare type CreateSecretRequest = Message<"holos.console.v1.CreateSecret
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants to set on the created secret.
+   * role_grants are the per-role sharing grants to set on the created secret.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * description is a human-readable description of the secret's purpose.
@@ -336,11 +336,11 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
   userGrants: ShareGrant[];
 
   /**
-   * group_grants contains per-group sharing grants on this secret.
+   * role_grants contains per-role sharing grants on this secret.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 6;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 6;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * description is a human-readable description of the secret's purpose.
@@ -370,7 +370,7 @@ export declare const SecretMetadataSchema: GenMessage<SecretMetadata>;
  */
 export declare type ShareGrant = Message<"holos.console.v1.ShareGrant"> & {
   /**
-   * principal is the email address (for users) or group name (for groups).
+   * principal is the email address (for users) or role name (for roles).
    *
    * @generated from field: string principal = 1;
    */
@@ -427,11 +427,11 @@ export declare type UpdateSharingRequest = Message<"holos.console.v1.UpdateShari
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants to set.
+   * role_grants are the per-role sharing grants to set.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 3;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 3;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * project is the project (namespace) containing the secret.

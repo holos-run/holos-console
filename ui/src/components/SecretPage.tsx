@@ -83,7 +83,7 @@ export function SecretPage() {
 
   // Sharing state
   const [userGrants, setUserGrants] = useState<ShareGrant[]>([])
-  const [groupGrants, setGroupGrants] = useState<ShareGrant[]>([])
+  const [roleGrants, setGroupGrants] = useState<ShareGrant[]>([])
   const [isSavingSharing, setIsSavingSharing] = useState(false)
 
   const isDirty =
@@ -148,7 +148,7 @@ export function SecretPage() {
         const meta = response.secrets.find((s) => s.name === name)
         if (meta) {
           setUserGrants(meta.userGrants)
-          setGroupGrants(meta.groupGrants)
+          setGroupGrants(meta.roleGrants)
           setDescription(meta.description ?? '')
           setOriginalDescription(meta.description ?? '')
           setUrl(meta.url ?? '')
@@ -167,7 +167,7 @@ export function SecretPage() {
     userEmail != null &&
     userGrants.some((g) => g.principal === userEmail && g.role === Role.OWNER)
 
-  const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
+  const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     if (!name) return
     setIsSavingSharing(true)
     try {
@@ -177,7 +177,7 @@ export function SecretPage() {
           name,
           project: projectName || '',
           userGrants: newUserGrants,
-          groupGrants: newGroupGrants,
+          roleGrants: newRoleGrants,
         },
         {
           headers: {
@@ -187,7 +187,7 @@ export function SecretPage() {
       )
       if (response.metadata) {
         setUserGrants(response.metadata.userGrants)
-        setGroupGrants(response.metadata.groupGrants)
+        setGroupGrants(response.metadata.roleGrants)
       }
     } finally {
       setIsSavingSharing(false)
@@ -490,7 +490,7 @@ export function SecretPage() {
         </Stack>
         <SharingPanel
           userGrants={userGrants}
-          groupGrants={groupGrants}
+          roleGrants={roleGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={isSavingSharing}

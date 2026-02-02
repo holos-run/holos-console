@@ -17,16 +17,16 @@ func NewOrgGrantResolver(k8s *K8sClient) *OrgGrantResolver {
 	return &OrgGrantResolver{k8s: k8s}
 }
 
-// GetOrgGrants returns the active user and group grant maps for an organization.
+// GetOrgGrants returns the active user and role grant maps for an organization.
 func (r *OrgGrantResolver) GetOrgGrants(ctx context.Context, org string) (map[string]string, map[string]string, error) {
 	ns, err := r.k8s.GetOrganization(ctx, org)
 	if err != nil {
 		return nil, nil, err
 	}
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
-	return activeUsers, activeGroups, nil
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+	return activeUsers, activeRoles, nil
 }

@@ -111,10 +111,10 @@ export function AuthDebugPage() {
                 </Box>
                 <Box>
                   <Typography variant="overline" display="block">
-                    Groups
+                    Roles
                   </Typography>
                   <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
-                    {bffUser.groups?.length ? bffUser.groups.join(', ') : 'None'}
+                    {bffUser.roles?.length ? bffUser.roles.join(', ') : 'None'}
                   </Typography>
                 </Box>
               </Stack>
@@ -283,7 +283,7 @@ export function AuthDebugPage() {
 
             <Box>
               <Typography variant="overline" display="block">
-                Groups
+                Roles
               </Typography>
               <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
                 {(user?.profile?.groups as string[] | undefined)?.length

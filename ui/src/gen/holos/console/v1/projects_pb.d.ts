@@ -47,11 +47,11 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants on this project.
+   * role_grants are the per-role sharing grants on this project.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * user_role is the calling user's effective role on this project.
@@ -189,11 +189,11 @@ export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProje
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the initial per-group sharing grants.
+   * role_grants are the initial per-role sharing grants.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 5;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 
   /**
    * organization is the organization to create this project in.
@@ -332,11 +332,11 @@ export declare type UpdateProjectSharingRequest = Message<"holos.console.v1.Upda
   userGrants: ShareGrant[];
 
   /**
-   * group_grants are the per-group sharing grants to set.
+   * role_grants are the per-role sharing grants to set.
    *
-   * @generated from field: repeated holos.console.v1.ShareGrant group_grants = 3;
+   * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 3;
    */
-  groupGrants: ShareGrant[];
+  roleGrants: ShareGrant[];
 };
 
 /**

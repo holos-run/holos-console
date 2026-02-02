@@ -112,13 +112,13 @@ export function ProjectPage() {
     }
   }
 
-  const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
+  const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     if (!name) return
     try {
       const response = await updateSharingMutation.mutateAsync({
         name,
         userGrants: newUserGrants,
-        groupGrants: newGroupGrants,
+        roleGrants: newRoleGrants,
       })
       if (response.project) {
         setLocalProject(response.project)
@@ -370,7 +370,7 @@ export function ProjectPage() {
         {/* Sharing */}
         <SharingPanel
           userGrants={(localProject ?? effectiveProject).userGrants}
-          groupGrants={(localProject ?? effectiveProject).groupGrants}
+          roleGrants={(localProject ?? effectiveProject).roleGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={updateSharingMutation.isPending}

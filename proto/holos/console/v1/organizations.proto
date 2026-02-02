@@ -49,8 +49,8 @@ message Organization {
   string description = 3;
   // user_grants are the per-user sharing grants on this organization.
   repeated ShareGrant user_grants = 4;
-  // group_grants are the per-group sharing grants on this organization.
-  repeated ShareGrant group_grants = 5;
+  // role_grants are the per-role sharing grants on this organization.
+  repeated ShareGrant role_grants = 5;
   // user_role is the calling user's effective role on this organization.
   Role user_role = 6;
 }
@@ -86,8 +86,8 @@ message CreateOrganizationRequest {
   string description = 3;
   // user_grants are the initial per-user sharing grants.
   repeated ShareGrant user_grants = 4;
-  // group_grants are the initial per-group sharing grants.
-  repeated ShareGrant group_grants = 5;
+  // role_grants are the initial per-role sharing grants.
+  repeated ShareGrant role_grants = 5;
 }
 
 // CreateOrganizationResponse contains the name of the created organization.
@@ -124,8 +124,8 @@ message UpdateOrganizationSharingRequest {
   string name = 1;
   // user_grants are the per-user sharing grants to set.
   repeated ShareGrant user_grants = 2;
-  // group_grants are the per-group sharing grants to set.
-  repeated ShareGrant group_grants = 3;
+  // role_grants are the per-role sharing grants to set.
+  repeated ShareGrant role_grants = 3;
 }
 
 // UpdateOrganizationSharingResponse contains the updated organization.
