@@ -43,6 +43,15 @@ function roleName(role: Role): string {
   }
 }
 
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function OrganizationsListPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -62,6 +71,7 @@ export function OrganizationsListPage() {
   const [createDescription, setCreateDescription] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState(false)
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -97,6 +107,7 @@ export function OrganizationsListPage() {
     setCreateDisplayName('')
     setCreateDescription('')
     setCreateError(null)
+    setNameManuallyEdited(false)
     setCreateOpen(true)
   }
 
@@ -216,20 +227,34 @@ export function OrganizationsListPage() {
           <TextField
             autoFocus
             margin="dense"
-            label="Name"
-            fullWidth
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            placeholder="my-org"
-            helperText="Lowercase alphanumeric and hyphens"
-          />
-          <TextField
-            margin="dense"
             label="Display Name"
             fullWidth
             value={createDisplayName}
-            onChange={(e) => setCreateDisplayName(e.target.value)}
+            onChange={(e) => {
+              const newDisplayName = e.target.value
+              setCreateDisplayName(newDisplayName)
+              if (!nameManuallyEdited) {
+                setCreateName(slugify(newDisplayName))
+              }
+            }}
             placeholder="My Organization"
+          />
+          <TextField
+            margin="dense"
+            label="Name"
+            fullWidth
+            value={createName}
+            onChange={(e) => {
+              const newValue = e.target.value
+              setCreateName(newValue)
+              if (newValue === '') {
+                setNameManuallyEdited(false)
+              } else {
+                setNameManuallyEdited(true)
+              }
+            }}
+            placeholder="my-org"
+            helperText="Lowercase alphanumeric and hyphens"
           />
           <TextField
             margin="dense"
