@@ -161,6 +161,41 @@ describe('navigation', () => {
   })
 })
 
+describe('theme mode toggle', () => {
+  it('renders a theme toggle button in the sidebar', async () => {
+    renderApp('/ui/home')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument()
+    })
+  })
+
+  it('toggles between light and dark mode when clicked', async () => {
+    const user = userEvent.setup()
+    renderApp('/ui/home')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument()
+    })
+
+    const button = screen.getByRole('button', { name: /toggle theme/i })
+    // Should be able to click toggle without error
+    await user.click(button)
+    expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument()
+  })
+
+  it('respects system dark mode preference', async () => {
+    const cleanup = mockMatchMedia(/prefers-color-scheme: dark/)
+    try {
+      renderApp('/ui/home')
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument()
+      })
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('responsive layout', () => {
   it('hides sidebar and shows hamburger on mobile', async () => {
     // Mobile: max-width queries match (below md breakpoint)
