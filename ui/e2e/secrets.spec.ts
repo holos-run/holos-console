@@ -200,17 +200,17 @@ test.describe('Secrets Page', () => {
     // Enter edit mode
     await page.getByRole('button', { name: /edit/i }).click()
 
-    // Add a group grant
-    await page.getByRole('button', { name: /add group/i }).click()
-    const groupInput = page.getByPlaceholder(/group name/i)
-    await groupInput.fill('test-team')
+    // Add a role grant
+    await page.getByRole('button', { name: /add role/i }).click()
+    const roleInput = page.getByPlaceholder(/role name/i)
+    await roleInput.fill('test-team')
 
     // Save
     // Find the sharing Save button (smaller, not the data save)
     const saveBtns = page.getByRole('button', { name: /^save$/i })
     await saveBtns.last().click()
 
-    // Verify group appears in read mode
+    // Verify role appears in read mode
     await expect(page.getByText('test-team')).toBeVisible({ timeout: 5000 })
 
     // Clean up: delete the secret

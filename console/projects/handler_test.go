@@ -476,7 +476,7 @@ func TestUpdateProjectSharing_UpdatesGrantsForOwner(t *testing.T) {
 		t.Errorf("expected 2 user grants, got %d", len(resp.Msg.Project.UserGrants))
 	}
 	if len(resp.Msg.Project.RoleGrants) != 1 {
-		t.Errorf("expected 1 group grant, got %d", len(resp.Msg.Project.RoleGrants))
+		t.Errorf("expected 1 role grant, got %d", len(resp.Msg.Project.RoleGrants))
 	}
 
 	if r := logHandler.findRecord("project_sharing_update"); r == nil {

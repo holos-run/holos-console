@@ -1726,14 +1726,14 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		}
 		shareRoles, err := GetShareRoles(updated)
 		if err != nil {
-			t.Fatalf("failed to parse share-groups: %v", err)
+			t.Fatalf("failed to parse share-roles: %v", err)
 		}
-		groupMap := make(map[string]string)
+		roleMap := make(map[string]string)
 		for _, g := range shareRoles {
-			groupMap[g.Principal] = g.Role
+			roleMap[g.Principal] = g.Role
 		}
-		if groupMap["dev-team"] != "editor" {
-			t.Errorf("expected dev-team=editor, got %q", groupMap["dev-team"])
+		if roleMap["dev-team"] != "editor" {
+			t.Errorf("expected dev-team=editor, got %q", roleMap["dev-team"])
 		}
 	})
 

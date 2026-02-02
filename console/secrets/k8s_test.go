@@ -210,10 +210,10 @@ func TestCreateSecret(t *testing.T) {
 		if len(parsedUsers) != 1 || parsedUsers[0].Principal != "alice@example.com" || parsedUsers[0].Role != "owner" {
 			t.Errorf("expected [{alice@example.com owner}], got %v", parsedUsers)
 		}
-		// Verify share-groups annotation
+		// Verify share-roles annotation
 		parsedRoles, err := GetShareRoles(result)
 		if err != nil {
-			t.Fatalf("failed to parse share-groups: %v", err)
+			t.Fatalf("failed to parse share-roles: %v", err)
 		}
 		if len(parsedRoles) != 1 || parsedRoles[0].Principal != "dev-team" || parsedRoles[0].Role != "editor" {
 			t.Errorf("expected [{dev-team editor}], got %v", parsedRoles)

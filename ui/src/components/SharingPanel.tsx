@@ -87,11 +87,11 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [editing, setEditing] = useState(false)
   const [editUserGrants, setEditUserGrants] = useState<Grant[]>([])
-  const [editRoleGrants, setEditGroupGrants] = useState<Grant[]>([])
+  const [editRoleGrants, setEditRoleGrants] = useState<Grant[]>([])
 
   const handleEdit = () => {
     setEditUserGrants(userGrants.map((g) => ({ ...g })))
-    setEditGroupGrants(roleGrants.map((g) => ({ ...g })))
+    setEditRoleGrants(roleGrants.map((g) => ({ ...g })))
     setEditing(true)
   }
 
@@ -112,7 +112,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
   }
 
   const handleAddRole = () => {
-    setEditGroupGrants([...editRoleGrants, { principal: '', role: Role.VIEWER }])
+    setEditRoleGrants([...editRoleGrants, { principal: '', role: Role.VIEWER }])
   }
 
   const handleRemoveUser = (index: number) => {
@@ -120,7 +120,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
   }
 
   const handleRemoveRole = (index: number) => {
-    setEditGroupGrants(editRoleGrants.filter((_, i) => i !== index))
+    setEditRoleGrants(editRoleGrants.filter((_, i) => i !== index))
   }
 
   const handleUserChange = (index: number, field: keyof Grant, value: string | Role | bigint | undefined) => {
@@ -132,7 +132,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
   const handleRoleChange = (index: number, field: keyof Grant, value: string | Role | bigint | undefined) => {
     const updated = [...editRoleGrants]
     updated[index] = { ...updated[index], [field]: value }
-    setEditGroupGrants(updated)
+    setEditRoleGrants(updated)
   }
 
   const hasGrants = userGrants.length > 0 || roleGrants.length > 0

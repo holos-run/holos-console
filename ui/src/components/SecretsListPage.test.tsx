@@ -488,7 +488,7 @@ describe('SecretsListPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Database credentials')).toBeInTheDocument()
         // Sharing summary should appear as a chip
-        expect(screen.getByText('1 user, 1 group')).toBeInTheDocument()
+        expect(screen.getByText('1 user, 1 role')).toBeInTheDocument()
       })
     })
 
@@ -599,7 +599,7 @@ describe('SecretsListPage', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/2 users/i)).toBeInTheDocument()
-        expect(screen.getByText(/1 group/i)).toBeInTheDocument()
+        expect(screen.getByText(/1 role/i)).toBeInTheDocument()
       })
     })
 
@@ -629,7 +629,7 @@ describe('SecretsListPage', () => {
 
       // No sharing summary should appear when there are no grants
       expect(screen.queryByText(/users/i)).not.toBeInTheDocument()
-      expect(screen.queryByText(/groups/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/roles/i)).not.toBeInTheDocument()
     })
   })
 })

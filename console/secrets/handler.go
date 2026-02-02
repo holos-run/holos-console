@@ -529,7 +529,7 @@ func (h *Handler) buildSecretMetadata(secret *corev1.Secret, shareUsers, shareRo
 
 	// Build user grants (all grants, including expired, for display)
 	userGrants := annotationGrantsToProto(shareUsers)
-	// Build group grants
+	// Build role grants
 	roleGrants := annotationGrantsToProto(shareRoles)
 
 	md := &consolev1.SecretMetadata{

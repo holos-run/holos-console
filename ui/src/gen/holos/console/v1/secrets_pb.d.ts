@@ -364,7 +364,7 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
 export declare const SecretMetadataSchema: GenMessage<SecretMetadata>;
 
 /**
- * ShareGrant represents a sharing grant for a principal (user email or group name).
+ * ShareGrant represents a sharing grant for a principal (user email or role name).
  *
  * @generated from message holos.console.v1.ShareGrant
  */

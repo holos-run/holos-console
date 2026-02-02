@@ -98,7 +98,7 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	}
 	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling share-groups: %w", err)
+		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
 		secrets.ShareUsersAnnotation:  string(usersJSON),
@@ -190,7 +190,7 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	}
 	rolesJSON, err := json.Marshal(shareRoles)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling share-groups: %w", err)
+		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	ns.Annotations[secrets.ShareUsersAnnotation] = string(usersJSON)
 	ns.Annotations[secrets.ShareRolesAnnotation] = string(rolesJSON)

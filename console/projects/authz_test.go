@@ -29,7 +29,7 @@ func TestCheckProjectReadAccess_GroupGrantAllows(t *testing.T) {
 		map[string]string{"engineering": "viewer"},
 	)
 	if err != nil {
-		t.Errorf("expected access granted via group, got: %v", err)
+		t.Errorf("expected access granted via role, got: %v", err)
 	}
 }
 

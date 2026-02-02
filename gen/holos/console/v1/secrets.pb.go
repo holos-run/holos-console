@@ -691,7 +691,7 @@ func (x *SecretMetadata) GetUrl() string {
 	return ""
 }
 
-// ShareGrant represents a sharing grant for a principal (user email or group name).
+// ShareGrant represents a sharing grant for a principal (user email or role name).
 type ShareGrant struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// principal is the email address (for users) or role name (for roles).

@@ -259,8 +259,8 @@ func TestCreateOrganization_DisabledHonorsCreatorUsers(t *testing.T) {
 	}
 }
 
-func TestCreateOrganization_DisabledHonorsCreatorGroups(t *testing.T) {
-	// With disableOrgCreation=true, explicit --org-creator-groups grants are still honored.
+func TestCreateOrganization_DisabledHonorsCreatorRoles(t *testing.T) {
+	// With disableOrgCreation=true, explicit --org-creator-roles grants are still honored.
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
 		creatorRoles:      []string{"platform-admins"},

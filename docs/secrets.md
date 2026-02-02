@@ -38,7 +38,7 @@ The UI handles base64 encoding/decoding transparently -- you work with plaintext
 The `/projects/:projectName/secrets` page displays all secrets in the project's namespace (resolved via label lookup) that have the label `app.kubernetes.io/managed-by=console.holos.run`. Each secret shows:
 
 - The secret name (links to the detail page)
-- A description of the secret's purpose (when set), or a sharing summary (e.g., "2 users, 1 group") as secondary text
+- A description of the secret's purpose (when set), or a sharing summary (e.g., "2 users, 1 role") as secondary text
 - A sharing summary chip alongside the description (when both are present)
 - An accessibility indicator -- secrets you cannot access show a "No access" chip with a lock icon
 
@@ -65,7 +65,7 @@ Click **Delete** on the secret detail page or the delete icon on the secrets lis
 
 ### Sharing
 
-Owners can manage access grants on the secret detail page via the Sharing panel. Grants can be scoped to individual users (by email) or groups (by OIDC group name), with optional time bounds (not-before and expiration timestamps). See [rbac.md](rbac.md) for the full access control model.
+Owners can manage access grants on the secret detail page via the Sharing panel. Grants can be scoped to individual users (by email) or roles (by OIDC role name), with optional time bounds (not-before and expiration timestamps). See [rbac.md](rbac.md) for the full access control model.
 
 ## Consuming Secrets in Pods
 

@@ -35,10 +35,10 @@ import { SecretDataEditor } from './SecretDataEditor'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { SecretMetadata } from '../gen/holos/console/v1/secrets_pb'
 
-function sharingSummary(userCount: number, groupCount: number): string | undefined {
+function sharingSummary(userCount: number, roleCount: number): string | undefined {
   const parts: string[] = []
   if (userCount > 0) parts.push(`${userCount} user${userCount !== 1 ? 's' : ''}`)
-  if (groupCount > 0) parts.push(`${groupCount} group${groupCount !== 1 ? 's' : ''}`)
+  if (roleCount > 0) parts.push(`${roleCount} role${roleCount !== 1 ? 's' : ''}`)
   return parts.length > 0 ? parts.join(', ') : undefined
 }
 
