@@ -466,6 +466,32 @@ func TestGetOrganizationRaw_DeniesUnauthorized(t *testing.T) {
 	assertPermissionDenied(t, err)
 }
 
+// ---- Namespace prefix tests ----
+
+func TestCreateOrganization_NamespacePrefixIncluded(t *testing.T) {
+	r := &resolver.Resolver{NamespacePrefix: "prod-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, r)
+	handler := NewHandler(k8s, nil, false, []string{"alice@example.com"}, nil)
+
+	ctx := contextWithClaims("alice@example.com")
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the namespace name includes the namespace prefix
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "prod-org-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace prod-org-acme to exist, got %v", err)
+	}
+	if ns.Name != "prod-org-acme" {
+		t.Errorf("expected namespace name 'prod-org-acme', got %q", ns.Name)
+	}
+}
+
 // ---- Helpers ----
 
 func assertUnauthenticated(t *testing.T, err error) {

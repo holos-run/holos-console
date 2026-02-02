@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -504,6 +505,47 @@ func TestUpdateProjectSharing_ReturnsUnauthenticatedWithoutClaims(t *testing.T) 
 	handler, _ := newHandler()
 	_, err := handler.UpdateProjectSharing(context.Background(), connect.NewRequest(&consolev1.UpdateProjectSharingRequest{Name: "test"}))
 	assertUnauthenticated(t, err)
+}
+
+// ---- Namespace prefix tests ----
+
+func TestCreateProject_NamespacePrefixIncluded(t *testing.T) {
+	r := &resolver.Resolver{NamespacePrefix: "prod-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	// Need an existing project with owner grant for create permission
+	existing := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "prod-prj-existing",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "existing",
+			},
+			Annotations: map[string]string{
+				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(existing)
+	k8s := NewK8sClient(fakeClient, r)
+	handler := NewHandler(k8s, nil)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	ctx := contextWithClaims("alice@example.com")
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name: "new-project",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the namespace name includes the namespace prefix
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "prod-prj-new-project", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace prod-prj-new-project to exist, got %v", err)
+	}
+	if ns.Name != "prod-prj-new-project" {
+		t.Errorf("expected namespace name 'prod-prj-new-project', got %q", ns.Name)
+	}
 }
 
 // ---- Helpers ----
