@@ -43,6 +43,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: name,
 			},
 			Annotations: annotations,
 		},
@@ -464,6 +465,89 @@ func TestGetOrganizationRaw_DeniesUnauthorized(t *testing.T) {
 
 	_, err := handler.GetOrganizationRaw(ctx, connect.NewRequest(&consolev1.GetOrganizationRawRequest{Name: "acme"}))
 	assertPermissionDenied(t, err)
+}
+
+// ---- Label-based name extraction tests ----
+
+func TestBuildOrganization_UsesLabelNotNamespaceParsing(t *testing.T) {
+	// When namespace-prefix + org-prefix overlap with the org name,
+	// namespace parsing produces wrong results. The label is authoritative.
+	r := &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "o-", ProjectPrefix: "p-"}
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, r)
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-o-holos", // namespace-prefix "holos-" + org-prefix "o-" + name "holos"
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "holos",
+			},
+		},
+	}
+
+	org := buildOrganization(k8s, ns, nil, nil, 0)
+	if org.Name != "holos" {
+		t.Errorf("expected org name 'holos', got %q", org.Name)
+	}
+}
+
+func TestBuildOrganization_LabelTakesPrecedenceOverParsing(t *testing.T) {
+	// Label value differs from what OrgFromNamespace would produce.
+	r := &resolver.Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, r)
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "org-legacy-name",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "correct-name",
+			},
+		},
+	}
+
+	org := buildOrganization(k8s, ns, nil, nil, 0)
+	if org.Name != "correct-name" {
+		t.Errorf("expected org name 'correct-name', got %q", org.Name)
+	}
+}
+
+func TestListOrganizations_UsesLabelWithNamespacePrefix(t *testing.T) {
+	// Integration test: full flow with namespace prefix that would break parsing
+	r := &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "o-", ProjectPrefix: "p-"}
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-o-holos",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "holos",
+			},
+			Annotations: map[string]string{
+				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, r)
+	handler := NewHandler(k8s, nil, false, nil, nil)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	ctx := contextWithClaims("alice@example.com")
+	resp, err := handler.ListOrganizations(ctx, connect.NewRequest(&consolev1.ListOrganizationsRequest{}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Organizations) != 1 {
+		t.Fatalf("expected 1 org, got %d", len(resp.Msg.Organizations))
+	}
+	if resp.Msg.Organizations[0].Name != "holos" {
+		t.Errorf("expected name 'holos', got %q", resp.Msg.Organizations[0].Name)
+	}
 }
 
 // ---- Namespace prefix tests ----
