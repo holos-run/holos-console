@@ -85,7 +85,7 @@ func Command() *cobra.Command {
 
 	// Organization creation permission flags
 	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
-	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "", "Comma-separated OIDC group names allowed to create organizations")
+	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "owner", "Comma-separated OIDC group names allowed to create organizations")
 
 	// Logging flags
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")

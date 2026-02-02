@@ -130,6 +130,17 @@ func TestPlatformRoleFlagsRemoved(t *testing.T) {
 	}
 }
 
+func TestDefaultOrgCreatorGroups(t *testing.T) {
+	cmd := Command()
+	f := cmd.Flags().Lookup("org-creator-groups")
+	if f == nil {
+		t.Fatal("--org-creator-groups flag not found")
+	}
+	if got := f.DefValue; got != "owner" {
+		t.Errorf("default org-creator-groups = %q, want %q", got, "owner")
+	}
+}
+
 func TestTTLParsing(t *testing.T) {
 	tests := []struct {
 		name    string
