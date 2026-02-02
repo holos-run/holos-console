@@ -89,7 +89,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
 ### Package Structure
 
 - `cmd/` - Main entrypoint, calls into cli package
-- `cli/` - Cobra CLI setup with Cobra flags for listen addr, TLS, OIDC, RBAC config
+- `cli/` - Cobra CLI setup with Cobra flags for listen addr, TLS, OIDC, RBAC, logging config
 - `console/` - Core server package
   - `console.go` - HTTP server setup, TLS, route registration, embedded UI serving
   - `version.go` - Version info with embedded version files and ldflags

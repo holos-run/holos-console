@@ -106,6 +106,10 @@ type Config struct {
 
 	// OrgCreatorGroups is a list of OIDC group names allowed to create organizations.
 	OrgCreatorGroups []string
+
+	// LogHealthChecks enables logging of /healthz and /readyz requests.
+	// Default: false (suppresses health check logging to reduce noise from Kubernetes probes).
+	LogHealthChecks bool
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -355,7 +359,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Wrap with h2c for HTTP/2 cleartext support (needed for gRPC over HTTP/2)
 	h2cHandler := h2c.NewHandler(mux, &http2.Server{})
-	loggedHandler := logRequests(h2cHandler)
+	loggedHandler := logRequests(h2cHandler, s.cfg.LogHealthChecks)
 
 	server := &http.Server{
 		Addr:    s.cfg.ListenAddr,
@@ -383,6 +387,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		scheme = "http"
 	}
 	slog.Info("starting server", "addr", s.cfg.ListenAddr, "scheme", scheme)
+	slog.Info("ready", "version", GetVersion(), "url", s.cfg.Origin)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -458,12 +463,17 @@ func (w *loggingResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-func logRequests(next http.Handler) http.Handler {
+func logRequests(next http.Handler, logHealthChecks bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		writer := &loggingResponseWriter{ResponseWriter: w}
 
 		next.ServeHTTP(writer, r)
+
+		// Skip logging health check endpoints unless explicitly enabled.
+		if !logHealthChecks && (r.URL.Path == "/healthz" || r.URL.Path == "/readyz") {
+			return
+		}
 
 		status := writer.statusCode
 		if status == 0 {

@@ -31,6 +31,7 @@ var (
 	disableOrgCreation bool
 	orgCreatorUsers    string
 	orgCreatorGroups   string
+	logHealthChecks  bool
 	logLevel         string
 )
 
@@ -94,6 +95,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "owner", "Comma-separated OIDC group names allowed to create organizations")
 
 	// Logging flags
+	cmd.Flags().BoolVar(&logHealthChecks, "log-health-checks", false, "Log /healthz and /readyz requests (suppressed by default)")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 
 	return cmd
@@ -231,6 +233,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		DisableOrgCreation:  disableOrgCreation,
 		OrgCreatorUsers:     splitCSV(orgCreatorUsers),
 		OrgCreatorGroups:    splitCSV(orgCreatorGroups),
+		LogHealthChecks:     logHealthChecks,
 	}
 
 	server := console.New(cfg)
