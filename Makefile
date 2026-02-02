@@ -109,6 +109,10 @@ dev: ## Start the Vite dev server for frontend development.
 rpc-version: ## Get server version via gRPC.
 	./scripts/rpc-version
 
+.PHONY: dispatch
+dispatch: ## Create worktree and spawn Claude Code agent for a GitHub issue.
+	./scripts/dispatch $(ISSUE)
+
 # Container image configuration
 DOCKER_REPO ?= ghcr.io/holos-run/holos-console
 GIT_SHA := $(shell git rev-parse --short HEAD)

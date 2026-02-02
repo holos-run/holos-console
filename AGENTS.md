@@ -61,6 +61,7 @@ make tools          # Install pinned tool dependencies (buf)
 make certs          # Generate TLS certificates with mkcert (one-time setup)
 make run            # Build and run server with generated certificates
 make dev            # Start Vite dev server with hot reload (use alongside make run)
+make dispatch ISSUE=N  # Dispatch a plan issue to a Claude Code agent in a new worktree
 make fmt            # Format code
 make vet            # Run go vet
 make lint           # Run golangci-lint
@@ -205,6 +206,19 @@ Tool versions are pinned in `tools.go` using the Go tools pattern. Install with 
 ### Feature Planning
 
 Plan features using phases. Record plans as GitHub issues before execution using `gh issue create`.
+
+### Dispatching Plans to Agents
+
+After drafting a plan as a GitHub issue, dispatch it to a Claude Code agent
+in a new worktree:
+
+    scripts/dispatch <issue-number>
+
+This creates a git worktree at ../holos-console-<N>, opens a new tmux window
+named i<N>, and starts a Claude Code agent that reads the issue and implements
+the plan. The script returns immediately so the main agent can continue planning.
+
+Prerequisite: must be run inside a tmux session.
 
 ### RED GREEN Implementation
 

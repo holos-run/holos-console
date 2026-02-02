@@ -1,0 +1,73 @@
+#!/bin/bash
+# Create a worktree and spawn a Claude Code agent in a tmux window for a GitHub issue.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+usage() {
+    echo "Usage: scripts/dispatch <issue-number>"
+    echo
+    echo "Create a git worktree for the issue, open a tmux window, and spawn"
+    echo "a Claude Code agent to implement the plan."
+    exit 1
+}
+
+# Validate argument
+if [[ $# -lt 1 ]] || ! [[ "$1" =~ ^[0-9]+$ ]]; then
+    usage
+fi
+
+ISSUE="$1"
+
+# Validate prerequisites
+for tool in tmux gh claude; do
+    if ! command -v "$tool" &>/dev/null; then
+        echo "Error: $tool is not on PATH" >&2
+        exit 1
+    fi
+done
+
+if [[ -z "${TMUX:-}" ]]; then
+    echo "Error: not inside a tmux session" >&2
+    exit 1
+fi
+
+# Fetch issue title
+ISSUE_TITLE="$(gh issue view "$ISSUE" --json title --jq .title)" || {
+    echo "Error: failed to fetch issue #$ISSUE" >&2
+    exit 1
+}
+
+# Slugify title: lowercase, replace non-alphanumeric with hyphens, collapse, trim, truncate
+SLUG="$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//' | cut -c1-50)"
+BRANCH="feat/${SLUG}"
+
+# Worktree path
+WORKTREE_PATH="${PROJECT_ROOT}/../holos-console-${ISSUE}"
+
+# Create worktree if it doesn't exist
+if [[ -d "$WORKTREE_PATH" ]]; then
+    echo "Reusing existing worktree: $WORKTREE_PATH"
+else
+    echo "Creating worktree at $WORKTREE_PATH"
+    if ! git -C "$PROJECT_ROOT" worktree add "$WORKTREE_PATH" -b "$BRANCH" main 2>/dev/null; then
+        # Branch may already exist, try without -b
+        git -C "$PROJECT_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH"
+    fi
+fi
+
+# Resolve to absolute path for display
+WORKTREE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
+
+# Create tmux window
+WINDOW_NAME="i${ISSUE}"
+tmux new-window -n "$WINDOW_NAME" -c "$WORKTREE_PATH"
+
+# Send claude command to the new window
+tmux send-keys -t "$WINDOW_NAME" "claude \"execute the plan in issue holos-console-${ISSUE}\"" Enter
+
+echo "Dispatched issue #$ISSUE"
+echo "  Worktree: $WORKTREE_PATH"
+echo "  Window:   $WINDOW_NAME"
