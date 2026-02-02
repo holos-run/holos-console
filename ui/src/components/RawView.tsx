@@ -76,21 +76,24 @@ export function RawView({ raw, includeAllFields, onToggleIncludeAllFields }: Raw
           Copy to Clipboard
         </Button>
       </Box>
-      <pre
+      <Box
+        component="pre"
         role="code"
-        style={{
+        sx={{
           fontFamily: 'monospace',
           fontSize: '0.875rem',
-          backgroundColor: '#f5f5f5',
-          padding: '16px',
-          borderRadius: '4px',
+          bgcolor: 'action.hover',
+          color: 'text.primary',
+          p: 2,
+          borderRadius: 1,
           overflow: 'auto',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
+          m: 0,
         }}
       >
         {formattedJson}
-      </pre>
+      </Box>
     </Box>
   )
 }

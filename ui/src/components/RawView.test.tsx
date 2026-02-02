@@ -125,6 +125,16 @@ describe('RawView', () => {
     })
   })
 
+  describe('theme-aware styling', () => {
+    it('does not use hardcoded #f5f5f5 background color', () => {
+      render(<RawView raw={namespaceRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+
+      const pre = screen.getByRole('code')
+      expect(pre.style.backgroundColor).not.toBe('#f5f5f5')
+      expect(pre.style.backgroundColor).not.toBe('rgb(245, 245, 245)')
+    })
+  })
+
   describe('toggle', () => {
     it('calls onToggleIncludeAllFields when toggle is clicked', () => {
       const onToggle = vi.fn()

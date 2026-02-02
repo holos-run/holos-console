@@ -108,9 +108,21 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
               </Box>
             ) : isRevealed ? (
               <Box>
-                <pre style={{ margin: 0, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                <Box
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    bgcolor: 'action.hover',
+                    color: 'text.primary',
+                    p: 1,
+                    borderRadius: 1,
+                  }}
+                >
                   {decoder.decode(data[key])}
-                </pre>
+                </Box>
                 <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                   <Button
                     size="small"
