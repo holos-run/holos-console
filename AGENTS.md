@@ -145,7 +145,7 @@ Namespace prefix scheme:
 - Organizations: `{organization-prefix}{name}` (resource-type label: `organization`)
 - Projects: `{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)
 
-Organization creation is controlled by `--org-creator-users` and `--org-creator-groups` CLI flags.
+Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags.
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 

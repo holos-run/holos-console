@@ -50,9 +50,10 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 }
 
 type testHandlerOpts struct {
-	creatorUsers  []string
-	creatorGroups []string
-	projectLister ProjectLister
+	disableOrgCreation bool
+	creatorUsers       []string
+	creatorGroups      []string
+	projectLister      ProjectLister
 }
 
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
@@ -66,7 +67,7 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, opts.projectLister, opts.creatorUsers, opts.creatorGroups)
+	handler := NewHandler(k8s, opts.projectLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorGroups)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
 }
@@ -228,10 +229,36 @@ func TestCreateOrganization_OwnershipNoLongerGrantsCreate(t *testing.T) {
 	assertPermissionDenied(t, err)
 }
 
+func TestCreateOrganization_DisabledOverridesCreatorUsers(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		disableOrgCreation: true,
+		creatorUsers:       []string{"alice@example.com"},
+	})
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestCreateOrganization_DisabledOverridesCreatorGroups(t *testing.T) {
+	handler := newTestHandlerWithOpts(testHandlerOpts{
+		disableOrgCreation: true,
+		creatorGroups:      []string{"platform-admins"},
+	})
+	ctx := contextWithClaims("bob@example.com", "platform-admins")
+
+	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+		Name: "new-org",
+	}))
+	assertPermissionDenied(t, err)
+}
+
 func TestCreateOrganization_AutoOwner(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, nil, []string{"alice@example.com"}, nil)
+	handler := NewHandler(k8s, nil, false, []string{"alice@example.com"}, nil)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{

@@ -12,6 +12,7 @@ Organization grants cascade to all projects associated with the organization. Us
 
 Organization creation is controlled by CLI flags rather than grant-based authorization:
 
+- `--disable-org-creation`: When set, unconditionally blocks organization creation regardless of other flags
 - `--org-creator-users`: Comma-separated email addresses allowed to create organizations
 - `--org-creator-groups`: Comma-separated OIDC group names allowed to create organizations
 
@@ -120,7 +121,7 @@ Parent grants do **not** implicitly grant full access to child resources:
 
 `PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization (checked via a separate authorization path, not cascade).
 
-Organization creation is controlled by CLI flags (`--org-creator-users`, `--org-creator-groups`), not by grant-based authorization.
+Organization creation is controlled by CLI flags (`--disable-org-creation`, `--org-creator-users`, `--org-creator-groups`), not by grant-based authorization.
 
 ## Example: Organization with Project and Secrets
 

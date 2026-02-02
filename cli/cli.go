@@ -27,8 +27,9 @@ var (
 	refreshTokenTTL string
 	organizationPrefix string
 	projectPrefix      string
-	orgCreatorUsers  string
-	orgCreatorGroups string
+	disableOrgCreation bool
+	orgCreatorUsers    string
+	orgCreatorGroups   string
 	logLevel         string
 )
 
@@ -86,6 +87,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "prj-", "Prefix for project namespace names")
 
 	// Organization creation permission flags
+	cmd.Flags().BoolVar(&disableOrgCreation, "disable-org-creation", false, "Unconditionally block organization creation regardless of creator lists")
 	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
 	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "owner", "Comma-separated OIDC group names allowed to create organizations")
 
@@ -221,10 +223,11 @@ func Run(cmd *cobra.Command, args []string) error {
 		ClientID:         clientID,
 		IDTokenTTL:       idTTL,
 		RefreshTokenTTL:  refreshTTL,
-		OrganizationPrefix: organizationPrefix,
-		ProjectPrefix:      projectPrefix,
-		OrgCreatorUsers:  splitCSV(orgCreatorUsers),
-		OrgCreatorGroups: splitCSV(orgCreatorGroups),
+		OrganizationPrefix:  organizationPrefix,
+		ProjectPrefix:       projectPrefix,
+		DisableOrgCreation:  disableOrgCreation,
+		OrgCreatorUsers:     splitCSV(orgCreatorUsers),
+		OrgCreatorGroups:    splitCSV(orgCreatorGroups),
 	}
 
 	server := console.New(cfg)
