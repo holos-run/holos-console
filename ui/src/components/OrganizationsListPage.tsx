@@ -27,9 +27,8 @@ import {
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
-import { organizationsClient } from '../client'
+import { useListOrganizations, useDeleteOrganization, useCreateOrganization } from '../queries/organizations'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-import type { Organization } from '../gen/holos/console/v1/organizations_pb'
 
 function roleName(role: Role): string {
   switch (role) {
@@ -48,11 +47,13 @@ export function OrganizationsListPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
-  const { user, isAuthenticated, isLoading: authLoading, login, getAccessToken } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth()
 
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const { data, isLoading, error } = useListOrganizations()
+  const organizations = data?.organizations ?? []
+
+  const deleteOrganization = useDeleteOrganization()
+  const createOrganization = useCreateOrganization()
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false)
@@ -60,14 +61,12 @@ export function OrganizationsListPage() {
   const [createDisplayName, setCreateDisplayName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
   const [createSuccess, setCreateSuccess] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
   const [deleteSuccess, setDeleteSuccess] = useState(false)
 
   // Redirect to login if not authenticated
@@ -77,36 +76,6 @@ export function OrganizationsListPage() {
     }
   }, [authLoading, isAuthenticated, login])
 
-  // Fetch organizations list when authenticated
-  const fetchOrganizations = async () => {
-    if (!isAuthenticated) return
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const token = getAccessToken()
-      const response = await organizationsClient.listOrganizations(
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
-
-      setOrganizations(response.organizations)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchOrganizations()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, getAccessToken])
-
   const handleDeleteOpen = (name: string) => {
     setDeleteTarget(name)
     setDeleteError(null)
@@ -115,27 +84,14 @@ export function OrganizationsListPage() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
-    setIsDeleting(true)
-    setDeleteError(null)
 
     try {
-      const token = getAccessToken()
-      await organizationsClient.deleteOrganization(
-        { name: deleteTarget },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await deleteOrganization.mutateAsync({ name: deleteTarget })
       setDeleteOpen(false)
       setDeleteTarget(null)
       setDeleteSuccess(true)
-      fetchOrganizations()
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsDeleting(false)
     }
   }
 
@@ -157,33 +113,20 @@ export function OrganizationsListPage() {
       return
     }
 
-    setIsCreating(true)
-    setCreateError(null)
-
     try {
-      const token = getAccessToken()
-      await organizationsClient.createOrganization(
-        {
-          name: createName.trim(),
-          displayName: createDisplayName.trim(),
-          description: createDescription.trim(),
-          userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
-          groupGrants: [],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      )
+      await createOrganization.mutateAsync({
+        name: createName.trim(),
+        displayName: createDisplayName.trim(),
+        description: createDescription.trim(),
+        userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
+        groupGrants: [],
+      })
 
       setCreateOpen(false)
       setCreateSuccess(true)
       navigate(`/organizations/${createName.trim()}`)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsCreating(false)
     }
   }
 
@@ -308,8 +251,8 @@ export function OrganizationsListPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCreateClose}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" disabled={isCreating}>
-            {isCreating ? 'Creating...' : 'Create'}
+          <Button onClick={handleCreate} variant="contained" disabled={createOrganization.isPending}>
+            {createOrganization.isPending ? 'Creating...' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -328,8 +271,8 @@ export function OrganizationsListPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Delete'}
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={deleteOrganization.isPending}>
+            {deleteOrganization.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

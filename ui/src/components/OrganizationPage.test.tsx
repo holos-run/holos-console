@@ -1,29 +1,41 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { TransportProvider } from '@connectrpc/connect-query'
+import { createRouterTransport } from '@connectrpc/connect'
+import { create } from '@bufbuild/protobuf'
 import { OrganizationPage } from './OrganizationPage'
 import { AuthContext, type AuthContextValue } from '../auth'
 import type { User } from 'oidc-client-ts'
 import { vi } from 'vitest'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
-
-// Mock the client module
-vi.mock('../client', () => ({
-  organizationsClient: {
-    getOrganization: vi.fn(),
-    updateOrganization: vi.fn(),
-    updateOrganizationSharing: vi.fn(),
-    deleteOrganization: vi.fn(),
-    getOrganizationRaw: vi.fn(),
-  },
-}))
+import {
+  DeleteOrganizationResponseSchema,
+  GetOrganizationRawResponseSchema,
+  GetOrganizationResponseSchema,
+  OrganizationSchema,
+  OrganizationService,
+  UpdateOrganizationResponseSchema,
+  UpdateOrganizationSharingResponseSchema,
+} from '../gen/holos/console/v1/organizations_pb.js'
+import type { Transport } from '@connectrpc/connect'
 
 // Mock OrgProvider
 vi.mock('../OrgProvider', () => ({
   useOrg: () => ({ selectedOrg: null, setSelectedOrg: vi.fn() }),
 }))
 
+// Mock the client module (only used for getOrganizationRaw which is not a query hook)
+vi.mock('../client', () => ({
+  organizationsClient: {
+    getOrganizationRaw: vi.fn(),
+  },
+  tokenRef: { current: null },
+  authInterceptor: (next: unknown) => next,
+  transport: {},
+}))
+
 import { organizationsClient } from '../client'
-const mockGetOrganization = vi.mocked(organizationsClient.getOrganization)
 const mockGetOrganizationRaw = vi.mocked(
   (organizationsClient as unknown as { getOrganizationRaw: ReturnType<typeof vi.fn> }).getOrganizationRaw,
 )
@@ -63,17 +75,59 @@ function createAuthContext(overrides: Partial<AuthContextValue> = {}): AuthConte
   }
 }
 
-function renderOrganizationPage(authValue: AuthContextValue, orgName = 'test-org') {
+function createOrgTransport(org: {
+  name: string
+  displayName: string
+  description: string
+  userRole: Role
+  userGrants?: Array<{ principal: string; role: Role }>
+  groupGrants?: Array<{ principal: string; role: Role }>
+}, rawJson?: string) {
+  return createRouterTransport(({ service }) => {
+    service(OrganizationService, {
+      listOrganizations: () => create(GetOrganizationResponseSchema, {}),
+      getOrganization: () =>
+        create(GetOrganizationResponseSchema, {
+          organization: create(OrganizationSchema, {
+            ...org,
+            userGrants: org.userGrants ?? [],
+            groupGrants: org.groupGrants ?? [],
+          }),
+        }),
+      deleteOrganization: () => create(DeleteOrganizationResponseSchema),
+      updateOrganization: () => create(UpdateOrganizationResponseSchema),
+      updateOrganizationSharing: () => create(UpdateOrganizationSharingResponseSchema),
+      getOrganizationRaw: () => create(GetOrganizationRawResponseSchema, { raw: rawJson ?? '' }),
+    })
+  })
+}
+
+function renderOrganizationPage(authValue: AuthContextValue, orgName = 'test-org', transport?: Transport) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+  const t = transport ?? createOrgTransport({
+    name: orgName,
+    displayName: '',
+    description: '',
+    userRole: Role.VIEWER,
+  })
   return render(
-    <MemoryRouter initialEntries={[`/organizations/${orgName}`]}>
-      <AuthContext.Provider value={authValue}>
-        <Routes>
-          <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
-          <Route path="/organizations" element={<div>Organizations List</div>} />
-          <Route path="/projects" element={<div>Projects List</div>} />
-        </Routes>
-      </AuthContext.Provider>
-    </MemoryRouter>,
+    <TransportProvider transport={t}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[`/organizations/${orgName}`]}>
+          <AuthContext.Provider value={authValue}>
+            <Routes>
+              <Route path="/organizations/:organizationName" element={<OrganizationPage />} />
+              <Route path="/organizations" element={<div>Organizations List</div>} />
+              <Route path="/projects" element={<div>Projects List</div>} />
+            </Routes>
+          </AuthContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </TransportProvider>,
   )
 }
 
@@ -90,18 +144,16 @@ describe('OrganizationPage', () => {
         isAuthenticated: true,
       })
 
-      mockGetOrganization.mockResolvedValue({
-        organization: {
-          name: 'acme',
-          displayName: 'ACME Corp',
-          description: 'Test org',
-          userGrants: [{ principal: 'test@example.com', role: Role.OWNER }],
-          groupGrants: [],
-          userRole: Role.OWNER,
-        },
-      } as unknown as Awaited<ReturnType<typeof organizationsClient.getOrganization>>)
+      const transport = createOrgTransport({
+        name: 'acme',
+        displayName: 'ACME Corp',
+        description: 'Test org',
+        userGrants: [{ principal: 'test@example.com', role: Role.OWNER }],
+        groupGrants: [],
+        userRole: Role.OWNER,
+      })
 
-      renderOrganizationPage(authValue, 'acme')
+      renderOrganizationPage(authValue, 'acme', transport)
 
       await waitFor(() => {
         expect(screen.getByText('ACME Corp')).toBeInTheDocument()
@@ -118,17 +170,6 @@ describe('OrganizationPage', () => {
         isAuthenticated: true,
       })
 
-      mockGetOrganization.mockResolvedValue({
-        organization: {
-          name: 'acme',
-          displayName: 'ACME Corp',
-          description: 'Test org',
-          userGrants: [],
-          groupGrants: [],
-          userRole: Role.VIEWER,
-        },
-      } as unknown as Awaited<ReturnType<typeof organizationsClient.getOrganization>>)
-
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
@@ -136,7 +177,16 @@ describe('OrganizationPage', () => {
       })
       mockGetOrganizationRaw.mockResolvedValue({ raw: rawJson })
 
-      renderOrganizationPage(authValue, 'acme')
+      const transport = createOrgTransport({
+        name: 'acme',
+        displayName: 'ACME Corp',
+        description: 'Test org',
+        userGrants: [],
+        groupGrants: [],
+        userRole: Role.VIEWER,
+      })
+
+      renderOrganizationPage(authValue, 'acme', transport)
 
       await waitFor(() => {
         expect(screen.getByText('ACME Corp')).toBeInTheDocument()
@@ -159,17 +209,6 @@ describe('OrganizationPage', () => {
         isAuthenticated: true,
       })
 
-      mockGetOrganization.mockResolvedValue({
-        organization: {
-          name: 'acme',
-          displayName: 'ACME Corp',
-          description: 'Test org',
-          userGrants: [],
-          groupGrants: [],
-          userRole: Role.EDITOR,
-        },
-      } as unknown as Awaited<ReturnType<typeof organizationsClient.getOrganization>>)
-
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
@@ -177,7 +216,16 @@ describe('OrganizationPage', () => {
       })
       mockGetOrganizationRaw.mockResolvedValue({ raw: rawJson })
 
-      renderOrganizationPage(authValue, 'acme')
+      const transport = createOrgTransport({
+        name: 'acme',
+        displayName: 'ACME Corp',
+        description: 'Test org',
+        userGrants: [],
+        groupGrants: [],
+        userRole: Role.EDITOR,
+      })
+
+      renderOrganizationPage(authValue, 'acme', transport)
 
       await waitFor(() => {
         expect(screen.getByText('ACME Corp')).toBeInTheDocument()
