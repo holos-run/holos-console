@@ -2,6 +2,7 @@ package organizations
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -340,6 +341,64 @@ func (h *Handler) UpdateOrganizationSharing(
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationSharingResponse{
 		Organization: buildOrganization(h.k8s, updated, updatedUsers, updatedGroups, userRole),
+	}), nil
+}
+
+// GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+func (h *Handler) GetOrganizationRaw(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetOrganizationRawRequest],
+) (*connect.Response[consolev1.GetOrganizationRawResponse], error) {
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("organization name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	ns, err := h.k8s.GetOrganization(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareGroups, _ := GetShareGroups(ns)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+
+	if err := CheckOrgReadAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+		slog.WarnContext(ctx, "organization raw access denied",
+			slog.String("action", "organization_raw_denied"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("organization", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "organization raw accessed",
+		slog.String("action", "organization_raw"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("organization", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	// Set apiVersion and kind (not populated by client-go on fetched objects)
+	ns.APIVersion = "v1"
+	ns.Kind = "Namespace"
+
+	raw, err := json.Marshal(ns)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("marshaling namespace to JSON: %w", err))
+	}
+
+	return connect.NewResponse(&consolev1.GetOrganizationRawResponse{
+		Raw: string(raw),
 	}), nil
 }
 

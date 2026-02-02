@@ -30,7 +30,7 @@ import LinkIcon from '@mui/icons-material/Link'
 import { useAuth } from '../auth'
 import { secretsClient } from '../client'
 import { SecretDataViewer } from './SecretDataViewer'
-import { SecretRawView } from './SecretRawView'
+import { RawView } from './RawView'
 import { SharingPanel, type Grant } from './SharingPanel'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
 import type { ShareGrant } from '../gen/holos/console/v1/secrets_pb'
@@ -460,7 +460,7 @@ export function SecretPage() {
           <SecretDataViewer data={secretData} onChange={setSecretData} />
         )}
         {viewMode === 'raw' && rawJson && (
-          <SecretRawView
+          <RawView
             raw={rawJson}
             includeAllFields={includeAllFields}
             onToggleIncludeAllFields={() => setIncludeAllFields((prev) => !prev)}

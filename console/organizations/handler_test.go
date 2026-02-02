@@ -2,6 +2,7 @@ package organizations
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"testing"
@@ -344,6 +345,51 @@ func TestUpdateOrgSharing_NonOwnerDenies(t *testing.T) {
 			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
 		},
 	}))
+	assertPermissionDenied(t, err)
+}
+
+// ---- GetOrganizationRaw tests ----
+
+func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
+	ns.Annotations[DisplayNameAnnotation] = "ACME Corp"
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.GetOrganizationRaw(ctx, connect.NewRequest(&consolev1.GetOrganizationRawRequest{Name: "acme"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(resp.Msg.Raw), &parsed); err != nil {
+		t.Fatalf("expected valid JSON, got parse error: %v", err)
+	}
+	if parsed["apiVersion"] != "v1" {
+		t.Errorf("expected apiVersion 'v1', got %v", parsed["apiVersion"])
+	}
+	if parsed["kind"] != "Namespace" {
+		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
+	}
+	metadata := parsed["metadata"].(map[string]interface{})
+	if metadata["name"] != "holos-o-acme" {
+		t.Errorf("expected metadata.name 'holos-o-acme', got %v", metadata["name"])
+	}
+	labels := metadata["labels"].(map[string]interface{})
+	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
+		t.Errorf("expected managed-by label, got %v", labels[secrets.ManagedByLabel])
+	}
+	if labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeOrganization {
+		t.Errorf("expected resource-type label, got %v", labels[resolver.ResourceTypeLabel])
+	}
+}
+
+func TestGetOrganizationRaw_DeniesUnauthorized(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("nobody@example.com")
+
+	_, err := handler.GetOrganizationRaw(ctx, connect.NewRequest(&consolev1.GetOrganizationRawRequest{Name: "acme"}))
 	assertPermissionDenied(t, err)
 }
 

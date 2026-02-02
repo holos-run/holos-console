@@ -736,6 +736,98 @@ func (x *UpdateProjectSharingResponse) GetProject() *Project {
 	return nil
 }
 
+// GetProjectRawRequest contains the name of the project to retrieve as raw JSON.
+type GetProjectRawRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the project to retrieve.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProjectRawRequest) Reset() {
+	*x = GetProjectRawRequest{}
+	mi := &file_holos_console_v1_projects_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectRawRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectRawRequest) ProtoMessage() {}
+
+func (x *GetProjectRawRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_projects_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectRawRequest.ProtoReflect.Descriptor instead.
+func (*GetProjectRawRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_projects_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetProjectRawRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// GetProjectRawResponse contains the full Kubernetes Namespace object as JSON.
+type GetProjectRawResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// raw is the verbatim JSON-serialized Namespace object from the K8s API.
+	Raw           string `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProjectRawResponse) Reset() {
+	*x = GetProjectRawResponse{}
+	mi := &file_holos_console_v1_projects_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectRawResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectRawResponse) ProtoMessage() {}
+
+func (x *GetProjectRawResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_projects_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectRawResponse.ProtoReflect.Descriptor instead.
+func (*GetProjectRawResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_projects_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetProjectRawResponse) GetRaw() string {
+	if x != nil {
+		return x.Raw
+	}
+	return ""
+}
+
 var File_holos_console_v1_projects_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_projects_proto_rawDesc = "" +
@@ -784,7 +876,11 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"S\n" +
 	"\x1cUpdateProjectSharingResponse\x123\n" +
-	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject2\xe5\x04\n" +
+	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"*\n" +
+	"\x14GetProjectRawRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\")\n" +
+	"\x15GetProjectRawResponse\x12\x10\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw2\xc7\x05\n" +
 	"\x0eProjectService\x12]\n" +
 	"\fListProjects\x12%.holos.console.v1.ListProjectsRequest\x1a&.holos.console.v1.ListProjectsResponse\x12W\n" +
 	"\n" +
@@ -792,7 +888,8 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\rCreateProject\x12&.holos.console.v1.CreateProjectRequest\x1a'.holos.console.v1.CreateProjectResponse\x12`\n" +
 	"\rUpdateProject\x12&.holos.console.v1.UpdateProjectRequest\x1a'.holos.console.v1.UpdateProjectResponse\x12`\n" +
 	"\rDeleteProject\x12&.holos.console.v1.DeleteProjectRequest\x1a'.holos.console.v1.DeleteProjectResponse\x12u\n" +
-	"\x14UpdateProjectSharing\x12-.holos.console.v1.UpdateProjectSharingRequest\x1a..holos.console.v1.UpdateProjectSharingResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x14UpdateProjectSharing\x12-.holos.console.v1.UpdateProjectSharingRequest\x1a..holos.console.v1.UpdateProjectSharingResponse\x12`\n" +
+	"\rGetProjectRaw\x12&.holos.console.v1.GetProjectRawRequest\x1a'.holos.console.v1.GetProjectRawResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_projects_proto_rawDescOnce sync.Once
@@ -806,7 +903,7 @@ func file_holos_console_v1_projects_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_projects_proto_rawDescData
 }
 
-var file_holos_console_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_holos_console_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_holos_console_v1_projects_proto_goTypes = []any{
 	(*Project)(nil),                      // 0: holos.console.v1.Project
 	(*ListProjectsRequest)(nil),          // 1: holos.console.v1.ListProjectsRequest
@@ -821,19 +918,21 @@ var file_holos_console_v1_projects_proto_goTypes = []any{
 	(*DeleteProjectResponse)(nil),        // 10: holos.console.v1.DeleteProjectResponse
 	(*UpdateProjectSharingRequest)(nil),  // 11: holos.console.v1.UpdateProjectSharingRequest
 	(*UpdateProjectSharingResponse)(nil), // 12: holos.console.v1.UpdateProjectSharingResponse
-	(*ShareGrant)(nil),                   // 13: holos.console.v1.ShareGrant
-	(Role)(0),                            // 14: holos.console.v1.Role
+	(*GetProjectRawRequest)(nil),         // 13: holos.console.v1.GetProjectRawRequest
+	(*GetProjectRawResponse)(nil),        // 14: holos.console.v1.GetProjectRawResponse
+	(*ShareGrant)(nil),                   // 15: holos.console.v1.ShareGrant
+	(Role)(0),                            // 16: holos.console.v1.Role
 }
 var file_holos_console_v1_projects_proto_depIdxs = []int32{
-	13, // 0: holos.console.v1.Project.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 1: holos.console.v1.Project.group_grants:type_name -> holos.console.v1.ShareGrant
-	14, // 2: holos.console.v1.Project.user_role:type_name -> holos.console.v1.Role
+	15, // 0: holos.console.v1.Project.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 1: holos.console.v1.Project.group_grants:type_name -> holos.console.v1.ShareGrant
+	16, // 2: holos.console.v1.Project.user_role:type_name -> holos.console.v1.Role
 	0,  // 3: holos.console.v1.ListProjectsResponse.projects:type_name -> holos.console.v1.Project
 	0,  // 4: holos.console.v1.GetProjectResponse.project:type_name -> holos.console.v1.Project
-	13, // 5: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 6: holos.console.v1.CreateProjectRequest.group_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 7: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 8: holos.console.v1.UpdateProjectSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 5: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 6: holos.console.v1.CreateProjectRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 7: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 8: holos.console.v1.UpdateProjectSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 9: holos.console.v1.UpdateProjectSharingResponse.project:type_name -> holos.console.v1.Project
 	1,  // 10: holos.console.v1.ProjectService.ListProjects:input_type -> holos.console.v1.ListProjectsRequest
 	3,  // 11: holos.console.v1.ProjectService.GetProject:input_type -> holos.console.v1.GetProjectRequest
@@ -841,14 +940,16 @@ var file_holos_console_v1_projects_proto_depIdxs = []int32{
 	7,  // 13: holos.console.v1.ProjectService.UpdateProject:input_type -> holos.console.v1.UpdateProjectRequest
 	9,  // 14: holos.console.v1.ProjectService.DeleteProject:input_type -> holos.console.v1.DeleteProjectRequest
 	11, // 15: holos.console.v1.ProjectService.UpdateProjectSharing:input_type -> holos.console.v1.UpdateProjectSharingRequest
-	2,  // 16: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
-	4,  // 17: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
-	6,  // 18: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
-	8,  // 19: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
-	10, // 20: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
-	12, // 21: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
+	13, // 16: holos.console.v1.ProjectService.GetProjectRaw:input_type -> holos.console.v1.GetProjectRawRequest
+	2,  // 17: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
+	4,  // 18: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
+	6,  // 19: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
+	8,  // 20: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
+	10, // 21: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
+	12, // 22: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
+	14, // 23: holos.console.v1.ProjectService.GetProjectRaw:output_type -> holos.console.v1.GetProjectRawResponse
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -868,7 +969,7 @@ func file_holos_console_v1_projects_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_projects_proto_rawDesc), len(file_holos_console_v1_projects_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -709,6 +709,98 @@ func (x *UpdateOrganizationSharingResponse) GetOrganization() *Organization {
 	return nil
 }
 
+// GetOrganizationRawRequest contains the name of the organization to retrieve as raw JSON.
+type GetOrganizationRawRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the organization to retrieve.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrganizationRawRequest) Reset() {
+	*x = GetOrganizationRawRequest{}
+	mi := &file_holos_console_v1_organizations_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrganizationRawRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrganizationRawRequest) ProtoMessage() {}
+
+func (x *GetOrganizationRawRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_organizations_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrganizationRawRequest.ProtoReflect.Descriptor instead.
+func (*GetOrganizationRawRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_organizations_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetOrganizationRawRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// GetOrganizationRawResponse contains the full Kubernetes Namespace object as JSON.
+type GetOrganizationRawResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// raw is the verbatim JSON-serialized Namespace object from the K8s API.
+	Raw           string `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrganizationRawResponse) Reset() {
+	*x = GetOrganizationRawResponse{}
+	mi := &file_holos_console_v1_organizations_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrganizationRawResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrganizationRawResponse) ProtoMessage() {}
+
+func (x *GetOrganizationRawResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_organizations_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrganizationRawResponse.ProtoReflect.Descriptor instead.
+func (*GetOrganizationRawResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_organizations_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetOrganizationRawResponse) GetRaw() string {
+	if x != nil {
+		return x.Raw
+	}
+	return ""
+}
+
 var File_holos_console_v1_organizations_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_organizations_proto_rawDesc = "" +
@@ -754,14 +846,19 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"userGrants\x12?\n" +
 	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\"g\n" +
 	"!UpdateOrganizationSharingResponse\x12B\n" +
-	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization2\xc5\x05\n" +
+	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"/\n" +
+	"\x19GetOrganizationRawRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\".\n" +
+	"\x1aGetOrganizationRawResponse\x12\x10\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw2\xb6\x06\n" +
 	"\x13OrganizationService\x12l\n" +
 	"\x11ListOrganizations\x12*.holos.console.v1.ListOrganizationsRequest\x1a+.holos.console.v1.ListOrganizationsResponse\x12f\n" +
 	"\x0fGetOrganization\x12(.holos.console.v1.GetOrganizationRequest\x1a).holos.console.v1.GetOrganizationResponse\x12o\n" +
 	"\x12CreateOrganization\x12+.holos.console.v1.CreateOrganizationRequest\x1a,.holos.console.v1.CreateOrganizationResponse\x12o\n" +
 	"\x12UpdateOrganization\x12+.holos.console.v1.UpdateOrganizationRequest\x1a,.holos.console.v1.UpdateOrganizationResponse\x12o\n" +
 	"\x12DeleteOrganization\x12+.holos.console.v1.DeleteOrganizationRequest\x1a,.holos.console.v1.DeleteOrganizationResponse\x12\x84\x01\n" +
-	"\x19UpdateOrganizationSharing\x122.holos.console.v1.UpdateOrganizationSharingRequest\x1a3.holos.console.v1.UpdateOrganizationSharingResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x19UpdateOrganizationSharing\x122.holos.console.v1.UpdateOrganizationSharingRequest\x1a3.holos.console.v1.UpdateOrganizationSharingResponse\x12o\n" +
+	"\x12GetOrganizationRaw\x12+.holos.console.v1.GetOrganizationRawRequest\x1a,.holos.console.v1.GetOrganizationRawResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_organizations_proto_rawDescOnce sync.Once
@@ -775,7 +872,7 @@ func file_holos_console_v1_organizations_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_organizations_proto_rawDescData
 }
 
-var file_holos_console_v1_organizations_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_holos_console_v1_organizations_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_holos_console_v1_organizations_proto_goTypes = []any{
 	(*Organization)(nil),                      // 0: holos.console.v1.Organization
 	(*ListOrganizationsRequest)(nil),          // 1: holos.console.v1.ListOrganizationsRequest
@@ -790,19 +887,21 @@ var file_holos_console_v1_organizations_proto_goTypes = []any{
 	(*DeleteOrganizationResponse)(nil),        // 10: holos.console.v1.DeleteOrganizationResponse
 	(*UpdateOrganizationSharingRequest)(nil),  // 11: holos.console.v1.UpdateOrganizationSharingRequest
 	(*UpdateOrganizationSharingResponse)(nil), // 12: holos.console.v1.UpdateOrganizationSharingResponse
-	(*ShareGrant)(nil),                        // 13: holos.console.v1.ShareGrant
-	(Role)(0),                                 // 14: holos.console.v1.Role
+	(*GetOrganizationRawRequest)(nil),         // 13: holos.console.v1.GetOrganizationRawRequest
+	(*GetOrganizationRawResponse)(nil),        // 14: holos.console.v1.GetOrganizationRawResponse
+	(*ShareGrant)(nil),                        // 15: holos.console.v1.ShareGrant
+	(Role)(0),                                 // 16: holos.console.v1.Role
 }
 var file_holos_console_v1_organizations_proto_depIdxs = []int32{
-	13, // 0: holos.console.v1.Organization.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 1: holos.console.v1.Organization.group_grants:type_name -> holos.console.v1.ShareGrant
-	14, // 2: holos.console.v1.Organization.user_role:type_name -> holos.console.v1.Role
+	15, // 0: holos.console.v1.Organization.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 1: holos.console.v1.Organization.group_grants:type_name -> holos.console.v1.ShareGrant
+	16, // 2: holos.console.v1.Organization.user_role:type_name -> holos.console.v1.Role
 	0,  // 3: holos.console.v1.ListOrganizationsResponse.organizations:type_name -> holos.console.v1.Organization
 	0,  // 4: holos.console.v1.GetOrganizationResponse.organization:type_name -> holos.console.v1.Organization
-	13, // 5: holos.console.v1.CreateOrganizationRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 6: holos.console.v1.CreateOrganizationRequest.group_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 7: holos.console.v1.UpdateOrganizationSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	13, // 8: holos.console.v1.UpdateOrganizationSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 5: holos.console.v1.CreateOrganizationRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 6: holos.console.v1.CreateOrganizationRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 7: holos.console.v1.UpdateOrganizationSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	15, // 8: holos.console.v1.UpdateOrganizationSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 9: holos.console.v1.UpdateOrganizationSharingResponse.organization:type_name -> holos.console.v1.Organization
 	1,  // 10: holos.console.v1.OrganizationService.ListOrganizations:input_type -> holos.console.v1.ListOrganizationsRequest
 	3,  // 11: holos.console.v1.OrganizationService.GetOrganization:input_type -> holos.console.v1.GetOrganizationRequest
@@ -810,14 +909,16 @@ var file_holos_console_v1_organizations_proto_depIdxs = []int32{
 	7,  // 13: holos.console.v1.OrganizationService.UpdateOrganization:input_type -> holos.console.v1.UpdateOrganizationRequest
 	9,  // 14: holos.console.v1.OrganizationService.DeleteOrganization:input_type -> holos.console.v1.DeleteOrganizationRequest
 	11, // 15: holos.console.v1.OrganizationService.UpdateOrganizationSharing:input_type -> holos.console.v1.UpdateOrganizationSharingRequest
-	2,  // 16: holos.console.v1.OrganizationService.ListOrganizations:output_type -> holos.console.v1.ListOrganizationsResponse
-	4,  // 17: holos.console.v1.OrganizationService.GetOrganization:output_type -> holos.console.v1.GetOrganizationResponse
-	6,  // 18: holos.console.v1.OrganizationService.CreateOrganization:output_type -> holos.console.v1.CreateOrganizationResponse
-	8,  // 19: holos.console.v1.OrganizationService.UpdateOrganization:output_type -> holos.console.v1.UpdateOrganizationResponse
-	10, // 20: holos.console.v1.OrganizationService.DeleteOrganization:output_type -> holos.console.v1.DeleteOrganizationResponse
-	12, // 21: holos.console.v1.OrganizationService.UpdateOrganizationSharing:output_type -> holos.console.v1.UpdateOrganizationSharingResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
+	13, // 16: holos.console.v1.OrganizationService.GetOrganizationRaw:input_type -> holos.console.v1.GetOrganizationRawRequest
+	2,  // 17: holos.console.v1.OrganizationService.ListOrganizations:output_type -> holos.console.v1.ListOrganizationsResponse
+	4,  // 18: holos.console.v1.OrganizationService.GetOrganization:output_type -> holos.console.v1.GetOrganizationResponse
+	6,  // 19: holos.console.v1.OrganizationService.CreateOrganization:output_type -> holos.console.v1.CreateOrganizationResponse
+	8,  // 20: holos.console.v1.OrganizationService.UpdateOrganization:output_type -> holos.console.v1.UpdateOrganizationResponse
+	10, // 21: holos.console.v1.OrganizationService.DeleteOrganization:output_type -> holos.console.v1.DeleteOrganizationResponse
+	12, // 22: holos.console.v1.OrganizationService.UpdateOrganizationSharing:output_type -> holos.console.v1.UpdateOrganizationSharingResponse
+	14, // 23: holos.console.v1.OrganizationService.GetOrganizationRaw:output_type -> holos.console.v1.GetOrganizationRawResponse
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -837,7 +938,7 @@ func file_holos_console_v1_organizations_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_organizations_proto_rawDesc), len(file_holos_console_v1_organizations_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

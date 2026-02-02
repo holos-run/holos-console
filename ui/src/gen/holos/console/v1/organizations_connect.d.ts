@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateOrganizationRequest, CreateOrganizationResponse, DeleteOrganizationRequest, DeleteOrganizationResponse, GetOrganizationRequest, GetOrganizationResponse, ListOrganizationsRequest, ListOrganizationsResponse, UpdateOrganizationRequest, UpdateOrganizationResponse, UpdateOrganizationSharingRequest, UpdateOrganizationSharingResponse } from "./organizations_pb.js";
+import { CreateOrganizationRequest, CreateOrganizationResponse, DeleteOrganizationRequest, DeleteOrganizationResponse, GetOrganizationRawRequest, GetOrganizationRawResponse, GetOrganizationRequest, GetOrganizationResponse, ListOrganizationsRequest, ListOrganizationsResponse, UpdateOrganizationRequest, UpdateOrganizationResponse, UpdateOrganizationSharingRequest, UpdateOrganizationSharingResponse } from "./organizations_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -84,6 +84,19 @@ export declare const OrganizationService: {
       readonly name: "UpdateOrganizationSharing",
       readonly I: typeof UpdateOrganizationSharingRequest,
       readonly O: typeof UpdateOrganizationSharingResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+     * The backend returns the Namespace exactly as the K8s API provides it, with no
+     * field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
+     *
+     * @generated from rpc holos.console.v1.OrganizationService.GetOrganizationRaw
+     */
+    readonly getOrganizationRaw: {
+      readonly name: "GetOrganizationRaw",
+      readonly I: typeof GetOrganizationRawRequest,
+      readonly O: typeof GetOrganizationRawResponse,
       readonly kind: MethodKind.Unary,
     },
   }

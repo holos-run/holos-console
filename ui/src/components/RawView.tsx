@@ -19,18 +19,19 @@ const SERVER_MANAGED_FIELDS = [
   'deletionGracePeriodSeconds',
 ]
 
-interface SecretRawViewProps {
+interface RawViewProps {
   raw: string
   includeAllFields: boolean
   onToggleIncludeAllFields: () => void
 }
 
-export function SecretRawView({ raw, includeAllFields, onToggleIncludeAllFields }: SecretRawViewProps) {
+export function RawView({ raw, includeAllFields, onToggleIncludeAllFields }: RawViewProps) {
   const formattedJson = useMemo(() => {
     const obj = JSON.parse(raw)
 
     // Convert data (base64) to stringData (plaintext) and remove data field
-    if (obj.data && typeof obj.data === 'object') {
+    // Only applies to Secret objects that have a data field
+    if (obj.kind === 'Secret' && obj.data && typeof obj.data === 'object') {
       const stringData: Record<string, string> = {}
       for (const [key, value] of Object.entries(obj.data)) {
         try {

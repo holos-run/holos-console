@@ -366,6 +366,46 @@ export declare type UpdateProjectSharingResponse = Message<"holos.console.v1.Upd
 export declare const UpdateProjectSharingResponseSchema: GenMessage<UpdateProjectSharingResponse>;
 
 /**
+ * GetProjectRawRequest contains the name of the project to retrieve as raw JSON.
+ *
+ * @generated from message holos.console.v1.GetProjectRawRequest
+ */
+export declare type GetProjectRawRequest = Message<"holos.console.v1.GetProjectRawRequest"> & {
+  /**
+   * name is the name of the project to retrieve.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectRawRequest.
+ * Use `create(GetProjectRawRequestSchema)` to create a new message.
+ */
+export declare const GetProjectRawRequestSchema: GenMessage<GetProjectRawRequest>;
+
+/**
+ * GetProjectRawResponse contains the full Kubernetes Namespace object as JSON.
+ *
+ * @generated from message holos.console.v1.GetProjectRawResponse
+ */
+export declare type GetProjectRawResponse = Message<"holos.console.v1.GetProjectRawResponse"> & {
+  /**
+   * raw is the verbatim JSON-serialized Namespace object from the K8s API.
+   *
+   * @generated from field: string raw = 1;
+   */
+  raw: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectRawResponse.
+ * Use `create(GetProjectRawResponseSchema)` to create a new message.
+ */
+export declare const GetProjectRawResponseSchema: GenMessage<GetProjectRawResponse>;
+
+/**
  * ProjectService provides CRUD operations for projects.
  * A project is a Kubernetes Namespace labeled app.kubernetes.io/managed-by=console.holos.run.
  *
@@ -435,6 +475,18 @@ export declare const ProjectService: GenService<{
     methodKind: "unary";
     input: typeof UpdateProjectSharingRequestSchema;
     output: typeof UpdateProjectSharingResponseSchema;
+  },
+  /**
+   * GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+   * The backend returns the Namespace exactly as the K8s API provides it, with no
+   * field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
+   *
+   * @generated from rpc holos.console.v1.ProjectService.GetProjectRaw
+   */
+  getProjectRaw: {
+    methodKind: "unary";
+    input: typeof GetProjectRawRequestSchema;
+    output: typeof GetProjectRawResponseSchema;
   },
 }>;
 
