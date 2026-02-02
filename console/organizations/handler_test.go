@@ -198,8 +198,9 @@ func TestCreateOrganization_AuthorizedByCreatorGroups(t *testing.T) {
 
 func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
 	handler := newTestHandlerWithOpts(testHandlerOpts{
-		creatorUsers:  []string{"admin@example.com"},
-		creatorGroups: []string{"platform-admins"},
+		disableOrgCreation: true,
+		creatorUsers:       []string{"admin@example.com"},
+		creatorGroups:      []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("alice@example.com", "developers")
 

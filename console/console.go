@@ -97,8 +97,9 @@ type Config struct {
 	// Default: "prj-"
 	ProjectPrefix string
 
-	// DisableOrgCreation unconditionally blocks CreateOrganization when true,
-	// regardless of OrgCreatorUsers and OrgCreatorGroups settings.
+	// DisableOrgCreation disables the implicit organization creation grant to all
+	// authenticated principals. Explicit OrgCreatorUsers and OrgCreatorGroups are
+	// still honored when this is true.
 	DisableOrgCreation bool
 
 	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
