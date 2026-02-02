@@ -97,7 +97,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `oidc/` - Embedded Dex OIDC provider
   - `organizations/` - OrganizationService with K8s Namespace backend and annotation-based grants
   - `projects/` - ProjectService with K8s Namespace backend and annotation-based grants
-  - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (`{organization-prefix}{name}` for orgs, `{project-prefix}{name}` for projects)
+  - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{project-prefix}{name}` for projects)
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `ui/` - Embedded static files served at `/ui/` (build output, not source)
 - `proto/` - Protobuf source files
@@ -141,9 +141,11 @@ Three-tier access control model evaluated in order (highest role wins):
 
 Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-groups`
 
-Namespace prefix scheme:
-- Organizations: `{organization-prefix}{name}` (resource-type label: `organization`)
-- Projects: `{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)
+Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{name}`):
+- Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)
+- Projects: `{namespace-prefix}{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)
+
+The `--namespace-prefix` flag (default empty) enables multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
 
 Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags.
 
