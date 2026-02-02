@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/holos-run/holos-console/console/rbac"
@@ -20,19 +21,25 @@ import (
 
 const auditResourceType = "organization"
 
+// ProjectLister checks for projects linked to an organization.
+type ProjectLister interface {
+	ListProjects(ctx context.Context, org string) ([]*corev1.Namespace, error)
+}
+
 // Handler implements the OrganizationService.
 type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
-	k8s            *K8sClient
-	creatorUsers   []string
-	creatorGroups  []string
+	k8s           *K8sClient
+	projectLister ProjectLister
+	creatorUsers  []string
+	creatorGroups []string
 }
 
 // NewHandler creates a new OrganizationService handler.
 // creatorUsers and creatorGroups are the email addresses and OIDC group names
 // allowed to create organizations (configured via CLI flags).
-func NewHandler(k8s *K8sClient, creatorUsers, creatorGroups []string) *Handler {
-	return &Handler{k8s: k8s, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
+func NewHandler(k8s *K8sClient, projectLister ProjectLister, creatorUsers, creatorGroups []string) *Handler {
+	return &Handler{k8s: k8s, projectLister: projectLister, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
 }
 
 // ListOrganizations returns all organizations the user has access to.
@@ -264,6 +271,17 @@ func (h *Handler) DeleteOrganization(
 			slog.String("email", claims.Email),
 		)
 		return nil, err
+	}
+
+	if h.projectLister != nil {
+		projects, err := h.projectLister.ListProjects(ctx, req.Msg.Name)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("checking for linked projects: %w", err))
+		}
+		if len(projects) > 0 {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				fmt.Errorf("cannot delete organization %q: %d linked project(s) must be deleted first", req.Msg.Name, len(projects)))
+		}
 	}
 
 	if err := h.k8s.DeleteOrganization(ctx, req.Msg.Name); err != nil {
