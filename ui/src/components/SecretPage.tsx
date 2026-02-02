@@ -235,6 +235,7 @@ export function SecretPage() {
       setOriginalData({ ...secretData })
       setOriginalDescription(description)
       setOriginalUrl(url)
+      setRawJson(null)
       setSaveSuccess(true)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
