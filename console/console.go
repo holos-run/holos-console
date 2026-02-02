@@ -92,6 +92,10 @@ type Config struct {
 	// Default: "prj-"
 	ProjectPrefix string
 
+	// DisableOrgCreation unconditionally blocks CreateOrganization when true,
+	// regardless of OrgCreatorUsers and OrgCreatorGroups settings.
+	DisableOrgCreation bool
+
 	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
 	OrgCreatorUsers []string
 
@@ -214,7 +218,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
 		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
-		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
+		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 

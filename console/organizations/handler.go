@@ -29,17 +29,19 @@ type ProjectLister interface {
 // Handler implements the OrganizationService.
 type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
-	k8s           *K8sClient
-	projectLister ProjectLister
-	creatorUsers  []string
-	creatorGroups []string
+	k8s             *K8sClient
+	projectLister   ProjectLister
+	disableCreation bool
+	creatorUsers    []string
+	creatorGroups   []string
 }
 
 // NewHandler creates a new OrganizationService handler.
+// disableCreation unconditionally blocks CreateOrganization when true.
 // creatorUsers and creatorGroups are the email addresses and OIDC group names
 // allowed to create organizations (configured via CLI flags).
-func NewHandler(k8s *K8sClient, projectLister ProjectLister, creatorUsers, creatorGroups []string) *Handler {
-	return &Handler{k8s: k8s, projectLister: projectLister, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
+func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorGroups []string) *Handler {
+	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
 }
 
 // ListOrganizations returns all organizations the user has access to.
@@ -151,8 +153,9 @@ func (h *Handler) CreateOrganization(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Check create access: caller must be in --org-creator-users or --org-creator-groups
-	if !h.isOrgCreator(claims.Email, claims.Groups) {
+	// Check create access: blocked when --disable-org-creation is set, otherwise
+	// caller must be in --org-creator-users or --org-creator-groups.
+	if h.disableCreation || !h.isOrgCreator(claims.Email, claims.Groups) {
 		slog.WarnContext(ctx, "organization create denied",
 			slog.String("action", "organization_create_denied"),
 			slog.String("resource_type", auditResourceType),
