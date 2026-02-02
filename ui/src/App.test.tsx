@@ -123,7 +123,7 @@ describe('navigation', () => {
     })
   })
 
-  it('shows Home at the top and Profile at the bottom of the sidebar', async () => {
+  it('shows Home at the top and Profile/Version at the bottom of the sidebar', async () => {
     renderApp('/ui/home')
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
@@ -134,12 +134,22 @@ describe('navigation', () => {
     const linkNames = links.map((l) => l.textContent)
     const homeIdx = linkNames.indexOf('Home')
     const profileIdx = linkNames.indexOf('Profile')
+    const versionIdx = linkNames.indexOf('Version')
     const orgIdx = linkNames.indexOf('Organizations')
 
     // Home should appear before Organizations
     expect(homeIdx).toBeLessThan(orgIdx)
-    // Profile should appear after Organizations and Projects
+    // Profile and Version should appear after Organizations and Projects
     expect(profileIdx).toBeGreaterThan(orgIdx)
+    expect(versionIdx).toBeGreaterThan(orgIdx)
+  })
+
+  it('links the version page from sidebar', async () => {
+    renderApp('/ui/home')
+    await waitFor(() => {
+      const versionLink = screen.getByRole('link', { name: 'Version' })
+      expect(versionLink).toHaveAttribute('href', '/ui/version')
+    })
   })
 
   it('redirects / to /home', async () => {
