@@ -1,6 +1,9 @@
 package resolver
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestOrgNamespace(t *testing.T) {
 	r := &Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
@@ -20,7 +23,10 @@ func TestOrgNamespace_CustomPrefix(t *testing.T) {
 
 func TestOrgFromNamespace(t *testing.T) {
 	r := &Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
-	got := r.OrgFromNamespace("org-acme")
+	got, err := r.OrgFromNamespace("org-acme")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "acme" {
 		t.Errorf("expected %q, got %q", "acme", got)
 	}
@@ -44,7 +50,10 @@ func TestProjectNamespace_CustomPrefix(t *testing.T) {
 
 func TestProjectFromNamespace(t *testing.T) {
 	r := &Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
-	got := r.ProjectFromNamespace("prj-api")
+	got, err := r.ProjectFromNamespace("prj-api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "api" {
 		t.Errorf("expected %q, got %q", "api", got)
 	}
@@ -68,7 +77,11 @@ func TestOrgAndProjectSameNameDifferentNamespaces(t *testing.T) {
 func TestOrgRoundTrip(t *testing.T) {
 	r := &Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 	name := "acme"
-	if got := r.OrgFromNamespace(r.OrgNamespace(name)); got != name {
+	got, err := r.OrgFromNamespace(r.OrgNamespace(name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != name {
 		t.Errorf("round-trip failed: expected %q, got %q", name, got)
 	}
 }
@@ -76,7 +89,11 @@ func TestOrgRoundTrip(t *testing.T) {
 func TestProjectRoundTrip(t *testing.T) {
 	r := &Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 	name := "api"
-	if got := r.ProjectFromNamespace(r.ProjectNamespace(name)); got != name {
+	got, err := r.ProjectFromNamespace(r.ProjectNamespace(name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != name {
 		t.Errorf("round-trip failed: expected %q, got %q", name, got)
 	}
 }
@@ -91,7 +108,10 @@ func TestOrgNamespace_WithNamespacePrefix(t *testing.T) {
 
 func TestOrgFromNamespace_WithNamespacePrefix(t *testing.T) {
 	r := &Resolver{NamespacePrefix: "prod-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
-	got := r.OrgFromNamespace("prod-org-acme")
+	got, err := r.OrgFromNamespace("prod-org-acme")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "acme" {
 		t.Errorf("expected %q, got %q", "acme", got)
 	}
@@ -107,7 +127,10 @@ func TestProjectNamespace_WithNamespacePrefix(t *testing.T) {
 
 func TestProjectFromNamespace_WithNamespacePrefix(t *testing.T) {
 	r := &Resolver{NamespacePrefix: "prod-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
-	got := r.ProjectFromNamespace("prod-prj-api")
+	got, err := r.ProjectFromNamespace("prod-prj-api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "api" {
 		t.Errorf("expected %q, got %q", "api", got)
 	}
@@ -116,7 +139,11 @@ func TestProjectFromNamespace_WithNamespacePrefix(t *testing.T) {
 func TestOrgRoundTrip_WithNamespacePrefix(t *testing.T) {
 	r := &Resolver{NamespacePrefix: "ci-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 	name := "acme"
-	if got := r.OrgFromNamespace(r.OrgNamespace(name)); got != name {
+	got, err := r.OrgFromNamespace(r.OrgNamespace(name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != name {
 		t.Errorf("round-trip failed: expected %q, got %q", name, got)
 	}
 }
@@ -124,7 +151,11 @@ func TestOrgRoundTrip_WithNamespacePrefix(t *testing.T) {
 func TestProjectRoundTrip_WithNamespacePrefix(t *testing.T) {
 	r := &Resolver{NamespacePrefix: "ci-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 	name := "api"
-	if got := r.ProjectFromNamespace(r.ProjectNamespace(name)); got != name {
+	got, err := r.ProjectFromNamespace(r.ProjectNamespace(name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != name {
 		t.Errorf("round-trip failed: expected %q, got %q", name, got)
 	}
 }
@@ -136,5 +167,89 @@ func TestNamespacePrefix_EmptyIsNoOp(t *testing.T) {
 	}
 	if got := r.ProjectNamespace("api"); got != "prj-api" {
 		t.Errorf("expected %q, got %q", "prj-api", got)
+	}
+}
+
+// ---- PrefixMismatchError tests ----
+
+func TestOrgFromNamespace_PrefixMismatch(t *testing.T) {
+	r := &Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	_, err := r.OrgFromNamespace("other-org-acme")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var pme *PrefixMismatchError
+	if !errors.As(err, &pme) {
+		t.Fatalf("expected *PrefixMismatchError, got %T: %v", err, err)
+	}
+	if pme.Namespace != "other-org-acme" {
+		t.Errorf("expected Namespace %q, got %q", "other-org-acme", pme.Namespace)
+	}
+	if pme.Prefix != "holos-org-" {
+		t.Errorf("expected Prefix %q, got %q", "holos-org-", pme.Prefix)
+	}
+}
+
+func TestProjectFromNamespace_PrefixMismatch(t *testing.T) {
+	r := &Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	_, err := r.ProjectFromNamespace("other-prj-api")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var pme *PrefixMismatchError
+	if !errors.As(err, &pme) {
+		t.Fatalf("expected *PrefixMismatchError, got %T: %v", err, err)
+	}
+	if pme.Namespace != "other-prj-api" {
+		t.Errorf("expected Namespace %q, got %q", "other-prj-api", pme.Namespace)
+	}
+	if pme.Prefix != "holos-prj-" {
+		t.Errorf("expected Prefix %q, got %q", "holos-prj-", pme.Prefix)
+	}
+}
+
+func TestOrgFromNamespace_ProjectNamespaceIsMismatch(t *testing.T) {
+	// A project namespace should not be parseable as an org namespace
+	r := &Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	_, err := r.OrgFromNamespace("holos-prj-api")
+	if err == nil {
+		t.Fatal("expected error when parsing project namespace as org, got nil")
+	}
+	var pme *PrefixMismatchError
+	if !errors.As(err, &pme) {
+		t.Fatalf("expected *PrefixMismatchError, got %T: %v", err, err)
+	}
+}
+
+func TestProjectFromNamespace_OrgNamespaceIsMismatch(t *testing.T) {
+	// An org namespace should not be parseable as a project namespace
+	r := &Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	_, err := r.ProjectFromNamespace("holos-org-acme")
+	if err == nil {
+		t.Fatal("expected error when parsing org namespace as project, got nil")
+	}
+	var pme *PrefixMismatchError
+	if !errors.As(err, &pme) {
+		t.Fatalf("expected *PrefixMismatchError, got %T: %v", err, err)
+	}
+}
+
+func TestOrgFromNamespace_EmptyNamespace(t *testing.T) {
+	r := &Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	_, err := r.OrgFromNamespace("")
+	if err == nil {
+		t.Fatal("expected error for empty namespace, got nil")
+	}
+	var pme *PrefixMismatchError
+	if !errors.As(err, &pme) {
+		t.Fatalf("expected *PrefixMismatchError, got %T: %v", err, err)
+	}
+}
+
+func TestPrefixMismatchError_ErrorMessage(t *testing.T) {
+	err := &PrefixMismatchError{Namespace: "kube-system", Prefix: "holos-org-"}
+	want := `namespace "kube-system" does not match expected prefix "holos-org-"`
+	if got := err.Error(); got != want {
+		t.Errorf("expected %q, got %q", want, got)
 	}
 }

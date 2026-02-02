@@ -3,7 +3,10 @@
 // resource type.
 package resolver
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Label and annotation constants for resource type identification.
 const (
@@ -34,11 +37,14 @@ func (r *Resolver) OrgNamespace(org string) string {
 }
 
 // OrgFromNamespace extracts the organization name from a Kubernetes namespace name.
-// Deprecated: Use the OrganizationLabel on the namespace instead. This method
-// uses strings.TrimPrefix which produces incorrect results when the namespace
-// prefix + organization prefix appears within the resource name itself.
-func (r *Resolver) OrgFromNamespace(ns string) string {
-	return strings.TrimPrefix(ns, r.NamespacePrefix+r.OrganizationPrefix)
+// Returns a *PrefixMismatchError when ns does not start with the expected prefix.
+// Prefer the OrganizationLabel on the namespace when available.
+func (r *Resolver) OrgFromNamespace(ns string) (string, error) {
+	prefix := r.NamespacePrefix + r.OrganizationPrefix
+	if !strings.HasPrefix(ns, prefix) {
+		return "", &PrefixMismatchError{Namespace: ns, Prefix: prefix}
+	}
+	return strings.TrimPrefix(ns, prefix), nil
 }
 
 // ProjectNamespace returns the Kubernetes namespace name for a project.
@@ -47,9 +53,23 @@ func (r *Resolver) ProjectNamespace(project string) string {
 }
 
 // ProjectFromNamespace extracts the project name from a Kubernetes namespace name.
-// Deprecated: Use the ProjectLabel on the namespace instead. This method
-// uses strings.TrimPrefix which produces incorrect results when the namespace
-// prefix + project prefix appears within the resource name itself.
-func (r *Resolver) ProjectFromNamespace(ns string) string {
-	return strings.TrimPrefix(ns, r.NamespacePrefix+r.ProjectPrefix)
+// Returns a *PrefixMismatchError when ns does not start with the expected prefix.
+// Prefer the ProjectLabel on the namespace when available.
+func (r *Resolver) ProjectFromNamespace(ns string) (string, error) {
+	prefix := r.NamespacePrefix + r.ProjectPrefix
+	if !strings.HasPrefix(ns, prefix) {
+		return "", &PrefixMismatchError{Namespace: ns, Prefix: prefix}
+	}
+	return strings.TrimPrefix(ns, prefix), nil
+}
+
+// PrefixMismatchError is returned when a namespace name does not begin with
+// the expected prefix for the resource type being resolved.
+type PrefixMismatchError struct {
+	Namespace string // the namespace name that was checked
+	Prefix    string // the expected prefix that was not found
+}
+
+func (e *PrefixMismatchError) Error() string {
+	return fmt.Sprintf("namespace %q does not match expected prefix %q", e.Namespace, e.Prefix)
 }

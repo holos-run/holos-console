@@ -375,6 +375,44 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 	}
 }
 
+func TestListOrganizations_FiltersPrefixMismatchNamespaces(t *testing.T) {
+	// A namespace with correct labels but wrong prefix (from another console instance)
+	// should be filtered out of results.
+	matching := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "acme",
+			},
+		},
+	}
+	mismatched := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "other-org-beta",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "beta",
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(matching, mismatched)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	orgs, err := k8s.ListOrganizations(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(orgs) != 1 {
+		t.Fatalf("expected 1 org (prefix mismatch filtered), got %d", len(orgs))
+	}
+	if orgs[0].Name != "holos-org-acme" {
+		t.Errorf("expected holos-org-acme, got %s", orgs[0].Name)
+	}
+}
+
 func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

@@ -463,11 +463,20 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 	}
 	// Fallback: derive org name from namespace if label is missing (pre-label namespaces)
 	if org.Name == "" {
-		org.Name = k8s.resolver.OrgFromNamespace(ns.GetName())
-		slog.Warn("organization namespace missing label, falling back to namespace parsing",
-			slog.String("namespace", ns.GetName()),
-			slog.String("label", resolver.OrganizationLabel),
-		)
+		name, err := k8s.resolver.OrgFromNamespace(ns.GetName())
+		if err != nil {
+			slog.Warn("organization namespace missing label and prefix mismatch",
+				slog.String("namespace", ns.GetName()),
+				slog.String("label", resolver.OrganizationLabel),
+				slog.Any("error", err),
+			)
+		} else {
+			org.Name = name
+			slog.Warn("organization namespace missing label, falling back to namespace parsing",
+				slog.String("namespace", ns.GetName()),
+				slog.String("label", resolver.OrganizationLabel),
+			)
+		}
 	}
 
 	type annotated interface {

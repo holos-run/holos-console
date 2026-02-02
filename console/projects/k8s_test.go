@@ -406,6 +406,44 @@ func TestDeleteProject_RejectsUnmanagedNamespace(t *testing.T) {
 	}
 }
 
+func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
+	// A namespace with correct labels but wrong prefix (from another console instance)
+	// should be filtered out of results.
+	matching := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-project-a",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "project-a",
+			},
+		},
+	}
+	mismatched := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "other-prj-project-b",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "project-b",
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(matching, mismatched)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	projects, err := k8s.ListProjects(context.Background(), "")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project (prefix mismatch filtered), got %d", len(projects))
+	}
+	if projects[0].Name != "holos-prj-project-a" {
+		t.Errorf("expected holos-prj-project-a, got %s", projects[0].Name)
+	}
+}
+
 func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
