@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/holos-run/holos-console/console/rbac"
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -446,10 +447,36 @@ func (h *Handler) isOrgCreator(email string, groups []string) bool {
 // buildOrganization creates an Organization proto message from a namespace.
 func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUsers, shareGroups []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Organization {
 	org := &consolev1.Organization{
-		Name:        k8s.resolver.OrgFromNamespace(ns.GetName()),
 		UserGrants:  annotationGrantsToProto(shareUsers),
 		GroupGrants: annotationGrantsToProto(shareGroups),
 		UserRole:    consolev1.Role(userRole),
+	}
+
+	type labeled interface {
+		GetLabels() map[string]string
+	}
+	if l, ok := ns.(labeled); ok {
+		labels := l.GetLabels()
+		if labels != nil {
+			org.Name = labels[resolver.OrganizationLabel]
+		}
+	}
+	// Fallback: derive org name from namespace if label is missing (pre-label namespaces)
+	if org.Name == "" {
+		name, err := k8s.resolver.OrgFromNamespace(ns.GetName())
+		if err != nil {
+			slog.Warn("organization namespace missing label and prefix mismatch",
+				slog.String("namespace", ns.GetName()),
+				slog.String("label", resolver.OrganizationLabel),
+				slog.Any("error", err),
+			)
+		} else {
+			org.Name = name
+			slog.Warn("organization namespace missing label, falling back to namespace parsing",
+				slog.String("namespace", ns.GetName()),
+				slog.String("label", resolver.OrganizationLabel),
+			)
+		}
 	}
 
 	type annotated interface {

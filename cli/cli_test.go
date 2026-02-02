@@ -130,6 +130,17 @@ func TestPlatformRoleFlagsRemoved(t *testing.T) {
 	}
 }
 
+func TestDefaultNamespacePrefix(t *testing.T) {
+	cmd := Command()
+	f := cmd.Flags().Lookup("namespace-prefix")
+	if f == nil {
+		t.Fatal("--namespace-prefix flag not found")
+	}
+	if got := f.DefValue; got != "holos-" {
+		t.Errorf("default namespace-prefix = %q, want %q", got, "holos-")
+	}
+}
+
 func TestDefaultOrgCreatorGroups(t *testing.T) {
 	cmd := Command()
 	f := cmd.Flags().Lookup("org-creator-groups")

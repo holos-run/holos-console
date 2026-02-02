@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -47,6 +48,16 @@ func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Nam
 	for i := range list.Items {
 		if list.Items[i].DeletionTimestamp != nil {
 			continue
+		}
+		if _, err := c.Resolver.ProjectFromNamespace(list.Items[i].Name); err != nil {
+			var pme *resolver.PrefixMismatchError
+			if errors.As(err, &pme) {
+				slog.DebugContext(ctx, "filtering project namespace with prefix mismatch",
+					slog.String("namespace", list.Items[i].Name),
+					slog.String("reason", err.Error()),
+				)
+				continue
+			}
 		}
 		result = append(result, &list.Items[i])
 	}

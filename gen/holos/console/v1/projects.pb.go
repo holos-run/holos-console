@@ -24,7 +24,7 @@ const (
 // Project represents a project with its metadata and grants.
 type Project struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// name is the Kubernetes namespace name.
+	// name is the project name (not the Kubernetes namespace name).
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// display_name is a human-readable display name for the project.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
@@ -308,7 +308,7 @@ func (x *GetProjectResponse) GetProject() *Project {
 // CreateProjectRequest contains the fields for creating a new project.
 type CreateProjectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// name is the Kubernetes namespace name for the project.
+	// name is the project name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// display_name is a human-readable display name for the project.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`

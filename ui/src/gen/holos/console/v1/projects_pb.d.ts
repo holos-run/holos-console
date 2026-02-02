@@ -19,7 +19,7 @@ export declare const file_holos_console_v1_projects: GenFile;
  */
 export declare type Project = Message<"holos.console.v1.Project"> & {
   /**
-   * name is the Kubernetes namespace name.
+   * name is the project name (not the Kubernetes namespace name).
    *
    * @generated from field: string name = 1;
    */
@@ -161,7 +161,7 @@ export declare const GetProjectResponseSchema: GenMessage<GetProjectResponse>;
  */
 export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProjectRequest"> & {
   /**
-   * name is the Kubernetes namespace name for the project.
+   * name is the project name.
    *
    * @generated from field: string name = 1;
    */

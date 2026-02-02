@@ -145,7 +145,7 @@ Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{nam
 - Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)
 - Projects: `{namespace-prefix}{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)
 
-The `--namespace-prefix` flag (default empty) enables multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
+The `--namespace-prefix` flag (default `"holos-"`) prefixes all console-managed namespace names, enabling multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
 
 Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags.
 
