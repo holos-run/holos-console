@@ -35,12 +35,9 @@ vi.mock('./auth', () => ({
   useAuth: () => mockAuthValue,
 }))
 
-// Mock the client module so OrgProvider doesn't make real RPC calls
+// Mock the client module so service clients don't make real RPC calls
 vi.mock('./client', () => ({
   tokenRef: { current: null },
-  organizationsClient: {
-    listOrganizations: vi.fn().mockResolvedValue({ organizations: [] }),
-  },
   versionClient: {
     getVersion: vi.fn().mockResolvedValue({}),
   },

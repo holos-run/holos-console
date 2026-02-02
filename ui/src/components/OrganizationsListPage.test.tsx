@@ -53,17 +53,7 @@ function createAuthContext(overrides: Partial<AuthContextValue> = {}): AuthConte
   }
 }
 
-let navigatedTo: string | null = null
-
-function CaptureNavigate() {
-  const { useLocation } = require('react-router-dom')
-  const location = useLocation()
-  navigatedTo = location.pathname
-  return null
-}
-
 function renderOrganizationsListPage(authValue: AuthContextValue, transport?: Transport) {
-  navigatedTo = null
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -83,7 +73,7 @@ function renderOrganizationsListPage(authValue: AuthContextValue, transport?: Tr
           <AuthContext.Provider value={authValue}>
             <Routes>
               <Route path="/organizations" element={<OrganizationsListPage />} />
-              <Route path="/organizations/:organizationName" element={<CaptureNavigate />} />
+              <Route path="/organizations/:organizationName" element={<div>Org Detail</div>} />
             </Routes>
           </AuthContext.Provider>
         </MemoryRouter>
