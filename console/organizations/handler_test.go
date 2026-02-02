@@ -26,7 +26,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 		Email:         email,
 		EmailVerified: true,
 		Name:          email,
-		Groups:        groups,
+		Roles:        groups,
 	}
 	return rpc.ContextWithClaims(context.Background(), claims)
 }
@@ -54,7 +54,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 type testHandlerOpts struct {
 	disableOrgCreation bool
 	creatorUsers       []string
-	creatorGroups      []string
+	creatorRoles      []string
 	projectLister      ProjectLister
 }
 
@@ -69,7 +69,7 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, opts.projectLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorGroups)
+	handler := NewHandler(k8s, opts.projectLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorRoles)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
 }
@@ -181,7 +181,7 @@ func TestCreateOrganization_AuthorizedByCreatorUsers(t *testing.T) {
 
 func TestCreateOrganization_AuthorizedByCreatorGroups(t *testing.T) {
 	handler := newTestHandlerWithOpts(testHandlerOpts{
-		creatorGroups: []string{"platform-admins"},
+		creatorRoles: []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("bob@example.com", "platform-admins")
 
@@ -200,7 +200,7 @@ func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
 		creatorUsers:       []string{"admin@example.com"},
-		creatorGroups:      []string{"platform-admins"},
+		creatorRoles:      []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("alice@example.com", "developers")
 
@@ -263,7 +263,7 @@ func TestCreateOrganization_DisabledHonorsCreatorGroups(t *testing.T) {
 	// With disableOrgCreation=true, explicit --org-creator-groups grants are still honored.
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
-		creatorGroups:      []string{"platform-admins"},
+		creatorRoles:      []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("bob@example.com", "platform-admins")
 

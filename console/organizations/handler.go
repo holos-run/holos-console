@@ -34,15 +34,15 @@ type Handler struct {
 	projectLister   ProjectLister
 	disableCreation bool
 	creatorUsers    []string
-	creatorGroups   []string
+	creatorRoles   []string
 }
 
 // NewHandler creates a new OrganizationService handler.
 // disableCreation disables the implicit organization creation grant to all
 // authenticated principals. When true, only explicit creatorUsers and
-// creatorGroups are allowed to create organizations.
-func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorGroups []string) *Handler {
-	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorGroups: creatorGroups}
+// creatorRoles are allowed to create organizations.
+func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorRoles []string) *Handler {
+	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorRoles: creatorRoles}
 }
 
 // ListOrganizations returns all organizations the user has access to.
@@ -68,11 +68,11 @@ func (h *Handler) ListOrganizations(
 		activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 		activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-		if err := CheckOrgListAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+		if err := CheckOrgListAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 			continue
 		}
 
-		userRole := rbac.BestRoleFromGrants(claims.Email, claims.Groups, activeUsers, activeGroups)
+		userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeGroups)
 		result = append(result, buildOrganization(h.k8s, ns, shareUsers, shareGroups, userRole))
 	}
 
@@ -114,7 +114,7 @@ func (h *Handler) GetOrganization(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-	if err := CheckOrgReadAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+	if err := CheckOrgReadAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "organization access denied",
 			slog.String("action", "organization_read_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -125,7 +125,7 @@ func (h *Handler) GetOrganization(
 		return nil, err
 	}
 
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Groups, activeUsers, activeGroups)
+	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeGroups)
 
 	slog.InfoContext(ctx, "organization accessed",
 		slog.String("action", "organization_read"),
@@ -155,8 +155,8 @@ func (h *Handler) CreateOrganization(
 	}
 
 	// Implicit grant: all authenticated principals can create orgs unless disabled.
-	// Explicit grants via --org-creator-users/--org-creator-groups always apply.
-	if h.disableCreation && !h.isOrgCreator(claims.Email, claims.Groups) {
+	// Explicit grants via --org-creator-users/--org-creator-roles always apply.
+	if h.disableCreation && !h.isOrgCreator(claims.Email, claims.Roles) {
 		slog.WarnContext(ctx, "organization create denied",
 			slog.String("action", "organization_create_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -215,7 +215,7 @@ func (h *Handler) UpdateOrganization(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-	if err := CheckOrgWriteAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+	if err := CheckOrgWriteAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "organization update denied",
 			slog.String("action", "organization_update_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -266,7 +266,7 @@ func (h *Handler) DeleteOrganization(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-	if err := CheckOrgDeleteAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+	if err := CheckOrgDeleteAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "organization delete denied",
 			slog.String("action", "organization_delete_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -328,7 +328,7 @@ func (h *Handler) UpdateOrganizationSharing(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-	if err := CheckOrgAdminAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+	if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "organization sharing update denied",
 			slog.String("action", "organization_sharing_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -359,7 +359,7 @@ func (h *Handler) UpdateOrganizationSharing(
 	updatedGroups, _ := GetShareGroups(updated)
 	updatedActiveUsers := secrets.ActiveGrantsMap(updatedUsers, now)
 	updatedActiveGroups := secrets.ActiveGrantsMap(updatedGroups, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Groups, updatedActiveUsers, updatedActiveGroups)
+	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveGroups)
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationSharingResponse{
 		Organization: buildOrganization(h.k8s, updated, updatedUsers, updatedGroups, userRole),
@@ -391,7 +391,7 @@ func (h *Handler) GetOrganizationRaw(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
 
-	if err := CheckOrgReadAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
+	if err := CheckOrgReadAccess(claims.Email, claims.Roles, activeUsers, activeGroups); err != nil {
 		slog.WarnContext(ctx, "organization raw access denied",
 			slog.String("action", "organization_raw_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -435,7 +435,7 @@ func (h *Handler) isOrgCreator(email string, groups []string) bool {
 	}
 	for _, g := range groups {
 		gLower := strings.ToLower(g)
-		for _, cg := range h.creatorGroups {
+		for _, cg := range h.creatorRoles {
 			if strings.ToLower(cg) == gLower {
 				return true
 			}

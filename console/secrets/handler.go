@@ -80,7 +80,7 @@ func (h *Handler) ListSecrets(
 		shareGroups, _ := GetShareGroups(&secret)
 		activeUsers := ActiveGrantsMap(shareUsers, now)
 		activeGroups := ActiveGrantsMap(shareGroups, now)
-		accessible := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsList) == nil
+		accessible := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsList) == nil
 		if accessible {
 			accessibleCount++
 		}
@@ -168,7 +168,7 @@ func (h *Handler) DeleteSecret(
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsDelete); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsDelete); err != nil {
 		slog.WarnContext(ctx, "secret delete denied",
 			slog.String("action", "secret_delete_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -176,7 +176,7 @@ func (h *Handler) DeleteSecret(
 			slog.String("project", project),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
-			slog.Any("user_groups", claims.Groups),
+			slog.Any("user_groups", claims.Roles),
 		)
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func (h *Handler) CreateSecret(
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsWrite); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsWrite); err != nil {
 		slog.WarnContext(ctx, "secret create denied",
 			slog.String("action", "secret_create_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -314,7 +314,7 @@ func (h *Handler) UpdateSecret(
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsWrite); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsWrite); err != nil {
 		logAuditDenied(ctx, claims, secret.Name)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
@@ -383,7 +383,7 @@ func (h *Handler) UpdateSharing(
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsAdmin); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsAdmin); err != nil {
 		slog.WarnContext(ctx, "sharing update denied",
 			slog.String("action", "sharing_update_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -461,7 +461,7 @@ func (h *Handler) GetSecretRaw(
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsRead); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsRead); err != nil {
 		logAuditDenied(ctx, claims, secret.Name)
 		return nil, err
 	}
@@ -525,7 +525,7 @@ func shareGrantsToAnnotations(grants []*consolev1.ShareGrant) []AnnotationGrant 
 // buildSecretMetadata creates SecretMetadata for a secret from the caller's perspective.
 // It receives the full grant slices (for the proto response) and the active maps (for RBAC).
 func (h *Handler) buildSecretMetadata(secret *corev1.Secret, shareUsers, shareGroups []AnnotationGrant, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups map[string]string, claims *rpc.Claims) *consolev1.SecretMetadata {
-	accessible := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsList) == nil
+	accessible := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsList) == nil
 
 	// Build user grants (all grants, including expired, for display)
 	userGrants := annotationGrantsToProto(shareUsers)
@@ -592,7 +592,7 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	activeGroups := ActiveGrantsMap(shareGroups, now)
 	projUsers, projGroups := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgGroups := h.resolveOrgGrants(ctx, project)
-	if err := h.checkAccess(claims.Email, claims.Groups, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsRead); err != nil {
+	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeGroups, projUsers, projGroups, orgUsers, orgGroups, rbac.PermissionSecretsRead); err != nil {
 		logAuditDenied(ctx, claims, secret.Name)
 		return nil, err
 	}
@@ -702,7 +702,7 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
-		slog.Any("groups", claims.Groups),
+		slog.Any("groups", claims.Roles),
 	)
 }
 
@@ -714,6 +714,6 @@ func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string) {
 		slog.String("secret", secret),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
-		slog.Any("user_groups", claims.Groups),
+		slog.Any("user_groups", claims.Roles),
 	)
 }

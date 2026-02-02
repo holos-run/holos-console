@@ -30,7 +30,8 @@ var (
 	projectPrefix      string
 	disableOrgCreation bool
 	orgCreatorUsers    string
-	orgCreatorGroups   string
+	orgCreatorRoles    string
+	rolesClaim         string
 	logHealthChecks  bool
 	logLevel         string
 )
@@ -92,7 +93,8 @@ func Command() *cobra.Command {
 	// Organization creation permission flags
 	cmd.Flags().BoolVar(&disableOrgCreation, "disable-org-creation", false, "Disable the implicit organization creation grant to all authenticated principals")
 	cmd.Flags().StringVar(&orgCreatorUsers, "org-creator-users", "", "Comma-separated email addresses allowed to create organizations")
-	cmd.Flags().StringVar(&orgCreatorGroups, "org-creator-groups", "owner", "Comma-separated OIDC group names allowed to create organizations")
+	cmd.Flags().StringVar(&orgCreatorRoles, "org-creator-roles", "owner", "Comma-separated OIDC role names allowed to create organizations")
+	cmd.Flags().StringVar(&rolesClaim, "roles-claim", "groups", "OIDC ID token claim name for role memberships")
 
 	// Logging flags
 	cmd.Flags().BoolVar(&logHealthChecks, "log-health-checks", false, "Log /healthz and /readyz requests (suppressed by default)")
@@ -232,7 +234,8 @@ func Run(cmd *cobra.Command, args []string) error {
 		ProjectPrefix:       projectPrefix,
 		DisableOrgCreation:  disableOrgCreation,
 		OrgCreatorUsers:     splitCSV(orgCreatorUsers),
-		OrgCreatorGroups:    splitCSV(orgCreatorGroups),
+		OrgCreatorRoles:     splitCSV(orgCreatorRoles),
+		RolesClaim:          rolesClaim,
 		LogHealthChecks:     logHealthChecks,
 	}
 

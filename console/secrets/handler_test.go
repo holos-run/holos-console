@@ -116,7 +116,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -200,7 +200,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"developers"},
+			Roles: []string{"developers"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -234,7 +234,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Roles: []string{"admin"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -268,7 +268,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Roles: []string{"admin"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -322,7 +322,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -398,7 +398,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "other@example.com",
-			Groups: []string{"developers"},
+			Roles: []string{"developers"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -469,7 +469,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -525,7 +525,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -565,7 +565,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -593,7 +593,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -621,7 +621,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -668,7 +668,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -714,7 +714,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "other@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -746,7 +746,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -808,7 +808,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -844,7 +844,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -880,7 +880,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"some-other-group"},
+			Roles: []string{"some-other-group"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -913,7 +913,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "platformeditor@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -952,7 +952,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -994,7 +994,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1035,7 +1035,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "other@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1090,7 +1090,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1162,7 +1162,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1197,7 +1197,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1232,7 +1232,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1267,7 +1267,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1322,7 +1322,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1376,7 +1376,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "other@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1428,7 +1428,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "admin",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1490,7 +1490,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1550,7 +1550,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"some-team"},
+			Roles: []string{"some-team"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1633,7 +1633,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"admin"},
+			Roles: []string{"admin"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1675,7 +1675,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "alice@example.com",
-			Groups: []string{},
+			Roles: []string{},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1759,7 +1759,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "bob@example.com",
-			Groups: []string{},
+			Roles: []string{},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1820,7 +1820,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "alice@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1851,7 +1851,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "alice@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1896,7 +1896,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1947,7 +1947,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -1995,7 +1995,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "unauthorized@example.com",
-			Groups: []string{"developers"},
+			Roles: []string{"developers"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2045,7 +2045,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2073,7 +2073,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"viewer"},
+			Roles: []string{"viewer"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2103,7 +2103,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2145,7 +2145,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2196,7 +2196,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2245,7 +2245,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"editor"},
+			Roles: []string{"editor"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2298,7 +2298,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "alice@example.com",
-			Groups: []string{},
+			Roles: []string{},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2351,7 +2351,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-456",
 			Email:  "bob@example.com",
-			Groups: []string{},
+			Roles: []string{},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2405,7 +2405,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		claims := &rpc.Claims{
 			Sub:    "user-123",
 			Email:  "user@example.com",
-			Groups: []string{"owner"},
+			Roles: []string{"owner"},
 		}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
@@ -2445,7 +2445,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
-		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"}))
@@ -2479,7 +2479,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
-		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"}))
@@ -2500,7 +2500,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
-		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		desc := "API key for staging"
@@ -2551,7 +2551,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
-		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		desc := "New description"
@@ -2598,7 +2598,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		k8sClient := NewK8sClient(fakeClient, testResolver())
 		handler := NewProjectScopedHandler(k8sClient, nil, nil)
 
-		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Groups: []string{}}
+		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
 
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{

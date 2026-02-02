@@ -56,7 +56,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 		Email:         email,
 		EmailVerified: true,
 		Name:          email,
-		Groups:        groups,
+		Roles:        groups,
 	}
 	return rpc.ContextWithClaims(context.Background(), claims)
 }
