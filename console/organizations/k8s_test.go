@@ -14,13 +14,13 @@ import (
 )
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{Prefix: "holos-"}
+	return &resolver.Resolver{OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
 }
 
 func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	orgNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -29,7 +29,7 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	}
 	projectNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-p-foo",
+			Name: "prj-foo",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -53,8 +53,8 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	if len(orgs) != 1 {
 		t.Fatalf("expected 1 org, got %d", len(orgs))
 	}
-	if orgs[0].Name != "holos-o-acme" {
-		t.Errorf("expected holos-o-acme, got %s", orgs[0].Name)
+	if orgs[0].Name != "org-acme" {
+		t.Errorf("expected org-acme, got %s", orgs[0].Name)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
 	now := metav1.Now()
 	active := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-active",
+			Name: "org-active",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -72,7 +72,7 @@ func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
 	}
 	terminating := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-terminating",
+			Name: "org-terminating",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -91,8 +91,8 @@ func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
 	if len(orgs) != 1 {
 		t.Fatalf("expected 1 org (excluding terminating), got %d", len(orgs))
 	}
-	if orgs[0].Name != "holos-o-active" {
-		t.Errorf("expected holos-o-active, got %s", orgs[0].Name)
+	if orgs[0].Name != "org-active" {
+		t.Errorf("expected org-active, got %s", orgs[0].Name)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestListOrganizations_EmptyList(t *testing.T) {
 func TestGetOrganization_ReturnsOrgByName(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -130,8 +130,8 @@ func TestGetOrganization_ReturnsOrgByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "holos-o-acme" {
-		t.Errorf("expected namespace holos-o-acme, got %s", result.Name)
+	if result.Name != "org-acme" {
+		t.Errorf("expected namespace org-acme, got %s", result.Name)
 	}
 	if result.Annotations[DisplayNameAnnotation] != "ACME Corp" {
 		t.Errorf("expected display name ACME Corp, got %s", result.Annotations[DisplayNameAnnotation])
@@ -155,7 +155,7 @@ func TestGetOrganization_RejectsNonOrg(t *testing.T) {
 	// Namespace exists but has project resource-type label
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-fake",
+			Name: "org-fake",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -183,8 +183,8 @@ func TestCreateOrganization_CreatesNamespaceWithPrefixAndLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Name != "holos-o-acme" {
-		t.Errorf("expected holos-o-acme, got %s", result.Name)
+	if result.Name != "org-acme" {
+		t.Errorf("expected org-acme, got %s", result.Name)
 	}
 	if result.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
 		t.Error("expected managed-by label")
@@ -220,7 +220,7 @@ func TestCreateOrganization_SetsOrganizationLabel(t *testing.T) {
 func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 	existing := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -242,7 +242,7 @@ func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -276,7 +276,7 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 func TestUpdateOrganization_RejectsUnmanaged(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-fake",
+			Name: "org-fake",
 		},
 	}
 	fakeClient := fake.NewClientset(ns)
@@ -292,7 +292,7 @@ func TestUpdateOrganization_RejectsUnmanaged(t *testing.T) {
 func TestDeleteOrganization_DeletesOrgNamespace(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -306,7 +306,7 @@ func TestDeleteOrganization_DeletesOrgNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-o-acme", metav1.GetOptions{})
+	_, err = fakeClient.CoreV1().Namespaces().Get(context.Background(), "org-acme", metav1.GetOptions{})
 	if !errors.IsNotFound(err) {
 		t.Errorf("expected NotFound after delete, got %v", err)
 	}
@@ -315,7 +315,7 @@ func TestDeleteOrganization_DeletesOrgNamespace(t *testing.T) {
 func TestDeleteOrganization_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-fake",
+			Name: "org-fake",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
@@ -334,7 +334,7 @@ func TestDeleteOrganization_RejectsNonOrg(t *testing.T) {
 func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-acme",
+			Name: "org-acme",
 			Labels: map[string]string{
 				secrets.ManagedByLabel:     secrets.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
@@ -378,7 +378,7 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-o-fake",
+			Name: "org-fake",
 		},
 	}
 	fakeClient := fake.NewClientset(ns)

@@ -7,7 +7,7 @@ const namespaceRaw = JSON.stringify({
   apiVersion: 'v1',
   kind: 'Namespace',
   metadata: {
-    name: 'holos-o-acme',
+    name: 'org-acme',
     uid: 'ns-uid-123',
     resourceVersion: '99999',
     creationTimestamp: '2025-06-01T00:00:00Z',
@@ -63,7 +63,7 @@ describe('RawView', () => {
 
       expect(parsed.apiVersion).toBe('v1')
       expect(parsed.kind).toBe('Namespace')
-      expect(parsed.metadata.name).toBe('holos-o-acme')
+      expect(parsed.metadata.name).toBe('org-acme')
     })
 
     it('strips server-managed metadata fields when includeAllFields is off', () => {

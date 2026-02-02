@@ -290,7 +290,7 @@ describe('ProjectPage', () => {
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
-        metadata: { name: 'holos-p-prod' },
+        metadata: { name: 'prj-prod' },
       })
 
       const transport = createProjectTransport({
@@ -326,7 +326,7 @@ describe('ProjectPage', () => {
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
-        metadata: { name: 'holos-p-prod' },
+        metadata: { name: 'prj-prod' },
       })
 
       const transport = createProjectTransport({

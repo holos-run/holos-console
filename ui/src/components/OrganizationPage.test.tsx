@@ -186,7 +186,7 @@ describe('OrganizationPage', () => {
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
-        metadata: { name: 'holos-o-acme' },
+        metadata: { name: 'org-acme' },
       })
 
       const transport = createOrgTransport({
@@ -221,7 +221,7 @@ describe('OrganizationPage', () => {
       const rawJson = JSON.stringify({
         apiVersion: 'v1',
         kind: 'Namespace',
-        metadata: { name: 'holos-o-acme' },
+        metadata: { name: 'org-acme' },
       })
 
       const transport = createOrgTransport({
