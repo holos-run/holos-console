@@ -84,6 +84,11 @@ type Config struct {
 	// to trust certificates signed by a custom CA such as mkcert.
 	CACertFile string
 
+	// NamespacePrefix is a global prefix prepended to all namespace names,
+	// enabling multiple console instances (e.g., ci, qa, prod) in the same
+	// Kubernetes cluster. Default: "" (empty, no global prefix).
+	NamespacePrefix string
+
 	// OrganizationPrefix is prepended to organization namespace names.
 	// Default: "org-"
 	OrganizationPrefix string
@@ -211,7 +216,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Register services (protected - requires auth)
 	if k8sClientset != nil {
-		nsResolver := &resolver.Resolver{OrganizationPrefix: s.cfg.OrganizationPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		nsResolver := &resolver.Resolver{NamespacePrefix: s.cfg.NamespacePrefix, OrganizationPrefix: s.cfg.OrganizationPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
 		slog.Info("kubernetes client initialized")
 
 		// Organization service (projectsK8s created first for linked-project precondition check)
