@@ -16,6 +16,7 @@ holos-console validates ID tokens using the [go-oidc](https://github.com/coreos/
 5. Verify issuer (iss)
 6. Verify audience (aud)
 7. Extract and validate claims
+8. Extract roles from configured claim
 ```
 
 ## Validation Checks
@@ -72,7 +73,7 @@ The go-oidc library automatically verifies that `exp` (expiration time) has not 
 
 **Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
-**Configuration:** The expected issuer is configured via the `--issuer` CLI flag and passed to `LazyAuthInterceptor` at [console/console.go:129](console/console.go#L129).
+**Configuration:** The expected issuer is configured via the `--issuer` CLI flag and passed to `LazyAuthInterceptor` at [console/console.go:203](console/console.go#L203).
 
 The go-oidc library verifies that the token's `iss` claim exactly matches the configured issuer URL.
 
@@ -83,7 +84,7 @@ The go-oidc library verifies that the token's `iss` claim exactly matches the co
 
 **Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
-**Configuration:** The expected client ID is configured via the `--client-id` CLI flag (default: `holos-console`) and passed to the verifier at [console/rpc/auth.go:42-44](console/rpc/auth.go#L42-L44):
+**Configuration:** The expected client ID is configured via the `--client-id` CLI flag (default: `holos-console`) and passed to the verifier at [console/rpc/auth.go:43-45](console/rpc/auth.go#L43-L45):
 
 ```go
 verifier = provider.Verifier(&oidc.Config{
@@ -98,7 +99,7 @@ The go-oidc library verifies that the token's `aud` claim contains the configure
 
 ### 6. Subject Claim Extraction (sub claim)
 
-**Location:** [console/rpc/auth.go:121-124](console/rpc/auth.go#L121-L124)
+**Location:** [console/rpc/auth.go:132-134](console/rpc/auth.go#L132-L134)
 
 ```go
 if claims.Sub == "" {
@@ -130,9 +131,32 @@ type Claims struct {
     Email         string   `json:"email"`          // User's email
     EmailVerified bool     `json:"email_verified"` // Email verification status
     Name          string   `json:"name"`           // User's full name
-    Groups        []string `json:"groups"`         // Group memberships
+    Roles         []string `json:"groups"`         // Role memberships (from configured OIDC claim)
 }
 ```
+
+### 8. Configurable Roles Claim Extraction
+
+**Location:** [console/rpc/auth.go:121-129](console/rpc/auth.go#L121-L129)
+
+```go
+if rolesClaim != "" && rolesClaim != "groups" {
+    var rawClaims map[string]interface{}
+    if err := idToken.Claims(&rawClaims); err == nil {
+        claims.Roles = ExtractRoles(rawClaims, rolesClaim)
+    }
+}
+```
+
+**Configuration:** The `--roles-claim` CLI flag (default: `"groups"`) configures which OIDC token claim is used for role membership extraction. This allows integration with identity providers that use non-standard claim names (e.g., `realm_roles` for Keycloak).
+
+**Behavior:**
+- When `rolesClaim` is `"groups"` (the default), roles are deserialized directly from the token's `groups` claim via the `json:"groups"` struct tag on `Claims.Roles`.
+- When `rolesClaim` is set to a custom value (e.g., `"realm_roles"`), `extractAndVerifyToken` re-parses the token into a raw `map[string]interface{}` and calls `ExtractRoles()` ([console/rpc/claims.go:25-41](console/rpc/claims.go#L25-L41)) to extract the string array from the specified claim name.
+
+**ExtractRoles helper:** [console/rpc/claims.go:25-41](console/rpc/claims.go#L25-L41)
+
+`ExtractRoles` handles type assertions safely: it returns `nil` if the claim is missing or is not a `[]interface{}`. Non-string elements within the array are silently skipped.
 
 ## OIDC Provider Discovery
 
@@ -185,7 +209,7 @@ holos-console provides three authentication interceptors:
 | `AuthInterceptor` | [auth.go:64-76](console/rpc/auth.go#L64-L76) | Requires valid token; immediate provider required |
 | `OptionalAuthInterceptor` | [auth.go:80-91](console/rpc/auth.go#L80-L91) | Validates if present; allows unauthenticated |
 
-Protected endpoints (e.g., SecretsService) use `LazyAuthInterceptor` configured at [console/console.go:126-130](console/console.go#L126-L130).
+Protected endpoints (e.g., SecretsService) use `LazyAuthInterceptor` configured at [console/console.go:203](console/console.go#L203).
 
 ## Security Considerations
 
