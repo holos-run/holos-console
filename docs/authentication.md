@@ -4,7 +4,7 @@ This document describes the authentication system in holos-console.
 
 ## Overview
 
-holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange) for authentication. The application embeds [Dex](https://dexidp.io/), a CNCF identity provider, directly into the binary for development and simple deployments. For production, you can configure an external OIDC provider.
+holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange) for authentication. The application embeds [Dex](https://dexidp.io/), a CNCF identity provider, which can be enabled for local development via the `--enable-insecure-dex` flag. For production, configure an external OIDC provider.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange)
 │                                                                 │
 │  ┌──────────────────┐      ┌──────────────────────────────────┐ │
 │  │   Embedded Dex   │      │         Console Server           │ │
-│  │                  │      │                                  │ │
+│  │  (opt-in only)   │      │                                  │ │
 │  │  /dex/*          │      │  /ui/*          (React SPA)      │ │
 │  │                  │      │  /api/*         (ConnectRPC)     │ │
 │  │  Auto-Login      │      │  /metrics       (Prometheus)     │ │
@@ -29,7 +29,7 @@ holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange)
 
 ## Embedded Dex Provider
 
-The embedded Dex OIDC provider runs at `/dex/*` and provides:
+The embedded Dex OIDC provider is **disabled by default** and must be explicitly enabled with the `--enable-insecure-dex` flag. When enabled, it runs at `/dex/*` and provides:
 
 - **OIDC Discovery**: `/.well-known/openid-configuration` (under `/dex/`)
 - **Authorization**: `/dex/auth`
@@ -39,7 +39,7 @@ The embedded Dex OIDC provider runs at `/dex/*` and provides:
 
 ### Development Auto-Login
 
-> **IMPORTANT**: The embedded Dex server performs **no authentication** for development convenience. Users are automatically logged in without entering credentials when they click "Login".
+> **WARNING**: The embedded Dex server performs **no authentication**. Users are automatically logged in without entering credentials when they click "Login". Only enable this for local development.
 
 The auto-login connector:
 - Immediately authenticates users without showing a login form
@@ -47,7 +47,17 @@ The auto-login connector:
 - Assigns the user to the `owner` group (full permissions)
 - Is intended for **local development only**
 
-For production deployments, configure an external OIDC provider with proper authentication.
+### Enabling Embedded Dex for Development
+
+```bash
+./holos-console --enable-insecure-dex --cert certs/tls.crt --key certs/tls.key
+```
+
+Or use the Makefile shortcut which includes the flag:
+
+```bash
+make run
+```
 
 ### Customizing the Auto-Login Username
 
@@ -55,7 +65,7 @@ Override via environment variable before starting the server:
 
 ```bash
 export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
-./holos-console --cert-file=... --key-file=...
+./holos-console --enable-insecure-dex --cert certs/tls.crt --key certs/tls.key
 ```
 
 ## Authentication Flow
@@ -72,11 +82,12 @@ export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--issuer` | `https://localhost:8443/dex` | OIDC issuer URL for token validation |
+| `--enable-insecure-dex` | `false` | Enable the built-in Dex OIDC provider with auto-login |
+| `--issuer` | (none) | OIDC issuer URL for token validation |
 | `--client-id` | `holos-console` | Expected audience for tokens |
 | `--listen` | `:8443` | Address to listen on |
-| `--cert-file` | (auto-generated) | TLS certificate file |
-| `--key-file` | (auto-generated) | TLS key file |
+| `--cert` | (auto-generated) | TLS certificate file |
+| `--key` | (auto-generated) | TLS key file |
 | `--id-token-ttl` | `15m` | ID token lifetime |
 | `--refresh-token-ttl` | `12h` | Refresh token absolute lifetime |
 
@@ -88,11 +99,11 @@ For production, configure an external identity provider:
 ./holos-console \
   --issuer=https://dex.example.com \
   --client-id=holos-console \
-  --cert-file=server.crt \
-  --key-file=server.key
+  --cert server.crt \
+  --key server.key
 ```
 
-When `--issuer` points to an external URL, the embedded Dex provider still runs but JWT validation uses the external issuer's OIDC discovery.
+When `--issuer` points to an external URL, JWT validation uses the external issuer's OIDC discovery. The embedded Dex provider is not started unless `--enable-insecure-dex` is also set.
 
 ### External Provider Requirements
 

@@ -112,6 +112,11 @@ type Config struct {
 	// Default: "groups"
 	RolesClaim string
 
+	// EnableInsecureDex starts the built-in Dex OIDC provider with an
+	// auto-login connector that authenticates users without credentials.
+	// INSECURE: intended for local development only.
+	EnableInsecureDex bool
+
 	// LogHealthChecks enables logging of /healthz and /readyz requests.
 	// Default: false (suppresses health check logging to reduce noise from Kubernetes probes).
 	LogHealthChecks bool
@@ -268,8 +273,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectAlphaPath, reflectAlphaHandler)
 
-	// Initialize embedded OIDC identity provider (Dex)
-	if s.cfg.Issuer != "" {
+	// Initialize embedded OIDC identity provider (Dex).
+	// Only started when explicitly enabled via --enable-insecure-dex.
+	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
 		// Derive redirect URIs from origin
 		redirectURI := deriveRedirectURI(s.cfg.Origin)
 
@@ -348,8 +354,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		uiHandler.ServeHTTP(w, r)
 	})
 
-	// Debug endpoint for OIDC investigation (dev mode only)
-	if s.cfg.Issuer != "" {
+	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
+	mux.HandleFunc("/api/userinfo", handleUserInfo)
+
+	// Debug endpoint for OIDC investigation (insecure Dex mode only)
+	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
 		issuer := s.cfg.Issuer
 		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
 			handleDebugOIDC(w, r, issuer, internalClient)
