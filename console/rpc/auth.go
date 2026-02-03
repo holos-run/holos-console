@@ -14,35 +14,41 @@ import (
 // the OIDC verifier on first use. This is needed because the OIDC provider (Dex)
 // may not be running when the interceptor is created. The provided HTTP client
 // is used for OIDC discovery and must trust the issuer's TLS certificate.
+//
+// If OIDC discovery fails, the error is not cached. Subsequent requests retry
+// discovery until it succeeds, at which point the verifier is cached permanently.
 func LazyAuthInterceptor(issuer, clientID, rolesClaim string, client *http.Client) connect.UnaryInterceptorFunc {
 	var (
+		mu       sync.Mutex
 		verifier *oidc.IDTokenVerifier
-		initOnce sync.Once
-		initErr  error
 	)
 
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			// Initialize verifier on first use
-			initOnce.Do(func() {
-				oidcCtx := oidc.ClientContext(ctx, client)
+			// Double-checked locking: fast path avoids the mutex when already initialized.
+			mu.Lock()
+			v := verifier
+			mu.Unlock()
 
-				provider, err := oidc.NewProvider(oidcCtx, issuer)
-				if err != nil {
-					initErr = err
-					return
+			if v == nil {
+				mu.Lock()
+				v = verifier
+				if v == nil {
+					oidcCtx := oidc.ClientContext(ctx, client)
+					provider, err := oidc.NewProvider(oidcCtx, issuer)
+					if err != nil {
+						mu.Unlock()
+						return nil, connect.NewError(connect.CodeUnavailable, err)
+					}
+					v = provider.Verifier(&oidc.Config{
+						ClientID: clientID,
+					})
+					verifier = v
 				}
-
-				verifier = provider.Verifier(&oidc.Config{
-					ClientID: clientID,
-				})
-			})
-
-			if initErr != nil {
-				return nil, connect.NewError(connect.CodeUnavailable, initErr)
+				mu.Unlock()
 			}
 
-			claims, err := extractAndVerifyToken(ctx, req, verifier, rolesClaim)
+			claims, err := extractAndVerifyToken(ctx, req, v, rolesClaim)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeUnauthenticated, err)
 			}
