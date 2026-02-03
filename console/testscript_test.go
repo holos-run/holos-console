@@ -2,7 +2,14 @@ package console_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
@@ -20,18 +27,8 @@ func TestScripts(t *testing.T) {
 		t.Skip("grpcurl not installed")
 	}
 
-	repoRoot, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	repoRoot = filepath.Clean(filepath.Join(repoRoot, ".."))
-
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/scripts",
-		Setup: func(env *testscript.Env) error {
-			env.Setenv("REPO", repoRoot)
-			return nil
-		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 			"startserver": startServer,
 		},
@@ -46,29 +43,35 @@ func startServer(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: startserver")
 	}
 
-	repoRoot := ts.Getenv("REPO")
-	if repoRoot == "" {
-		ts.Fatalf("REPO environment variable not set")
-	}
-
 	addr, err := freeAddr()
 	if err != nil {
 		ts.Fatalf("allocate server address: %v", err)
 	}
 
-	certPath := filepath.Join(repoRoot, "certs", "tls.crt")
-	keyPath := filepath.Join(repoRoot, "certs", "tls.key")
-
-	// Locate mkcert CA root for TLS verification
-	home, err := os.UserHomeDir()
+	// Generate CA and server certificates programmatically.
+	workDir := ts.Getenv("WORK")
+	caCertPEM, caKey, err := generateTestCA()
 	if err != nil {
-		ts.Fatalf("user home dir: %v", err)
+		ts.Fatalf("generate test CA: %v", err)
 	}
-	caRoot := os.Getenv("MKCERT_CAROOT")
-	if caRoot == "" {
-		caRoot = filepath.Join(home, ".local", "share", "mkcert")
+	certPEM, keyPEM, err := generateTestServerCert(caCertPEM, caKey)
+	if err != nil {
+		ts.Fatalf("generate test server cert: %v", err)
 	}
-	caCertPath := filepath.Join(caRoot, "rootCA.pem")
+
+	caCertPath := filepath.Join(workDir, "ca.pem")
+	certPath := filepath.Join(workDir, "tls.crt")
+	keyPath := filepath.Join(workDir, "tls.key")
+
+	if err := os.WriteFile(caCertPath, caCertPEM, 0600); err != nil {
+		ts.Fatalf("write CA cert: %v", err)
+	}
+	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+		ts.Fatalf("write server cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		ts.Fatalf("write server key: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	server := console.New(console.Config{
@@ -101,6 +104,86 @@ func startServer(ts *testscript.TestScript, neg bool, args []string) {
 	}
 
 	ts.Setenv("SERVER_ADDR", addr)
+}
+
+// generateTestCA creates a self-signed CA certificate and returns the
+// PEM-encoded certificate, the CA private key, and any error.
+func generateTestCA() (caCertPEM []byte, caKey *ecdsa.PrivateKey, err error) {
+	caKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{Organization: []string{"Test CA"}},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(1 * time.Hour),
+		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:         true,
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &caKey.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	caCertPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	return caCertPEM, caKey, nil
+}
+
+// generateTestServerCert creates a server certificate signed by the given CA,
+// valid for 127.0.0.1 and localhost. Returns PEM-encoded cert and key.
+func generateTestServerCert(caCertPEM []byte, caKey *ecdsa.PrivateKey) (certPEM, keyPEM []byte, err error) {
+	block, _ := pem.Decode(caCertPEM)
+	if block == nil {
+		return nil, nil, errors.New("failed to decode CA cert PEM")
+	}
+	caCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{Organization: []string{"Test Server"}},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(1 * time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &serverKey.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serverKeyBytes, err := x509.MarshalECPrivateKey(serverKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: serverKeyBytes})
+	return certPEM, keyPEM, nil
 }
 
 func freeAddr() (string, error) {
