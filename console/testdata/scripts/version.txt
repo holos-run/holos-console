@@ -1,0 +1,3 @@
+startserver
+exec grpcurl -cacert $WORK/ca.pem $SERVER_ADDR holos.console.v1.VersionService.GetVersion
+stdout '"version":'
