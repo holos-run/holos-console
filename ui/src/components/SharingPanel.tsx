@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  Alert,
   Box,
   Button,
   IconButton,
@@ -88,14 +89,17 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
   const [editing, setEditing] = useState(false)
   const [editUserGrants, setEditUserGrants] = useState<Grant[]>([])
   const [editRoleGrants, setEditRoleGrants] = useState<Grant[]>([])
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleEdit = () => {
     setEditUserGrants(userGrants.map((g) => ({ ...g })))
     setEditRoleGrants(roleGrants.map((g) => ({ ...g })))
+    setSaveError(null)
     setEditing(true)
   }
 
   const handleCancel = () => {
+    setSaveError(null)
     setEditing(false)
   }
 
@@ -103,8 +107,12 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
     // Filter out empty principals
     const users = editUserGrants.filter((g) => g.principal.trim() !== '')
     const roles = editRoleGrants.filter((g) => g.principal.trim() !== '')
-    await onSave(users, roles)
-    setEditing(false)
+    try {
+      await onSave(users, roles)
+      setEditing(false)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+    }
   }
 
   const handleAddUser = () => {
@@ -296,6 +304,12 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
       <Button size="small" onClick={handleAddRole} sx={{ mt: 1 }}>
         Add Role
       </Button>
+
+      {saveError && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {saveError}
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
         <Button variant="contained" size="small" onClick={handleSave} disabled={isSaving}>

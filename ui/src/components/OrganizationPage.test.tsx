@@ -303,7 +303,7 @@ describe('OrganizationPage', () => {
                 description: '',
                 userRole: Role.OWNER,
                 userGrants: [{ principal: 'test@example.com', role: Role.OWNER }],
-                groupGrants: [],
+                roleGrants: [],
               }),
             }),
           deleteOrganization: () => create(DeleteOrganizationResponseSchema),
@@ -322,8 +322,11 @@ describe('OrganizationPage', () => {
         expect(screen.getByText('ACME Corp')).toBeInTheDocument()
       })
 
-      // Enter edit mode and save
-      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      // Enter edit mode via the SharingPanel Edit button (not the icon buttons for display name/description)
+      const editButtons = screen.getAllByRole('button', { name: /edit/i })
+      // The SharingPanel Edit button is the text button, not the icon buttons
+      const sharingEditButton = editButtons.find((btn) => btn.textContent === 'Edit')
+      fireEvent.click(sharingEditButton!)
       fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       // Should show error alert in the SharingPanel

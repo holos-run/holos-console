@@ -331,7 +331,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={onSave}
           isSaving={false}
@@ -357,7 +357,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={onSave}
           isSaving={false}

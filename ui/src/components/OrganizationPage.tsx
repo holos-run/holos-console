@@ -116,17 +116,13 @@ export function OrganizationPage() {
 
   const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     if (!name) return
-    try {
-      const response = await updateSharingMutation.mutateAsync({
-        name,
-        userGrants: newUserGrants,
-        roleGrants: newRoleGrants,
-      })
-      if (response.organization) {
-        setLocalOrganization(response.organization)
-      }
-    } catch {
-      // Error handling could be added here
+    const response = await updateSharingMutation.mutateAsync({
+      name,
+      userGrants: newUserGrants,
+      roleGrants: newRoleGrants,
+    })
+    if (response.organization) {
+      setLocalOrganization(response.organization)
     }
   }
 

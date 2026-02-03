@@ -114,17 +114,13 @@ export function ProjectPage() {
 
   const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     if (!name) return
-    try {
-      const response = await updateSharingMutation.mutateAsync({
-        name,
-        userGrants: newUserGrants,
-        roleGrants: newRoleGrants,
-      })
-      if (response.project) {
-        setLocalProject(response.project)
-      }
-    } catch {
-      // Error handling could be added here
+    const response = await updateSharingMutation.mutateAsync({
+      name,
+      userGrants: newUserGrants,
+      roleGrants: newRoleGrants,
+    })
+    if (response.project) {
+      setLocalProject(response.project)
     }
   }
 
