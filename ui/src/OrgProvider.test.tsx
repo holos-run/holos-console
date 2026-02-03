@@ -16,8 +16,6 @@ import {
 function createAuthContext(overrides: Partial<AuthContextValue> = {}): AuthContextValue {
   return {
     user: null,
-    bffUser: null,
-    isBFF: false,
     isLoading: false,
     error: null,
     isAuthenticated: false,

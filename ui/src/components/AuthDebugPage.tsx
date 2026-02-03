@@ -22,8 +22,6 @@ export function AuthDebugPage() {
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const {
     user,
-    bffUser,
-    isBFF,
     isAuthenticated,
     isLoading,
     refreshTokens,
@@ -38,7 +36,7 @@ export function AuthDebugPage() {
 
   // Calculate time remaining on ID token
   useEffect(() => {
-    if (isBFF || !user?.expires_at) {
+    if (!user?.expires_at) {
       setTimeRemaining(null)
       return
     }
@@ -52,7 +50,7 @@ export function AuthDebugPage() {
     updateTimeRemaining()
     const interval = setInterval(updateTimeRemaining, 1000)
     return () => clearInterval(interval)
-  }, [isBFF, user?.expires_at])
+  }, [user?.expires_at])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -72,60 +70,6 @@ export function AuthDebugPage() {
           <Typography variant="body2">Loading...</Typography>
         </CardContent>
       </Card>
-    )
-  }
-
-  // BFF Mode UI
-  if (isBFF) {
-    return (
-      <Stack spacing={3}>
-        <Card variant="outlined">
-          <CardContent>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Profile</Typography>
-              <Chip label="BFF Mode" color="info" size="small" />
-            </Stack>
-
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Authentication is handled by oauth2-proxy. Tokens are managed
-              server-side and are not accessible to the frontend.
-            </Alert>
-
-            {isAuthenticated && bffUser ? (
-              <Stack spacing={1.5}>
-                <Box>
-                  <Typography variant="overline" display="block">
-                    User
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
-                    {bffUser.user}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="overline" display="block">
-                    Email
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
-                    {bffUser.email}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="overline" display="block">
-                    Roles
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
-                    {bffUser.roles?.length ? bffUser.roles.join(', ') : 'None'}
-                  </Typography>
-                </Box>
-              </Stack>
-            ) : (
-              <Button variant="contained" onClick={() => login(location.pathname)}>
-                Sign In
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      </Stack>
     )
   }
 

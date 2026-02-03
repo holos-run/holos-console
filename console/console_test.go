@@ -56,6 +56,26 @@ func TestLogRequests_HealthCheck_Logged(t *testing.T) {
 	}
 }
 
+func TestHandleUserInfo_Removed(t *testing.T) {
+	// The /api/userinfo endpoint (FINDING-02) trusted X-Forwarded-* headers
+	// without validation. It has been removed as part of reversing ADR 002.
+	// This test verifies the handleUserInfo function no longer exists by
+	// confirming the endpoint is not registered.
+	mux := http.NewServeMux()
+	// If handleUserInfo were still registered, GET /api/userinfo with
+	// X-Forwarded-User would return 200. After removal, the default mux
+	// returns 404.
+	req := httptest.NewRequest(http.MethodGet, "/api/userinfo", nil)
+	req.Header.Set("X-Forwarded-User", "attacker")
+	req.Header.Set("X-Forwarded-Email", "attacker@example.com")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected /api/userinfo to return 404 (removed), got %d", rec.Code)
+	}
+}
+
 func TestLogRequests_NonHealthPath_AlwaysLogged(t *testing.T) {
 	// Non-health paths should always be logged regardless of LogHealthChecks.
 	var buf bytes.Buffer

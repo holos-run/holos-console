@@ -1,6 +1,6 @@
 export { AuthProvider, AuthContext } from './AuthProvider'
-export type { AuthContextValue, BFFUser } from './AuthProvider'
+export type { AuthContextValue } from './AuthProvider'
 export { useAuth } from './useAuth'
 export { getUserManager } from './userManager'
-export { getOIDCSettings, isBFFMode, BFF_ENDPOINTS } from './config'
+export { getOIDCSettings } from './config'
 export { PKCEVerify } from './PKCEVerify'
