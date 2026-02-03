@@ -24,7 +24,7 @@ const auditResourceType = "project"
 
 // OrgResolver resolves organization-level grants for access checks.
 type OrgResolver interface {
-	GetOrgGrants(ctx context.Context, org string) (shareUsers, shareGroups map[string]string, err error)
+	GetOrgGrants(ctx context.Context, org string) (users, roles map[string]string, err error)
 }
 
 // Handler implements the ProjectService.
@@ -58,20 +58,20 @@ func (h *Handler) ListProjects(
 	var result []*consolev1.Project
 	for _, ns := range allProjects {
 		shareUsers, _ := GetShareUsers(ns)
-		shareGroups, _ := GetShareGroups(ns)
+		shareRoles, _ := GetShareRoles(ns)
 		activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-		activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+		activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
 		// Check project-level grants first, then fall back to org grants
-		if err := CheckProjectListAccess(claims.Email, claims.Groups, activeUsers, activeGroups); err != nil {
-			orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-			if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsList); err != nil {
+		if err := CheckProjectListAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
+			orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+			if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsList); err != nil {
 				continue
 			}
 		}
 
-		userRole := h.bestRoleWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, ns)
-		result = append(result, h.buildProject(ns, shareUsers, shareGroups, userRole))
+		userRole := h.bestRoleWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, ns)
+		result = append(result, h.buildProject(ns, shareUsers, shareRoles, userRole))
 	}
 
 	slog.InfoContext(ctx, "projects listed",
@@ -107,13 +107,13 @@ func (h *Handler) GetProject(
 	}
 
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsRead); err != nil {
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsRead); err != nil {
 		slog.WarnContext(ctx, "project access denied",
 			slog.String("action", "project_read_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -124,7 +124,7 @@ func (h *Handler) GetProject(
 		return nil, err
 	}
 
-	userRole := h.bestRoleWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, ns)
+	userRole := h.bestRoleWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, ns)
 
 	slog.InfoContext(ctx, "project accessed",
 		slog.String("action", "project_read"),
@@ -135,7 +135,7 @@ func (h *Handler) GetProject(
 	)
 
 	return connect.NewResponse(&consolev1.GetProjectResponse{
-		Project: h.buildProject(ns, shareUsers, shareGroups, userRole),
+		Project: h.buildProject(ns, shareUsers, shareRoles, userRole),
 	}), nil
 }
 
@@ -159,10 +159,10 @@ func (h *Handler) CreateProject(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-	if err := CheckProjectCreateAccess(claims.Email, claims.Groups, allProjects); err != nil {
+	if err := CheckProjectCreateAccess(claims.Email, claims.Roles, allProjects); err != nil {
 		// Fall back to org-level grants for create permission
-		orgUsers, orgGroups := h.resolveOrgGrants(ctx, req.Msg.Organization)
-		if err := rbac.CheckAccessGrants(claims.Email, claims.Groups, orgUsers, orgGroups, rbac.PermissionProjectsCreate); err != nil {
+		orgUsers, orgRoles := h.resolveOrgGrants(ctx, req.Msg.Organization)
+		if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, orgUsers, orgRoles, rbac.PermissionProjectsCreate); err != nil {
 			slog.WarnContext(ctx, "project create denied",
 				slog.String("action", "project_create_denied"),
 				slog.String("resource_type", auditResourceType),
@@ -176,12 +176,12 @@ func (h *Handler) CreateProject(
 
 	// Convert proto grants to annotation grants
 	shareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
-	shareGroups := shareGrantsToAnnotations(req.Msg.GroupGrants)
+	shareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, shareUsers, shareGroups)
+	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, shareUsers, shareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -219,13 +219,13 @@ func (h *Handler) UpdateProject(
 	}
 
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsWrite); err != nil {
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsWrite); err != nil {
 		slog.WarnContext(ctx, "project update denied",
 			slog.String("action", "project_update_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -271,13 +271,13 @@ func (h *Handler) DeleteProject(
 	}
 
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsDelete); err != nil {
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsDelete); err != nil {
 		slog.WarnContext(ctx, "project delete denied",
 			slog.String("action", "project_delete_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -323,13 +323,13 @@ func (h *Handler) UpdateProjectSharing(
 	}
 
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsAdmin); err != nil {
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsAdmin); err != nil {
 		slog.WarnContext(ctx, "project sharing update denied",
 			slog.String("action", "project_sharing_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -341,9 +341,9 @@ func (h *Handler) UpdateProjectSharing(
 	}
 
 	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
-	newShareGroups := shareGrantsToAnnotations(req.Msg.GroupGrants)
+	newShareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
-	updated, err := h.k8s.UpdateProjectSharing(ctx, req.Msg.Name, newShareUsers, newShareGroups)
+	updated, err := h.k8s.UpdateProjectSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -357,13 +357,13 @@ func (h *Handler) UpdateProjectSharing(
 	)
 
 	updatedUsers, _ := GetShareUsers(updated)
-	updatedGroups, _ := GetShareGroups(updated)
+	updatedRoles, _ := GetShareRoles(updated)
 	updatedActiveUsers := secrets.ActiveGrantsMap(updatedUsers, now)
-	updatedActiveGroups := secrets.ActiveGrantsMap(updatedGroups, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Groups, updatedActiveUsers, updatedActiveGroups)
+	updatedActiveGroups := secrets.ActiveGrantsMap(updatedRoles, now)
+	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveGroups)
 
 	return connect.NewResponse(&consolev1.UpdateProjectSharingResponse{
-		Project: h.buildProject(updated, updatedUsers, updatedGroups, userRole),
+		Project: h.buildProject(updated, updatedUsers, updatedRoles, userRole),
 	}), nil
 }
 
@@ -387,13 +387,13 @@ func (h *Handler) GetProjectRaw(
 	}
 
 	shareUsers, _ := GetShareUsers(ns)
-	shareGroups, _ := GetShareGroups(ns)
+	shareRoles, _ := GetShareRoles(ns)
 	now := time.Now()
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeGroups := secrets.ActiveGrantsMap(shareGroups, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgGroups := h.resolveOrgGrants(ctx, GetOrganization(ns))
-	if err := h.checkAccessWithOrg(claims.Email, claims.Groups, activeUsers, activeGroups, orgUsers, orgGroups, rbac.PermissionProjectsRead); err != nil {
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsRead); err != nil {
 		slog.WarnContext(ctx, "project raw access denied",
 			slog.String("action", "project_raw_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -427,10 +427,10 @@ func (h *Handler) GetProjectRaw(
 }
 
 // buildProject creates a Project proto message from a namespace.
-func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, shareGroups []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
+func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
 	p := &consolev1.Project{
 		UserGrants:  annotationGrantsToProto(shareUsers),
-		GroupGrants: annotationGrantsToProto(shareGroups),
+		RoleGrants: annotationGrantsToProto(shareRoles),
 		UserRole:    consolev1.Role(userRole),
 	}
 
@@ -482,7 +482,7 @@ func (h *Handler) resolveOrgGrants(ctx context.Context, org string) (map[string]
 	if h.orgResolver == nil || org == "" {
 		return nil, nil
 	}
-	users, groups, err := h.orgResolver.GetOrgGrants(ctx, org)
+	users, roles, err := h.orgResolver.GetOrgGrants(ctx, org)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to resolve org grants",
 			slog.String("organization", org),
@@ -490,25 +490,25 @@ func (h *Handler) resolveOrgGrants(ctx context.Context, org string) (map[string]
 		)
 		return nil, nil
 	}
-	return users, groups
+	return users, roles
 }
 
 // checkAccessWithOrg checks project-level grants first, then org-level grants.
 // Org grants use scope-aware cascade: org grants never authorize project operations.
 func (h *Handler) checkAccessWithOrg(
 	email string,
-	groups []string,
-	projUsers, projGroups map[string]string,
-	orgUsers, orgGroups map[string]string,
+	roles []string,
+	projUsers, projRoles map[string]string,
+	orgUsers, orgRoles map[string]string,
 	permission rbac.Permission,
 ) error {
 	// 1. Check project grants (full permission)
-	if err := rbac.CheckAccessGrants(email, groups, projUsers, projGroups, permission); err == nil {
+	if err := rbac.CheckAccessGrants(email, roles, projUsers, projRoles, permission); err == nil {
 		return nil
 	}
 	// 2. Check org grants (role-per-scope cascade table)
-	if orgUsers != nil || orgGroups != nil {
-		if err := rbac.CheckCascadeAccess(email, groups, orgUsers, orgGroups, permission, rbac.OrgCascadeProjectPerms); err == nil {
+	if orgUsers != nil || orgRoles != nil {
+		if err := rbac.CheckCascadeAccess(email, roles, orgUsers, orgRoles, permission, rbac.OrgCascadeProjectPerms); err == nil {
 			return nil
 		}
 	}
@@ -516,10 +516,10 @@ func (h *Handler) checkAccessWithOrg(
 }
 
 // bestRoleWithOrg returns the best role from project grants and org grants.
-func (h *Handler) bestRoleWithOrg(email string, groups []string, projUsers, projGroups map[string]string, ns *corev1.Namespace) rbac.Role {
-	projRole := rbac.BestRoleFromGrants(email, groups, projUsers, projGroups)
-	orgUsers, orgGroups := h.resolveOrgGrants(context.Background(), GetOrganization(ns))
-	orgRole := rbac.BestRoleFromGrants(email, groups, orgUsers, orgGroups)
+func (h *Handler) bestRoleWithOrg(email string, roles []string, projUsers, projRoles map[string]string, ns *corev1.Namespace) rbac.Role {
+	projRole := rbac.BestRoleFromGrants(email, roles, projUsers, projRoles)
+	orgUsers, orgRoles := h.resolveOrgGrants(context.Background(), GetOrganization(ns))
+	orgRole := rbac.BestRoleFromGrants(email, roles, orgUsers, orgRoles)
 	if rbac.RoleLevel(orgRole) > rbac.RoleLevel(projRole) {
 		return orgRole
 	}

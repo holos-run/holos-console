@@ -141,14 +141,25 @@ func TestDefaultNamespacePrefix(t *testing.T) {
 	}
 }
 
-func TestDefaultOrgCreatorGroups(t *testing.T) {
+func TestDefaultOrgCreatorRoles(t *testing.T) {
 	cmd := Command()
-	f := cmd.Flags().Lookup("org-creator-groups")
+	f := cmd.Flags().Lookup("org-creator-roles")
 	if f == nil {
-		t.Fatal("--org-creator-groups flag not found")
+		t.Fatal("--org-creator-roles flag not found")
 	}
 	if got := f.DefValue; got != "owner" {
-		t.Errorf("default org-creator-groups = %q, want %q", got, "owner")
+		t.Errorf("default org-creator-roles = %q, want %q", got, "owner")
+	}
+}
+
+func TestDefaultRolesClaim(t *testing.T) {
+	cmd := Command()
+	f := cmd.Flags().Lookup("roles-claim")
+	if f == nil {
+		t.Fatal("--roles-claim flag not found")
+	}
+	if got := f.DefValue; got != "groups" {
+		t.Errorf("default roles-claim = %q, want %q", got, "groups")
 	}
 }
 

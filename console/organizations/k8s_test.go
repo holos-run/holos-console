@@ -341,7 +341,7 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 			},
 			Annotations: map[string]string{
 				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,
-				secrets.ShareGroupsAnnotation: `[]`,
+				secrets.ShareRolesAnnotation: `[]`,
 			},
 		},
 	}
@@ -366,12 +366,12 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 	if len(users) != 2 {
 		t.Fatalf("expected 2 user grants, got %d", len(users))
 	}
-	groups, err := GetShareGroups(result)
+	groups, err := GetShareRoles(result)
 	if err != nil {
-		t.Fatalf("failed to parse share-groups: %v", err)
+		t.Fatalf("failed to parse share-roles: %v", err)
 	}
 	if len(groups) != 1 {
-		t.Fatalf("expected 1 group grant, got %d", len(groups))
+		t.Fatalf("expected 1 role grant, got %d", len(groups))
 	}
 }
 

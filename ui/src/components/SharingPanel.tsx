@@ -26,9 +26,9 @@ export interface Grant {
 
 export interface SharingPanelProps {
   userGrants: Grant[]
-  groupGrants: Grant[]
+  roleGrants: Grant[]
   isOwner: boolean
-  onSave: (userGrants: Grant[], groupGrants: Grant[]) => Promise<void>
+  onSave: (userGrants: Grant[], roleGrants: Grant[]) => Promise<void>
   isSaving: boolean
 }
 
@@ -82,16 +82,16 @@ function datetimeLocalToTimestamp(value: string): bigint | undefined {
   return BigInt(Math.floor(d.getTime() / 1000))
 }
 
-export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSaving }: SharingPanelProps) {
+export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving }: SharingPanelProps) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [editing, setEditing] = useState(false)
   const [editUserGrants, setEditUserGrants] = useState<Grant[]>([])
-  const [editGroupGrants, setEditGroupGrants] = useState<Grant[]>([])
+  const [editRoleGrants, setEditRoleGrants] = useState<Grant[]>([])
 
   const handleEdit = () => {
     setEditUserGrants(userGrants.map((g) => ({ ...g })))
-    setEditGroupGrants(groupGrants.map((g) => ({ ...g })))
+    setEditRoleGrants(roleGrants.map((g) => ({ ...g })))
     setEditing(true)
   }
 
@@ -102,8 +102,8 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
   const handleSave = async () => {
     // Filter out empty principals
     const users = editUserGrants.filter((g) => g.principal.trim() !== '')
-    const groups = editGroupGrants.filter((g) => g.principal.trim() !== '')
-    await onSave(users, groups)
+    const roles = editRoleGrants.filter((g) => g.principal.trim() !== '')
+    await onSave(users, roles)
     setEditing(false)
   }
 
@@ -111,16 +111,16 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
     setEditUserGrants([...editUserGrants, { principal: '', role: Role.VIEWER }])
   }
 
-  const handleAddGroup = () => {
-    setEditGroupGrants([...editGroupGrants, { principal: '', role: Role.VIEWER }])
+  const handleAddRole = () => {
+    setEditRoleGrants([...editRoleGrants, { principal: '', role: Role.VIEWER }])
   }
 
   const handleRemoveUser = (index: number) => {
     setEditUserGrants(editUserGrants.filter((_, i) => i !== index))
   }
 
-  const handleRemoveGroup = (index: number) => {
-    setEditGroupGrants(editGroupGrants.filter((_, i) => i !== index))
+  const handleRemoveRole = (index: number) => {
+    setEditRoleGrants(editRoleGrants.filter((_, i) => i !== index))
   }
 
   const handleUserChange = (index: number, field: keyof Grant, value: string | Role | bigint | undefined) => {
@@ -129,13 +129,13 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
     setEditUserGrants(updated)
   }
 
-  const handleGroupChange = (index: number, field: keyof Grant, value: string | Role | bigint | undefined) => {
-    const updated = [...editGroupGrants]
+  const handleRoleChange = (index: number, field: keyof Grant, value: string | Role | bigint | undefined) => {
+    const updated = [...editRoleGrants]
     updated[index] = { ...updated[index], [field]: value }
-    setEditGroupGrants(updated)
+    setEditRoleGrants(updated)
   }
 
-  const hasGrants = userGrants.length > 0 || groupGrants.length > 0
+  const hasGrants = userGrants.length > 0 || roleGrants.length > 0
 
   if (!editing) {
     return (
@@ -168,13 +168,13 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
                 </List>
               </>
             )}
-            {groupGrants.length > 0 && (
+            {roleGrants.length > 0 && (
               <>
                 <Typography variant="caption" color="text.secondary">
-                  Groups
+                  Roles
                 </Typography>
                 <List dense>
-                  {groupGrants.map((g) => (
+                  {roleGrants.map((g) => (
                     <ListItem key={g.principal} disablePadding>
                       <ListItemText primary={g.principal} secondary={grantSecondary(g.role, g.nbf, g.exp)} />
                     </ListItem>
@@ -246,28 +246,28 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
       </Button>
 
       <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-        Groups
+        Roles
       </Typography>
-      {editGroupGrants.map((g, i) => (
+      {editRoleGrants.map((g, i) => (
         <Stack key={i} spacing={1} sx={{ mt: 1 }}>
           <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
             <TextField
               size="small"
-              placeholder="Group name"
+              placeholder="Role name"
               value={g.principal}
-              onChange={(e) => handleGroupChange(i, 'principal', e.target.value)}
+              onChange={(e) => handleRoleChange(i, 'principal', e.target.value)}
               sx={{ flex: 1 }}
             />
             <Select
               size="small"
               value={g.role}
-              onChange={(e) => handleGroupChange(i, 'role', e.target.value as Role)}
+              onChange={(e) => handleRoleChange(i, 'role', e.target.value as Role)}
             >
               <MenuItem value={Role.VIEWER}>Viewer</MenuItem>
               <MenuItem value={Role.EDITOR}>Editor</MenuItem>
               <MenuItem value={Role.OWNER}>Owner</MenuItem>
             </Select>
-            <IconButton size="small" aria-label="remove" onClick={() => handleRemoveGroup(i)}>
+            <IconButton size="small" aria-label="remove" onClick={() => handleRemoveRole(i)}>
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Stack>
@@ -277,7 +277,7 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
               label="Not before"
               type="datetime-local"
               value={timestampToDatetimeLocal(g.nbf)}
-              onChange={(e) => handleGroupChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
+              onChange={(e) => handleRoleChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ flex: 1 }}
             />
@@ -286,15 +286,15 @@ export function SharingPanel({ userGrants, groupGrants, isOwner, onSave, isSavin
               label="Expires"
               type="datetime-local"
               value={timestampToDatetimeLocal(g.exp)}
-              onChange={(e) => handleGroupChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
+              onChange={(e) => handleRoleChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ flex: 1 }}
             />
           </Stack>
         </Stack>
       ))}
-      <Button size="small" onClick={handleAddGroup} sx={{ mt: 1 }}>
-        Add Group
+      <Button size="small" onClick={handleAddRole} sx={{ mt: 1 }}>
+        Add Role
       </Button>
 
       <Stack direction="row" spacing={1} sx={{ mt: 2 }}>

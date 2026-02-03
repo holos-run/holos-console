@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+This code is not yet released. Do not preserve backwards compatibility when making changes.
+
 Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 
 ## Before Committing
@@ -139,7 +141,7 @@ Three-tier access control model evaluated in order (highest role wins):
 2. **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (prefix configurable via `--project-prefix`, default `prj-`)
 3. **Secret-level**: Per-secret grants stored as JSON annotations on K8s Secret objects
 
-Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-groups`
+Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-roles`
 
 Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{name}`):
 - Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)
@@ -147,7 +149,9 @@ Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{nam
 
 The `--namespace-prefix` flag (default `"holos-"`) prefixes all console-managed namespace names, enabling multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
 
-Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-groups` CLI flags. By default all authenticated principals can create organizations (implicit grant). Setting `--disable-org-creation` disables this implicit grant; explicit `--org-creator-users` and `--org-creator-groups` lists are still honored.
+Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-roles` CLI flags. By default all authenticated principals can create organizations (implicit grant). Setting `--disable-org-creation` disables this implicit grant; explicit `--org-creator-users` and `--org-creator-roles` lists are still honored.
+
+The `--roles-claim` flag (default `"groups"`) configures which OIDC token claim is used to extract role memberships. This allows integration with identity providers that use non-standard claim names (e.g., `realm_roles`).
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 

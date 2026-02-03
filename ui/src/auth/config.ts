@@ -76,7 +76,7 @@ export function getOIDCSettings(): UserManagerSettings {
     response_type: 'code',
 
     // Request openid, profile, email, groups, and offline_access scopes
-    // groups scope requests group memberships from the identity provider
+    // groups scope requests role memberships from the identity provider
     // offline_access requests a refresh token for silent renewal
     scope: 'openid profile email groups offline_access',
 

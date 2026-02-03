@@ -114,13 +114,13 @@ export function OrganizationPage() {
     }
   }
 
-  const handleSaveSharing = async (newUserGrants: Grant[], newGroupGrants: Grant[]) => {
+  const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     if (!name) return
     try {
       const response = await updateSharingMutation.mutateAsync({
         name,
         userGrants: newUserGrants,
-        groupGrants: newGroupGrants,
+        roleGrants: newRoleGrants,
       })
       if (response.organization) {
         setLocalOrganization(response.organization)
@@ -368,7 +368,7 @@ export function OrganizationPage() {
         {/* Sharing */}
         <SharingPanel
           userGrants={(localOrganization ?? effectiveOrg).userGrants}
-          groupGrants={(localOrganization ?? effectiveOrg).groupGrants}
+          roleGrants={(localOrganization ?? effectiveOrg).roleGrants}
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={updateSharingMutation.isPending}

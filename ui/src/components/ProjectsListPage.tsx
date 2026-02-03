@@ -123,7 +123,7 @@ export function ProjectsListPage() {
         description: createDescription.trim(),
         organization: effectiveOrg,
         userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
-        groupGrants: [],
+        roleGrants: [],
       })
 
       setCreateOpen(false)

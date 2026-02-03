@@ -402,7 +402,7 @@ func TestCheckCascadeAccess(t *testing.T) {
 			ProjectCascadeSecretPerms,
 		)
 		if err != nil {
-			t.Errorf("expected access granted via group cascade, got: %v", err)
+			t.Errorf("expected access granted via role cascade, got: %v", err)
 		}
 	})
 
@@ -472,7 +472,7 @@ func TestCheckAccessGrants(t *testing.T) {
 			PermissionProjectsWrite,
 		)
 		if err != nil {
-			t.Errorf("expected access granted via group, got: %v", err)
+			t.Errorf("expected access granted via role, got: %v", err)
 		}
 	})
 

@@ -14,7 +14,7 @@ Organization creation is controlled by CLI flags rather than grant-based authori
 
 - `--disable-org-creation`: Disables the implicit grant that allows all authenticated principals to create organizations. Explicit creator lists are still honored when this flag is set.
 - `--org-creator-users`: Comma-separated email addresses allowed to create organizations
-- `--org-creator-groups`: Comma-separated OIDC group names allowed to create organizations
+- `--org-creator-roles`: Comma-separated OIDC role names allowed to create organizations
 
 The creator is automatically added as owner on the new organization.
 
@@ -86,13 +86,13 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 | Annotation | Format | Description |
 |---|---|---|
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
-| `console.holos.run/share-groups` | `[{"principal":"group","role":"role","nbf":ts,"exp":ts}]` | Per-group grants |
+| `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
 
 Each grant is a JSON object with:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `principal` | string | yes | Email address (users) or OIDC group name (groups) |
+| `principal` | string | yes | Email address (users) or OIDC role name (roles) |
 | `role` | string | yes | One of `viewer`, `editor`, `owner` |
 | `nbf` | int64 | no | Unix timestamp before which the grant is inactive |
 | `exp` | int64 | no | Unix timestamp at or after which the grant is inactive |
@@ -123,7 +123,7 @@ Parent grants do **not** implicitly grant full access to child resources:
 
 `PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization (checked via a separate authorization path, not cascade).
 
-Organization creation is controlled by CLI flags (`--disable-org-creation`, `--org-creator-users`, `--org-creator-groups`), not by grant-based authorization.
+Organization creation is controlled by CLI flags (`--disable-org-creation`, `--org-creator-users`, `--org-creator-roles`), not by grant-based authorization.
 
 ## Example: Organization with Project and Secrets
 
@@ -139,7 +139,7 @@ metadata:
   annotations:
     console.holos.run/display-name: "My Organization"
     console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
-    console.holos.run/share-groups: '[{"principal":"dev-team","role":"editor"}]'
+    console.holos.run/share-roles: '[{"principal":"dev-team","role":"editor"}]'
 ---
 # Project namespace (optionally associated with the organization)
 apiVersion: v1

@@ -34,7 +34,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER), grant('bob@example.com', Role.VIEWER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -45,11 +45,11 @@ describe('SharingPanel', () => {
       expect(screen.getByText('bob@example.com')).toBeInTheDocument()
     })
 
-    it('renders group grants', () => {
+    it('renders role grants', () => {
       render(
         <SharingPanel
           userGrants={[]}
-          groupGrants={[grant('dev-team', Role.EDITOR), grant('platform-team', Role.OWNER)]}
+          roleGrants={[grant('dev-team', Role.EDITOR), grant('platform-team', Role.OWNER)]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -64,7 +64,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -81,7 +81,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER, nbf, exp)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -97,7 +97,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -115,7 +115,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -129,7 +129,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
           isSaving={false}
@@ -143,7 +143,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -160,7 +160,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -179,7 +179,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -194,11 +194,11 @@ describe('SharingPanel', () => {
       expect(principalInputs.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('adds a new group grant in edit mode', () => {
+    it('adds a new role grant in edit mode', () => {
       render(
         <SharingPanel
           userGrants={[]}
-          groupGrants={[grant('dev-team', Role.EDITOR)]}
+          roleGrants={[grant('dev-team', Role.EDITOR)]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -206,9 +206,9 @@ describe('SharingPanel', () => {
       )
 
       fireEvent.click(screen.getByRole('button', { name: /edit/i }))
-      fireEvent.click(screen.getByRole('button', { name: /add group/i }))
+      fireEvent.click(screen.getByRole('button', { name: /add role/i }))
 
-      const principalInputs = screen.getAllByPlaceholderText(/group/i)
+      const principalInputs = screen.getAllByPlaceholderText(/role/i)
       expect(principalInputs.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -218,7 +218,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER), grant('bob@example.com', Role.VIEWER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -242,7 +242,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[grant('dev-team', Role.EDITOR)]}
+          roleGrants={[grant('dev-team', Role.EDITOR)]}
           isOwner={true}
           onSave={onSave}
           isSaving={false}
@@ -268,7 +268,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER, nbf, exp)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={onSave}
           isSaving={false}
@@ -290,7 +290,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={true}
@@ -308,7 +308,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={onSave}
           isSaving={false}
@@ -329,7 +329,7 @@ describe('SharingPanel', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER), grant('bob@example.com', Role.VIEWER)]}
-          groupGrants={[]}
+          roleGrants={[]}
           isOwner={true}
           onSave={vi.fn()}
           isSaving={false}
@@ -357,7 +357,7 @@ describe('SharingPanel', () => {
         render(
           <SharingPanel
             userGrants={[grant('alice@example.com', Role.OWNER)]}
-            groupGrants={[]}
+            roleGrants={[]}
             isOwner={true}
             onSave={vi.fn()}
             isSaving={false}

@@ -98,15 +98,19 @@ type Config struct {
 	ProjectPrefix string
 
 	// DisableOrgCreation disables the implicit organization creation grant to all
-	// authenticated principals. Explicit OrgCreatorUsers and OrgCreatorGroups are
+	// authenticated principals. Explicit OrgCreatorUsers and OrgCreatorRoles are
 	// still honored when this is true.
 	DisableOrgCreation bool
 
 	// OrgCreatorUsers is a list of email addresses allowed to create organizations.
 	OrgCreatorUsers []string
 
-	// OrgCreatorGroups is a list of OIDC group names allowed to create organizations.
-	OrgCreatorGroups []string
+	// OrgCreatorRoles is a list of OIDC role names allowed to create organizations.
+	OrgCreatorRoles []string
+
+	// RolesClaim is the OIDC ID token claim name for role memberships.
+	// Default: "groups"
+	RolesClaim string
 
 	// LogHealthChecks enables logging of /healthz and /readyz requests.
 	// Default: false (suppresses health check logging to reduce noise from Kubernetes probes).
@@ -196,7 +200,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		protectedInterceptors = connect.WithInterceptors(
 			rpc.MetricsInterceptor(),
 			rpc.LoggingInterceptor(),
-			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID, internalClient),
+			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID, s.cfg.RolesClaim, internalClient),
 		)
 	} else {
 		// Fallback to public interceptors if auth not configured
@@ -228,7 +232,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
 		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
-		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorGroups)
+		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorRoles)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 

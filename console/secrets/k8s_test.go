@@ -189,8 +189,8 @@ func TestCreateSecret(t *testing.T) {
 		// When: CreateSecret is called with sharing grants
 		data := map[string][]byte{"key": []byte("value")}
 		shareUsers := []AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
-		shareGroups := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
-		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "new-secret", data, shareUsers, shareGroups, "", "")
+		shareRoles := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
+		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "new-secret", data, shareUsers, shareRoles, "", "")
 
 		// Then: Returns created secret with labels and sharing annotations
 		if err != nil {
@@ -210,13 +210,13 @@ func TestCreateSecret(t *testing.T) {
 		if len(parsedUsers) != 1 || parsedUsers[0].Principal != "alice@example.com" || parsedUsers[0].Role != "owner" {
 			t.Errorf("expected [{alice@example.com owner}], got %v", parsedUsers)
 		}
-		// Verify share-groups annotation
-		parsedGroups, err := GetShareGroups(result)
+		// Verify share-roles annotation
+		parsedRoles, err := GetShareRoles(result)
 		if err != nil {
-			t.Fatalf("failed to parse share-groups: %v", err)
+			t.Fatalf("failed to parse share-roles: %v", err)
 		}
-		if len(parsedGroups) != 1 || parsedGroups[0].Principal != "dev-team" || parsedGroups[0].Role != "editor" {
-			t.Errorf("expected [{dev-team editor}], got %v", parsedGroups)
+		if len(parsedRoles) != 1 || parsedRoles[0].Principal != "dev-team" || parsedRoles[0].Role != "editor" {
+			t.Errorf("expected [{dev-team editor}], got %v", parsedRoles)
 		}
 		if string(result.Data["key"]) != "value" {
 			t.Errorf("expected key='value', got %q", string(result.Data["key"]))
@@ -406,16 +406,16 @@ func TestGetShareUsers(t *testing.T) {
 	})
 }
 
-func TestGetShareGroups(t *testing.T) {
-	t.Run("parses share-groups annotation", func(t *testing.T) {
+func TestGetShareRoles(t *testing.T) {
+	t.Run("parses share-roles annotation", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
+					ShareRolesAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
 				},
 			},
 		}
-		groups, err := GetShareGroups(secret)
+		groups, err := GetShareRoles(secret)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -433,7 +433,7 @@ func TestGetShareGroups(t *testing.T) {
 				Annotations: map[string]string{},
 			},
 		}
-		groups, err := GetShareGroups(secret)
+		groups, err := GetShareRoles(secret)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -446,7 +446,7 @@ func TestGetShareGroups(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{},
 		}
-		groups, err := GetShareGroups(secret)
+		groups, err := GetShareRoles(secret)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -459,11 +459,11 @@ func TestGetShareGroups(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `not-json`,
+					ShareRolesAnnotation: `not-json`,
 				},
 			},
 		}
-		_, err := GetShareGroups(secret)
+		_, err := GetShareRoles(secret)
 		if err == nil {
 			t.Fatal("expected error for invalid JSON, got nil")
 		}

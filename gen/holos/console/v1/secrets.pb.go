@@ -364,8 +364,8 @@ type CreateSecretRequest struct {
 	StringData map[string]string `protobuf:"bytes,3,rep,name=string_data,json=stringData,proto3" json:"string_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// user_grants are the per-user sharing grants to set on the created secret.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants to set on the created secret.
-	GroupGrants []*ShareGrant `protobuf:"bytes,5,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants to set on the created secret.
+	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// description is a human-readable description of the secret's purpose.
 	Description *string `protobuf:"bytes,6,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// url is a URL associated with the secret (e.g. link to the service that uses it).
@@ -434,9 +434,9 @@ func (x *CreateSecretRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *CreateSecretRequest) GetGroupGrants() []*ShareGrant {
+func (x *CreateSecretRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -609,8 +609,8 @@ type SecretMetadata struct {
 	Accessible bool `protobuf:"varint,2,opt,name=accessible,proto3" json:"accessible,omitempty"`
 	// user_grants contains per-user sharing grants on this secret.
 	UserGrants []*ShareGrant `protobuf:"bytes,5,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants contains per-group sharing grants on this secret.
-	GroupGrants []*ShareGrant `protobuf:"bytes,6,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants contains per-role sharing grants on this secret.
+	RoleGrants []*ShareGrant `protobuf:"bytes,6,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// description is a human-readable description of the secret's purpose.
 	Description *string `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// url is a URL associated with the secret (e.g. link to the service that uses it).
@@ -670,9 +670,9 @@ func (x *SecretMetadata) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *SecretMetadata) GetGroupGrants() []*ShareGrant {
+func (x *SecretMetadata) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -691,10 +691,10 @@ func (x *SecretMetadata) GetUrl() string {
 	return ""
 }
 
-// ShareGrant represents a sharing grant for a principal (user email or group name).
+// ShareGrant represents a sharing grant for a principal (user email or role name).
 type ShareGrant struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// principal is the email address (for users) or group name (for groups).
+	// principal is the email address (for users) or role name (for roles).
 	Principal string `protobuf:"bytes,1,opt,name=principal,proto3" json:"principal,omitempty"`
 	// role is the permission level granted to the principal.
 	Role Role `protobuf:"varint,2,opt,name=role,proto3,enum=holos.console.v1.Role" json:"role,omitempty"`
@@ -773,8 +773,8 @@ type UpdateSharingRequest struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// user_grants are the per-user sharing grants to set.
 	UserGrants []*ShareGrant `protobuf:"bytes,2,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
-	// group_grants are the per-group sharing grants to set.
-	GroupGrants []*ShareGrant `protobuf:"bytes,3,rep,name=group_grants,json=groupGrants,proto3" json:"group_grants,omitempty"`
+	// role_grants are the per-role sharing grants to set.
+	RoleGrants []*ShareGrant `protobuf:"bytes,3,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// project is the project (namespace) containing the secret.
 	Project       string `protobuf:"bytes,4,opt,name=project,proto3" json:"project,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -825,9 +825,9 @@ func (x *UpdateSharingRequest) GetUserGrants() []*ShareGrant {
 	return nil
 }
 
-func (x *UpdateSharingRequest) GetGroupGrants() []*ShareGrant {
+func (x *UpdateSharingRequest) GetRoleGrants() []*ShareGrant {
 	if x != nil {
-		return x.GroupGrants
+		return x.RoleGrants
 	}
 	return nil
 }
@@ -1019,15 +1019,16 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\f_descriptionB\x06\n" +
 	"\x04_url\"\x16\n" +
-	"\x14UpdateSecretResponse\"\xae\x04\n" +
+	"\x14UpdateSecretResponse\"\xac\x04\n" +
 	"\x13CreateSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
 	"\x04data\x18\x02 \x03(\v2/.holos.console.v1.CreateSecretRequest.DataEntryR\x04data\x12V\n" +
 	"\vstring_data\x18\x03 \x03(\v25.holos.console.v1.CreateSecretRequest.StringDataEntryR\n" +
 	"stringData\x12=\n" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12%\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x12%\n" +
 	"\vdescription\x18\x06 \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
 	"\x03url\x18\a \x01(\tH\x01R\x03url\x88\x01\x01\x12\x18\n" +
 	"\aproject\x18\b \x01(\tR\aproject\x1a7\n" +
@@ -1044,15 +1045,16 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x13DeleteSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"\x16\n" +
-	"\x14DeleteSecretResponse\"\x9a\x02\n" +
+	"\x14DeleteSecretResponse\"\x98\x02\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"accessible\x18\x02 \x01(\bR\n" +
 	"accessible\x12=\n" +
 	"\vuser_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12%\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x12%\n" +
 	"\vdescription\x18\a \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
 	"\x03url\x18\b \x01(\tH\x01R\x03url\x88\x01\x01B\x0e\n" +
 	"\f_descriptionB\x06\n" +
@@ -1064,12 +1066,13 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x03nbf\x18\x03 \x01(\x03H\x00R\x03nbf\x88\x01\x01\x12\x15\n" +
 	"\x03exp\x18\x04 \x01(\x03H\x01R\x03exp\x88\x01\x01B\x06\n" +
 	"\x04_nbfB\x06\n" +
-	"\x04_exp\"\xc4\x01\n" +
+	"\x04_exp\"\xc2\x01\n" +
 	"\x14UpdateSharingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\vuser_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"userGrants\x12?\n" +
-	"\fgroup_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\vgroupGrants\x12\x18\n" +
+	"userGrants\x12=\n" +
+	"\vrole_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
+	"roleGrants\x12\x18\n" +
 	"\aproject\x18\x04 \x01(\tR\aproject\"U\n" +
 	"\x15UpdateSharingResponse\x12<\n" +
 	"\bmetadata\x18\x01 \x01(\v2 .holos.console.v1.SecretMetadataR\bmetadata\"C\n" +
@@ -1132,12 +1135,12 @@ var file_holos_console_v1_secrets_proto_depIdxs = []int32{
 	19, // 4: holos.console.v1.CreateSecretRequest.data:type_name -> holos.console.v1.CreateSecretRequest.DataEntry
 	20, // 5: holos.console.v1.CreateSecretRequest.string_data:type_name -> holos.console.v1.CreateSecretRequest.StringDataEntry
 	11, // 6: holos.console.v1.CreateSecretRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 7: holos.console.v1.CreateSecretRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 7: holos.console.v1.CreateSecretRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	11, // 8: holos.console.v1.SecretMetadata.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 9: holos.console.v1.SecretMetadata.group_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 9: holos.console.v1.SecretMetadata.role_grants:type_name -> holos.console.v1.ShareGrant
 	21, // 10: holos.console.v1.ShareGrant.role:type_name -> holos.console.v1.Role
 	11, // 11: holos.console.v1.UpdateSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	11, // 12: holos.console.v1.UpdateSharingRequest.group_grants:type_name -> holos.console.v1.ShareGrant
+	11, // 12: holos.console.v1.UpdateSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	10, // 13: holos.console.v1.UpdateSharingResponse.metadata:type_name -> holos.console.v1.SecretMetadata
 	2,  // 14: holos.console.v1.SecretsService.ListSecrets:input_type -> holos.console.v1.ListSecretsRequest
 	0,  // 15: holos.console.v1.SecretsService.GetSecret:input_type -> holos.console.v1.GetSecretRequest

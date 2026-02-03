@@ -254,9 +254,9 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
-	shareGroups := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
+	shareRoles := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
 
-	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", shareUsers, shareGroups)
+	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", shareUsers, shareRoles)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -455,7 +455,7 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 			},
 			Annotations: map[string]string{
 				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,
-				secrets.ShareGroupsAnnotation: `[]`,
+				secrets.ShareRolesAnnotation: `[]`,
 			},
 		},
 	}

@@ -283,7 +283,7 @@ test.describe('Profile Page', () => {
     })
   })
 
-  test('should include groups in profile page', async ({ page }) => {
+  test('should include roles in profile page', async ({ page }) => {
     // Navigate to profile page and login
     await page.goto('/ui/profile')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -315,11 +315,11 @@ test.describe('Profile Page', () => {
     // Verify token details are visible
     await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
 
-    // Verify groups are displayed in the token details
-    await expect(page.getByText('Groups')).toBeVisible()
+    // Verify roles are displayed in the token details
+    await expect(page.getByText('Roles')).toBeVisible()
 
     await page.screenshot({
-      path: 'e2e/screenshots/profile-groups.png',
+      path: 'e2e/screenshots/profile-roles.png',
       fullPage: true,
     })
   })

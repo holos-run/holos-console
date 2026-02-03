@@ -62,7 +62,7 @@ function createProjectTransport(project: {
   description: string
   userRole: Role
   userGrants?: Array<{ principal: string; role: Role }>
-  groupGrants?: Array<{ principal: string; role: Role }>
+  roleGrants?: Array<{ principal: string; role: Role }>
   organization?: string
 }, rawJson?: string) {
   return createRouterTransport(({ service }) => {
@@ -73,7 +73,7 @@ function createProjectTransport(project: {
           project: create(ProjectSchema, {
             ...project,
             userGrants: project.userGrants ?? [],
-            groupGrants: project.groupGrants ?? [],
+            roleGrants: project.roleGrants ?? [],
             organization: project.organization ?? '',
           }),
         }),

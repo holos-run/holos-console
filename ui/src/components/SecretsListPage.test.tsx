@@ -256,7 +256,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
+          { name: 'my-secret', accessible: true, userGrants: [], roleGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -276,7 +276,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
+          { name: 'my-secret', accessible: true, userGrants: [], roleGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -301,7 +301,7 @@ describe('SecretsListPage', () => {
 
       mockListSecrets.mockResolvedValue({
         secrets: [
-          { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
+          { name: 'my-secret', accessible: true, userGrants: [], roleGrants: [] },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -417,7 +417,7 @@ describe('SecretsListPage', () => {
 
         mockListSecrets.mockResolvedValue({
           secrets: [
-            { name: 'my-secret', accessible: true, userGrants: [], groupGrants: [] },
+            { name: 'my-secret', accessible: true, userGrants: [], roleGrants: [] },
           ],
         } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
 
@@ -451,7 +451,7 @@ describe('SecretsListPage', () => {
             name: 'my-secret',
             accessible: true,
             userGrants: [{ principal: 'alice@example.com', role: 3 }],
-            groupGrants: [],
+            roleGrants: [],
             description: 'Database credentials for production',
           },
         ],
@@ -477,7 +477,7 @@ describe('SecretsListPage', () => {
             name: 'my-secret',
             accessible: true,
             userGrants: [{ principal: 'alice@example.com', role: 3 }],
-            groupGrants: [{ principal: 'dev-team', role: 2 }],
+            roleGrants: [{ principal: 'dev-team', role: 2 }],
             description: 'Database credentials',
           },
         ],
@@ -488,7 +488,7 @@ describe('SecretsListPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Database credentials')).toBeInTheDocument()
         // Sharing summary should appear as a chip
-        expect(screen.getByText('1 user, 1 group')).toBeInTheDocument()
+        expect(screen.getByText('1 user, 1 role')).toBeInTheDocument()
       })
     })
 
@@ -505,7 +505,7 @@ describe('SecretsListPage', () => {
             name: 'my-secret',
             accessible: true,
             userGrants: [{ principal: 'alice@example.com', role: 3 }],
-            groupGrants: [],
+            roleGrants: [],
           },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
@@ -532,7 +532,7 @@ describe('SecretsListPage', () => {
             name: 'my-secret',
             accessible: true,
             userGrants: [],
-            groupGrants: [],
+            roleGrants: [],
             url: 'https://example.com/service',
           },
         ],
@@ -558,7 +558,7 @@ describe('SecretsListPage', () => {
             name: 'my-secret',
             accessible: true,
             userGrants: [],
-            groupGrants: [],
+            roleGrants: [],
           },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
@@ -590,7 +590,7 @@ describe('SecretsListPage', () => {
               { principal: 'alice@example.com', role: 3 },
               { principal: 'bob@example.com', role: 1 },
             ],
-            groupGrants: [{ principal: 'dev-team', role: 2 }],
+            roleGrants: [{ principal: 'dev-team', role: 2 }],
           },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
@@ -599,7 +599,7 @@ describe('SecretsListPage', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/2 users/i)).toBeInTheDocument()
-        expect(screen.getByText(/1 group/i)).toBeInTheDocument()
+        expect(screen.getByText(/1 role/i)).toBeInTheDocument()
       })
     })
 
@@ -616,7 +616,7 @@ describe('SecretsListPage', () => {
             name: 'private-secret',
             accessible: true,
             userGrants: [],
-            groupGrants: [],
+            roleGrants: [],
           },
         ],
       } as unknown as Awaited<ReturnType<typeof secretsClient.listSecrets>>)
@@ -629,7 +629,7 @@ describe('SecretsListPage', () => {
 
       // No sharing summary should appear when there are no grants
       expect(screen.queryByText(/users/i)).not.toBeInTheDocument()
-      expect(screen.queryByText(/groups/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/roles/i)).not.toBeInTheDocument()
     })
   })
 })

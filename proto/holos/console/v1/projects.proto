@@ -48,8 +48,8 @@ message Project {
   string description = 3;
   // user_grants are the per-user sharing grants on this project.
   repeated ShareGrant user_grants = 4;
-  // group_grants are the per-group sharing grants on this project.
-  repeated ShareGrant group_grants = 5;
+  // role_grants are the per-role sharing grants on this project.
+  repeated ShareGrant role_grants = 5;
   // user_role is the calling user's effective role on this project.
   Role user_role = 6;
   // organization is the organization this project belongs to.
@@ -90,8 +90,8 @@ message CreateProjectRequest {
   string description = 3;
   // user_grants are the initial per-user sharing grants.
   repeated ShareGrant user_grants = 4;
-  // group_grants are the initial per-group sharing grants.
-  repeated ShareGrant group_grants = 5;
+  // role_grants are the initial per-role sharing grants.
+  repeated ShareGrant role_grants = 5;
   // organization is the organization to create this project in.
   string organization = 6;
 }
@@ -130,8 +130,8 @@ message UpdateProjectSharingRequest {
   string name = 1;
   // user_grants are the per-user sharing grants to set.
   repeated ShareGrant user_grants = 2;
-  // group_grants are the per-group sharing grants to set.
-  repeated ShareGrant group_grants = 3;
+  // role_grants are the per-role sharing grants to set.
+  repeated ShareGrant role_grants = 3;
 }
 
 // UpdateProjectSharingResponse contains the updated project.

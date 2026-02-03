@@ -15,7 +15,7 @@ import { tokenRef } from '../client'
 export interface BFFUser {
   user: string
   email: string
-  groups?: string[]
+  roles?: string[]
 }
 
 export interface AuthContextValue {

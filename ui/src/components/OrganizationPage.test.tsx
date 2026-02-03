@@ -70,7 +70,7 @@ function createOrgTransport(org: {
   description: string
   userRole: Role
   userGrants?: Array<{ principal: string; role: Role }>
-  groupGrants?: Array<{ principal: string; role: Role }>
+  roleGrants?: Array<{ principal: string; role: Role }>
 }, rawJson?: string) {
   return createRouterTransport(({ service }) => {
     service(OrganizationService, {
@@ -80,7 +80,7 @@ function createOrgTransport(org: {
           organization: create(OrganizationSchema, {
             ...org,
             userGrants: org.userGrants ?? [],
-            groupGrants: org.groupGrants ?? [],
+            roleGrants: org.roleGrants ?? [],
           }),
         }),
       deleteOrganization: () => create(DeleteOrganizationResponseSchema),
