@@ -797,6 +797,37 @@ func TestListProjects_OrgViewerCannotListProjects(t *testing.T) {
 	}
 }
 
+func TestGetProject_OrgOwnerCannotReadProjectWithoutProjectGrant(t *testing.T) {
+	// Org owner has no per-project grant — org grants do not cascade to projects
+	ns := managedNSWithOrg("my-project", "acme", "")
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := newHandlerWithOrg(orgResolver, ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateProject_OrgOwnerCannotUpdateProjectWithoutProjectGrant(t *testing.T) {
+	// Org owner has no per-project grant — org grants do not cascade to projects
+	ns := managedNSWithOrg("my-project", "acme", "")
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := newHandlerWithOrg(orgResolver, ns)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	displayName := "Updated"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:        "my-project",
+		DisplayName: &displayName,
+	}))
+	assertPermissionDenied(t, err)
+}
+
 func assertInvalidArgument(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {

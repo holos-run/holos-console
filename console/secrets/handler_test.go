@@ -2923,3 +2923,77 @@ func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
+
+// ---- Org grants do NOT cascade to secrets ----
+
+func TestListSecrets_OrgOwnerCannotListWithoutProjectOrSecretGrant(t *testing.T) {
+	// Org owner has no per-secret or project grant — org grants do not cascade to secrets
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "prj-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+		Data: map[string][]byte{"key": []byte("value")},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, nil, orgResolver)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{
+		Project: "test-namespace",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Secrets) != 1 {
+		t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+	}
+	if resp.Msg.Secrets[0].Accessible {
+		t.Error("expected secret to NOT be accessible for org-only owner")
+	}
+}
+
+func TestGetSecret_OrgOwnerCannotReadWithoutProjectOrSecretGrant(t *testing.T) {
+	// Org owner has no per-secret or project grant — org grants do not cascade to secrets
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-secret",
+			Namespace: "prj-test-namespace",
+			Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+		},
+		Data: map[string][]byte{"key": []byte("value")},
+	}
+	fakeClient := fake.NewClientset(testProjectNS(), secret)
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	orgResolver := &mockOrgResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+	}
+	handler := NewProjectScopedHandler(k8sClient, nil, orgResolver)
+
+	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
+		Sub:   "sub-alice",
+		Email: "alice@example.com",
+	})
+	_, err := handler.GetSecret(ctx, connect.NewRequest(&consolev1.GetSecretRequest{
+		Name:    "my-secret",
+		Project: "test-namespace",
+	}))
+	if err == nil {
+		t.Fatal("expected PermissionDenied, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodePermissionDenied {
+		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
+	}
+}
