@@ -212,16 +212,9 @@ func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 }
 
 // GetShareRoles parses the share-roles annotation from a namespace.
-// Falls back to the legacy share-groups annotation if share-roles is absent.
+// Returns nil if the annotation is absent.
 func GetShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	grants, err := parseGrantAnnotation(ns, secrets.ShareRolesAnnotation)
-	if err != nil {
-		return nil, err
-	}
-	if grants != nil {
-		return grants, nil
-	}
-	return parseGrantAnnotation(ns, secrets.ShareGroupsAnnotation)
+	return parseGrantAnnotation(ns, secrets.ShareRolesAnnotation)
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {

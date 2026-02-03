@@ -407,11 +407,11 @@ func TestGetShareUsers(t *testing.T) {
 }
 
 func TestGetShareRoles(t *testing.T) {
-	t.Run("parses share-groups annotation", func(t *testing.T) {
+	t.Run("parses share-roles annotation", func(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
+					ShareRolesAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
 				},
 			},
 		}
@@ -459,7 +459,7 @@ func TestGetShareRoles(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `not-json`,
+					ShareRolesAnnotation: `not-json`,
 				},
 			},
 		}

@@ -88,8 +88,6 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
 | `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
 
-The legacy `console.holos.run/share-groups` annotation is read as a fallback when `share-roles` is absent. New writes always use `share-roles`.
-
 Each grant is a JSON object with:
 
 | Field | Type | Required | Description |

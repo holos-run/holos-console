@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+This code is not yet released. Do not preserve backwards compatibility when making changes.
+
 Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 
 ## Before Committing
@@ -139,7 +141,7 @@ Three-tier access control model evaluated in order (highest role wins):
 2. **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (prefix configurable via `--project-prefix`, default `prj-`)
 3. **Secret-level**: Per-secret grants stored as JSON annotations on K8s Secret objects
 
-Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-roles` (legacy `share-groups` read as fallback)
+Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-roles`
 
 Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{name}`):
 - Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)

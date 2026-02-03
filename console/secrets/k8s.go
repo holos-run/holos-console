@@ -21,10 +21,6 @@ const ShareUsersAnnotation = "console.holos.run/share-users"
 // Value is a JSON object mapping OIDC role name → role name.
 const ShareRolesAnnotation = "console.holos.run/share-roles"
 
-// ShareGroupsAnnotation is the legacy annotation key for backward compatibility.
-// On read, falls back to this if ShareRolesAnnotation is absent.
-const ShareGroupsAnnotation = "console.holos.run/share-groups"
-
 // DescriptionAnnotation is the annotation key for a human-readable description.
 const DescriptionAnnotation = "console.holos.run/description"
 
@@ -214,18 +210,10 @@ func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
 }
 
 // GetShareRoles parses the console.holos.run/share-roles annotation from a secret.
-// Falls back to the legacy console.holos.run/share-groups annotation if share-roles is absent.
-// Returns an empty slice if neither annotation is present.
+// Returns nil if the annotation is absent.
 // Returns an error if the annotation contains invalid JSON.
 func GetShareRoles(secret *corev1.Secret) ([]AnnotationGrant, error) {
-	grants, err := parseGrantAnnotation(secret, ShareRolesAnnotation)
-	if err != nil {
-		return nil, err
-	}
-	if grants != nil {
-		return grants, nil
-	}
-	return parseGrantAnnotation(secret, ShareGroupsAnnotation)
+	return parseGrantAnnotation(secret, ShareRolesAnnotation)
 }
 
 // GetDescription returns the description annotation value from a secret.

@@ -455,7 +455,7 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 			},
 			Annotations: map[string]string{
 				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,
-				secrets.ShareGroupsAnnotation: `[]`,
+				secrets.ShareRolesAnnotation: `[]`,
 			},
 		},
 	}

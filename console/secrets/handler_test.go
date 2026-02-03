@@ -302,7 +302,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
+					ShareRolesAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1412,7 +1412,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				Name:      "multi-key-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					ShareGroupsAnnotation: `[{"principal":"owner","role":"owner"}]`,
+					ShareRolesAnnotation: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
