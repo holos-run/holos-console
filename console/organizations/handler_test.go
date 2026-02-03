@@ -443,6 +443,71 @@ func TestUpdateOrgSharing_OwnerAllows(t *testing.T) {
 	}
 }
 
+func TestUpdateOrgSharing_WithGroupGrants(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.UpdateOrganizationSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationSharingRequest{
+		Name: "acme",
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
+		},
+		GroupGrants: []*consolev1.ShareGrant{
+			{Principal: "dev-team", Role: consolev1.Role_ROLE_EDITOR},
+			{Principal: "platform-admins", Role: consolev1.Role_ROLE_OWNER},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Organization.UserGrants) != 1 {
+		t.Errorf("expected 1 user grant, got %d", len(resp.Msg.Organization.UserGrants))
+	}
+	if len(resp.Msg.Organization.GroupGrants) != 2 {
+		t.Errorf("expected 2 group grants, got %d", len(resp.Msg.Organization.GroupGrants))
+	}
+
+	// Verify group annotations are persisted to K8s
+	k8sNS, err := handler.k8s.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace to exist, got %v", err)
+	}
+	groupsJSON := k8sNS.Annotations[secrets.ShareGroupsAnnotation]
+	if groupsJSON == "" {
+		t.Fatal("expected share-groups annotation to be set")
+	}
+	var groups []secrets.AnnotationGrant
+	if err := json.Unmarshal([]byte(groupsJSON), &groups); err != nil {
+		t.Fatalf("failed to parse share-groups: %v", err)
+	}
+	if len(groups) != 2 {
+		t.Errorf("expected 2 groups in annotation, got %d", len(groups))
+	}
+}
+
+func TestUpdateOrgSharing_GroupGrantsOnly(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.UpdateOrganizationSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationSharingRequest{
+		Name: "acme",
+		GroupGrants: []*consolev1.ShareGrant{
+			{Principal: "dev-team", Role: consolev1.Role_ROLE_VIEWER},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Organization.UserGrants) != 0 {
+		t.Errorf("expected 0 user grants, got %d", len(resp.Msg.Organization.UserGrants))
+	}
+	if len(resp.Msg.Organization.GroupGrants) != 1 {
+		t.Errorf("expected 1 group grant, got %d", len(resp.Msg.Organization.GroupGrants))
+	}
+}
+
 func TestUpdateOrgSharing_NonOwnerDenies(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
 	handler := newTestHandler(ns)

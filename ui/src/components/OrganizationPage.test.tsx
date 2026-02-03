@@ -285,6 +285,58 @@ describe('OrganizationPage', () => {
     })
   })
 
+  describe('sharing error handling', () => {
+    it('shows error when sharing save fails', async () => {
+      const authValue = createAuthContext({
+        user: createMockUser({}),
+        isAuthenticated: true,
+      })
+
+      const transport = createRouterTransport(({ service }) => {
+        service(OrganizationService, {
+          listOrganizations: () => create(ListOrganizationsResponseSchema, { organizations: [] }),
+          getOrganization: () =>
+            create(GetOrganizationResponseSchema, {
+              organization: create(OrganizationSchema, {
+                name: 'acme',
+                displayName: 'ACME Corp',
+                description: '',
+                userRole: Role.OWNER,
+                userGrants: [{ principal: 'test@example.com', role: Role.OWNER }],
+                groupGrants: [],
+              }),
+            }),
+          deleteOrganization: () => create(DeleteOrganizationResponseSchema),
+          updateOrganization: () => create(UpdateOrganizationResponseSchema),
+          updateOrganizationSharing: () => {
+            throw new ConnectError('internal error', Code.Internal)
+          },
+          getOrganizationRaw: () => create(GetOrganizationRawResponseSchema),
+          createOrganization: () => ({ name: '' }),
+        })
+      })
+
+      renderOrganizationPage(authValue, 'acme', transport)
+
+      await waitFor(() => {
+        expect(screen.getByText('ACME Corp')).toBeInTheDocument()
+      })
+
+      // Enter edit mode and save
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      // Should show error alert in the SharingPanel
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+        expect(screen.getByText(/internal error/i)).toBeInTheDocument()
+      })
+
+      // Should still be in edit mode
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+    })
+  })
+
   describe('error handling', () => {
     it('shows not-found error message', async () => {
       const authValue = createAuthContext({
