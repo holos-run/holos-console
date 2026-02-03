@@ -110,7 +110,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		// Create authenticated context with matching email
 		claims := &rpc.Claims{
@@ -153,7 +153,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		// Context without claims
 		ctx := context.Background()
@@ -194,7 +194,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		// Create authenticated context with non-matching email
 		claims := &rpc.Claims{
@@ -229,7 +229,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		// Given: Authenticated user, secret does not exist
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -263,7 +263,7 @@ func TestHandler_GetSecret(t *testing.T) {
 		// Given: Request with empty secret name
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -311,7 +311,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		// Capture logs
 		logHandler := &testLogHandler{}
@@ -387,7 +387,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		// Capture logs
 		logHandler := &testLogHandler{}
@@ -460,7 +460,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -504,7 +504,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -549,7 +549,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -570,7 +570,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.DeleteSecretRequest{Name: "my-secret", Project: "test-namespace"})
@@ -605,7 +605,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -645,7 +645,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -673,7 +673,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -701,7 +701,7 @@ func TestHandler_DeleteSecret(t *testing.T) {
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -743,7 +743,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -789,7 +789,7 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -826,7 +826,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		// Given: No secrets exist, user is editor
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -859,7 +859,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.CreateSecretRequest{
@@ -888,7 +888,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns PermissionDenied for viewer", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -924,7 +924,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -960,7 +960,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		// No per-secret grants and user has no matching sharing grants
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -993,7 +993,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		// Given: User provides editor grants for the new secret
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1032,7 +1032,7 @@ func TestHandler_CreateSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), existing)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1069,7 +1069,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 	t.Run("logs secret_create on success", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -1110,7 +1110,7 @@ func TestHandler_CreateSecret_AuditLogging(t *testing.T) {
 	t.Run("logs secret_create_denied on RBAC failure", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -1170,7 +1170,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1200,7 +1200,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		// Given: Request without claims
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.UpdateSecretRequest{
@@ -1242,7 +1242,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1277,7 +1277,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		// Given: Secret does not exist
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1312,7 +1312,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		// Given: Request with empty name
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1347,7 +1347,7 @@ func TestHandler_UpdateSecret(t *testing.T) {
 		// Given: Request with empty data
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1397,7 +1397,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -1451,7 +1451,7 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -1508,7 +1508,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1570,7 +1570,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secretWithLabel, secretWithoutLabel)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1630,7 +1630,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), accessibleSecret, inaccessibleSecret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1682,7 +1682,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		// Given: Request without claims in context
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"})
@@ -1713,7 +1713,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secretWithoutLabel)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1755,7 +1755,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1839,7 +1839,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-456",
@@ -1875,7 +1875,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.UpdateSharingRequest{
@@ -1900,7 +1900,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1931,7 +1931,7 @@ func TestHandler_UpdateSharing(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -1976,7 +1976,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2027,7 +2027,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2075,7 +2075,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2103,7 +2103,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	t.Run("returns Unauthenticated for missing auth", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.GetSecretRawRequest{Name: "my-secret", Project: "test-namespace"})
@@ -2125,7 +2125,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	t.Run("returns InvalidArgument for empty name", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2153,7 +2153,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 	t.Run("returns NotFound for non-existent secret", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2183,7 +2183,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 	t.Run("string_data values are base64-encoded into data", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2225,7 +2225,7 @@ func TestHandler_CreateSecret_StringData(t *testing.T) {
 	t.Run("string_data takes precedence over data for same key", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2276,7 +2276,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2325,7 +2325,7 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{
 			Sub:    "user-123",
@@ -2373,7 +2373,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -2426,7 +2426,7 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -2480,7 +2480,7 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		logHandler := &testLogHandler{}
 		oldLogger := slog.Default()
@@ -2528,7 +2528,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
@@ -2562,7 +2562,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
@@ -2583,7 +2583,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 	t.Run("CreateSecret stores description and url", func(t *testing.T) {
 		fakeClient := fake.NewClientset(testProjectNS())
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
@@ -2634,7 +2634,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
@@ -2681,7 +2681,7 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 		}
 		fakeClient := fake.NewClientset(testProjectNS(), secret)
 		k8sClient := NewK8sClient(fakeClient, testResolver())
-		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+		handler := NewProjectScopedHandler(k8sClient, nil)
 
 		claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
 		ctx := rpc.ContextWithClaims(context.Background(), claims)
@@ -2720,16 +2720,6 @@ func (m *mockProjectResolver) GetProjectGrants(_ context.Context, _ string) (map
 	return m.users, m.groups, nil
 }
 
-// mockOrgResolver implements OrgResolver for testing.
-type mockOrgResolver struct {
-	users  map[string]string
-	groups map[string]string
-}
-
-func (m *mockOrgResolver) GetOrgGrantsForProject(_ context.Context, _ string) (map[string]string, map[string]string, error) {
-	return m.users, m.groups, nil
-}
-
 func TestGetSecret_ProjectViewerCannotReadData(t *testing.T) {
 	// Project viewer has no per-secret grant — should be denied GetSecret
 	secret := &corev1.Secret{
@@ -2745,7 +2735,7 @@ func TestGetSecret_ProjectViewerCannotReadData(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "viewer"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2782,7 +2772,7 @@ func TestGetSecret_ProjectEditorCannotReadData(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "editor"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2819,7 +2809,7 @@ func TestListSecrets_ProjectViewerCanListMetadata(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "viewer"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2846,7 +2836,7 @@ func TestCreateSecret_ProjectEditorCanCreate(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "editor"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2876,7 +2866,7 @@ func TestDeleteSecret_ProjectOwnerCanDelete(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "owner"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2906,7 +2896,7 @@ func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
 	projResolver := &mockProjectResolver{
 		users: map[string]string{"alice@example.com": "owner"},
 	}
-	handler := NewProjectScopedHandler(k8sClient, projResolver, nil)
+	handler := NewProjectScopedHandler(k8sClient, projResolver)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2925,9 +2915,11 @@ func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
 }
 
 // ---- Org grants do NOT cascade to secrets ----
+// The secrets handler has no org resolver — org grants are architecturally
+// unable to cascade to secret operations.
 
-func TestListSecrets_OrgOwnerCannotListWithoutProjectOrSecretGrant(t *testing.T) {
-	// Org owner has no per-secret or project grant — org grants do not cascade to secrets
+func TestListSecrets_NoGrantsDeniesAccess(t *testing.T) {
+	// User has no per-secret or project grant — access denied
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
@@ -2938,10 +2930,7 @@ func TestListSecrets_OrgOwnerCannotListWithoutProjectOrSecretGrant(t *testing.T)
 	}
 	fakeClient := fake.NewClientset(testProjectNS(), secret)
 	k8sClient := NewK8sClient(fakeClient, testResolver())
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "owner"},
-	}
-	handler := NewProjectScopedHandler(k8sClient, nil, orgResolver)
+	handler := NewProjectScopedHandler(k8sClient, nil)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",
@@ -2957,12 +2946,12 @@ func TestListSecrets_OrgOwnerCannotListWithoutProjectOrSecretGrant(t *testing.T)
 		t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
 	}
 	if resp.Msg.Secrets[0].Accessible {
-		t.Error("expected secret to NOT be accessible for org-only owner")
+		t.Error("expected secret to NOT be accessible without grants")
 	}
 }
 
-func TestGetSecret_OrgOwnerCannotReadWithoutProjectOrSecretGrant(t *testing.T) {
-	// Org owner has no per-secret or project grant — org grants do not cascade to secrets
+func TestGetSecret_NoGrantsDeniesAccess(t *testing.T) {
+	// User has no per-secret or project grant — access denied
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
@@ -2973,10 +2962,7 @@ func TestGetSecret_OrgOwnerCannotReadWithoutProjectOrSecretGrant(t *testing.T) {
 	}
 	fakeClient := fake.NewClientset(testProjectNS(), secret)
 	k8sClient := NewK8sClient(fakeClient, testResolver())
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "owner"},
-	}
-	handler := NewProjectScopedHandler(k8sClient, nil, orgResolver)
+	handler := NewProjectScopedHandler(k8sClient, nil)
 
 	ctx := rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "sub-alice",

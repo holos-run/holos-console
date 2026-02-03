@@ -246,17 +246,16 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
-		// Secrets service with project and org grant fallback
+		// Secrets service with project grant fallback
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
-		orgResolverForSecrets := projects.NewOrgGrantResolverForProject(projectsK8s, orgGrantResolver)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, orgResolverForSecrets)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 		// Fallback: secrets handler without K8s (no resolvers)
-		secretsHandler := secrets.NewProjectScopedHandler(nil, nil, nil)
+		secretsHandler := secrets.NewProjectScopedHandler(nil, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
