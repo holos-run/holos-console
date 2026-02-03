@@ -6,7 +6,7 @@ holos-console uses a three-tier access control model combining **organization-le
 
 An **organization** is a Kubernetes Namespace with the name `{namespace-prefix}{organization-prefix}{name}` (defaults: empty namespace prefix, `org-` organization prefix) and the label `console.holos.run/resource-type=organization`. Permission grants are stored as annotations on the Namespace resource.
 
-Organization grants cascade to all projects associated with the organization. Users see only organizations where they have at least viewer-level access.
+Organization grants authorize only organization-level operations (viewing the org, managing IAM bindings). They do **not** cascade to projects or secrets (see [ADR 007](adrs/007-org-grants-no-cascade.md)). Users see only organizations where they have at least viewer-level access.
 
 ### Creating Organizations
 
@@ -75,9 +75,7 @@ Cascade behavior is defined by explicit permission tables per scope (`CascadeTab
 
 `SECRETS_READ` is never cascaded — reading secret data always requires a direct per-secret grant.
 
-#### `OrgCascadeSecretPerms` — empty (org grants never cascade to secrets)
-
-#### `OrgCascadeProjectPerms` — empty (org grants never cascade to projects)
+Organization grants have no cascade tables — they never cascade to projects or secrets ([ADR 007](adrs/007-org-grants-no-cascade.md)).
 
 ## Grant Annotations
 
