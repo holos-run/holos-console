@@ -261,7 +261,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
 
-	// Register gRPC reflection for introspection (grpcurl, etc.)
+	// Register gRPC reflection for introspection (grpcurl, etc.).
+	// These endpoints are intentionally unauthenticated. The API surface they
+	// expose (service names, method signatures, message schemas) is public
+	// information available in the proto/ source files and UI bundle.
+	// See ADR 009 (docs/adrs/009-grpc-reflection-unauthenticated.md).
 	reflector := grpcreflect.NewStaticReflector(
 		consolev1connect.VersionServiceName,
 		consolev1connect.SecretsServiceName,
