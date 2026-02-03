@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Reversed by [ADR 007](007-remove-bff-oauth2-proxy.md)
 
 ## Context
 

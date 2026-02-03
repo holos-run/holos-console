@@ -8,23 +8,11 @@ import {
 } from 'react'
 import { User } from 'oidc-client-ts'
 import { getUserManager } from './userManager'
-import { isBFFMode, BFF_ENDPOINTS } from './config'
 import { tokenRef } from '../client'
-
-// BFF mode user type (simpler than oidc-client-ts User)
-export interface BFFUser {
-  user: string
-  email: string
-  roles?: string[]
-}
 
 export interface AuthContextValue {
   // Current authenticated user, or null if not logged in
   user: User | null
-  // BFF mode user info (null in development mode)
-  bffUser: BFFUser | null
-  // True if running in BFF mode (behind oauth2-proxy)
-  isBFF: boolean
   // True while checking initial auth state
   isLoading: boolean
   // Error from auth operations
@@ -35,11 +23,11 @@ export interface AuthContextValue {
   login: (returnTo?: string) => Promise<void>
   // Log out and redirect
   logout: () => Promise<void>
-  // Get the current access token (for API calls, development mode only)
+  // Get the current access token (for API calls)
   getAccessToken: () => string | null
-  // Trigger manual token refresh (development mode only)
+  // Trigger manual token refresh
   refreshTokens: () => Promise<void>
-  // Last silent renew result (development mode only)
+  // Last silent renew result
   lastRefreshStatus: 'idle' | 'success' | 'error'
   lastRefreshTime: Date | null
   lastRefreshError: Error | null
@@ -53,38 +41,21 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
-  const [bffUser, setBffUser] = useState<BFFUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [lastRefreshStatus, setLastRefreshStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
   const [lastRefreshError, setLastRefreshError] = useState<Error | null>(null)
 
-  // Check BFF mode once on mount
-  const [isBFF] = useState(() => isBFFMode())
-
-  // Use shared UserManager singleton (only in non-BFF mode)
-  const userManager = useMemo(() => (isBFF ? null : getUserManager()), [isBFF])
+  const userManager = useMemo(() => getUserManager(), [])
 
   // Check for existing session on mount
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        if (isBFF) {
-          // BFF mode: check /api/userinfo
-          const response = await fetch(BFF_ENDPOINTS.userInfo, {
-            credentials: 'include', // Include cookies
-          })
-          if (response.ok) {
-            const data = await response.json()
-            setBffUser(data)
-          }
-        } else {
-          // Development mode: use oidc-client-ts
-          const existingUser = await userManager!.getUser()
-          if (existingUser && !existingUser.expired) {
-            setUser(existingUser)
-          }
+        const existingUser = await userManager.getUser()
+        if (existingUser && !existingUser.expired) {
+          setUser(existingUser)
         }
       } catch (err) {
         console.error('Error checking auth state:', err)
@@ -95,12 +66,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     checkAuth()
-  }, [isBFF, userManager])
+  }, [userManager])
 
-  // Listen for user changes (e.g., token refresh) - development mode only
+  // Listen for user changes (e.g., token refresh)
   useEffect(() => {
-    if (isBFF || !userManager) return
-
     const handleUserLoaded = (loadedUser: User) => {
       setUser(loadedUser)
       setError(null)
@@ -130,7 +99,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       userManager.events.removeUserUnloaded(handleUserUnloaded)
       userManager.events.removeSilentRenewError(handleSilentRenewError)
     }
-  }, [isBFF, userManager])
+  }, [userManager])
 
   // Keep the shared tokenRef in sync so the transport interceptor can inject
   // the Authorization header on every outgoing RPC.
@@ -142,57 +111,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async (returnTo?: string) => {
       try {
         setError(null)
-        if (isBFF) {
-          // BFF mode: redirect to oauth2-proxy login endpoint
-          const returnUrl = returnTo ?? window.location.pathname
-          window.location.href = `${BFF_ENDPOINTS.login}?rd=${encodeURIComponent(returnUrl)}`
-        } else {
-          // Development mode: use oidc-client-ts
-          const targetPath = returnTo ?? window.location.pathname
-          await userManager!.signinRedirect({ state: { returnTo: targetPath } })
-        }
+        const targetPath = returnTo ?? window.location.pathname
+        await userManager.signinRedirect({ state: { returnTo: targetPath } })
       } catch (err) {
         console.error('Login error:', err)
         setError(err instanceof Error ? err : new Error(String(err)))
         throw err
       }
     },
-    [isBFF, userManager],
+    [userManager],
   )
 
   const logout = useCallback(async () => {
     try {
       setError(null)
-      if (isBFF) {
-        // BFF mode: redirect to oauth2-proxy logout endpoint
-        window.location.href = BFF_ENDPOINTS.logout
-      } else {
-        // Development mode: use oidc-client-ts
-        await userManager!.signoutRedirect()
-      }
+      await userManager.signoutRedirect()
     } catch (err) {
       console.error('Logout error:', err)
       setError(err instanceof Error ? err : new Error(String(err)))
       throw err
     }
-  }, [isBFF, userManager])
+  }, [userManager])
 
   const getAccessToken = useCallback(() => {
-    // In BFF mode, tokens are managed server-side
-    if (isBFF) return null
     return user?.access_token ?? null
-  }, [isBFF, user])
+  }, [user])
 
   const refreshTokens = useCallback(async () => {
-    if (isBFF) {
-      // BFF mode: no manual refresh needed, proxy handles it
-      console.warn('Manual refresh not available in BFF mode')
-      return
-    }
-
     try {
       setLastRefreshStatus('idle')
-      const refreshedUser = await userManager!.signinSilent()
+      const refreshedUser = await userManager.signinSilent()
       if (refreshedUser) {
         setUser(refreshedUser)
         setLastRefreshStatus('success')
@@ -206,16 +154,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLastRefreshError(error)
       throw error
     }
-  }, [isBFF, userManager])
+  }, [userManager])
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      bffUser,
-      isBFF,
       isLoading,
       error,
-      isAuthenticated: isBFF ? !!bffUser : (!!user && !user.expired),
+      isAuthenticated: !!user && !user.expired,
       login,
       logout,
       getAccessToken,
@@ -224,7 +170,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       lastRefreshTime,
       lastRefreshError,
     }),
-    [user, bffUser, isBFF, isLoading, error, login, logout, getAccessToken, refreshTokens, lastRefreshStatus, lastRefreshTime, lastRefreshError],
+    [user, isLoading, error, login, logout, getAccessToken, refreshTokens, lastRefreshStatus, lastRefreshTime, lastRefreshError],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

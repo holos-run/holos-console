@@ -15,8 +15,6 @@ const { MockAuthContext } = vi.hoisted(() => {
 
 const mockAuthValue = {
   user: null,
-  bffUser: null,
-  isBFF: false,
   isLoading: false,
   error: null,
   isAuthenticated: false,
