@@ -31,6 +31,7 @@ import { useAuth } from '../auth'
 import { useOrg } from '../OrgProvider'
 import { useListProjects, useDeleteProject, useCreateProject } from '../queries/projects'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
+import { slugify } from '../utils/slugify'
 
 function roleName(role: Role): string {
   switch (role) {
@@ -66,6 +67,7 @@ export function ProjectsListPage() {
   const [createDescription, setCreateDescription] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState(false)
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -101,6 +103,7 @@ export function ProjectsListPage() {
     setCreateDisplayName('')
     setCreateDescription('')
     setCreateError(null)
+    setNameManuallyEdited(false)
     setCreateOpen(true)
   }
 
@@ -226,20 +229,34 @@ export function ProjectsListPage() {
           <TextField
             autoFocus
             margin="dense"
-            label="Name"
-            fullWidth
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            placeholder="my-project"
-            helperText="Kubernetes namespace name (lowercase alphanumeric and hyphens)"
-          />
-          <TextField
-            margin="dense"
             label="Display Name"
             fullWidth
             value={createDisplayName}
-            onChange={(e) => setCreateDisplayName(e.target.value)}
+            onChange={(e) => {
+              const newDisplayName = e.target.value
+              setCreateDisplayName(newDisplayName)
+              if (!nameManuallyEdited) {
+                setCreateName(slugify(newDisplayName))
+              }
+            }}
             placeholder="My Project"
+          />
+          <TextField
+            margin="dense"
+            label="Name"
+            fullWidth
+            value={createName}
+            onChange={(e) => {
+              const newValue = e.target.value
+              setCreateName(newValue)
+              if (newValue === '') {
+                setNameManuallyEdited(false)
+              } else {
+                setNameManuallyEdited(true)
+              }
+            }}
+            placeholder="my-project"
+            helperText="Lowercase alphanumeric and hyphens"
           />
           <TextField
             margin="dense"

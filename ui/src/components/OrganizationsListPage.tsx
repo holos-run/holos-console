@@ -29,6 +29,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import { useAuth } from '../auth'
 import { useListOrganizations, useDeleteOrganization, useCreateOrganization } from '../queries/organizations'
 import { Role } from '../gen/holos/console/v1/rbac_pb'
+import { slugify } from '../utils/slugify'
 
 function roleName(role: Role): string {
   switch (role) {
@@ -41,15 +42,6 @@ function roleName(role: Role): string {
     default:
       return 'None'
   }
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
 
 export function OrganizationsListPage() {

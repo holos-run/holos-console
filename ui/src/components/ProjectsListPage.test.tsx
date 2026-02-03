@@ -407,6 +407,124 @@ describe('ProjectsListPage', () => {
       })
     })
 
+    it('renders Display Name field before Name field', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      renderProjectsListPage(authValue, orgWithSelection)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+      const dialog = screen.getByRole('dialog')
+      const inputs = dialog.querySelectorAll('input')
+      const displayNameInput = screen.getByLabelText(/display name/i)
+      const nameInput = screen.getByLabelText(/^name$/i)
+      const inputArray = Array.from(inputs)
+      expect(inputArray.indexOf(displayNameInput as HTMLInputElement))
+        .toBeLessThan(inputArray.indexOf(nameInput as HTMLInputElement))
+    })
+
+    it('auto-generates slug from display name', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      renderProjectsListPage(authValue, orgWithSelection)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+      const displayNameInput = screen.getByLabelText(/display name/i)
+      const nameInput = screen.getByLabelText(/^name$/i)
+      fireEvent.change(displayNameInput, { target: { value: 'My Cool Project' } })
+      expect(nameInput).toHaveValue('my-cool-project')
+    })
+
+    it('stops auto-generation when user manually edits slug', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      renderProjectsListPage(authValue, orgWithSelection)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+      const displayNameInput = screen.getByLabelText(/display name/i)
+      const nameInput = screen.getByLabelText(/^name$/i)
+
+      fireEvent.change(displayNameInput, { target: { value: 'My Project' } })
+      expect(nameInput).toHaveValue('my-project')
+
+      fireEvent.change(nameInput, { target: { value: 'custom-slug' } })
+      expect(nameInput).toHaveValue('custom-slug')
+
+      fireEvent.change(displayNameInput, { target: { value: 'Another Name' } })
+      expect(nameInput).toHaveValue('custom-slug')
+    })
+
+    it('resumes auto-generation when slug is cleared', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      renderProjectsListPage(authValue, orgWithSelection)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+      const displayNameInput = screen.getByLabelText(/display name/i)
+      const nameInput = screen.getByLabelText(/^name$/i)
+
+      fireEvent.change(displayNameInput, { target: { value: 'My Project' } })
+      fireEvent.change(nameInput, { target: { value: 'custom-slug' } })
+      fireEvent.change(nameInput, { target: { value: '' } })
+
+      fireEvent.change(displayNameInput, { target: { value: 'New Name' } })
+      expect(nameInput).toHaveValue('new-name')
+    })
+
+    it('gives Display Name field autoFocus', async () => {
+      const mockUser = createMockUser({})
+      const authValue = createAuthContext({
+        user: mockUser,
+        isAuthenticated: true,
+      })
+
+      renderProjectsListPage(authValue, orgWithSelection)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+      const displayNameInput = screen.getByLabelText(/display name/i)
+      expect(displayNameInput).toHaveFocus()
+    })
+
     it('navigates to new project page on success', async () => {
       const mockUser = createMockUser({})
       const authValue = createAuthContext({
