@@ -176,7 +176,7 @@ func (h *Handler) DeleteSecret(
 			slog.String("project", project),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
-			slog.Any("user_roles", claims.Roles),
+			slog.Any("roles", claims.Roles),
 		)
 		return nil, err
 	}
@@ -716,6 +716,6 @@ func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret, project str
 		slog.String("project", project),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
-		slog.Any("user_roles", claims.Roles),
+		slog.Any("roles", claims.Roles),
 	)
 }
