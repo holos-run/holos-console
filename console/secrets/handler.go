@@ -519,7 +519,7 @@ func shareGrantsToAnnotations(grants []*consolev1.ShareGrant) []AnnotationGrant 
 			result = append(result, ag)
 		}
 	}
-	return result
+	return DeduplicateGrants(result)
 }
 
 // buildSecretMetadata creates SecretMetadata for a secret from the caller's perspective.
