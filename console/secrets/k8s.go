@@ -33,6 +33,35 @@ const ManagedByLabel = "app.kubernetes.io/managed-by"
 // ManagedByValue is the label value that identifies secrets managed by console.holos.run.
 const ManagedByValue = "console.holos.run"
 
+// roleRank maps role strings to their privilege level for comparison.
+var roleRank = map[string]int{
+	"viewer": 1,
+	"editor": 2,
+	"owner":  3,
+}
+
+// DeduplicateGrants merges duplicate principals, keeping the grant with the
+// highest role. Entries with empty principals are dropped. Insertion order of
+// first-seen principals is preserved.
+func DeduplicateGrants(grants []AnnotationGrant) []AnnotationGrant {
+	seen := make(map[string]int) // principal -> index in result
+	result := make([]AnnotationGrant, 0, len(grants))
+	for _, g := range grants {
+		if g.Principal == "" {
+			continue
+		}
+		if idx, ok := seen[g.Principal]; ok {
+			if roleRank[g.Role] > roleRank[result[idx].Role] {
+				result[idx] = g
+			}
+		} else {
+			seen[g.Principal] = len(result)
+			result = append(result, g)
+		}
+	}
+	return result
+}
+
 // AnnotationGrant represents a single sharing grant stored in a Kubernetes annotation.
 type AnnotationGrant struct {
 	Principal string `json:"principal"`
