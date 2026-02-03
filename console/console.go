@@ -354,9 +354,6 @@ func (s *Server) Serve(ctx context.Context) error {
 		uiHandler.ServeHTTP(w, r)
 	})
 
-	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
-	mux.HandleFunc("/api/userinfo", handleUserInfo)
-
 	// Debug endpoint for OIDC investigation (insecure Dex mode only)
 	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
 		issuer := s.cfg.Issuer

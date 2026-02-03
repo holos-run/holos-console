@@ -1,4 +1,4 @@
-# ADR-007: Require --enable-insecure-dex to Start Embedded Dex Provider
+# ADR-008: Require --enable-insecure-dex to Start Embedded Dex Provider
 
 ## Status
 
