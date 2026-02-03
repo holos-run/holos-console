@@ -136,19 +136,21 @@ type Claims struct {
 
 ## OIDC Provider Discovery
 
-**Location:** [console/rpc/auth.go:36-44](console/rpc/auth.go#L36-L44)
+**Location:** [console/rpc/auth.go:37-46](console/rpc/auth.go#L37-L46)
 
 ```go
 provider, err := oidc.NewProvider(oidcCtx, issuer)
 if err != nil {
-    initErr = err
-    return
+    mu.Unlock()
+    return nil, connect.NewError(connect.CodeUnavailable, err)
 }
-
-verifier = provider.Verifier(&oidc.Config{
+v = provider.Verifier(&oidc.Config{
     ClientID: clientID,
 })
+verifier = v
 ```
+
+If OIDC discovery fails, the error is not cached. The `verifier` field remains nil so the next request retries discovery. Once discovery succeeds, the verifier is cached permanently.
 
 The `oidc.NewProvider()` function fetches the OIDC discovery document from `{issuer}/.well-known/openid-configuration` to obtain:
 - `jwks_uri`: URL for fetching signing keys
@@ -179,9 +181,9 @@ holos-console provides three authentication interceptors:
 
 | Interceptor | Location | Behavior |
 |------------|----------|----------|
-| `LazyAuthInterceptor` | [auth.go:17-60](console/rpc/auth.go#L17-L60) | Requires valid token; lazy provider initialization |
+| `LazyAuthInterceptor` | [auth.go:20-60](console/rpc/auth.go#L20-L60) | Requires valid token; lazy provider initialization with retry |
 | `AuthInterceptor` | [auth.go:64-76](console/rpc/auth.go#L64-L76) | Requires valid token; immediate provider required |
-| `OptionalAuthInterceptor` | [auth.go:78-91](console/rpc/auth.go#L78-L91) | Validates if present; allows unauthenticated |
+| `OptionalAuthInterceptor` | [auth.go:80-91](console/rpc/auth.go#L80-L91) | Validates if present; allows unauthenticated |
 
 Protected endpoints (e.g., SecretsService) use `LazyAuthInterceptor` configured at [console/console.go:126-130](console/console.go#L126-L130).
 
