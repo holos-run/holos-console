@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Reversed by [ADR 007](007-remove-bff-oauth2-proxy.md)
 
 ## Context
 
@@ -157,7 +157,7 @@ This decision is deferred to a future ADR pending further investigation.
   - Local development without external IdP
   - Testing authentication flows
   - Demos and evaluations
-- Production deployments may use embedded Dex or external IdP with oauth2-proxy
+- Production deployments use an external IdP with oauth2-proxy (embedded Dex requires `--enable-insecure-dex` and is intended for development only, see ADR-008)
 
 ## References
 

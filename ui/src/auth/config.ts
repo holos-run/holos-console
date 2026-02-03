@@ -4,30 +4,6 @@ import { WebStorageStateStore } from 'oidc-client-ts'
 // OIDC configuration for the holos-console SPA.
 // Uses the embedded Dex OIDC provider by default.
 
-// BFF (Backend For Frontend) mode detection and endpoints.
-// When running behind oauth2-proxy, authentication is handled by the proxy
-// and tokens are managed server-side via cookies.
-
-/**
- * Check if running behind oauth2-proxy (BFF mode).
- * oauth2-proxy sets an _oauth2_proxy cookie when user is authenticated.
- */
-export function isBFFMode(): boolean {
-  return document.cookie.includes('_oauth2_proxy')
-}
-
-/**
- * BFF mode endpoints (oauth2-proxy standard paths)
- */
-export const BFF_ENDPOINTS = {
-  // Initiate login - redirects to OIDC provider
-  login: '/oauth2/start',
-  // Logout - clears session and optionally redirects to OIDC logout
-  logout: '/oauth2/sign_out',
-  // Get user info from forwarded headers (requires backend endpoint)
-  userInfo: '/api/userinfo',
-} as const
-
 // Read config from window.__OIDC_CONFIG__ if injected by server,
 // otherwise use development defaults.
 interface OIDCConfig {

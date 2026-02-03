@@ -112,6 +112,11 @@ type Config struct {
 	// Default: "groups"
 	RolesClaim string
 
+	// EnableInsecureDex starts the built-in Dex OIDC provider with an
+	// auto-login connector that authenticates users without credentials.
+	// INSECURE: intended for local development only.
+	EnableInsecureDex bool
+
 	// LogHealthChecks enables logging of /healthz and /readyz requests.
 	// Default: false (suppresses health check logging to reduce noise from Kubernetes probes).
 	LogHealthChecks bool
@@ -241,22 +246,25 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
-		// Secrets service with project and org grant fallback
+		// Secrets service with project grant fallback
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
-		orgResolverForSecrets := projects.NewOrgGrantResolverForProject(projectsK8s, orgGrantResolver)
-		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver, orgResolverForSecrets)
+		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 		// Fallback: secrets handler without K8s (no resolvers)
-		secretsHandler := secrets.NewProjectScopedHandler(nil, nil, nil)
+		secretsHandler := secrets.NewProjectScopedHandler(nil, nil)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 	}
 
-	// Register gRPC reflection for introspection (grpcurl, etc.)
+	// Register gRPC reflection for introspection (grpcurl, etc.).
+	// These endpoints are intentionally unauthenticated. The API surface they
+	// expose (service names, method signatures, message schemas) is public
+	// information available in the proto/ source files and UI bundle.
+	// See ADR 009 (docs/adrs/009-grpc-reflection-unauthenticated.md).
 	reflector := grpcreflect.NewStaticReflector(
 		consolev1connect.VersionServiceName,
 		consolev1connect.SecretsServiceName,
@@ -268,8 +276,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectAlphaPath, reflectAlphaHandler)
 
-	// Initialize embedded OIDC identity provider (Dex)
-	if s.cfg.Issuer != "" {
+	// Initialize embedded OIDC identity provider (Dex).
+	// Only started when explicitly enabled via --enable-insecure-dex.
+	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
 		// Derive redirect URIs from origin
 		redirectURI := deriveRedirectURI(s.cfg.Origin)
 
@@ -348,11 +357,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		uiHandler.ServeHTTP(w, r)
 	})
 
-	// Expose user info from oauth2-proxy forwarded headers (BFF mode)
-	mux.HandleFunc("/api/userinfo", handleUserInfo)
-
-	// Debug endpoint for OIDC investigation (dev mode only)
-	if s.cfg.Issuer != "" {
+	// Debug endpoint for OIDC investigation (insecure Dex mode only)
+	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
 		issuer := s.cfg.Issuer
 		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
 			handleDebugOIDC(w, r, issuer, internalClient)
@@ -616,25 +622,6 @@ func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, na
 	}
 
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
-}
-
-// handleUserInfo returns user information from oauth2-proxy forwarded headers.
-// This endpoint is used by the frontend in BFF mode to get the current user.
-func handleUserInfo(w http.ResponseWriter, r *http.Request) {
-	user := r.Header.Get("X-Forwarded-User")
-	email := r.Header.Get("X-Forwarded-Email")
-
-	if user == "" && email == "" {
-		// Not authenticated or not running behind oauth2-proxy
-		http.Error(w, "Not authenticated", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"user":  user,
-		"email": email,
-	})
 }
 
 // handleDebugOIDC returns debug information about OIDC configuration.

@@ -163,6 +163,17 @@ func TestDefaultRolesClaim(t *testing.T) {
 	}
 }
 
+func TestEnableInsecureDexDefault(t *testing.T) {
+	cmd := Command()
+	f := cmd.Flags().Lookup("enable-insecure-dex")
+	if f == nil {
+		t.Fatal("--enable-insecure-dex flag not found")
+	}
+	if got := f.DefValue; got != "false" {
+		t.Errorf("default enable-insecure-dex = %q, want %q", got, "false")
+	}
+}
+
 func TestTTLParsing(t *testing.T) {
 	tests := []struct {
 		name    string

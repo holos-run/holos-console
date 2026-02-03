@@ -244,14 +244,6 @@ var ProjectCascadeSecretPerms = CascadeTable{
 	},
 }
 
-// OrgCascadeSecretPerms defines what secret permissions each org role grants
-// via cascade. Organization grants never cascade to secrets.
-var OrgCascadeSecretPerms = CascadeTable{}
-
-// OrgCascadeProjectPerms defines what project permissions each org role grants
-// via cascade. Organization grants never cascade to projects.
-var OrgCascadeProjectPerms = CascadeTable{}
-
 // HasCascadePermission returns true if the given role has the specified
 // permission in the provided cascade table.
 func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {

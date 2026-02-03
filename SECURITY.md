@@ -23,7 +23,7 @@ holos-console validates ID tokens using the [go-oidc](https://github.com/coreos/
 
 ### 1. Bearer Token Extraction
 
-**Location:** [console/rpc/auth.go:90-103](console/rpc/auth.go#L90-L103)
+**Location:** [console/rpc/auth.go:96-109](console/rpc/auth.go#L96-L109)
 
 ```go
 auth := req.Header().Get("Authorization")
@@ -46,7 +46,7 @@ if token == "" {
 
 ### 2. JWT Signature Verification
 
-**Location:** [console/rpc/auth.go:105](console/rpc/auth.go#L105)
+**Location:** [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
 ```go
 idToken, err := verifier.Verify(ctx, token)
@@ -62,7 +62,7 @@ The `verifier.Verify()` method validates the JWT signature by:
 
 ### 3. Token Expiration (exp claim)
 
-**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:105](console/rpc/auth.go#L105)
+**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
 The go-oidc library automatically verifies that `exp` (expiration time) has not passed. Expired tokens are rejected with a `TokenExpiredError`.
 
@@ -71,7 +71,7 @@ The go-oidc library automatically verifies that `exp` (expiration time) has not 
 
 ### 4. Issuer Validation (iss claim)
 
-**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:105](console/rpc/auth.go#L105)
+**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
 **Configuration:** The expected issuer is configured via the `--issuer` CLI flag and passed to `LazyAuthInterceptor` at [console/console.go:203](console/console.go#L203).
 
@@ -82,9 +82,9 @@ The go-oidc library verifies that the token's `iss` claim exactly matches the co
 
 ### 5. Audience Validation (aud claim)
 
-**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:105](console/rpc/auth.go#L105)
+**Location:** Handled by `verifier.Verify()` at [console/rpc/auth.go:111](console/rpc/auth.go#L111)
 
-**Configuration:** The expected client ID is configured via the `--client-id` CLI flag (default: `holos-console`) and passed to the verifier at [console/rpc/auth.go:36-38](console/rpc/auth.go#L36-L38):
+**Configuration:** The expected client ID is configured via the `--client-id` CLI flag (default: `holos-console`) and passed to the verifier at [console/rpc/auth.go:43-45](console/rpc/auth.go#L43-L45):
 
 ```go
 verifier = provider.Verifier(&oidc.Config{
@@ -99,7 +99,7 @@ The go-oidc library verifies that the token's `aud` claim contains the configure
 
 ### 6. Subject Claim Extraction (sub claim)
 
-**Location:** [console/rpc/auth.go:126-128](console/rpc/auth.go#L126-L128)
+**Location:** [console/rpc/auth.go:132-134](console/rpc/auth.go#L132-L134)
 
 ```go
 if claims.Sub == "" {
@@ -114,7 +114,7 @@ The subject identifier is extracted from the validated token and stored in claim
 
 ### 7. Claims Extraction
 
-**Location:** [console/rpc/auth.go:110-113](console/rpc/auth.go#L110-L113)
+**Location:** [console/rpc/auth.go:116-119](console/rpc/auth.go#L116-L119)
 
 ```go
 var claims Claims
@@ -137,7 +137,7 @@ type Claims struct {
 
 ### 8. Configurable Roles Claim Extraction
 
-**Location:** [console/rpc/auth.go:115-123](console/rpc/auth.go#L115-L123)
+**Location:** [console/rpc/auth.go:121-129](console/rpc/auth.go#L121-L129)
 
 ```go
 if rolesClaim != "" && rolesClaim != "groups" {
@@ -160,19 +160,21 @@ if rolesClaim != "" && rolesClaim != "groups" {
 
 ## OIDC Provider Discovery
 
-**Location:** [console/rpc/auth.go:30-38](console/rpc/auth.go#L30-L38)
+**Location:** [console/rpc/auth.go:37-46](console/rpc/auth.go#L37-L46)
 
 ```go
 provider, err := oidc.NewProvider(oidcCtx, issuer)
 if err != nil {
-    initErr = err
-    return
+    mu.Unlock()
+    return nil, connect.NewError(connect.CodeUnavailable, err)
 }
-
-verifier = provider.Verifier(&oidc.Config{
+v = provider.Verifier(&oidc.Config{
     ClientID: clientID,
 })
+verifier = v
 ```
+
+If OIDC discovery fails, the error is not cached. The `verifier` field remains nil so the next request retries discovery. Once discovery succeeds, the verifier is cached permanently.
 
 The `oidc.NewProvider()` function fetches the OIDC discovery document from `{issuer}/.well-known/openid-configuration` to obtain:
 - `jwks_uri`: URL for fetching signing keys
@@ -203,9 +205,9 @@ holos-console provides three authentication interceptors:
 
 | Interceptor | Location | Behavior |
 |------------|----------|----------|
-| `LazyAuthInterceptor` | [auth.go:17-54](console/rpc/auth.go#L17-L54) | Requires valid token; lazy provider initialization |
-| `AuthInterceptor` | [auth.go:58-70](console/rpc/auth.go#L58-L70) | Requires valid token; immediate provider required |
-| `OptionalAuthInterceptor` | [auth.go:74-85](console/rpc/auth.go#L74-L85) | Validates if present; allows unauthenticated |
+| `LazyAuthInterceptor` | [auth.go:20-60](console/rpc/auth.go#L20-L60) | Requires valid token; lazy provider initialization with retry |
+| `AuthInterceptor` | [auth.go:64-76](console/rpc/auth.go#L64-L76) | Requires valid token; immediate provider required |
+| `OptionalAuthInterceptor` | [auth.go:80-91](console/rpc/auth.go#L80-L91) | Validates if present; allows unauthenticated |
 
 Protected endpoints (e.g., SecretsService) use `LazyAuthInterceptor` configured at [console/console.go:203](console/console.go#L203).
 

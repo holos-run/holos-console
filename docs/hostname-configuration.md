@@ -19,9 +19,9 @@ The `--origin` flag is the source of truth for the server's public-facing base U
 | Redirect URI | `{origin}/pkce/verify` |
 | Post-logout redirect URI | `{origin}/ui` |
 
-The `--issuer` flag only determines the OIDC issuer URL used by the embedded Dex provider and JWT validation. It does not affect redirect URIs.
+The `--issuer` flag determines the OIDC issuer URL used for JWT validation. When `--enable-insecure-dex` is set, it also configures the embedded Dex provider. It does not affect redirect URIs.
 
-When neither `--origin` nor `--issuer` is set, both are derived from `--listen`:
+When `--enable-insecure-dex` is set and neither `--origin` nor `--issuer` is provided, both are derived from `--listen`:
 
 ```
 --listen :8443  →  origin  = https://localhost:8443

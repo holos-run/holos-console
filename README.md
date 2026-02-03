@@ -9,7 +9,7 @@ make certs   # Generate TLS certificates (one-time)
 make run     # Build and start the server
 ```
 
-Open <https://localhost:8443/ui> in your browser. The embedded Dex OIDC provider auto-logs in and redirects to the console.
+Open <https://localhost:8443/ui> in your browser. `make run` enables the embedded Dex OIDC provider (`--enable-insecure-dex`) which auto-logs in for local development.
 
 ## Reference Documentation
 
@@ -17,7 +17,7 @@ Open <https://localhost:8443/ui> in your browser. The embedded Dex OIDC provider
 |----------|-------------|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, build commands, testing, and commit message format |
 | [AGENTS.md](AGENTS.md) | Agent and CI guidance for working with this codebase |
-| [docs/authentication.md](docs/authentication.md) | OIDC authentication modes (embedded Dex PKCE and BFF oauth2-proxy) |
+| [docs/authentication.md](docs/authentication.md) | OIDC PKCE authentication with embedded Dex or external provider |
 | [docs/rbac.md](docs/rbac.md) | Project-level grants, per-secret sharing grants, and permission model |
 | [docs/secrets.md](docs/secrets.md) | Secret data model, UI workflows, and consuming secrets in pods |
 | [docs/dev-server.md](docs/dev-server.md) | Two-server development setup (Go backend + Vite dev server) |

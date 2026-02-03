@@ -294,46 +294,6 @@ func TestProjectCascadeSecretPerms(t *testing.T) {
 	})
 }
 
-func TestOrgCascadeSecretPerms(t *testing.T) {
-	roles := []Role{RoleViewer, RoleEditor, RoleOwner}
-	perms := []Permission{
-		PermissionSecretsList,
-		PermissionSecretsRead,
-		PermissionSecretsWrite,
-		PermissionSecretsDelete,
-		PermissionSecretsAdmin,
-	}
-	for _, role := range roles {
-		for _, perm := range perms {
-			t.Run(role.String()+"_"+perm.String(), func(t *testing.T) {
-				if HasCascadePermission(role, perm, OrgCascadeSecretPerms) {
-					t.Errorf("org %v should not have %v via cascade to secrets", role, perm)
-				}
-			})
-		}
-	}
-}
-
-func TestOrgCascadeProjectPerms(t *testing.T) {
-	roles := []Role{RoleViewer, RoleEditor, RoleOwner}
-	perms := []Permission{
-		PermissionProjectsList,
-		PermissionProjectsRead,
-		PermissionProjectsWrite,
-		PermissionProjectsDelete,
-		PermissionProjectsAdmin,
-		PermissionProjectsCreate,
-	}
-	for _, role := range roles {
-		for _, perm := range perms {
-			t.Run(role.String()+"_"+perm.String(), func(t *testing.T) {
-				if HasCascadePermission(role, perm, OrgCascadeProjectPerms) {
-					t.Errorf("org %v should not have %v via cascade to projects", role, perm)
-				}
-			})
-		}
-	}
-}
 
 func TestCheckCascadeAccess(t *testing.T) {
 	t.Run("project viewer can list secrets via cascade", func(t *testing.T) {
@@ -420,33 +380,6 @@ func TestCheckCascadeAccess(t *testing.T) {
 		}
 	})
 
-	t.Run("org grants never cascade to secrets", func(t *testing.T) {
-		err := CheckCascadeAccess(
-			"alice@example.com",
-			nil,
-			map[string]string{"alice@example.com": "owner"},
-			nil,
-			PermissionSecretsList,
-			OrgCascadeSecretPerms,
-		)
-		if err == nil {
-			t.Fatal("expected PermissionDenied for org cascade to secrets, got nil")
-		}
-	})
-
-	t.Run("org grants never cascade to projects", func(t *testing.T) {
-		err := CheckCascadeAccess(
-			"alice@example.com",
-			nil,
-			map[string]string{"alice@example.com": "owner"},
-			nil,
-			PermissionProjectsRead,
-			OrgCascadeProjectPerms,
-		)
-		if err == nil {
-			t.Fatal("expected PermissionDenied for org cascade to projects, got nil")
-		}
-	})
 }
 
 func TestCheckAccessGrants(t *testing.T) {
