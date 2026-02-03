@@ -564,7 +564,7 @@ func shareGrantsToAnnotations(grants []*consolev1.ShareGrant) []secrets.Annotati
 			result = append(result, ag)
 		}
 	}
-	return result
+	return secrets.DeduplicateGrants(result)
 }
 
 // annotationGrantsToProto converts annotation grants to proto ShareGrant slices.
