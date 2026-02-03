@@ -324,6 +324,59 @@ describe('SharingPanel', () => {
     })
   })
 
+  describe('error handling', () => {
+    it('keeps edit mode and shows error when save fails', async () => {
+      const onSave = vi.fn().mockRejectedValue(new Error('permission denied'))
+
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={onSave}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+        expect(screen.getByText(/permission denied/i)).toBeInTheDocument()
+      })
+
+      // Should still be in edit mode (save/cancel buttons visible)
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+    })
+
+    it('clears error when user cancels edit mode', async () => {
+      const onSave = vi.fn().mockRejectedValue(new Error('server error'))
+
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={onSave}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+  })
+
   describe('cancel', () => {
     it('reverts changes on cancel', () => {
       render(

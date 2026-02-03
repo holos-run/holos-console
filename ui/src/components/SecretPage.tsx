@@ -83,7 +83,7 @@ export function SecretPage() {
 
   // Sharing state
   const [userGrants, setUserGrants] = useState<ShareGrant[]>([])
-  const [roleGrants, setGroupGrants] = useState<ShareGrant[]>([])
+  const [roleGrants, setRoleGrants] = useState<ShareGrant[]>([])
   const [isSavingSharing, setIsSavingSharing] = useState(false)
 
   const isDirty =
@@ -148,7 +148,7 @@ export function SecretPage() {
         const meta = response.secrets.find((s) => s.name === name)
         if (meta) {
           setUserGrants(meta.userGrants)
-          setGroupGrants(meta.roleGrants)
+          setRoleGrants(meta.roleGrants)
           setDescription(meta.description ?? '')
           setOriginalDescription(meta.description ?? '')
           setUrl(meta.url ?? '')
@@ -187,11 +187,13 @@ export function SecretPage() {
       )
       if (response.metadata) {
         setUserGrants(response.metadata.userGrants)
-        setGroupGrants(response.metadata.roleGrants)
+        setRoleGrants(response.metadata.roleGrants)
       }
-    } finally {
+    } catch (err) {
       setIsSavingSharing(false)
+      throw err
     }
+    setIsSavingSharing(false)
   }
 
   const handleViewModeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'editor' | 'raw' | null) => {
