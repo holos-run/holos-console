@@ -77,6 +77,7 @@ func (h *Handler) ListProjects(
 	slog.InfoContext(ctx, "projects listed",
 		slog.String("action", "project_list"),
 		slog.String("resource_type", auditResourceType),
+		slog.String("organization", req.Msg.Organization),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 		slog.Int("total", len(result)),
@@ -112,12 +113,14 @@ func (h *Handler) GetProject(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	org := GetOrganization(ns)
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
 	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsRead); err != nil {
 		slog.WarnContext(ctx, "project access denied",
 			slog.String("action", "project_read_denied"),
 			slog.String("resource_type", auditResourceType),
 			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
@@ -130,6 +133,7 @@ func (h *Handler) GetProject(
 		slog.String("action", "project_read"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
@@ -167,6 +171,7 @@ func (h *Handler) CreateProject(
 				slog.String("action", "project_create_denied"),
 				slog.String("resource_type", auditResourceType),
 				slog.String("project", req.Msg.Name),
+				slog.String("organization", req.Msg.Organization),
 				slog.String("sub", claims.Sub),
 				slog.String("email", claims.Email),
 			)
@@ -190,6 +195,7 @@ func (h *Handler) CreateProject(
 		slog.String("action", "project_create"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", req.Msg.Organization),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
@@ -224,12 +230,14 @@ func (h *Handler) UpdateProject(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	org := GetOrganization(ns)
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
 	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsWrite); err != nil {
 		slog.WarnContext(ctx, "project update denied",
 			slog.String("action", "project_update_denied"),
 			slog.String("resource_type", auditResourceType),
 			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
@@ -244,6 +252,7 @@ func (h *Handler) UpdateProject(
 		slog.String("action", "project_update"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
@@ -276,12 +285,14 @@ func (h *Handler) DeleteProject(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	org := GetOrganization(ns)
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
 	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsDelete); err != nil {
 		slog.WarnContext(ctx, "project delete denied",
 			slog.String("action", "project_delete_denied"),
 			slog.String("resource_type", auditResourceType),
 			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
@@ -296,6 +307,7 @@ func (h *Handler) DeleteProject(
 		slog.String("action", "project_delete"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
@@ -328,12 +340,14 @@ func (h *Handler) UpdateProjectSharing(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	org := GetOrganization(ns)
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
 	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsAdmin); err != nil {
 		slog.WarnContext(ctx, "project sharing update denied",
 			slog.String("action", "project_sharing_denied"),
 			slog.String("resource_type", auditResourceType),
 			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
@@ -352,6 +366,7 @@ func (h *Handler) UpdateProjectSharing(
 		slog.String("action", "project_sharing_update"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
@@ -392,12 +407,14 @@ func (h *Handler) GetProjectRaw(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	orgUsers, orgRoles := h.resolveOrgGrants(ctx, GetOrganization(ns))
+	org := GetOrganization(ns)
+	orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
 	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, orgUsers, orgRoles, rbac.PermissionProjectsRead); err != nil {
 		slog.WarnContext(ctx, "project raw access denied",
 			slog.String("action", "project_raw_denied"),
 			slog.String("resource_type", auditResourceType),
 			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
 		)
@@ -408,6 +425,7 @@ func (h *Handler) GetProjectRaw(
 		slog.String("action", "project_raw"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)

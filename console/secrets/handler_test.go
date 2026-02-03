@@ -446,6 +446,91 @@ func TestHandler_AuditLogging(t *testing.T) {
 		}
 		assertResourceType(t, record)
 	})
+
+	t.Run("secret_access includes project field", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "prj-test-namespace",
+				Annotations: map[string]string{
+					ShareRolesAnnotation: `[{"principal":"owner","role":"owner"}]`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
+		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:   "user-123",
+			Email: "user@example.com",
+			Roles: []string{"owner"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		_, err := handler.GetSecret(ctx, connect.NewRequest(&consolev1.GetSecretRequest{
+			Name:    "my-secret",
+			Project: "test-namespace",
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		record := logHandler.findRecord("secret_access")
+		if record == nil {
+			t.Fatal("expected log record with action='secret_access', got none")
+		}
+		if got := findAttr(record, "project"); got != "test-namespace" {
+			t.Errorf("expected project='test-namespace', got %q", got)
+		}
+	})
+
+	t.Run("secret_access_denied includes project field", func(t *testing.T) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "prj-test-namespace",
+				Annotations: map[string]string{
+					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+				},
+			},
+			Data: map[string][]byte{"key": []byte("value")},
+		}
+		fakeClient := fake.NewClientset(testProjectNS(), secret)
+		k8sClient := NewK8sClient(fakeClient, testResolver())
+		handler := NewProjectScopedHandler(k8sClient, nil, nil)
+
+		logHandler := &testLogHandler{}
+		oldLogger := slog.Default()
+		slog.SetDefault(slog.New(logHandler))
+		defer slog.SetDefault(oldLogger)
+
+		claims := &rpc.Claims{
+			Sub:   "user-456",
+			Email: "other@example.com",
+			Roles: []string{"developers"},
+		}
+		ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+		_, _ = handler.GetSecret(ctx, connect.NewRequest(&consolev1.GetSecretRequest{
+			Name:    "my-secret",
+			Project: "test-namespace",
+		}))
+
+		record := logHandler.findRecord("secret_access_denied")
+		if record == nil {
+			t.Fatal("expected log record with action='secret_access_denied', got none")
+		}
+		if got := findAttr(record, "project"); got != "test-namespace" {
+			t.Errorf("expected project='test-namespace', got %q", got)
+		}
+	})
 }
 
 func TestHandler_DeleteSecret(t *testing.T) {

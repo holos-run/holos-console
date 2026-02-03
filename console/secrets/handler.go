@@ -176,7 +176,7 @@ func (h *Handler) DeleteSecret(
 			slog.String("project", project),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
-			slog.Any("user_roles", claims.Roles),
+			slog.Any("roles", claims.Roles),
 		)
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func (h *Handler) UpdateSecret(
 	projUsers, projRoles := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgRoles := h.resolveOrgGrants(ctx, project)
 	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeRoles, projUsers, projRoles, orgUsers, orgRoles, rbac.PermissionSecretsWrite); err != nil {
-		logAuditDenied(ctx, claims, secret.Name)
+		logAuditDenied(ctx, claims, secret.Name, project)
 		slog.WarnContext(ctx, "secret update denied",
 			slog.String("action", "secret_update_denied"),
 			slog.String("resource_type", auditResourceType),
@@ -462,11 +462,11 @@ func (h *Handler) GetSecretRaw(
 	projUsers, projRoles := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgRoles := h.resolveOrgGrants(ctx, project)
 	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeRoles, projUsers, projRoles, orgUsers, orgRoles, rbac.PermissionSecretsRead); err != nil {
-		logAuditDenied(ctx, claims, secret.Name)
+		logAuditDenied(ctx, claims, secret.Name, project)
 		return nil, err
 	}
 
-	logAuditAllowed(ctx, claims, secret.Name)
+	logAuditAllowed(ctx, claims, secret.Name, project)
 
 	// Set apiVersion and kind (not populated by client-go on fetched objects)
 	secret.APIVersion = "v1"
@@ -593,11 +593,11 @@ func (h *Handler) returnSecret(ctx context.Context, claims *rpc.Claims, secret *
 	projUsers, projRoles := h.resolveProjectGrants(ctx, project)
 	orgUsers, orgRoles := h.resolveOrgGrants(ctx, project)
 	if err := h.checkAccess(claims.Email, claims.Roles, activeUsers, activeRoles, projUsers, projRoles, orgUsers, orgRoles, rbac.PermissionSecretsRead); err != nil {
-		logAuditDenied(ctx, claims, secret.Name)
+		logAuditDenied(ctx, claims, secret.Name, project)
 		return nil, err
 	}
 
-	logAuditAllowed(ctx, claims, secret.Name)
+	logAuditAllowed(ctx, claims, secret.Name, project)
 
 	return connect.NewResponse(&consolev1.GetSecretResponse{
 		Data: secret.Data,
@@ -695,11 +695,12 @@ func mapK8sError(err error) error {
 }
 
 // logAuditAllowed logs a successful secret access.
-func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
+func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret, project string) {
 	slog.InfoContext(ctx, "secret access granted",
 		slog.String("action", "secret_access"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("secret", secret),
+		slog.String("project", project),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 		slog.Any("roles", claims.Roles),
@@ -707,13 +708,14 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret string) {
 }
 
 // logAuditDenied logs a denied secret access.
-func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret string) {
+func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret, project string) {
 	slog.WarnContext(ctx, "secret access denied",
 		slog.String("action", "secret_access_denied"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("secret", secret),
+		slog.String("project", project),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
-		slog.Any("user_roles", claims.Roles),
+		slog.Any("roles", claims.Roles),
 	)
 }

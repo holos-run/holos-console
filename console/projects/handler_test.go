@@ -49,6 +49,19 @@ func (h *testLogHandler) findRecord(action string) *slog.Record {
 	return nil
 }
 
+// findAttr returns the string value of the named attribute on the record, or "" if not found.
+func findAttr(r *slog.Record, key string) string {
+	var val string
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			val = a.Value.String()
+			return false
+		}
+		return true
+	})
+	return val
+}
+
 // contextWithClaims creates a context with OIDC claims.
 func contextWithClaims(email string, groups ...string) context.Context {
 	claims := &rpc.Claims{
@@ -273,6 +286,44 @@ func TestGetProject_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
 	handler, _ := newHandler()
 	_, err := handler.GetProject(context.Background(), connect.NewRequest(&consolev1.GetProjectRequest{Name: "test"}))
 	assertUnauthenticated(t, err)
+}
+
+func TestGetProject_AuditLogIncludesOrganization(t *testing.T) {
+	ns := managedNSWithOrg("my-project", "my-org", `[{"principal":"alice@example.com","role":"viewer"}]`)
+	handler, logHandler := newHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	record := logHandler.findRecord("project_read")
+	if record == nil {
+		t.Fatal("expected project_read audit log")
+	}
+	if got := findAttr(record, "organization"); got != "my-org" {
+		t.Errorf("expected organization='my-org', got %q", got)
+	}
+}
+
+func TestGetProject_DeniedAuditLogIncludesOrganization(t *testing.T) {
+	ns := managedNSWithOrg("my-project", "my-org", `[{"principal":"bob@example.com","role":"owner"}]`)
+	handler, logHandler := newHandler(ns)
+	ctx := contextWithClaims("nobody@example.com")
+
+	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	record := logHandler.findRecord("project_read_denied")
+	if record == nil {
+		t.Fatal("expected project_read_denied audit log")
+	}
+	if got := findAttr(record, "organization"); got != "my-org" {
+		t.Errorf("expected organization='my-org', got %q", got)
+	}
 }
 
 // ---- CreateProject tests ----
