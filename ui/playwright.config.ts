@@ -52,7 +52,7 @@ export default defineConfig({
     {
       // Go backend - must be built first (make build or make test-e2e)
       // Use exec to ensure signals reach the Go binary directly
-      command: 'exec ../bin/holos-console --cert ../certs/tls.crt --key ../certs/tls.key',
+      command: 'exec ../bin/holos-console --enable-insecure-dex --cert ../certs/tls.crt --key ../certs/tls.key',
       url: 'https://localhost:8443/ui',
       timeout: 30_000,
       reuseExistingServer: !process.env.CI,

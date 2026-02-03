@@ -125,7 +125,7 @@ Key files:
 
 ### Authentication
 
-OIDC PKCE flow: Browser-side OIDC via embedded Dex at `/dex/` or an external OIDC provider configured with `--issuer`. Tokens stored in session storage, sent as `Authorization: Bearer` headers. Default credentials: `admin` / `verysecret` (override with `HOLOS_DEX_INITIAL_ADMIN_USERNAME`/`PASSWORD` env vars).
+OIDC PKCE flow: Requires `--enable-insecure-dex` flag for embedded Dex at `/dex/`, or an external OIDC provider configured with `--issuer`. Tokens stored in session storage, sent as `Authorization: Bearer` headers. Default credentials: `admin` / `verysecret` (override with `HOLOS_DEX_INITIAL_ADMIN_USERNAME`/`PASSWORD` env vars).
 
 Backend auth: `LazyAuthInterceptor` in `console/rpc/auth.go` verifies JWTs from the `Authorization: Bearer` header and stores `rpc.Claims` in context. Lazy initialization avoids startup race with embedded Dex.
 

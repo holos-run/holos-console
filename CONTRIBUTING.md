@@ -179,7 +179,7 @@ The `reuseExistingServer` option detects when servers are already running and sk
 
 ## Authentication
 
-The embedded Dex OIDC provider auto-logs in during local development. See [docs/authentication.md](docs/authentication.md) for detailed documentation including external OIDC provider configuration.
+The embedded Dex OIDC provider is enabled by `make run` via `--enable-insecure-dex` and auto-logs in during local development. See [docs/authentication.md](docs/authentication.md) for detailed documentation including external OIDC provider configuration.
 
 ## Commit Messages
 

@@ -32,8 +32,9 @@ var (
 	orgCreatorUsers    string
 	orgCreatorRoles    string
 	rolesClaim         string
-	logHealthChecks  bool
-	logLevel         string
+	enableInsecureDex bool
+	logHealthChecks   bool
+	logLevel          string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -77,8 +78,9 @@ func Command() *cobra.Command {
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "Listen on plain HTTP instead of HTTPS")
 
 	// OIDC flags
+	cmd.Flags().BoolVar(&enableInsecureDex, "enable-insecure-dex", false, "Enable the built-in Dex OIDC provider with auto-login (INSECURE: intended for local development only)")
 	cmd.Flags().StringVar(&origin, "origin", "", "Public-facing base URL of the console for OIDC redirect URIs (e.g., https://holos-console.example.com)")
-	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL (defaults to https://localhost:<port>/dex based on --listen)")
+	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL for token validation (e.g., https://idp.example.com/dex)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
 	// Token TTL flags
@@ -214,9 +216,15 @@ func Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --refresh-token-ttl: %w", err)
 	}
 
-	// Derive origin and issuer from listen address if not explicitly set
+	// Derive origin from listen address if not explicitly set
 	derivedOrigin := deriveOrigin(listenAddr, origin, plainHTTP)
-	derivedIssuer := deriveIssuer(listenAddr, issuer, plainHTTP)
+
+	// Only auto-derive the issuer when the built-in Dex provider is enabled.
+	// An explicit --issuer is always honored (external OIDC provider).
+	derivedIssuer := issuer
+	if enableInsecureDex && issuer == "" {
+		derivedIssuer = deriveIssuer(listenAddr, "", plainHTTP)
+	}
 
 	cfg := console.Config{
 		ListenAddr:       listenAddr,
@@ -227,6 +235,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		Origin:           derivedOrigin,
 		Issuer:           derivedIssuer,
 		ClientID:         clientID,
+		EnableInsecureDex: enableInsecureDex,
 		IDTokenTTL:       idTTL,
 		RefreshTokenTTL:  refreshTTL,
 		NamespacePrefix:     namespacePrefix,
