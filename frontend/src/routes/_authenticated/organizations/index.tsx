@@ -89,7 +89,7 @@ function OrganizationsListPage() {
       await deleteMutation.mutateAsync({ name: deleteTarget })
       setDeleteOpen(false)
       setDeleteTarget(null)
-    } catch { /* error via mutation */ }
+    } catch { /* dialog stays open; deleteMutation.error is shown in the dialog */ }
   }
 
   if (isLoading) {

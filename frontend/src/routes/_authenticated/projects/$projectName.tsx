@@ -83,7 +83,7 @@ function ProjectPage() {
       await updateMutation.mutateAsync({ name, displayName: newDisplayName })
       setLocalDisplayName(newDisplayName)
       setEditingDisplayName(false)
-    } catch { /* keep editing on failure */ }
+    } catch { /* stay in editing mode; updateMutation.error is shown below */ }
   }
 
   const handleSaveDescription = async (newDescription: string) => {
@@ -91,7 +91,7 @@ function ProjectPage() {
       await updateMutation.mutateAsync({ name, description: newDescription })
       setLocalDescription(newDescription)
       setEditingDescription(false)
-    } catch { /* keep editing on failure */ }
+    } catch { /* stay in editing mode; updateMutation.error is shown below */ }
   }
 
   const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
@@ -120,7 +120,7 @@ function ProjectPage() {
       await deleteMutation.mutateAsync({ name })
       setDeleteOpen(false)
       navigate({ to: '/projects' })
-    } catch { /* error via mutation */ }
+    } catch { /* dialog stays open; deleteMutation.error is shown in the dialog */ }
   }
 
   if (authLoading || (isAuthenticated && isLoading)) {
@@ -234,6 +234,10 @@ function ProjectPage() {
             </>
           )}
         </div>
+
+        {updateMutation.error && (
+          <Alert variant="destructive"><AlertDescription>{updateMutation.error.message}</AlertDescription></Alert>
+        )}
 
         <Tabs value={viewMode} onValueChange={handleViewModeChange}>
           <TabsList>
