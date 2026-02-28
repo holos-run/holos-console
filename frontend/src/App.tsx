@@ -1,7 +1,7 @@
 function App() {
   return (
-    <div>
-      <h1>Holos Console</h1>
+    <div className="min-h-screen flex items-center justify-center">
+      <h1 className="text-3xl font-bold">Holos Console</h1>
     </div>
   )
 }
