@@ -42,7 +42,7 @@ function serializeData(data: Record<string, Uint8Array>): string {
 function SecretPage() {
   const { projectName, name } = Route.useParams()
   const navigate = useNavigate()
-  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const transport = useTransport()
 
   const { data: fetchedData, isLoading: dataLoading, error: dataError } = useGetSecret(projectName, name)
@@ -83,10 +83,6 @@ function SecretPage() {
   // Sharing state from metadata
   const [localUserGrants, setLocalUserGrants] = useState<ShareGrant[] | null>(null)
   const [localRoleGrants, setLocalRoleGrants] = useState<ShareGrant[] | null>(null)
-
-  if (!authLoading && !isAuthenticated) {
-    login(`/projects/${projectName}/secrets/${name}`)
-  }
 
   // Initialize local state from fetched data
   const effectiveData = secretData ?? fetchedData ?? {}

@@ -39,7 +39,7 @@ function sharingSummary(userCount: number, roleCount: number): string | undefine
 
 function SecretsListPage() {
   const { projectName } = Route.useParams()
-  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 
   const { data: secrets = [], isLoading, error } = useListSecrets(projectName)
   const createMutation = useCreateSecret(projectName)
@@ -54,10 +54,6 @@ function SecretsListPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-
-  if (!authLoading && !isAuthenticated) {
-    login(`/projects/${projectName}/secrets`)
-  }
 
   const handleCreateOpen = () => {
     setCreateName('')
