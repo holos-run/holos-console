@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { createFileRoute, Link, useNavigate, Outlet, useRouterState } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -59,8 +59,8 @@ function ProjectPage() {
   const [localProject, setLocalProject] = useState<typeof project | null>(null)
 
   // Check if we're rendering a child route (secrets)
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isChildRoute = pathname !== `/projects/${name}`
+  const matchRoute = useMatchRoute()
+  const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
 
   if (!authLoading && !isAuthenticated) {
     login(`/projects/${name}`)
