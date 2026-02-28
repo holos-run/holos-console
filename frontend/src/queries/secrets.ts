@@ -35,16 +35,21 @@ export function useGetSecret(project: string, name: string) {
   })
 }
 
+// GetSecret only returns data (bytes), not metadata (description, url, grants).
+// There is no dedicated GetSecretMetadata RPC, so we derive metadata from the
+// listSecrets cache. Uses the same query key as useListSecrets so TanStack Query
+// deduplicates the request when both hooks are active on the same page.
 export function useGetSecretMetadata(project: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
-    queryKey: ['secrets', 'metadata', project, name],
+    queryKey: listSecretsKey(project),
     queryFn: async () => {
       const response = await client.listSecrets({ project })
-      return response.secrets.find((s: SecretMetadata) => s.name === name) ?? null
+      return response.secrets
     },
     enabled: !!project && !!name,
+    select: (secrets) => secrets.find((s: SecretMetadata) => s.name === name) ?? null,
   })
 }
 
@@ -102,8 +107,8 @@ export function useUpdateSecretSharing(project: string) {
       userGrants: { principal: string; role: number }[]
       roleGrants: { principal: string; role: number }[]
     }) => client.updateSharing({ ...params, project }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['secrets', 'metadata', project, variables.name] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listSecretsKey(project) })
     },
   })
 }
