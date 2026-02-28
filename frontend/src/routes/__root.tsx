@@ -1,9 +1,19 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { TransportProvider } from '@connectrpc/connect-query'
+import { queryClient } from '@/lib/query-client'
+import { transport } from '@/lib/transport'
 
 export const Route = createRootRoute({
   component: RootLayout,
 })
 
 function RootLayout() {
-  return <Outlet />
+  return (
+    <TransportProvider transport={transport}>
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+      </QueryClientProvider>
+    </TransportProvider>
+  )
 }

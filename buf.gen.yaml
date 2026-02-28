@@ -12,3 +12,8 @@ plugins:
     out: ui/src/gen
   - remote: buf.build/connectrpc/es
     out: ui/src/gen
+  # TypeScript plugins for new frontend (Tailwind + shadcn/ui)
+  - remote: buf.build/bufbuild/es
+    out: frontend/src/gen
+  - remote: buf.build/connectrpc/es
+    out: frontend/src/gen
