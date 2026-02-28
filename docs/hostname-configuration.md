@@ -17,7 +17,7 @@ The `--origin` flag is the source of truth for the server's public-facing base U
 | Derived URI | Value |
 |-------------|-------|
 | Redirect URI | `{origin}/pkce/verify` |
-| Post-logout redirect URI | `{origin}/ui` |
+| Post-logout redirect URI | `{origin}/` |
 
 The `--issuer` flag determines the OIDC issuer URL used for JWT validation. When `--enable-insecure-dex` is set, it also configures the embedded Dex provider. It does not affect redirect URIs.
 
@@ -45,7 +45,7 @@ The server uses `origin` and `issuer` independently:
 ```go
 // Redirect URIs derived from origin (not issuer)
 redirectURI := deriveRedirectURI(s.cfg.Origin)       // {origin}/pkce/verify
-postLogout := derivePostLogoutRedirectURI(s.cfg.Origin) // {origin}/ui
+postLogout := derivePostLogoutRedirectURI(s.cfg.Origin) // {origin}/
 
 // Issuer passed directly to embedded Dex
 oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
@@ -72,7 +72,7 @@ Dex receives the issuer URL and uses it for the OIDC discovery document, the `is
 
 ### 4. React SPA
 
-**File:** [ui/src/auth/config.ts](../ui/src/auth/config.ts)
+**File:** [frontend/src/lib/auth.ts](../frontend/src/lib/auth.ts)
 
 The server injects `window.__OIDC_CONFIG__` into the HTML with the authority, redirect URI, and post-logout redirect URI. The SPA reads this at startup. A fallback derives these from `window.location.origin` if injection is missing.
 
@@ -92,7 +92,7 @@ make run
 |-----------|-----|
 | OIDC Issuer | `https://localhost:8443/dex` |
 | Redirect URI | `https://localhost:8443/pkce/verify` |
-| Post-logout | `https://localhost:8443/ui` |
+| Post-logout | `https://localhost:8443/` |
 
 ### Custom Hostname
 

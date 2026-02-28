@@ -92,4 +92,4 @@ acceptable because:
 
 - [ADR 002: BFF Architecture with oauth2-proxy](002-bff-architecture-oauth2-proxy.md)
 - [oidc-client-ts UserManagerSettings](https://authts.github.io/oidc-client-ts/interfaces/UserManagerSettings.html)
-- [ui/src/auth/config.ts](../../ui/src/auth/config.ts) - Current sessionStorage configuration
+- [frontend/src/lib/auth.ts](../../frontend/src/lib/auth.ts) - Current sessionStorage configuration

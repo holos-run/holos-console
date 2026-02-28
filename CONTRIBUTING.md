@@ -35,7 +35,7 @@ make certs
 ### 4. Install Frontend Dependencies
 
 ```bash
-cd ui && npm install
+cd frontend && npm install
 cd ..
 ```
 
@@ -126,7 +126,7 @@ make run
 make dev
 ```
 
-Then open `https://localhost:5173/ui/` in your browser.
+Then open `https://localhost:5173/` in your browser.
 
 ### Code Generation
 
@@ -172,7 +172,7 @@ make run
 make dev
 
 # Terminal 3: Run E2E tests (reuses existing servers)
-cd ui && npm run test:e2e
+cd frontend && npm run test:e2e
 ```
 
 The `reuseExistingServer` option detects when servers are already running and skips starting new ones. This is useful for iterating on tests quickly or debugging specific failures.

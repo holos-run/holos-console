@@ -16,7 +16,7 @@ holos-console uses OIDC (OpenID Connect) with PKCE (Proof Key for Code Exchange)
 │  ┌──────────────────┐      ┌──────────────────────────────────┐ │
 │  │   Embedded Dex   │      │         Console Server           │ │
 │  │  (opt-in only)   │      │                                  │ │
-│  │  /dex/*          │      │  /ui/*          (React SPA)      │ │
+│  │  /dex/*          │      │  /*             (React SPA)      │ │
 │  │                  │      │  /api/*         (ConnectRPC)     │ │
 │  │  Auto-Login      │      │  /metrics       (Prometheus)     │ │
 │  │  Connector       │      │                                  │ │
