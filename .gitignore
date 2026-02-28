@@ -40,6 +40,10 @@ certs/tls.crt
 certs/tls.key
 console/ui/assets/index-*.js
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # Playwright
 ui/playwright-report/
 ui/test-results/
