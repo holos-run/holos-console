@@ -28,24 +28,29 @@ interface RawViewProps {
 
 export function RawView({ raw, includeAllFields, onToggleIncludeAllFields }: RawViewProps) {
   const formattedJson = useMemo(() => {
-    const obj = JSON.parse(raw)
+    let obj: Record<string, unknown>
+    try {
+      obj = JSON.parse(raw)
+    } catch {
+      return raw
+    }
 
     if (obj.kind === 'Secret' && obj.data && typeof obj.data === 'object') {
       const stringData: Record<string, string> = {}
-      for (const [key, value] of Object.entries(obj.data)) {
+      for (const [key, value] of Object.entries(obj.data as Record<string, string>)) {
         try {
-          stringData[key] = atob(value as string)
+          stringData[key] = atob(value)
         } catch {
-          stringData[key] = value as string
+          stringData[key] = value
         }
       }
       obj.stringData = stringData
       delete obj.data
     }
 
-    if (!includeAllFields && obj.metadata) {
+    if (!includeAllFields && obj.metadata && typeof obj.metadata === 'object') {
       for (const field of SERVER_MANAGED_FIELDS) {
-        delete obj.metadata[field]
+        delete (obj.metadata as Record<string, unknown>)[field]
       }
     }
 
