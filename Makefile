@@ -79,19 +79,20 @@ test-go: ## Run Go tests.
 
 .PHONY: test-ui
 test-ui: ## Run UI tests.
-	cd ui && npm test -- --run
+	cd frontend && npm test -- --run
 
 .PHONY: test-e2e
 test-e2e: build ## Run Playwright E2E tests (orchestrates servers automatically).
-	cd ui && npm run test:e2e
+	cd frontend && npm run test:e2e
 
 .PHONY: coverage
 coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
 .PHONY: generate
-generate: ## Generate code.
+generate: ## Generate protobuf code and build frontend.
 	go generate ./...
+	cd frontend && npm run build
 
 .PHONY: certs
 certs: ## Generate TLS certificates using mkcert.

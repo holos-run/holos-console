@@ -5,9 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-UI_DIR="$PROJECT_ROOT/ui"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
-cd "$UI_DIR"
+cd "$FRONTEND_DIR"
 
 # Install dependencies if node_modules is missing
 if [ ! -d "node_modules" ]; then
