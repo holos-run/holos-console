@@ -48,12 +48,12 @@ func TestDerivePostLogoutRedirectURI(t *testing.T) {
 		{
 			name:   "standard origin",
 			origin: "https://holos-console.home.jeffmccune.com",
-			want:   "https://holos-console.home.jeffmccune.com/ui",
+			want:   "https://holos-console.home.jeffmccune.com/",
 		},
 		{
 			name:   "localhost origin",
 			origin: "https://localhost:8443",
-			want:   "https://localhost:8443/ui",
+			want:   "https://localhost:8443/",
 		},
 	}
 	for _, tt := range tests {

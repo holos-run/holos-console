@@ -38,6 +38,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    outDir: path.resolve(__dirname, '../console/dist'),
+    emptyOutDir: true,
+  },
   server: {
     https: fs.existsSync(path.resolve(__dirname, '../certs/tls.crt'))
       ? {

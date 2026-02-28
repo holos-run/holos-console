@@ -41,7 +41,7 @@ import (
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
-//go:embed ui
+//go:embed all:dist
 var uiFS embed.FS
 
 // Config holds the server configuration.
@@ -137,7 +137,7 @@ func deriveRedirectURI(origin string) string {
 
 // derivePostLogoutRedirectURI derives the post-logout redirect URI from the console origin.
 func derivePostLogoutRedirectURI(origin string) string {
-	return strings.TrimSuffix(origin, "/") + "/ui"
+	return strings.TrimSuffix(origin, "/") + "/"
 }
 
 // Server represents the console server.
@@ -308,7 +308,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	// Prepare embedded UI files
-	uiContent, err := fs.Sub(uiFS, "ui")
+	uiContent, err := fs.Sub(uiFS, "dist")
 	if err != nil {
 		return fmt.Errorf("failed to create sub filesystem: %w", err)
 	}
@@ -326,34 +326,22 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	uiHandler := newUIHandler(uiContent, oidcConfig)
 
-	// Serve SPA at /pkce/verify for OIDC PKCE callback handling.
-	// This path is outside the /ui prefix so it needs its own handler.
-	mux.HandleFunc("/pkce/verify", func(w http.ResponseWriter, r *http.Request) {
-		uiHandler.serveIndex(w, r)
-	})
-
-	// Redirect / to /ui (canonical path without trailing slash)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/ui", http.StatusFound)
-			return
-		}
-		http.NotFound(w, r)
-	})
-
-	// Serve UI at /ui (canonical path without trailing slash)
+	// Redirect /ui to / for backwards compatibility
 	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
-		// Serve index.html for the canonical /ui path
-		uiHandler.ServeHTTP(w, r)
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/ui/", func(w http.ResponseWriter, r *http.Request) {
+		target := strings.TrimPrefix(r.URL.Path, "/ui")
+		if target == "" {
+			target = "/"
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	})
 
-	// Redirect /ui/ to /ui, serve SPA for deeper paths
-	mux.HandleFunc("/ui/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/ui/" {
-			http.Redirect(w, r, "/ui", http.StatusMovedPermanently)
-			return
-		}
-		// Handle SPA routes under /ui/
+	// Serve SPA at / (catch-all for frontend routes and static assets).
+	// More specific patterns (/dex/, /healthz, ConnectRPC services) are
+	// registered first and take priority in the Go default mux.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		uiHandler.ServeHTTP(w, r)
 	})
 
@@ -531,27 +519,19 @@ func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) *uiHandler {
 }
 
 func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Handle both /ui (canonical) and /ui/* paths
-	if r.URL.Path == "/ui" {
+	// Serve index.html for root
+	if r.URL.Path == "/" {
 		h.serveIndex(w, r)
 		return
 	}
 
-	if !strings.HasPrefix(r.URL.Path, "/ui/") {
-		http.NotFound(w, r)
+	// Try to serve as a static file (strip leading /)
+	relativePath := strings.TrimPrefix(r.URL.Path, "/")
+	if relativePath != "" && h.serveIfFile(w, r, relativePath) {
 		return
 	}
 
-	relativePath := strings.TrimPrefix(r.URL.Path, "/ui/")
-	if relativePath == "" {
-		h.serveIndex(w, r)
-		return
-	}
-
-	if h.serveIfFile(w, r, relativePath) {
-		return
-	}
-
+	// Fall back to index.html for SPA client-side routing
 	h.serveIndex(w, r)
 }
 

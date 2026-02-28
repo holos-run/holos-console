@@ -39,10 +39,10 @@ bin/
 certs/tls.crt
 certs/tls.key
 console/ui/assets/index-*.js
+console/dist/
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
 
 # Playwright
 ui/playwright-report/
