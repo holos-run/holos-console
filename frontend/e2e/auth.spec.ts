@@ -1,4 +1,12 @@
 import { test, expect } from '@playwright/test'
+import {
+  DEFAULT_USERNAME,
+  DEFAULT_PASSWORD,
+  buildAuthorizeUrl,
+  navigateToDexLogin,
+  navigatePastConnectorSelection,
+  loginViaProfilePage,
+} from './helpers'
 
 /**
  * E2E tests for OIDC authentication flow.
@@ -10,10 +18,6 @@ import { test, expect } from '@playwright/test'
  *   Username: admin (HOLOS_DEX_INITIAL_ADMIN_USERNAME)
  *   Password: verysecret (HOLOS_DEX_INITIAL_ADMIN_PASSWORD)
  */
-
-// Default credentials for embedded Dex OIDC provider
-const DEFAULT_USERNAME = 'admin'
-const DEFAULT_PASSWORD = 'verysecret'
 
 test.describe('Authentication', () => {
   test('should redirect to profile page by default', async ({ page }) => {
@@ -47,18 +51,7 @@ test.describe('Authentication', () => {
   test('should display Dex login page when accessing authorize endpoint', async ({
     page,
   }) => {
-    // Navigate to the OIDC authorize endpoint directly
-    // This simulates what happens when the SPA initiates login
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
-    authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
-
-    await page.goto(authorizeUrl.toString())
+    await page.goto(buildAuthorizeUrl())
 
     // Dex should redirect to show a login form or connector selection
     await expect(page).toHaveURL(/\/dex\//)
@@ -69,63 +62,17 @@ test.describe('Login Flow', () => {
   test('should show login form with username and password fields', async ({
     page,
   }) => {
-    // Navigate to OIDC authorize with proper PKCE parameters
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
-    authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+    await navigateToDexLogin(page)
 
-    await page.goto(authorizeUrl.toString())
-
-    // Wait for Dex login page
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Dex mock password connector shows a login form
-    // Look for the login form elements
     const usernameInput = page.locator('input[name="login"]')
     const passwordInput = page.locator('input[name="password"]')
-
-    // At least one should be visible (depending on Dex UI flow)
-    const hasLoginForm = (await usernameInput.count()) > 0 || (await passwordInput.count()) > 0
-
-    // If no login form, we might be on a connector selection page
-    if (!hasLoginForm) {
-      // Look for connector link/button
-      const connectorLink = page.locator('a[href*="connector"]').first()
-      if ((await connectorLink.count()) > 0) {
-        await connectorLink.click()
-        await page.waitForLoadState('networkidle')
-      }
-    }
 
     // Now we should have a login form
     await expect(usernameInput.or(passwordInput).first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should reject invalid credentials', async ({ page }) => {
-    // Navigate to OIDC authorize
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
-    authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
-
-    await page.goto(authorizeUrl.toString())
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Navigate to login form if on connector selection
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
+    await navigateToDexLogin(page)
 
     const usernameInput = page.locator('input[name="login"]')
     const passwordInput = page.locator('input[name="password"]')
@@ -144,38 +91,18 @@ test.describe('Login Flow', () => {
   })
 
   test('should complete login with valid credentials', async ({ page }) => {
-    // Navigate to OIDC authorize
-    const authorizeUrl = new URL('/dex/auth', 'https://localhost:5173')
-    authorizeUrl.searchParams.set('client_id', 'holos-console')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://localhost:5173/pkce/verify')
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('state', 'test_state')
-    authorizeUrl.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256')
-
-    await page.goto(authorizeUrl.toString())
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Navigate to login form if on connector selection
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
+    await navigateToDexLogin(page)
 
     const usernameInput = page.locator('input[name="login"]')
     const passwordInput = page.locator('input[name="password"]')
 
     if ((await usernameInput.count()) > 0) {
-      // Fill in correct credentials
       await usernameInput.fill(DEFAULT_USERNAME)
       await passwordInput.fill(DEFAULT_PASSWORD)
 
       await page.locator('button[type="submit"]').click()
 
       // After successful auth, Dex redirects to the callback URL with a code
-      // The URL should contain the callback path and an authorization code
       await page.waitForURL(/\/pkce\/verify\?.*code=/, { timeout: 10000 })
     }
   })
@@ -205,34 +132,7 @@ test.describe('Profile Page', () => {
   })
 
   test('should complete full login flow via profile page', async ({ page }) => {
-    await page.goto('/profile')
-
-    // Click Sign In button
-    await page.getByRole('button', { name: 'Sign In' }).click()
-
-    // Wait for redirect to Dex login page
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Navigate to login form if on connector selection
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
-
-    // Fill in credentials
-    const usernameInput = page.locator('input[name="login"]')
-    const passwordInput = page.locator('input[name="password"]')
-
-    await expect(usernameInput).toBeVisible({ timeout: 5000 })
-    await usernameInput.fill(DEFAULT_USERNAME)
-    await passwordInput.fill(DEFAULT_PASSWORD)
-
-    // Submit login form
-    await page.locator('button[type="submit"]').click()
-
-    // Wait for redirect back to profile page (returnTo state preserves the path)
-    await page.waitForURL(/\/profile/, { timeout: 15000 })
+    await loginViaProfilePage(page)
 
     // Verify profile page shows token status after login
     await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 5000 })
@@ -243,33 +143,7 @@ test.describe('Profile Page', () => {
   })
 
   test('should display token details after login', async ({ page }) => {
-    // Navigate to profile page and login
-    await page.goto('/profile')
-    await page.getByRole('button', { name: 'Sign In' }).click()
-
-    // Wait for redirect to Dex login page
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Navigate to login form if on connector selection
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
-
-    // Fill in credentials
-    const usernameInput = page.locator('input[name="login"]')
-    const passwordInput = page.locator('input[name="password"]')
-
-    await expect(usernameInput).toBeVisible({ timeout: 5000 })
-    await usernameInput.fill(DEFAULT_USERNAME)
-    await passwordInput.fill(DEFAULT_PASSWORD)
-
-    // Submit login form
-    await page.locator('button[type="submit"]').click()
-
-    // Wait for redirect back to profile page
-    await page.waitForURL(/\/profile/, { timeout: 15000 })
+    await loginViaProfilePage(page)
 
     // Verify token details are visible
     await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
@@ -284,33 +158,7 @@ test.describe('Profile Page', () => {
   })
 
   test('should include roles in profile page', async ({ page }) => {
-    // Navigate to profile page and login
-    await page.goto('/profile')
-    await page.getByRole('button', { name: 'Sign In' }).click()
-
-    // Wait for redirect to Dex login page
-    await page.waitForURL(/\/dex\//, { timeout: 5000 })
-
-    // Navigate to login form if on connector selection
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
-
-    // Fill in credentials
-    const usernameInput = page.locator('input[name="login"]')
-    const passwordInput = page.locator('input[name="password"]')
-
-    await expect(usernameInput).toBeVisible({ timeout: 5000 })
-    await usernameInput.fill(DEFAULT_USERNAME)
-    await passwordInput.fill(DEFAULT_PASSWORD)
-
-    // Submit login form
-    await page.locator('button[type="submit"]').click()
-
-    // Wait for redirect back to profile page
-    await page.waitForURL(/\/profile/, { timeout: 15000 })
+    await loginViaProfilePage(page)
 
     // Verify token details are visible
     await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
