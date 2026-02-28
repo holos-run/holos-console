@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
@@ -85,23 +85,27 @@ function SecretPage() {
   const [localRoleGrants, setLocalRoleGrants] = useState<ShareGrant[] | null>(null)
 
   // Initialize local state from fetched data
-  const effectiveData = secretData ?? fetchedData ?? {}
-  if (fetchedData && originalDataSerialized === null) {
-    setOriginalDataSerialized(serializeData(fetchedData))
-    if (secretData === null) setSecretData(fetchedData)
-  }
+  useEffect(() => {
+    if (fetchedData && originalDataSerialized === null) {
+      setOriginalDataSerialized(serializeData(fetchedData))
+      if (secretData === null) setSecretData(fetchedData)
+    }
+  }, [fetchedData, originalDataSerialized, secretData])
 
+  useEffect(() => {
+    if (metadata && originalDescription === null) {
+      setOriginalDescription(metadata.description ?? '')
+      if (description === null) setDescription(metadata.description ?? '')
+    }
+    if (metadata && originalUrl === null) {
+      setOriginalUrl(metadata.url ?? '')
+      if (url === null) setUrl(metadata.url ?? '')
+    }
+  }, [metadata, originalDescription, description, originalUrl, url])
+
+  const effectiveData = secretData ?? fetchedData ?? {}
   const effectiveDescription = description ?? metadata?.description ?? ''
   const effectiveUrl = url ?? metadata?.url ?? ''
-  if (metadata && originalDescription === null) {
-    setOriginalDescription(metadata.description ?? '')
-    if (description === null) setDescription(metadata.description ?? '')
-  }
-  if (metadata && originalUrl === null) {
-    setOriginalUrl(metadata.url ?? '')
-    if (url === null) setUrl(metadata.url ?? '')
-  }
-
   const effectiveUserGrants = localUserGrants ?? metadata?.userGrants ?? []
   const effectiveRoleGrants = localRoleGrants ?? metadata?.roleGrants ?? []
 
