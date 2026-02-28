@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,11 +17,6 @@ export interface SecretDataEditorProps {
   onChange: (data: Record<string, Uint8Array>) => void
 }
 
-let nextId = 0
-function genId(): string {
-  return `entry-${++nextId}`
-}
-
 function entriesToData(entries: Entry[], trailingNewline: boolean): Record<string, Uint8Array> {
   const encoder = new TextEncoder()
   const data: Record<string, Uint8Array> = {}
@@ -37,7 +32,7 @@ function entriesToData(entries: Entry[], trailingNewline: boolean): Record<strin
   return data
 }
 
-function dataToEntries(data: Record<string, Uint8Array>): Entry[] {
+function dataToEntries(data: Record<string, Uint8Array>, genId: () => string): Entry[] {
   const decoder = new TextDecoder()
   return Object.entries(data).map(([filename, value]) => ({
     id: genId(),
@@ -47,7 +42,10 @@ function dataToEntries(data: Record<string, Uint8Array>): Entry[] {
 }
 
 export function SecretDataEditor({ initialData, onChange }: SecretDataEditorProps) {
-  const [entries, setEntries] = useState<Entry[]>(() => dataToEntries(initialData))
+  const nextIdRef = useRef(0)
+  const genId = useCallback(() => `entry-${++nextIdRef.current}`, [])
+
+  const [entries, setEntries] = useState<Entry[]>(() => dataToEntries(initialData, genId))
   const [trailingNewline, setTrailingNewline] = useState(true)
 
   const update = useCallback(
