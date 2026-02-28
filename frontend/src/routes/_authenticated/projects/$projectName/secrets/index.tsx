@@ -23,6 +23,7 @@ import {
 import { Lock, Trash2, ExternalLink } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { SecretDataEditor } from '@/components/secret-data-editor'
+import { isSafeUrl } from '@/lib/utils'
 import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
@@ -154,7 +155,7 @@ function SecretsListPage() {
                       </div>
                     </div>
                   )}
-                  {secret.url && (
+                  {secret.url && isSafeUrl(secret.url) && (
                     <Button
                       variant="ghost"
                       size="icon"

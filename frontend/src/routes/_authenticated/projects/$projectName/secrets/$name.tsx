@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth'
 import { SecretDataViewer } from '@/components/secret-data-viewer'
 import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
+import { isSafeUrl } from '@/lib/utils'
 import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing } from '@/queries/secrets'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
@@ -269,15 +270,19 @@ function SecretPage() {
           ) : (
             <>
               {effectiveUrl ? (
-                <a
-                  href={effectiveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 text-sm text-primary hover:underline flex items-center gap-1"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  {effectiveUrl}
-                </a>
+                isSafeUrl(effectiveUrl) ? (
+                  <a
+                    href={effectiveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 text-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {effectiveUrl}
+                  </a>
+                ) : (
+                  <p className="flex-1 text-sm text-muted-foreground">{effectiveUrl}</p>
+                )
               ) : (
                 <p className="flex-1 text-sm text-muted-foreground">No URL</p>
               )}
