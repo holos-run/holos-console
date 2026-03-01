@@ -21,6 +21,11 @@ endif
 
 default: build
 
+# Ensure console/dist exists for go:embed. Order-only prerequisite (|) means
+# Make only checks existence, not timestamps. Runs generate on fresh clones.
+console/dist:
+	$(MAKE) generate
+
 .PHONY: show-version
 show-version: ## Show current version.
 	@echo $(VERSION)
@@ -30,13 +35,13 @@ tag: ## Create version tag.
 	git tag v$(VERSION)
 
 .PHONY: build
-build: ## Build executable.
+build: | console/dist ## Build executable.
 	@echo "building ${BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
 	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
 
 .PHONY: debug
-debug: ## Build debug executable.
+debug: | console/dist ## Build debug executable.
 	@echo "building ${BIN_NAME}-debug ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
 	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd
@@ -74,7 +79,7 @@ tools: ## Install tool dependencies.
 test: test-go test-ui ## Run tests.
 
 .PHONY: test-go
-test-go: ## Run Go tests.
+test-go: | console/dist ## Run Go tests.
 	CGO_ENABLED=1 go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
 .PHONY: test-ui
