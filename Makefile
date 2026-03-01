@@ -21,9 +21,13 @@ endif
 
 default: build
 
+# Ensure frontend/node_modules exists. Runs npm install on fresh clones.
+frontend/node_modules:
+	cd frontend && npm install
+
 # Ensure console/dist exists for go:embed. Order-only prerequisite (|) means
 # Make only checks existence, not timestamps. Runs generate on fresh clones.
-console/dist:
+console/dist: | frontend/node_modules
 	$(MAKE) generate
 
 .PHONY: show-version
@@ -72,7 +76,7 @@ tidy: ## Tidy go module.
 	go mod tidy
 
 .PHONY: tools
-tools: ## Install tool dependencies.
+tools: frontend/node_modules ## Install tool dependencies.
 	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
 
 .PHONY: test
@@ -83,7 +87,7 @@ test-go: | console/dist ## Run Go tests.
 	CGO_ENABLED=1 go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
 .PHONY: test-ui
-test-ui: ## Run UI tests.
+test-ui: | frontend/node_modules ## Run UI tests.
 	cd frontend && npm test -- --run
 
 .PHONY: test-e2e
