@@ -22,9 +22,9 @@ import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { isSafeUrl } from '@/lib/utils'
 import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
 import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
+import { isOwner as computeIsOwner } from '@/lib/isOwner'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/secrets/$name')({
   component: SecretPage,
@@ -116,9 +116,10 @@ function SecretPage() {
      effectiveUrl !== (originalUrl ?? ''))
 
   const userEmail = user?.profile?.email as string | undefined
-  const isOwner =
-    userEmail != null &&
-    effectiveUserGrants.some((g) => g.principal === userEmail && g.role === Role.OWNER)
+  const userGroups = Array.isArray((user?.profile as Record<string, unknown> | undefined)?.groups)
+    ? ((user!.profile as Record<string, unknown>).groups as string[])
+    : []
+  const isOwner = computeIsOwner(userEmail, userGroups, effectiveUserGrants, effectiveRoleGrants)
 
   const handleSaveSharing = async (newUserGrants: Grant[], newRoleGrants: Grant[]) => {
     const response = await updateSharingMutation.mutateAsync({
