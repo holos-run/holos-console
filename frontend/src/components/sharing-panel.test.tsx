@@ -356,6 +356,100 @@ describe('SharingPanel', () => {
     })
   })
 
+  describe('expiration UTC behavior', () => {
+    it('stores midnight UTC when a date is selected for user exp', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { container } = render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={onSave}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      // datetime-local inputs in order: user nbf (0), user exp (1)
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const expInput = datetimeInputs[1]
+      fireEvent.change(expInput, { target: { value: '2026-04-15T14:30' } })
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        const savedUsers = onSave.mock.calls[0][0]
+        const expectedTs = BigInt(Math.floor(new Date('2026-04-15T00:00:00Z').getTime() / 1000))
+        expect(savedUsers[0].exp).toBe(expectedTs)
+      })
+    })
+
+    it('pre-populates exp with non-empty default on focus when unset', () => {
+      const { container } = render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const expInput = datetimeInputs[1]
+      expect(expInput).toHaveValue('')
+      fireEvent.focus(expInput)
+      expect(expInput).not.toHaveValue('')
+    })
+
+    it('displays UTC midnight timestamp correctly in exp field', () => {
+      const exp = BigInt(Math.floor(new Date('2026-01-01T00:00:00Z').getTime() / 1000))
+      const { container } = render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER, undefined, exp)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const expInput = datetimeInputs[1]
+      expect(expInput).toHaveValue('2026-01-01T00:00')
+    })
+
+    it('stores midnight UTC when a date is selected for role exp', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { container } = render(
+        <SharingPanel
+          userGrants={[]}
+          roleGrants={[grant('dev-team', Role.EDITOR)]}
+          isOwner={true}
+          onSave={onSave}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const expInput = datetimeInputs[1]
+      fireEvent.change(expInput, { target: { value: '2026-06-30T09:15' } })
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        const savedRoles = onSave.mock.calls[0][1]
+        const expectedTs = BigInt(Math.floor(new Date('2026-06-30T00:00:00Z').getTime() / 1000))
+        expect(savedRoles[0].exp).toBe(expectedTs)
+      })
+    })
+  })
+
   describe('cancel', () => {
     it('reverts changes on cancel', () => {
       render(
