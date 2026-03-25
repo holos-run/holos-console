@@ -191,7 +191,7 @@ describe('SecretDataViewer', () => {
     expect(screen.queryByDisplayValue('root')).not.toBeInTheDocument()
   })
 
-  it('does not show an Add Key button', () => {
+  it('shows an Add Key button', () => {
     const onChange = vi.fn()
     render(
       <SecretDataViewer
@@ -200,6 +200,61 @@ describe('SecretDataViewer', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /add key/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add key/i })).toBeInTheDocument()
+  })
+
+  it('shows Add Key button when data is empty', () => {
+    const onChange = vi.fn()
+    render(<SecretDataViewer data={{}} onChange={onChange} />)
+
+    expect(screen.getByRole('button', { name: /add key/i })).toBeInTheDocument()
+  })
+
+  it('clicking Add Key shows key name input and value textarea', () => {
+    const onChange = vi.fn()
+    render(<SecretDataViewer data={{}} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add key/i }))
+
+    expect(screen.getByPlaceholderText('key name')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('value')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^done$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+  })
+
+  it('Add Key Done calls onChange with new key/value (trailing newline added by default)', () => {
+    const onChange = vi.fn()
+    render(<SecretDataViewer data={{}} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add key/i }))
+    fireEvent.change(screen.getByPlaceholderText('key name'), { target: { value: 'token' } })
+    fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'abc123' } })
+    fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
+
+    expect(onChange).toHaveBeenCalledOnce()
+    const newData = onChange.mock.calls[0][0] as Record<string, Uint8Array>
+    expect(new TextDecoder().decode(newData['token'])).toBe('abc123\n')
+  })
+
+  it('Add Key Cancel does not call onChange', () => {
+    const onChange = vi.fn()
+    render(<SecretDataViewer data={{}} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add key/i }))
+    fireEvent.change(screen.getByPlaceholderText('key name'), { target: { value: 'token' } })
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+    expect(onChange).not.toHaveBeenCalled()
+    // Add Key button should be visible again
+    expect(screen.getByRole('button', { name: /add key/i })).toBeInTheDocument()
+  })
+
+  it('Add Key Done button is disabled when key name is empty', () => {
+    const onChange = vi.fn()
+    render(<SecretDataViewer data={{}} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add key/i }))
+
+    expect(screen.getByRole('button', { name: /^done$/i })).toBeDisabled()
   })
 })
