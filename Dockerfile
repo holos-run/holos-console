@@ -19,7 +19,7 @@ RUN go mod download
 COPY . .
 # Copy built UI assets into the embed directory
 COPY --from=ui-build /src/console/dist/ console/dist/
-RUN CGO_ENABLED=0 make build
+RUN CGO_ENABLED=0 make build-binary
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian13:nonroot

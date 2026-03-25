@@ -44,6 +44,12 @@ build: | console/dist ## Build executable.
 	@echo "GOPATH=${GOPATH}"
 	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
 
+.PHONY: build-binary
+build-binary: ## Build executable without UI prerequisites (for use in Dockerfile Go stage).
+	@echo "building ${BIN_NAME} ${VERSION}"
+	@echo "GOPATH=${GOPATH}"
+	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
+
 .PHONY: debug
 debug: | console/dist ## Build debug executable.
 	@echo "building ${BIN_NAME}-debug ${VERSION}"
