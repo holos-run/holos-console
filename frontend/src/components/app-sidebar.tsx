@@ -24,7 +24,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { useOrg } from '@/lib/org-context'
 import { useVersion } from '@/queries/version'
 
@@ -92,9 +91,6 @@ export function AppSidebar() {
           ))}
         </SidebarMenu>
         <SidebarSeparator />
-        <div className="flex justify-end px-2 py-1">
-          <ThemeToggle />
-        </div>
       </SidebarFooter>
     </Sidebar>
   )
