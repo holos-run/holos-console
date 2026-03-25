@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
@@ -62,9 +62,11 @@ function ProjectPage() {
   const matchRoute = useMatchRoute()
   const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
 
-  if (!authLoading && !isAuthenticated) {
-    login(`/projects/${name}`)
-  }
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      login(`/projects/${name}`)
+    }
+  }, [authLoading, isAuthenticated, login, name])
 
   // If we're on a child route, just render the outlet
   if (isChildRoute) {

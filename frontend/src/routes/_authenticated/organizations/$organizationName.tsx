@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
@@ -60,9 +60,11 @@ function OrganizationPage() {
   const [localDescription, setLocalDescription] = useState<string | null>(null)
   const [localOrganization, setLocalOrganization] = useState<typeof organization | null>(null)
 
-  if (!authLoading && !isAuthenticated) {
-    login(`/organizations/${name}`)
-  }
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      login(`/organizations/${name}`)
+    }
+  }, [authLoading, isAuthenticated, login, name])
 
   const effectiveOrg = localOrganization ?? organization
   const displayName = localDisplayName ?? effectiveOrg?.displayName
