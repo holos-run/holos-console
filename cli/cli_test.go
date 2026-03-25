@@ -163,6 +163,21 @@ func TestDefaultRolesClaim(t *testing.T) {
 	}
 }
 
+func TestDefaultIDTokenTTL(t *testing.T) {
+	cmd := Command()
+	f := cmd.Flags().Lookup("id-token-ttl")
+	if f == nil {
+		t.Fatal("--id-token-ttl flag not found")
+	}
+	d, err := time.ParseDuration(f.DefValue)
+	if err != nil {
+		t.Fatalf("could not parse default id-token-ttl %q: %v", f.DefValue, err)
+	}
+	if d < time.Hour {
+		t.Errorf("default id-token-ttl = %v, want >= 1h", d)
+	}
+}
+
 func TestEnableInsecureDexDefault(t *testing.T) {
 	cmd := Command()
 	f := cmd.Flags().Lookup("enable-insecure-dex")
