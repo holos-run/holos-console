@@ -7,18 +7,23 @@ import {
   ProjectService,
 } from '@/gen/holos/console/v1/projects_pb.js'
 import type { ListProjectsResponse, Project } from '@/gen/holos/console/v1/projects_pb.js'
+import { useAuth } from '@/lib/auth'
 
 export function useListProjects(organization: string) {
+  const { isAuthenticated } = useAuth()
   return useQuery(
     ProjectService.method.listProjects,
     create(ListProjectsRequestSchema, { organization }),
+    { enabled: isAuthenticated && !!organization },
   )
 }
 
 export function useGetProject(name: string) {
+  const { isAuthenticated } = useAuth()
   return useQuery(
     ProjectService.method.getProject,
     { name },
+    { enabled: isAuthenticated && !!name },
   )
 }
 

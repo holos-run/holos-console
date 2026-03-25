@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { createFileRoute, Link, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Check, Pencil, X } from 'lucide-react'
-import { useAuth } from '@/lib/auth'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
 import { useGetProject, useDeleteProject, useUpdateProject, useUpdateProjectSharing } from '@/queries/projects'
@@ -30,7 +29,6 @@ export const Route = createFileRoute('/_authenticated/projects/$projectName')({
 function ProjectPage() {
   const { projectName: name } = Route.useParams()
   const navigate = useNavigate()
-  const { isAuthenticated, isLoading: authLoading, login } = useAuth()
   const transport = useTransport()
 
   const { data, isLoading, error } = useGetProject(name)
@@ -61,12 +59,6 @@ function ProjectPage() {
   // Check if we're rendering a child route (secrets)
   const matchRoute = useMatchRoute()
   const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      login(`/projects/${name}`)
-    }
-  }, [authLoading, isAuthenticated, login, name])
 
   // If we're on a child route, just render the outlet
   if (isChildRoute) {
@@ -125,7 +117,7 @@ function ProjectPage() {
     } catch { /* dialog stays open; deleteMutation.error is shown in the dialog */ }
   }
 
-  if (authLoading || (isAuthenticated && isLoading)) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="pt-6">

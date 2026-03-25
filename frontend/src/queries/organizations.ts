@@ -5,18 +5,23 @@ import {
   OrganizationService,
 } from '@/gen/holos/console/v1/organizations_pb.js'
 import type { ListOrganizationsResponse, Organization } from '@/gen/holos/console/v1/organizations_pb.js'
+import { useAuth } from '@/lib/auth'
 
 export function useListOrganizations() {
+  const { isAuthenticated } = useAuth()
   return useQuery(
     OrganizationService.method.listOrganizations,
     {},
+    { enabled: isAuthenticated },
   )
 }
 
 export function useGetOrganization(name: string) {
+  const { isAuthenticated } = useAuth()
   return useQuery(
     OrganizationService.method.getOrganization,
     { name },
+    { enabled: isAuthenticated && !!name },
   )
 }
 
