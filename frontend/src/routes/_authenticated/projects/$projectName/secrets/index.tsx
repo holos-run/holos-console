@@ -136,44 +136,49 @@ function SecretsListPage() {
             <ul className="divide-y">
               {secrets.map((secret) => (
                 <li key={secret.name} className="flex items-center gap-2 py-2">
-                  {secret.accessible ? (
-                    <Link
-                      to="/projects/$projectName/secrets/$name"
-                      params={{ projectName, name: secret.name }}
-                      className="flex-1 min-w-0 hover:underline"
-                    >
-                      <div className="font-medium truncate">{secret.name}</div>
-                      <div className="text-sm text-muted-foreground truncate">
-                        {secret.description || sharingSummary(secret.userGrants.length, secret.roleGrants.length) || secret.name}
-                      </div>
-                    </Link>
-                  ) : (
-                    <div className="flex-1 min-w-0 opacity-50">
-                      <div className="font-medium truncate">{secret.name}</div>
-                      <div className="text-sm text-muted-foreground truncate">
-                        {secret.description || secret.name}
-                      </div>
-                    </div>
-                  )}
-                  {secret.url && isSafeUrl(secret.url) && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`open ${secret.name} url`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        window.open(secret.url, '_blank', 'noopener,noreferrer')
-                      }}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {secret.description && sharingSummary(secret.userGrants.length, secret.roleGrants.length) && (
-                    <Badge variant="outline" className="shrink-0">
-                      {sharingSummary(secret.userGrants.length, secret.roleGrants.length)}
-                    </Badge>
-                  )}
+                  {(() => {
+                    const summary = sharingSummary(secret.userGrants.length, secret.roleGrants.length)
+                    return (
+                      <>
+                        {secret.accessible ? (
+                          <Link
+                            to="/projects/$projectName/secrets/$name"
+                            params={{ projectName, name: secret.name }}
+                            className="flex-1 min-w-0 hover:underline"
+                          >
+                            <div className="font-medium truncate">{secret.name}</div>
+                            <div className="text-sm text-muted-foreground truncate">
+                              {secret.description || summary || secret.name}
+                            </div>
+                          </Link>
+                        ) : (
+                          <div className="flex-1 min-w-0 opacity-50">
+                            <div className="font-medium truncate">{secret.name}</div>
+                            <div className="text-sm text-muted-foreground truncate">
+                              {secret.description || secret.name}
+                            </div>
+                          </div>
+                        )}
+                        {secret.url && isSafeUrl(secret.url) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`open ${secret.name} url`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              window.open(secret.url, '_blank', 'noopener,noreferrer')
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {secret.description && summary && (
+                          <Badge variant="outline" className="shrink-0">{summary}</Badge>
+                        )}
+                      </>
+                    )
+                  })()}
                   {!secret.accessible ? (
                     <TooltipProvider>
                       <Tooltip>

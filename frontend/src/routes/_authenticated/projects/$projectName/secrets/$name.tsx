@@ -21,7 +21,7 @@ import { SecretDataViewer } from '@/components/secret-data-viewer'
 import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { isSafeUrl } from '@/lib/utils'
-import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing } from '@/queries/secrets'
+import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
 import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
@@ -51,6 +51,7 @@ function SecretPage() {
 
   const updateMutation = useUpdateSecret(projectName)
   const updateSharingMutation = useUpdateSecretSharing(projectName)
+  const deleteMutation = useDeleteSecret(projectName)
 
   const secretsClient = useMemo(() => createClient(SecretsService, transport), [transport])
 
@@ -75,8 +76,6 @@ function SecretPage() {
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Save
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -165,17 +164,11 @@ function SecretPage() {
   }
 
   const handleDelete = async () => {
-    setIsDeleting(true)
-    setDeleteError(null)
     try {
-      await secretsClient.deleteSecret({ name, project: projectName })
+      await deleteMutation.mutateAsync(name)
       setDeleteOpen(false)
       navigate({ to: '/projects/$projectName/secrets', params: { projectName } })
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsDeleting(false)
-    }
+    } catch { /* error via mutation */ }
   }
 
   const isLoading = dataLoading || metaLoading
@@ -336,13 +329,13 @@ function SecretPage() {
               Are you sure you want to delete secret &quot;{name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {deleteError && (
-            <Alert variant="destructive"><AlertDescription>{deleteError}</AlertDescription></Alert>
+          {deleteMutation.error && (
+            <Alert variant="destructive"><AlertDescription>{deleteMutation.error.message}</AlertDescription></Alert>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? 'Deleting...' : 'Delete'}
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,7 +2,6 @@ import { Link, useRouter } from '@tanstack/react-router'
 import {
   Building2,
   FolderKanban,
-  Home,
   Info,
   User,
   ChevronsUpDown,
@@ -30,7 +29,6 @@ import { useOrg } from '@/lib/org-context'
 import { useVersion } from '@/queries/version'
 
 const navItems = [
-  { label: 'Home', to: '/profile' as const, icon: Home },
   { label: 'Organizations', to: '/organizations' as const, icon: Building2 },
   { label: 'Projects', to: '/projects' as const, icon: FolderKanban },
 ]
@@ -66,7 +64,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.to === '/profile' ? '/profile' : item.to)}>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)}>
                     <Link to={item.to}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.label}</span>
