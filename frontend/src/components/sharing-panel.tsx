@@ -52,19 +52,25 @@ function grantSecondary(role: Role, nbf?: bigint, exp?: bigint): string {
 function timestampToDatetimeLocal(ts?: bigint): string {
   if (ts == null) return ''
   const d = new Date(Number(ts) * 1000)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
+  const year = d.getUTCFullYear()
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}T00:00`
 }
 
 function datetimeLocalToTimestamp(value: string): bigint | undefined {
   if (!value) return undefined
-  const d = new Date(value)
+  const datePart = value.split('T')[0]
+  const d = new Date(datePart + 'T00:00:00Z')
   if (isNaN(d.getTime())) return undefined
   return BigInt(Math.floor(d.getTime() / 1000))
+}
+
+function defaultExpirationUTC(): bigint {
+  const now = new Date()
+  const firstOfMonthAfterNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1))
+  const lastDayOfNextMonth = new Date(firstOfMonthAfterNext.getTime() - 24 * 60 * 60 * 1000)
+  return BigInt(Math.floor(lastDayOfNextMonth.getTime() / 1000))
 }
 
 export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving }: SharingPanelProps) {
@@ -201,6 +207,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
                 <Input
                   type="datetime-local"
                   value={timestampToDatetimeLocal(g.exp)}
+                  onFocus={() => { if (g.exp == null) handleUserChange(i, 'exp', defaultExpirationUTC()) }}
                   onChange={(e) => handleUserChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
                 />
               </div>
@@ -254,6 +261,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
                 <Input
                   type="datetime-local"
                   value={timestampToDatetimeLocal(g.exp)}
+                  onFocus={() => { if (g.exp == null) handleRoleChange(i, 'exp', defaultExpirationUTC()) }}
                   onChange={(e) => handleRoleChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
                 />
               </div>
