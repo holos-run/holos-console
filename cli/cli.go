@@ -84,7 +84,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
 
 	// Token TTL flags
-	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "15m", "ID token lifetime (e.g., 15m, 1h, 30s for testing)")
+	cmd.Flags().StringVar(&idTokenTTL, "id-token-ttl", "1h", "ID token lifetime (e.g., 1h, 15m, 30s for testing)")
 	cmd.Flags().StringVar(&refreshTokenTTL, "refresh-token-ttl", "12h", "Refresh token absolute lifetime - forces re-authentication")
 
 	// Namespace prefix flags
