@@ -21,6 +21,15 @@ endif
 
 default: build
 
+# Ensure frontend/node_modules exists. Runs npm install on fresh clones.
+frontend/node_modules:
+	cd frontend && npm install
+
+# Ensure console/dist exists for go:embed. Order-only prerequisite (|) means
+# Make only checks existence, not timestamps. Runs generate on fresh clones.
+console/dist: | frontend/node_modules
+	$(MAKE) generate
+
 .PHONY: show-version
 show-version: ## Show current version.
 	@echo $(VERSION)
@@ -30,13 +39,13 @@ tag: ## Create version tag.
 	git tag v$(VERSION)
 
 .PHONY: build
-build: ## Build executable.
+build: | console/dist ## Build executable.
 	@echo "building ${BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
 	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
 
 .PHONY: debug
-debug: ## Build debug executable.
+debug: | console/dist ## Build debug executable.
 	@echo "building ${BIN_NAME}-debug ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
 	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd
@@ -67,31 +76,32 @@ tidy: ## Tidy go module.
 	go mod tidy
 
 .PHONY: tools
-tools: ## Install tool dependencies.
+tools: frontend/node_modules ## Install tool dependencies.
 	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
 
 .PHONY: test
 test: test-go test-ui ## Run tests.
 
 .PHONY: test-go
-test-go: ## Run Go tests.
+test-go: | console/dist ## Run Go tests.
 	CGO_ENABLED=1 go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
 .PHONY: test-ui
-test-ui: ## Run UI tests.
-	cd ui && npm test -- --run
+test-ui: | frontend/node_modules ## Run UI tests.
+	cd frontend && npm test -- --run
 
 .PHONY: test-e2e
 test-e2e: build ## Run Playwright E2E tests (orchestrates servers automatically).
-	cd ui && npm run test:e2e
+	cd frontend && npm run test:e2e
 
 .PHONY: coverage
 coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
 .PHONY: generate
-generate: ## Generate code.
+generate: ## Generate protobuf code and build frontend.
 	go generate ./...
+	cd frontend && npm run build
 
 .PHONY: certs
 certs: ## Generate TLS certificates using mkcert.

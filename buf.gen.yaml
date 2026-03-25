@@ -9,6 +9,6 @@ plugins:
     opt: paths=source_relative
   # TypeScript plugins for frontend
   - remote: buf.build/bufbuild/es
-    out: ui/src/gen
+    out: frontend/src/gen
   - remote: buf.build/connectrpc/es
-    out: ui/src/gen
+    out: frontend/src/gen

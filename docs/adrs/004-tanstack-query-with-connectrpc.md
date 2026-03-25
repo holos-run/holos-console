@@ -141,8 +141,8 @@ Specifically:
 
 ### Neutral
 
-- The project already uses this stack (`ui/src/main.tsx` configures both
-  `TransportProvider` and `QueryClientProvider`; `ui/src/queries/` contains
+- The project already uses this stack (`frontend/src/main.tsx` configures both
+  `TransportProvider` and `QueryClientProvider`; `frontend/src/routes/` contains
   TanStack Query hooks for RPC calls). This ADR formalizes the existing practice
   as a deliberate architectural decision.
 
@@ -154,5 +154,5 @@ Specifically:
 - [Introducing Connect-Query (Buf blog)](https://buf.build/blog/introducing-connect-query)
 - [Connect: A better gRPC (Buf blog)](https://buf.build/blog/connect-a-better-grpc)
 - [Connect RPC joins CNCF](https://buf.build/blog/connect-rpc-joins-cncf)
-- [ui/src/main.tsx](../../ui/src/main.tsx) - TransportProvider and QueryClientProvider setup
-- [ui/src/queries/](../../ui/src/queries/) - Existing TanStack Query hooks for RPC calls
+- [frontend/src/main.tsx](../../frontend/src/main.tsx) - TransportProvider and QueryClientProvider setup
+- [frontend/src/routes/](../../frontend/src/routes/) - TanStack Query hooks for RPC calls

@@ -54,7 +54,7 @@ configuration:
 - Remove `silent_redirect_uri` from the OIDC config (Go struct, Vite config,
   TypeScript interface)
 - Remove `deriveSilentRedirectURI()` Go function and its test
-- Delete `ui/public/silent-callback.html`
+- Delete `silent-callback.html` from public directory
 - Remove the silent redirect URI from Dex's allowed redirect URIs
 
 When `silent_redirect_uri` is not set, oidc-client-ts automatically falls back

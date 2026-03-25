@@ -1,12 +1,12 @@
 # UI build stage
 FROM node:22 AS ui-build
 
-WORKDIR /src/ui
-COPY ui/package.json ui/package-lock.json ./
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY ui/ ./
-# Vite outputs to ../console/ui (relative to ui/)
-RUN mkdir -p ../console/ui
+COPY frontend/ ./
+# Vite outputs to ../console/dist (relative to frontend/)
+RUN mkdir -p ../console/dist
 RUN npm run build
 
 # Go build stage
@@ -18,7 +18,7 @@ RUN go mod download
 
 COPY . .
 # Copy built UI assets into the embed directory
-COPY --from=ui-build /src/console/ui/ console/ui/
+COPY --from=ui-build /src/console/dist/ console/dist/
 RUN CGO_ENABLED=0 make build
 
 # Runtime stage
