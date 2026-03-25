@@ -4,12 +4,14 @@ import { useTransport } from '@connectrpc/connect-query'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
 import type { SecretMetadata } from '@/gen/holos/console/v1/secrets_pb.js'
+import { useAuth } from '@/lib/auth'
 
 function listSecretsKey(project: string) {
   return ['secrets', 'list', project] as const
 }
 
 export function useListSecrets(project: string) {
+  const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
@@ -18,11 +20,12 @@ export function useListSecrets(project: string) {
       const response = await client.listSecrets({ project })
       return response.secrets
     },
-    enabled: !!project,
+    enabled: isAuthenticated && !!project,
   })
 }
 
 export function useGetSecret(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
@@ -31,7 +34,7 @@ export function useGetSecret(project: string, name: string) {
       const response = await client.getSecret({ name, project })
       return response.data as Record<string, Uint8Array>
     },
-    enabled: !!project && !!name,
+    enabled: isAuthenticated && !!project && !!name,
   })
 }
 
@@ -40,6 +43,7 @@ export function useGetSecret(project: string, name: string) {
 // listSecrets cache. Uses the same query key as useListSecrets so TanStack Query
 // deduplicates the request when both hooks are active on the same page.
 export function useGetSecretMetadata(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
@@ -48,7 +52,7 @@ export function useGetSecretMetadata(project: string, name: string) {
       const response = await client.listSecrets({ project })
       return response.secrets
     },
-    enabled: !!project && !!name,
+    enabled: isAuthenticated && !!project && !!name,
     select: (secrets) => secrets.find((s: SecretMetadata) => s.name === name) ?? null,
   })
 }

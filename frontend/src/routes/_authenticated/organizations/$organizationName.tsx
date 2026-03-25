@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Check, Pencil, X } from 'lucide-react'
-import { useAuth } from '@/lib/auth'
 import { useOrg } from '@/lib/org-context'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
@@ -32,7 +31,6 @@ function OrganizationPage() {
   const { organizationName: name } = Route.useParams()
   const navigate = useNavigate()
   const { setSelectedOrg } = useOrg()
-  const { isAuthenticated, isLoading: authLoading, login } = useAuth()
   const transport = useTransport()
 
   const { data, isLoading, error } = useGetOrganization(name)
@@ -59,12 +57,6 @@ function OrganizationPage() {
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
   const [localDescription, setLocalDescription] = useState<string | null>(null)
   const [localOrganization, setLocalOrganization] = useState<typeof organization | null>(null)
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      login(`/organizations/${name}`)
-    }
-  }, [authLoading, isAuthenticated, login, name])
 
   const effectiveOrg = localOrganization ?? organization
   const displayName = localDisplayName ?? effectiveOrg?.displayName
@@ -118,7 +110,7 @@ function OrganizationPage() {
     } catch { /* error via mutation */ }
   }
 
-  if (authLoading || (isAuthenticated && isLoading)) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="pt-6">
