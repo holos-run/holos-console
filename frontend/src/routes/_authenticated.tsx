@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useAuth } from '@/lib/auth'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { OrgProvider } from '@/lib/org-context'
@@ -10,16 +10,26 @@ export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
 })
 
-function AuthenticatedLayout() {
-  const { isAuthenticated, isLoading, login } = useAuth()
+export function AuthenticatedLayout() {
+  const { isAuthenticated, isLoading, login, refreshTokens } = useAuth()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const silentRenewAttempted = useRef(false)
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      login(window.location.pathname)
+    if (!isLoading && !isAuthenticated && !silentRenewAttempted.current) {
+      silentRenewAttempted.current = true
+      setIsRefreshing(true)
+      refreshTokens()
+        .catch(() => {
+          login(window.location.pathname)
+        })
+        .finally(() => {
+          setIsRefreshing(false)
+        })
     }
-  }, [isLoading, isAuthenticated, login])
+  }, [isLoading, isAuthenticated, login, refreshTokens])
 
-  if (isLoading) {
+  if (isLoading || isRefreshing) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
