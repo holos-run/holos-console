@@ -88,7 +88,7 @@ export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
 | `--listen` | `:8443` | Address to listen on |
 | `--cert` | (auto-generated) | TLS certificate file |
 | `--key` | (auto-generated) | TLS key file |
-| `--id-token-ttl` | `15m` | ID token lifetime |
+| `--id-token-ttl` | `1h` | ID token lifetime |
 | `--refresh-token-ttl` | `12h` | Refresh token absolute lifetime |
 
 ## Using an External OIDC Provider

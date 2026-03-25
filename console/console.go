@@ -70,7 +70,7 @@ type Config struct {
 	ClientID string
 
 	// IDTokenTTL is the lifetime of ID tokens.
-	// Default: 15 minutes
+	// Default: 1 hour
 	IDTokenTTL time.Duration
 
 	// RefreshTokenTTL is the absolute lifetime of refresh tokens.
