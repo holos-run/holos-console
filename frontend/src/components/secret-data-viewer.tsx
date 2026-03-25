@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Eye, EyeOff, Copy, Pencil } from 'lucide-react'
+import { Eye, EyeOff, Copy, Pencil, Plus } from 'lucide-react'
 
 export interface SecretDataViewerProps {
   data: Record<string, Uint8Array>
@@ -17,6 +18,9 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [trailingNewline, setTrailingNewline] = useState(true)
+  const [addingKey, setAddingKey] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [newKeyValue, setNewKeyValue] = useState('')
 
   const toggleReveal = (key: string) => {
     setRevealedKeys((prev) => {
@@ -53,6 +57,24 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
   const handleEditCancel = () => {
     setEditingKey(null)
     setEditValue('')
+  }
+
+  const handleAddKeySave = () => {
+    if (newKeyName === '') return
+    let value = newKeyValue
+    if (trailingNewline && value.length > 0 && !value.endsWith('\n')) {
+      value += '\n'
+    }
+    onChange({ ...data, [newKeyName]: encoder.encode(value) })
+    setAddingKey(false)
+    setNewKeyName('')
+    setNewKeyValue('')
+  }
+
+  const handleAddKeyCancel = () => {
+    setAddingKey(false)
+    setNewKeyName('')
+    setNewKeyValue('')
   }
 
   const keys = Object.keys(data).sort()
@@ -130,6 +152,43 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
           </div>
         )
       })}
+
+      {addingKey ? (
+        <div className="mb-3 p-3 border rounded-md">
+          <Input
+            placeholder="key name"
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            className="mb-2"
+          />
+          <Textarea
+            placeholder="value"
+            rows={3}
+            value={newKeyValue}
+            onChange={(e) => setNewKeyValue(e.target.value)}
+            className="font-mono text-sm mb-2"
+          />
+          <div className="flex items-center gap-2 mb-2">
+            <Checkbox
+              id="add-key-trailing-newline"
+              checked={trailingNewline}
+              onCheckedChange={(checked) => setTrailingNewline(checked === true)}
+            />
+            <label htmlFor="add-key-trailing-newline" className="text-sm">
+              Ensure trailing newline
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleAddKeySave} disabled={newKeyName === ''}>Done</Button>
+            <Button size="sm" variant="ghost" onClick={handleAddKeyCancel}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setAddingKey(true)}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add Key
+        </Button>
+      )}
     </div>
   )
 }
