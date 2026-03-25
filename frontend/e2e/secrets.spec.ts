@@ -237,6 +237,66 @@ test.describe('Secrets Page', () => {
   })
 })
 
+  test('should allow adding a key to an empty secret on the detail page', async ({ page }) => {
+    // Login first via profile page
+    await loginAndNavigate(page, '/profile')
+
+    // Create a test project
+    await page.goto('/projects')
+    await expect(page.getByRole('button', { name: /create project/i })).toBeVisible({ timeout: 5000 })
+    const projectName = `e2e-empty-secret-${Date.now()}`
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.getByLabel(/name/i).first().fill(projectName)
+    await page.getByRole('button', { name: /^create$/i }).click()
+    await expect(page.getByText(/created/i)).toBeVisible({ timeout: 5000 })
+
+    // Create a secret with no data (skip Add Key, just name and submit)
+    await page.goto(`/projects/${projectName}/secrets`)
+    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+    const secretName = `e2e-empty-${Date.now()}`
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByLabel(/name/i).fill(secretName)
+    // Do NOT click Add Key — create an empty secret
+    await page.getByRole('button', { name: /^create$/i }).click()
+    await expect(page.getByText(/created successfully/i)).toBeVisible({ timeout: 5000 })
+
+    // Navigate to the detail page
+    await page.getByRole('link', { name: secretName }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
+
+    // Editor tab should show an Add Key button even though secret is empty
+    await expect(page.getByRole('button', { name: /add key/i })).toBeVisible({ timeout: 5000 })
+
+    // Click Add Key, fill in key and value, click Done
+    await page.getByRole('button', { name: /add key/i }).click()
+    await page.getByPlaceholder('key name').fill('token')
+    await page.getByPlaceholder('value').fill('abc123')
+    await page.getByRole('button', { name: /^done$/i }).click()
+
+    // Save the secret
+    await page.getByRole('button', { name: /^save$/i }).click()
+    await expect(page.getByRole('button', { name: /^save$/i })).toBeDisabled({ timeout: 5000 })
+
+    // Reload the page and confirm the key persists
+    await page.reload()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
+    await expect(page.getByText('token')).toBeVisible({ timeout: 5000 })
+
+    // Clean up: delete the secret
+    await page.getByRole('button', { name: /^delete$/i }).click()
+    await expect(page.getByText(/are you sure/i)).toBeVisible()
+    const dialogDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await dialogDeleteButton.click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
+
+    // Clean up: delete the project
+    await page.goto('/projects')
+    await page.getByLabel(new RegExp(`delete ${projectName}`, 'i')).click()
+    const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
+    await projectDeleteButton.click()
+  })
+})
+
 test.describe('Mobile Responsive Layout', () => {
   // These tests run with the mobile-chrome project (iPhone 13 viewport)
   // and verify responsive behavior. On desktop viewport they are skipped.
