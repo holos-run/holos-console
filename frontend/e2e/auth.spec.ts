@@ -134,6 +134,9 @@ test.describe('Profile Page', () => {
   })
 
   test('should navigate to profile page from sidebar', async ({ page }) => {
+    // Login + cross-page navigation takes extra time on mobile CI.
+    test.setTimeout(60_000)
+
     await loginViaProfilePage(page)
 
     // Navigate away from profile to test sidebar navigation
@@ -144,6 +147,8 @@ test.describe('Profile Page', () => {
     const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
     if (await sidebarTrigger.isVisible().catch(() => false)) {
       await sidebarTrigger.click()
+      // Wait for drawer animation to complete before clicking the link
+      await page.waitForTimeout(500)
     }
 
     // Click Profile link in sidebar
