@@ -29,6 +29,9 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
+      - name: Install tool dependencies (buf)
+        run: make tools
+
       - name: Go tests
         run: make test-go
 
