@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for a PR.
+#
+# Starts a per-agent backend via scripts/agent-dev (SIGPIPE cleanup),
+# logs in, and runs the PR-specific capture script at
+# scripts/pr-<N>/capture. When the capture script exits, the pipe
+# breaks and the server is cleaned up automatically.
+#
+# Prerequisites:
+#   - Kubernetes cluster running (e.g., k3d)
+#   - TLS certs generated (make certs)
+#   - PR-specific capture script exists at scripts/pr-<N>/capture
+#
+# Usage: scripts/browser-capture-pr <PR-number>
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <PR-number>" >&2
+  exit 1
+fi
+
+PR_NUMBER="$1"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+CAPTURE_SCRIPT="$SCRIPT_DIR/pr-${PR_NUMBER}/capture"
+if [[ ! -x "$CAPTURE_SCRIPT" ]]; then
+  echo "ERROR: capture script not found or not executable: $CAPTURE_SCRIPT" >&2
+  exit 1
+fi
+
+DEST_DIR="$REPO_ROOT/docs/screenshots/pr-${PR_NUMBER}"
+mkdir -p "$DEST_DIR"
+
+# Start server, capture, and clean up via pipe break.
+"$SCRIPT_DIR/agent-dev" | {
+  eval "$(head -1)"
+  export HOLOS_BACKEND_PORT=$BACKEND_PORT
+  export HOLOS_BACKEND_URL="https://localhost:$BACKEND_PORT"
+  export PR_SCREENSHOT_DIR="$DEST_DIR"
+
+  echo "==> Server on backend=$BACKEND_PORT"
+
+  # Login against the backend (serves the built frontend)
+  "$SCRIPT_DIR/browser-login"
+
+  # Run PR-specific capture logic
+  "$CAPTURE_SCRIPT"
+
+  echo "Done. Screenshots in $DEST_DIR/"
+}
+# Pipe closes here → SIGPIPE → agent-dev EXIT trap kills server.
