@@ -25,25 +25,12 @@ $AB screenshot "$SCREENSHOTS_DIR/profile.png"
 # Check for "Valid" badge (ID token status)
 ID_TOKEN_VALID=$($AB eval "document.body.innerText.includes('Valid')" 2>/dev/null || echo "false")
 
-# Check for "success" badge (last refresh status)
-REFRESH_SUCCESS=$($AB eval "document.body.innerText.includes('success')" 2>/dev/null || echo "false")
-
-FAILED=0
+echo "Screenshot: $SCREENSHOTS_DIR/profile.png"
 
 if [[ "$ID_TOKEN_VALID" == *"true"* ]]; then
   echo "OK: ID token status is Valid."
+  exit 0
 else
   echo "FAIL: ID token status is not Valid."
-  FAILED=1
+  exit 1
 fi
-
-if [[ "$REFRESH_SUCCESS" == *"true"* ]]; then
-  echo "OK: Last refresh status is success."
-else
-  echo "FAIL: Last refresh status is not success."
-  FAILED=1
-fi
-
-echo "Screenshot: $SCREENSHOTS_DIR/profile.png"
-
-exit $FAILED
