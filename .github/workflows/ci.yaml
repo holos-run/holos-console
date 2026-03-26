@@ -98,5 +98,19 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend && npm ci
+          make tools
+
+      - name: Generate (builds frontend + protobuf)
+        run: make generate
+
       - name: Go vet
         run: make vet
