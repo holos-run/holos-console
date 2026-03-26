@@ -1,0 +1,6 @@
+{
+  "headed": false,
+  "ignoreHttpsErrors": true,
+  "screenshotDir": "tmp/screenshots",
+  "viewport": { "width": 1280, "height": 720 }
+}

@@ -85,6 +85,11 @@ tidy: ## Tidy go module.
 tools: frontend/node_modules ## Install tool dependencies.
 	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
 
+.PHONY: agent-tools
+agent-tools: ## Install agent-browser for AI agent browser automation.
+	npm install -g agent-browser
+	agent-browser install
+
 .PHONY: test
 test: test-go test-ui ## Run tests.
 
