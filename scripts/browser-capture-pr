@@ -2,31 +2,46 @@
 # Capture visual verification screenshots for a PR.
 #
 # Starts a per-agent backend via scripts/agent-dev (SIGPIPE cleanup),
-# logs in, and runs the PR-specific capture script at
-# scripts/pr-<N>/capture. When the capture script exits, the pipe
-# breaks and the server is cleaned up automatically.
+# logs in, and either:
+#   (a) runs the PR-specific capture script at scripts/pr-<N>/capture, or
+#   (b) navigates to --url <path> and saves a single screenshot.png
 #
 # Prerequisites:
-#   - Kubernetes cluster running (e.g., k3d)
+#   - Kubernetes cluster running (only needed by capture scripts that apply fixtures)
 #   - TLS certs generated (make certs)
-#   - PR-specific capture script exists at scripts/pr-<N>/capture
 #
-# Usage: scripts/browser-capture-pr <PR-number>
+# Usage:
+#   scripts/browser-capture-pr <PR-number>
+#     Requires scripts/pr-<N>/capture to exist.
+#
+#   scripts/browser-capture-pr <PR-number> --url /some/path
+#     Navigates to the given path and saves docs/screenshots/pr-<N>/screenshot.png.
+#     No capture script needed.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <PR-number>" >&2
+  echo "Usage: $0 <PR-number> [--url /path]" >&2
   exit 1
 fi
 
 PR_NUMBER="$1"
+shift
+
+URL_PATH=""
+if [[ $# -ge 2 && "$1" == "--url" ]]; then
+  URL_PATH="$2"
+  shift 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 CAPTURE_SCRIPT="$SCRIPT_DIR/pr-${PR_NUMBER}/capture"
-if [[ ! -x "$CAPTURE_SCRIPT" ]]; then
-  echo "ERROR: capture script not found or not executable: $CAPTURE_SCRIPT" >&2
+
+# Require either a capture script or --url
+if [[ -z "$URL_PATH" && ! -x "$CAPTURE_SCRIPT" ]]; then
+  echo "ERROR: no capture script found at $CAPTURE_SCRIPT and --url was not given." >&2
+  echo "  Create $CAPTURE_SCRIPT or pass --url /path to capture a single page." >&2
   exit 1
 fi
 
@@ -45,8 +60,21 @@ mkdir -p "$DEST_DIR"
   # Login against the backend (serves the built frontend)
   "$SCRIPT_DIR/browser-login"
 
-  # Run PR-specific capture logic
-  "$CAPTURE_SCRIPT"
+  if [[ -n "$URL_PATH" ]]; then
+    # Simple mode: navigate to URL and capture a single screenshot
+    AB="agent-browser --session-name holos-dev"
+    FULL_URL="$HOLOS_BACKEND_URL$URL_PATH"
+    echo "==> Navigating to $FULL_URL"
+    $AB open "$FULL_URL"
+    $AB wait --load networkidle
+    $AB wait 2000
+    DEST="$DEST_DIR/screenshot.png"
+    $AB screenshot "$DEST"
+    echo "Screenshot saved to $DEST"
+  else
+    # PR-specific capture script
+    "$CAPTURE_SCRIPT"
+  fi
 
   echo "Done. Screenshots in $DEST_DIR/"
 }
