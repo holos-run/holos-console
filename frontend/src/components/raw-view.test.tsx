@@ -1,6 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RawView } from './raw-view'
 import { vi } from 'vitest'
+import { toast } from 'sonner'
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn() },
+}))
 
 // Sample Namespace JSON (no data field)
 const namespaceRaw = JSON.stringify({
@@ -99,6 +104,19 @@ describe('RawView', () => {
 
       const button = screen.getByRole('button', { name: /copy to clipboard/i })
       expect(button).toBeInTheDocument()
+    })
+
+    it('shows a toast after clicking Copy to Clipboard', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.assign(navigator, { clipboard: { writeText } })
+
+      render(<RawView raw={namespaceRaw} includeAllFields={false} onToggleIncludeAllFields={vi.fn()} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /copy to clipboard/i }))
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith('Copied to clipboard')
+      })
     })
 
     it('does not create a stringData field', () => {

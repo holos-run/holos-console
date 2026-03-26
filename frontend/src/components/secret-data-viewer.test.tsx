@@ -1,6 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
+import { toast } from 'sonner'
 import { SecretDataViewer } from './secret-data-viewer'
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn() },
+}))
 
 const encode = (s: string) => new TextEncoder().encode(s)
 
@@ -91,6 +96,25 @@ describe('SecretDataViewer', () => {
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith('admin')
+    })
+  })
+
+  it('shows a toast after copying a value', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    const onChange = vi.fn()
+    render(
+      <SecretDataViewer
+        data={{ username: encode('admin') }}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /copy/i }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Copied to clipboard')
     })
   })
 
