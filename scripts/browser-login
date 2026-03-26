@@ -6,14 +6,24 @@
 #   Default session name: holos-dev
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=browser-env
+source "$SCRIPT_DIR/browser-env"
+
 SESSION_NAME="${1:-holos-dev}"
 AB="agent-browser --session-name $SESSION_NAME"
 
 SCREENSHOTS_DIR="tmp/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
 
-echo "Opening https://localhost:8443/projects (triggers OIDC redirect)..."
-$AB open "https://localhost:8443/projects"
+# Use HOLOS_LOGIN_URL to control which origin receives the OIDC token.
+# Default to the backend URL. When using the Vite dev server, set
+# HOLOS_LOGIN_URL=$HOLOS_VITE_URL so the token lands in the correct
+# origin's sessionStorage.
+HOLOS_LOGIN_URL="${HOLOS_LOGIN_URL:-$HOLOS_BACKEND_URL}"
+
+echo "Opening $HOLOS_LOGIN_URL/projects (triggers OIDC redirect)..."
+$AB open "$HOLOS_LOGIN_URL/projects"
 
 echo "Waiting for redirect chain to complete..."
 $AB wait --load networkidle

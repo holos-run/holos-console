@@ -8,6 +8,10 @@
 #   Default session name: holos-dev
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=browser-env
+source "$SCRIPT_DIR/browser-env"
+
 SESSION_NAME="${1:-holos-dev}"
 AB="agent-browser --session-name $SESSION_NAME"
 
@@ -63,7 +67,7 @@ click_link_by_text() {
 }
 
 echo "=== Step 1: Create an organization ==="
-$AB open "https://localhost:8443/organizations"
+$AB open "$HOLOS_BACKEND_URL/organizations"
 $AB wait --load networkidle
 $AB wait --text "Organizations" 2>/dev/null || $AB wait 3000
 screenshot "organizations-list"
@@ -85,7 +89,7 @@ screenshot "org-created"
 
 echo "=== Step 2: Set selected org and navigate to Projects ==="
 $AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
-$AB open "https://localhost:8443/projects"
+$AB open "$HOLOS_BACKEND_URL/projects"
 $AB wait --load networkidle
 $AB wait --text "Projects" 2>/dev/null || $AB wait 3000
 screenshot "projects-list"
@@ -159,7 +163,7 @@ $AB wait 2000
 screenshot "secret-deleted"
 
 echo "=== Step 8: Clean up — delete project ==="
-$AB open "https://localhost:8443/projects/$PROJECT_NAME"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME"
 $AB wait --load networkidle
 $AB wait 1000
 
@@ -173,7 +177,7 @@ $AB wait 2000
 screenshot "project-deleted"
 
 echo "=== Step 9: Clean up — delete organization ==="
-$AB open "https://localhost:8443/organizations"
+$AB open "$HOLOS_BACKEND_URL/organizations"
 $AB wait --load networkidle
 $AB wait 1000
 

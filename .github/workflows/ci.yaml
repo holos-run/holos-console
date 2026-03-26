@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Install tool dependencies (buf)
+        run: make tools
+
+      - name: Go tests
+        run: make test-go
+
+      - name: UI unit tests
+        run: make test-ui
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Install tool dependencies (buf, mkcert)
+        run: make tools
+
+      - name: Trust mkcert CA
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libnss3-tools
+          mkcert -install
+
+      - name: Generate TLS certificates
+        run: make certs
+
+      - name: Build Go binary
+        run: make build
+
+      - name: Install k3s
+        run: |
+          curl -sfL https://get.k3s.io | sh -s - --disable=traefik
+          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+          echo "KUBECONFIG=/etc/rancher/k3s/k3s.yaml" >> $GITHUB_ENV
+          KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl wait --for=condition=Ready nodes --all --timeout=120s
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: make test-e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/test-results/
+            frontend/e2e/screenshots/
+          retention-days: 7
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Install tool dependencies (buf)
+        run: make tools
+
+      - name: Generate (builds frontend + protobuf)
+        run: make generate
+
+      - name: Go vet
+        run: make vet

@@ -187,7 +187,7 @@ See `docs/rpc-service-definitions.md` for detailed examples.
 
 **UI unit tests**: Vitest + React Testing Library + jsdom. Mock ConnectRPC clients with `vi.mock()`, cast mock responses with `as unknown as ReturnType<...>`. Setup in `frontend/src/test/setup.ts`.
 
-**E2E tests**: Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For iterating, start servers manually with `make run` + `make dev`, then run `cd frontend && npm run test:e2e`.
+**E2E tests**: Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For tight iteration, start servers once and run targeted tests — see `docs/e2e-testing.md` for the full workflow including K8s-backed tests.
 
 ### Version Management
 
@@ -257,7 +257,7 @@ scripts/test-agent-browser    # Verify installation
 
 ### Usage
 
-All browser scripts require the dev stack running (`make run`). For hot reload verification, also run `make dev`.
+All browser scripts require the dev stack running (`make run`). For hot reload verification, also run `make dev`. All browser scripts source `scripts/browser-env` and respect `HOLOS_BACKEND_PORT` / `HOLOS_VITE_PORT` environment variables (defaults: 8443 / 5173).
 
 ```bash
 # Authenticate (OIDC auto-login via embedded Dex, no password prompt)
@@ -276,31 +276,68 @@ scripts/browser-self-service
 # Capture a screenshot of a secret detail page (or any URL)
 scripts/browser-capture-secret [URL]
 
+# Capture visual verification screenshots for a PR
+# (runs scripts/pr-<N>/capture with agent-dev lifecycle)
+scripts/browser-capture-pr <N>
+
 # Test per-key trailing newline affordance in the secret grid
 scripts/browser-test-newline
 ```
 
 Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `scripts/browser-logout && scripts/browser-login` to get a fresh OIDC token (the old Dex signing keys are invalidated).
 
+### Per-Agent Dev Servers
+
+`scripts/agent-dev` builds the frontend into the Go binary (`make generate` + `make build`), then starts the backend on a deterministic port (9000+N, where N is derived from the `agent-N` path segment in the working directory). It uses SIGPIPE-based lifecycle: the script writes the port assignment to stdout, then enters a heartbeat loop. When the pipe reader exits, SIGPIPE terminates the script and an EXIT trap kills the server. No PID files, no stale processes.
+
+Usage (pipe pattern):
+```bash
+scripts/agent-dev | {
+  eval "$(head -1)"                     # sets BACKEND_PORT
+  export HOLOS_BACKEND_PORT=$BACKEND_PORT
+  scripts/browser-login                 # uses HOLOS_BACKEND_URL
+  scripts/browser-capture-secret        # uses HOLOS_BACKEND_URL
+  # block exits → pipe breaks → SIGPIPE → server cleaned up
+}
+```
+
+The Go backend serves the embedded frontend — no Vite dev server is needed for automated screenshot capture. This avoids OIDC port mismatch issues that arise when the Vite dev server runs on a different port than the backend.
+
+`frontend/vite.config.ts` reads `HOLOS_BACKEND_PORT` and `HOLOS_VITE_PORT` from the environment (same defaults) for interactive development with `make dev`.
+
 ### Visual Verification for Frontend PRs
 
-When a PR changes the web UI, capture screenshots of the affected pages, commit them to the repo, and reference them in the PR. This provides reviewers with visual evidence and catches layout regressions.
+When a PR changes the web UI, include a PR-specific capture script that produces screenshots as visual evidence. This catches layout regressions and gives reviewers visual context.
 
-1. **Capture**: Use `scripts/browser-capture-secret` or write a similar script to navigate to the affected page and save a screenshot. Ensure the dev stack is running (`make run` + `make dev`) and the browser session is authenticated (`scripts/browser-login`).
-2. **Commit images**: Save screenshots to `docs/screenshots/pr-<N>/` (where N is the PR number) and commit them to the feature branch:
+Every issue implementation that touches the UI must include a PR-specific capture script at `scripts/pr-<N>/capture`. The generic launcher `scripts/browser-capture-pr <N>` handles the agent-dev lifecycle (build, start backend, login, SIGPIPE cleanup) and calls the PR-specific script with these environment variables:
+- `HOLOS_BACKEND_PORT` — the backend port
+- `HOLOS_BACKEND_URL` — `https://localhost:$HOLOS_BACKEND_PORT`
+- `PR_SCREENSHOT_DIR` — `docs/screenshots/pr-<N>/` (already created)
+
+The capture script should:
+- Apply any required K8s fixtures
+- Use `agent-browser` to navigate and capture screenshots to `$PR_SCREENSHOT_DIR`
+- The Go backend serves the built frontend — do not use Vite
+
+Workflow:
+
+1. **Write the capture script** at `scripts/pr-<N>/capture` as part of the implementation.
+2. **Run it** after the PR is created to capture screenshots:
    ```bash
-   mkdir -p docs/screenshots/pr-<N>
-   cp tmp/screenshots/relevant.png docs/screenshots/pr-<N>/
+   scripts/browser-capture-pr <N>
+   ```
+3. **Commit images** to the feature branch:
+   ```bash
    git add docs/screenshots/pr-<N>/ && git commit -m "Add visual verification screenshots for PR #<N>"
    git push
    ```
-3. **Reference in PR**: Use the **commit SHA** in raw GitHub URLs so images remain accessible after the branch is deleted on merge. Get the SHA after pushing, then post:
+4. **Reference in PR** using the **commit SHA** in raw GitHub URLs so images remain accessible after the branch is deleted on merge:
    ```bash
    SHA=$(git rev-parse HEAD)
    gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/${SHA}/docs/screenshots/pr-<N>/filename.png)"
    ```
    Using the commit SHA (not the branch name) is the conventional approach — the SHA is immutable and resolves correctly both before and after merge. **Important**: PRs with screenshot references must be merged using a **merge commit** (not squash), so the referenced commit SHA survives in the target branch history.
-4. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
+5. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
 
 ### Configuration
 

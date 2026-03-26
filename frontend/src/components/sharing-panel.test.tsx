@@ -72,10 +72,29 @@ describe('SharingPanel', () => {
       expect(screen.getByText(/until/)).toBeInTheDocument()
     })
 
-    it('shows only role when no time bounds', () => {
+    it('shows "no start restriction" and "no expiration" when time bounds are unset', () => {
       render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.OWNER)]}
+          roleGrants={[grant('dev-team', Role.EDITOR)]}
+          isOwner={false}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      // Both user and role grants should show explicit unset indicators
+      const noStartTexts = screen.getAllByText(/no start restriction/i)
+      expect(noStartTexts.length).toBe(2)
+      const noExpTexts = screen.getAllByText(/no expiration/i)
+      expect(noExpTexts.length).toBe(2)
+    })
+
+    it('shows partial time bounds when only one is set', () => {
+      const nbf = BigInt(1704067200) // 2024-01-01T00:00:00Z
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.OWNER, nbf)]}
           roleGrants={[]}
           isOwner={false}
           onSave={vi.fn()}
@@ -83,9 +102,8 @@ describe('SharingPanel', () => {
         />,
       )
 
-      expect(screen.getByText('Owner')).toBeInTheDocument()
-      expect(screen.queryByText(/from/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/until/)).not.toBeInTheDocument()
+      expect(screen.getByText(/from/)).toBeInTheDocument()
+      expect(screen.getByText(/no expiration/i)).toBeInTheDocument()
     })
   })
 
@@ -384,7 +402,7 @@ describe('SharingPanel', () => {
       })
     })
 
-    it('pre-populates exp with non-empty default on focus when unset', () => {
+    it('does NOT auto-populate exp on focus when unset', () => {
       const { container } = render(
         <SharingPanel
           userGrants={[grant('alice@example.com', Role.VIEWER)]}
@@ -401,7 +419,95 @@ describe('SharingPanel', () => {
       const expInput = datetimeInputs[1]
       expect(expInput).toHaveValue('')
       fireEvent.focus(expInput)
+      // Should still be empty — no auto-populate on focus
+      expect(expInput).toHaveValue('')
+    })
+
+    it('shows "Not set" text and Set button for unset nbf and exp in edit mode', () => {
+      render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      // Should show "Not set" placeholder and "Set" buttons for both nbf and exp
+      const setButtons = screen.getAllByRole('button', { name: /^set$/i })
+      expect(setButtons.length).toBeGreaterThanOrEqual(2) // at least nbf + exp
+    })
+
+    it('populates exp with default when Set button is clicked', () => {
+      const { container } = render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      // exp input should be empty initially
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const expInput = datetimeInputs[1]
+      expect(expInput).toHaveValue('')
+
+      // Click the Set button for Expires (second Set button)
+      const setButtons = screen.getAllByRole('button', { name: /^set$/i })
+      fireEvent.click(setButtons[1]) // exp Set button
+
+      // Now the input should be populated
       expect(expInput).not.toHaveValue('')
+    })
+
+    it('populates nbf with default when Set button is clicked', () => {
+      const { container } = render(
+        <SharingPanel
+          userGrants={[grant('alice@example.com', Role.VIEWER)]}
+          roleGrants={[]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      // nbf input should be empty initially
+      const datetimeInputs = container.querySelectorAll('input[type="datetime-local"]')
+      const nbfInput = datetimeInputs[0]
+      expect(nbfInput).toHaveValue('')
+
+      // Click the Set button for Not before (first Set button)
+      const setButtons = screen.getAllByRole('button', { name: /^set$/i })
+      fireEvent.click(setButtons[0]) // nbf Set button
+
+      // Now the input should be populated
+      expect(nbfInput).not.toHaveValue('')
+    })
+
+    it('shows Set buttons for role grants too', () => {
+      render(
+        <SharingPanel
+          userGrants={[]}
+          roleGrants={[grant('dev-team', Role.EDITOR)]}
+          isOwner={true}
+          onSave={vi.fn()}
+          isSaving={false}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+      const setButtons = screen.getAllByRole('button', { name: /^set$/i })
+      expect(setButtons.length).toBeGreaterThanOrEqual(2)
     })
 
     it('displays UTC midnight timestamp correctly in exp field', () => {

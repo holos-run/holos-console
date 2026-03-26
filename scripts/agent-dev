@@ -1,0 +1,84 @@
+#!/bin/bash
+# Start a per-agent dev server on an isolated port.
+#
+# Builds the frontend into the Go binary, then starts the backend on a
+# deterministic port derived from the agent slot (9000+N where N comes
+# from the "agent-N" segment in the working directory path).
+#
+# Lifecycle: prints BACKEND_PORT=<port> to stdout, then enters a
+# heartbeat loop. When the reading end of the pipe closes (reader
+# exits), the next write raises SIGPIPE, which terminates this script.
+# The EXIT trap kills the server. No PID files, no stale processes.
+#
+# Usage:
+#   scripts/agent-dev | {
+#     eval "$(head -1)"
+#     export HOLOS_BACKEND_PORT=$BACKEND_PORT
+#     scripts/browser-login
+#     scripts/browser-capture-pr-200
+#   }
+#
+# When the { ... } block exits, the pipe breaks and the server is
+# cleaned up automatically.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_ROOT"
+
+# --- Derive agent slot from working directory ---
+# Matches "agent-N" in the path; falls back to slot 0 for manual use.
+SLOT=0
+if [[ "$PWD" =~ agent-([0-9]+) ]]; then
+  SLOT="${BASH_REMATCH[1]}"
+fi
+
+BACKEND_PORT=$((9000 + SLOT))
+
+# --- Build frontend + binary ---
+make generate >&2
+make build >&2
+
+# --- Cleanup trap ---
+BACKEND_PID=""
+
+cleanup() {
+  [[ -n "$BACKEND_PID" ]] && kill "$BACKEND_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# --- Start backend (serves embedded frontend) ---
+mkdir -p "$PROJECT_ROOT/tmp"
+exec ./bin/holos-console \
+  --enable-insecure-dex \
+  --cert certs/tls.crt \
+  --key certs/tls.key \
+  --ca-cert "$(mkcert -CAROOT)/rootCA.pem" \
+  --listen ":$BACKEND_PORT" \
+  >"$PROJECT_ROOT/tmp/agent-dev-backend.log" 2>&1 &
+BACKEND_PID=$!
+
+# Wait for backend readiness
+for _ in $(seq 1 30); do
+  if curl -sk "https://localhost:$BACKEND_PORT/healthz" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if ! curl -sk "https://localhost:$BACKEND_PORT/healthz" >/dev/null 2>&1; then
+  echo "ERROR: backend did not become ready on port $BACKEND_PORT" >&2
+  exit 1
+fi
+echo "Backend ready on port $BACKEND_PORT" >&2
+
+# --- Output port assignment (consumed by pipe reader) ---
+echo "BACKEND_PORT=$BACKEND_PORT"
+
+# --- Heartbeat loop: SIGPIPE kills us when pipe reader exits ---
+while sleep 2; do
+  echo "# heartbeat" || exit 0
+done

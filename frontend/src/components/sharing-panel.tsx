@@ -44,8 +44,8 @@ function formatTimeBound(ts?: bigint): string {
 
 function grantSecondary(role: Role, nbf?: bigint, exp?: bigint): string {
   const parts = [roleName(role)]
-  if (nbf != null) parts.push(`from ${formatTimeBound(nbf)}`)
-  if (exp != null) parts.push(`until ${formatTimeBound(exp)}`)
+  parts.push(nbf != null ? `from ${formatTimeBound(nbf)}` : 'no start restriction')
+  parts.push(exp != null ? `until ${formatTimeBound(exp)}` : 'no expiration')
   return parts.join(' \u00b7 ')
 }
 
@@ -64,6 +64,12 @@ function datetimeLocalToTimestamp(value: string): bigint | undefined {
   const d = new Date(datePart + 'T00:00:00Z')
   if (isNaN(d.getTime())) return undefined
   return BigInt(Math.floor(d.getTime() / 1000))
+}
+
+function defaultNbfUTC(): bigint {
+  const now = new Date()
+  const todayMidnightUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  return BigInt(Math.floor(todayMidnightUTC.getTime() / 1000))
 }
 
 function defaultExpirationUTC(): bigint {
@@ -196,20 +202,31 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
             <div className="flex flex-col md:flex-row gap-2">
               <div className="flex-1">
                 <Label className="text-xs">Not before</Label>
-                <Input
-                  type="datetime-local"
-                  value={timestampToDatetimeLocal(g.nbf)}
-                  onChange={(e) => handleUserChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
-                />
+                <div className="flex gap-1 items-center">
+                  <Input
+                    type="datetime-local"
+                    value={timestampToDatetimeLocal(g.nbf)}
+                    onChange={(e) => handleUserChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
+                    className="flex-1"
+                  />
+                  {g.nbf == null && (
+                    <Button variant="outline" size="sm" onClick={() => handleUserChange(i, 'nbf', defaultNbfUTC())}>Set</Button>
+                  )}
+                </div>
               </div>
               <div className="flex-1">
                 <Label className="text-xs">Expires</Label>
-                <Input
-                  type="datetime-local"
-                  value={timestampToDatetimeLocal(g.exp)}
-                  onFocus={() => { if (g.exp == null) handleUserChange(i, 'exp', defaultExpirationUTC()) }}
-                  onChange={(e) => handleUserChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
-                />
+                <div className="flex gap-1 items-center">
+                  <Input
+                    type="datetime-local"
+                    value={timestampToDatetimeLocal(g.exp)}
+                    onChange={(e) => handleUserChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
+                    className="flex-1"
+                  />
+                  {g.exp == null && (
+                    <Button variant="outline" size="sm" onClick={() => handleUserChange(i, 'exp', defaultExpirationUTC())}>Set</Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -250,20 +267,31 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
             <div className="flex flex-col md:flex-row gap-2">
               <div className="flex-1">
                 <Label className="text-xs">Not before</Label>
-                <Input
-                  type="datetime-local"
-                  value={timestampToDatetimeLocal(g.nbf)}
-                  onChange={(e) => handleRoleChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
-                />
+                <div className="flex gap-1 items-center">
+                  <Input
+                    type="datetime-local"
+                    value={timestampToDatetimeLocal(g.nbf)}
+                    onChange={(e) => handleRoleChange(i, 'nbf', datetimeLocalToTimestamp(e.target.value))}
+                    className="flex-1"
+                  />
+                  {g.nbf == null && (
+                    <Button variant="outline" size="sm" onClick={() => handleRoleChange(i, 'nbf', defaultNbfUTC())}>Set</Button>
+                  )}
+                </div>
               </div>
               <div className="flex-1">
                 <Label className="text-xs">Expires</Label>
-                <Input
-                  type="datetime-local"
-                  value={timestampToDatetimeLocal(g.exp)}
-                  onFocus={() => { if (g.exp == null) handleRoleChange(i, 'exp', defaultExpirationUTC()) }}
-                  onChange={(e) => handleRoleChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
-                />
+                <div className="flex gap-1 items-center">
+                  <Input
+                    type="datetime-local"
+                    value={timestampToDatetimeLocal(g.exp)}
+                    onChange={(e) => handleRoleChange(i, 'exp', datetimeLocalToTimestamp(e.target.value))}
+                    className="flex-1"
+                  />
+                  {g.exp == null && (
+                    <Button variant="outline" size="sm" onClick={() => handleRoleChange(i, 'exp', defaultExpirationUTC())}>Set</Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

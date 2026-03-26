@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: holos-prj-time-test
+  labels:
+    app.kubernetes.io/managed-by: console.holos.run
+    console.holos.run/organization: local-dev
+    console.holos.run/project: time-test
+    console.holos.run/resource-type: project
+    kubernetes.io/metadata.name: holos-prj-time-test
+  annotations:
+    console.holos.run/description: "Test project for time bound verification"
+    console.holos.run/display-name: "Time Test"
+    console.holos.run/share-roles: '[]'
+    console.holos.run/share-users: '[{"principal":"admin@localhost","role":"owner"}]'

@@ -1,0 +1,12 @@
+#!/bin/bash
+# Shared port configuration for browser automation scripts.
+# Source this file at the top of every scripts/browser-* script.
+#
+# Environment variables (with defaults matching the historical hardcoded values):
+#   HOLOS_BACKEND_PORT  — Go backend HTTPS port (default: 8443)
+#   HOLOS_VITE_PORT     — Vite dev server HTTPS port (default: 5173)
+
+HOLOS_BACKEND_PORT="${HOLOS_BACKEND_PORT:-8443}"
+HOLOS_VITE_PORT="${HOLOS_VITE_PORT:-5173}"
+HOLOS_BACKEND_URL="https://localhost:$HOLOS_BACKEND_PORT"
+HOLOS_VITE_URL="https://localhost:$HOLOS_VITE_PORT"

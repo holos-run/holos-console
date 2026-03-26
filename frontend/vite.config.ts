@@ -6,14 +6,16 @@ import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import path from 'path'
 import fs from 'fs'
 
-const backendUrl = 'https://localhost:8443'
+const backendPort = process.env.HOLOS_BACKEND_PORT || '8443'
+const vitePort = process.env.HOLOS_VITE_PORT || '5173'
+const backendUrl = `https://localhost:${backendPort}`
 
 // Derive OIDC config from backend URL for Vite dev server
 const oidcConfig = {
   authority: `${backendUrl}/dex`,
   client_id: 'holos-console',
-  redirect_uri: 'https://localhost:5173/pkce/verify',
-  post_logout_redirect_uri: 'https://localhost:5173/',
+  redirect_uri: `https://localhost:${vitePort}/pkce/verify`,
+  post_logout_redirect_uri: `https://localhost:${vitePort}/`,
 }
 
 const injectOIDCConfig = (): Plugin => ({
