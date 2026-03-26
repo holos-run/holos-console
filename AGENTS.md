@@ -272,9 +272,37 @@ scripts/browser-verify-change
 # Run the full self-service workflow (create org → project → secret → verify → cleanup)
 # Requires a Kubernetes cluster (e.g. k3d cluster create holos-dev)
 scripts/browser-self-service
+
+# Capture a screenshot of a secret detail page (or any URL)
+scripts/browser-capture-secret [URL]
+
+# Test per-key trailing newline affordance in the secret grid
+scripts/browser-test-newline
 ```
 
 Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `scripts/browser-logout && scripts/browser-login` to get a fresh OIDC token (the old Dex signing keys are invalidated).
+
+### Visual Verification for Frontend PRs
+
+When a PR changes the web UI, capture screenshots of the affected pages, commit them to the repo, and reference them in the PR. This provides reviewers with visual evidence and catches layout regressions.
+
+1. **Capture**: Use `scripts/browser-capture-secret` or write a similar script to navigate to the affected page and save a screenshot. Ensure the dev stack is running (`make run` + `make dev`) and the browser session is authenticated (`scripts/browser-login`).
+2. **Commit images**: Save screenshots to `docs/screenshots/pr-<N>/` (where N is the PR number) and commit them to the feature branch:
+   ```bash
+   mkdir -p docs/screenshots/pr-<N>
+   cp tmp/screenshots/relevant.png docs/screenshots/pr-<N>/
+   git add docs/screenshots/pr-<N>/ && git commit -m "Add visual verification screenshots for PR #<N>"
+   git push
+   ```
+3. **Reference in PR**: Add a comment linking to the committed images using raw GitHub URLs. After pushing, the images are available at:
+   ```
+   https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png
+   ```
+   Post them in a PR comment with markdown image syntax:
+   ```bash
+   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png)"
+   ```
+4. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
 
 ### Configuration
 

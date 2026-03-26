@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Check, Pencil, X, ExternalLink } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
-import { SecretDataViewer } from '@/components/secret-data-viewer'
+import { SecretDataGrid } from '@/components/secret-data-grid'
 import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { isSafeUrl } from '@/lib/utils'
@@ -69,6 +69,7 @@ function SecretPage() {
   const [draftUrl, setDraftUrl] = useState('')
 
   // View mode
+  const [editMode, setEditMode] = useState(false)
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
   const [rawJson, setRawJson] = useState<string | null>(null)
   const [rawError, setRawError] = useState<Error | null>(null)
@@ -162,6 +163,15 @@ function SecretPage() {
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  const handleCancel = () => {
+    setEditMode(false)
+    setSaveError(null)
+    // Revert data changes
+    if (fetchedData) setSecretData(fetchedData)
+    if (originalDescription !== null) setDescription(originalDescription)
+    if (originalUrl !== null) setUrl(originalUrl)
   }
 
   const handleDelete = async () => {
@@ -295,23 +305,42 @@ function SecretPage() {
         </Tabs>
 
         {viewMode === 'editor' && (
-          <SecretDataViewer data={effectiveData} onChange={(newData) => setSecretData(newData)} />
+          <>
+            <div className="flex items-center gap-2">
+              {editMode ? (
+                <>
+                  <Button size="sm" onClick={handleSave} disabled={!isDirty || updateMutation.isPending}>
+                    {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleCancel}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
+              <div className="flex-1" />
+              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
+            </div>
+            {saveError && (
+              <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
+            )}
+            <SecretDataGrid data={effectiveData} onChange={(newData) => setSecretData(newData)} readOnly={!editMode} />
+          </>
         )}
 
         {viewMode === 'raw' && rawJson && (
-          <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex-1" />
+              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
+            </div>
+            <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
+          </>
         )}
-
-        {saveError && (
-          <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={handleSave} disabled={!isDirty || updateMutation.isPending || viewMode === 'raw'}>
-            {updateMutation.isPending ? 'Saving...' : 'Save'}
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-        </div>
 
         <SharingPanel
           userGrants={effectiveUserGrants}

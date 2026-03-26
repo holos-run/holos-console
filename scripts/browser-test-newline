@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+# Test per-key trailing newline affordance in the secret data grid.
+#
+# Verifies:
+#   - Multi-line values show a per-key "Ensure trailing newline" checkbox
+#   - Single-line values do not show the checkbox
+#   - The checkbox defaults to checked for multi-line values
+#   - Toggling the checkbox works
+#
+# Requires: make run + make dev running, and scripts/browser-login completed.
+#
+# Usage: scripts/browser-test-newline [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+ORG_NAME="newline-test-org"
+ORG_DISPLAY="Newline Test Org"
+PROJECT_NAME="newline-test-project"
+PROJECT_DISPLAY="Newline Test Project"
+SECRET_NAME="newline-test-secret"
+
+step=0
+failures=0
+
+screenshot() {
+  step=$((step + 1))
+  local desc="$1"
+  local path="$SCREENSHOTS_DIR/newline-step-${step}-${desc}.png"
+  $AB screenshot "$path"
+  echo "  Screenshot: $path"
+}
+
+assert_eq() {
+  local label="$1" expected="$2" actual="$3"
+  if [[ "$actual" == *"$expected"* ]]; then
+    echo "  PASS: $label (got: $actual)"
+  else
+    echo "  FAIL: $label (expected: $expected, got: $actual)"
+    failures=$((failures + 1))
+  fi
+}
+
+click_button_by_text() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('button')) {
+      if (b.textContent.trim() === '$text' && !b.disabled) { b.click(); break; }
+    }
+  "
+}
+
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+      if (b.textContent.trim() === '$text') { b.click(); break; }
+    }
+  "
+}
+
+click_link_by_text() {
+  local text="$1"
+  $AB eval "
+    for (const a of document.querySelectorAll('a')) {
+      if (a.textContent.trim() === '$text') { a.click(); break; }
+    }
+  "
+}
+
+echo "=== Step 1: Create organization ==="
+$AB open "https://localhost:8443/organizations"
+$AB wait --load networkidle
+$AB wait --text "Organizations" 2>/dev/null || $AB wait 3000
+
+click_button_by_text "Create Organization"
+$AB wait 1000
+
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME"
+$AB fill "input[placeholder='What is this organization for?']" "Trailing newline test"
+
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "org-created"
+
+echo "=== Step 2: Create project ==="
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "https://localhost:8443/projects"
+$AB wait --load networkidle
+$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+
+click_button_by_text "Create Project"
+$AB wait 1000
+
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME"
+$AB fill "input[placeholder='What is this project for?']" "Trailing newline test"
+
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "project-created"
+
+echo "=== Step 3: Open create secret dialog ==="
+click_link_by_text "Secrets"
+$AB wait --load networkidle
+$AB wait 1000
+
+click_button_by_text "Create Secret"
+$AB wait 1000
+
+$AB fill "input[placeholder='my-secret']" "$SECRET_NAME"
+$AB fill "input[placeholder='What is this secret used for?']" "Test per-key newline"
+screenshot "create-secret-dialog"
+
+echo "=== Step 4: Add a single-line key ==="
+# The grid starts with one empty row; fill it with a single-line value
+$AB fill "input[placeholder='key']" "single-line-key"
+$AB fill "textarea[placeholder='value']" "just-one-line"
+$AB wait 500
+screenshot "single-line-filled"
+
+# Assert: no trailing-newline checkbox should be visible (single-line value)
+CHECKBOX_COUNT=$($AB eval "document.querySelectorAll('[role=\"checkbox\"]').length" 2>/dev/null || echo "error")
+assert_eq "no checkbox for single-line value" "0" "$CHECKBOX_COUNT"
+
+echo "=== Step 5: Add a multi-line key ==="
+click_button_by_text "Add Row"
+$AB wait 500
+
+# Fill the second row with a multi-line value
+$AB eval "
+  const keys = document.querySelectorAll('input[placeholder=\"key\"]');
+  const last = keys[keys.length - 1];
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  nativeInputValueSetter.call(last, 'multi-line-key');
+  last.dispatchEvent(new Event('input', { bubbles: true }));
+  last.dispatchEvent(new Event('change', { bubbles: true }));
+"
+$AB wait 300
+
+$AB eval "
+  const areas = document.querySelectorAll('textarea[placeholder=\"value\"]');
+  const last = areas[areas.length - 1];
+  const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  nativeTextAreaValueSetter.call(last, 'line1\nline2\nline3');
+  last.dispatchEvent(new Event('input', { bubbles: true }));
+  last.dispatchEvent(new Event('change', { bubbles: true }));
+"
+$AB wait 500
+screenshot "multi-line-filled"
+
+# Assert: exactly one checkbox should now be visible (for the multi-line key only)
+CHECKBOX_COUNT=$($AB eval "document.querySelectorAll('[role=\"checkbox\"]').length" 2>/dev/null || echo "error")
+assert_eq "one checkbox for multi-line value" "1" "$CHECKBOX_COUNT"
+
+echo "=== Step 6: Verify checkbox is checked by default ==="
+CHECKBOX_STATE=$($AB eval "document.querySelector('[role=\"checkbox\"]')?.getAttribute('data-state')" 2>/dev/null || echo "error")
+assert_eq "checkbox defaults to checked" "checked" "$CHECKBOX_STATE"
+screenshot "checkbox-checked"
+
+echo "=== Step 7: Toggle checkbox off ==="
+$AB eval "document.querySelector('[role=\"checkbox\"]')?.click()"
+$AB wait 300
+
+CHECKBOX_STATE=$($AB eval "document.querySelector('[role=\"checkbox\"]')?.getAttribute('data-state')" 2>/dev/null || echo "error")
+assert_eq "checkbox unchecked after toggle" "unchecked" "$CHECKBOX_STATE"
+screenshot "checkbox-unchecked"
+
+echo "=== Step 8: Toggle checkbox back on ==="
+$AB eval "document.querySelector('[role=\"checkbox\"]')?.click()"
+$AB wait 300
+
+CHECKBOX_STATE=$($AB eval "document.querySelector('[role=\"checkbox\"]')?.getAttribute('data-state')" 2>/dev/null || echo "error")
+assert_eq "checkbox re-checked after toggle" "checked" "$CHECKBOX_STATE"
+screenshot "checkbox-rechecked"
+
+echo "=== Step 9: Create the secret ==="
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "secret-created"
+
+echo "=== Step 10: Clean up — delete secret ==="
+$AB eval "document.querySelector('a[href*=\"$SECRET_NAME\"]')?.click()"
+$AB wait --load networkidle
+$AB wait 1000
+
+click_button_by_text "Delete"
+$AB wait 1000
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+
+echo "=== Step 11: Clean up — delete project ==="
+$AB open "https://localhost:8443/projects/$PROJECT_NAME"
+$AB wait --load networkidle
+$AB wait 1000
+
+click_button_by_text "Delete"
+$AB wait 1000
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+
+echo "=== Step 12: Clean up — delete organization ==="
+$AB open "https://localhost:8443/organizations"
+$AB wait --load networkidle
+$AB wait 1000
+
+$AB eval "
+  for (const row of document.querySelectorAll('a, div, li')) {
+    if (row.textContent.includes('$ORG_DISPLAY') || row.textContent.includes('$ORG_NAME')) {
+      const btn = row.querySelector('button');
+      if (btn) { btn.click(); break; }
+    }
+  }
+"
+$AB wait 1000
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+
+$AB eval "sessionStorage.removeItem('holos-selected-org')"
+
+echo ""
+echo "=== Per-key trailing newline test complete ==="
+echo "Screenshots saved to $SCREENSHOTS_DIR/newline-step-*.png"
+if [[ "$failures" -gt 0 ]]; then
+  echo "RESULT: $failures assertion(s) FAILED"
+  exit 1
+else
+  echo "RESULT: All assertions PASSED"
+fi

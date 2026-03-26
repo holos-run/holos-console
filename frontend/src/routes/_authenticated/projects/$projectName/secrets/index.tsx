@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/tooltip'
 import { Lock, Trash2, ExternalLink } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
-import { SecretDataEditor } from '@/components/secret-data-editor'
+import { SecretDataGrid } from '@/components/secret-data-grid'
 import { isSafeUrl } from '@/lib/utils'
 import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -243,7 +243,7 @@ function SecretsListPage() {
             </div>
             <div>
               <Label>Data</Label>
-              <SecretDataEditor initialData={createData} onChange={setCreateData} />
+              <SecretDataGrid data={createData} onChange={setCreateData} />
             </div>
             {createError && (
               <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>
