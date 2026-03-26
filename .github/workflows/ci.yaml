@@ -77,7 +77,7 @@ jobs:
           curl -sfL https://get.k3s.io | sh -s - --disable=traefik
           sudo chmod 644 /etc/rancher/k3s/k3s.yaml
           echo "KUBECONFIG=/etc/rancher/k3s/k3s.yaml" >> $GITHUB_ENV
-          kubectl wait --for=condition=Ready nodes --all --timeout=120s
+          KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
       - name: Install Playwright browsers
         run: cd frontend && npx playwright install --with-deps chromium
