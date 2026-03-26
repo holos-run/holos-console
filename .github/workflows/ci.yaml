@@ -54,16 +54,14 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
-      - name: Install mkcert
+      - name: Install tool dependencies (buf, mkcert)
+        run: make tools
+
+      - name: Trust mkcert CA
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libnss3-tools
-          curl -fsSL "https://dl.filippo.io/mkcert/latest?for=linux/amd64" -o /usr/local/bin/mkcert
-          chmod +x /usr/local/bin/mkcert
           mkcert -install
-
-      - name: Install tool dependencies (buf)
-        run: make tools
 
       - name: Generate TLS certificates
         run: make certs
