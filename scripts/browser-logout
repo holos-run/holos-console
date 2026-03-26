@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Clear browser session state to simulate a fresh login.
+# Clears sessionStorage (OIDC tokens) and localStorage.
+#
+# Usage: scripts/browser-logout [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --ignore-https-errors --session-name $SESSION_NAME"
+
+echo "Clearing sessionStorage (OIDC tokens)..."
+$AB eval "sessionStorage.clear()"
+
+echo "Clearing localStorage..."
+$AB eval "localStorage.clear()"
+
+echo "OK: Session state cleared. Next navigation to an authenticated route will trigger fresh OIDC auto-login."

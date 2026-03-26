@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Automate OIDC login via embedded Dex auto-connector.
+# Requires the dev stack to be running (make run).
+#
+# Usage: scripts/browser-login [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --ignore-https-errors --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+echo "Opening https://localhost:8443/projects (triggers OIDC redirect)..."
+$AB open "https://localhost:8443/projects"
+
+echo "Waiting for redirect chain to complete..."
+$AB wait --load networkidle
+
+# Check for password form — if present, auto-login failed
+if $AB eval "Boolean(document.querySelector('input[name=\"login\"], input[name=\"password\"]'))" 2>/dev/null | grep -q "true"; then
+  $AB screenshot "$SCREENSHOTS_DIR/login-failed.png"
+  echo "FAIL: OIDC auto-login did not work — embedded Dex may be misconfigured."
+  echo "  A password form appeared. Screenshot saved to $SCREENSHOTS_DIR/login-failed.png"
+  echo "  Ensure the server was started with --enable-insecure-dex."
+  exit 1
+fi
+
+# Wait for authenticated content to render
+echo "Waiting for authenticated content..."
+$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+
+# Verify OIDC token in sessionStorage
+TOKEN_KEY=$($AB eval "Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'))" 2>/dev/null || true)
+if [[ -z "$TOKEN_KEY" || "$TOKEN_KEY" == "undefined" || "$TOKEN_KEY" == "null" ]]; then
+  $AB screenshot "$SCREENSHOTS_DIR/login-no-token.png"
+  echo "FAIL: No OIDC token found in sessionStorage."
+  echo "  Screenshot saved to $SCREENSHOTS_DIR/login-no-token.png"
+  exit 1
+fi
+
+echo "OK: OIDC token present (key: $TOKEN_KEY)"
+
+# Save success screenshot
+$AB screenshot "$SCREENSHOTS_DIR/login-success.png"
+echo "OK: Screenshot saved to $SCREENSHOTS_DIR/login-success.png"
+echo "OK: Login complete. Session '$SESSION_NAME' is persisted for reuse."
