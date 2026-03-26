@@ -165,6 +165,15 @@ function SecretPage() {
     }
   }
 
+  const handleCancel = () => {
+    setEditMode(false)
+    setSaveError(null)
+    // Revert data changes
+    if (fetchedData) setSecretData(fetchedData)
+    if (originalDescription !== null) setDescription(originalDescription)
+    if (originalUrl !== null) setUrl(originalUrl)
+  }
+
   const handleDelete = async () => {
     try {
       await deleteMutation.mutateAsync(name)
@@ -298,33 +307,40 @@ function SecretPage() {
         {viewMode === 'editor' && (
           <>
             <div className="flex items-center gap-2">
-              <Button
-                variant={editMode ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setEditMode(!editMode)}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                {editMode ? 'Editing' : 'Edit'}
-              </Button>
+              {editMode ? (
+                <>
+                  <Button size="sm" onClick={handleSave} disabled={!isDirty || updateMutation.isPending}>
+                    {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleCancel}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
+              <div className="flex-1" />
+              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
             </div>
+            {saveError && (
+              <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
+            )}
             <SecretDataGrid data={effectiveData} onChange={(newData) => setSecretData(newData)} readOnly={!editMode} />
           </>
         )}
 
         {viewMode === 'raw' && rawJson && (
-          <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex-1" />
+              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
+            </div>
+            <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
+          </>
         )}
-
-        {saveError && (
-          <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={handleSave} disabled={!isDirty || updateMutation.isPending || viewMode === 'raw'}>
-            {updateMutation.isPending ? 'Saving...' : 'Save'}
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-        </div>
 
         <SharingPanel
           userGrants={effectiveUserGrants}
