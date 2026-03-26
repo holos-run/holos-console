@@ -14,8 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Check, Pencil, X, ExternalLink } from 'lucide-react'
+import { Check, Pencil, X, ExternalLink, Table2, Braces } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { SecretDataGrid } from '@/components/secret-data-grid'
 import { RawView } from '@/components/raw-view'
@@ -297,34 +296,53 @@ function SecretPage() {
           )}
         </div>
 
-        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-          <TabsList>
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5">
+            <button
+              onClick={() => handleViewModeChange('editor')}
+              className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'editor'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              Data
+            </button>
+            <button
+              onClick={() => handleViewModeChange('raw')}
+              className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'raw'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Braces className="h-3.5 w-3.5" />
+              Resource
+            </button>
+          </div>
+          <div className="flex-1" />
+          {viewMode === 'editor' && !editMode && (
+            <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+              <Pencil className="h-4 w-4 mr-1" />
+              Edit
+            </Button>
+          )}
+          {viewMode === 'editor' && editMode && (
+            <>
+              <Button size="sm" onClick={handleSave} disabled={!isDirty || updateMutation.isPending}>
+                {updateMutation.isPending ? 'Saving...' : 'Save'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCancel}>
+                Cancel
+              </Button>
+            </>
+          )}
+          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
+        </div>
 
         {viewMode === 'editor' && (
           <>
-            <div className="flex items-center gap-2">
-              {editMode ? (
-                <>
-                  <Button size="sm" onClick={handleSave} disabled={!isDirty || updateMutation.isPending}>
-                    {updateMutation.isPending ? 'Saving...' : 'Save'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleCancel}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
-                  <Pencil className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-              )}
-              <div className="flex-1" />
-              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
-            </div>
             {saveError && (
               <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
             )}
@@ -333,13 +351,7 @@ function SecretPage() {
         )}
 
         {viewMode === 'raw' && rawJson && (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="flex-1" />
-              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
-            </div>
-            <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
-          </>
+          <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 
         <SharingPanel
