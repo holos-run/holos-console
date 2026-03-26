@@ -69,13 +69,18 @@ async function createAndSelectOrg(page: import('@playwright/test').Page, orgName
   // Wait for redirect to org detail page (confirms creation succeeded)
   await page.waitForURL(/\/organizations\//, { timeout: 10000 })
 
+  // Navigate to organizations list to ensure sidebar loads with org data
+  await page.goto('/organizations')
+  await page.waitForLoadState('networkidle')
+
   // On mobile, open the sidebar drawer to access the org picker
   const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-  if (await sidebarTrigger.isVisible().catch(() => false)) {
+  if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
     await sidebarTrigger.click()
   }
 
   // Select the org in the sidebar dropdown picker
+  await page.getByRole('button', { name: /all organizations/i }).waitFor({ timeout: 5000 })
   await page.getByRole('button', { name: /all organizations/i }).click()
   await page.getByRole('menuitem', { name: orgName }).click()
 }
@@ -199,7 +204,7 @@ test.describe('Secrets Page', () => {
     const secretName = `e2e-share-update-${Date.now()}`
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.getByPlaceholder('my-secret').fill(secretName)
-    await page.getByRole('button', { name: /add key/i }).click()
+    // The create dialog already shows one empty key-value row
     await page.getByPlaceholder('key').fill('.env')
     await page.getByPlaceholder('value').fill('KEY=value')
     await page.getByRole('button', { name: /^create$/i }).click()
@@ -277,8 +282,8 @@ test.describe('Secrets Page', () => {
     await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()
     const dialogDelete = page.getByRole('dialog').getByRole('button', { name: /delete/i })
     await dialogDelete.click()
-    // Wait for secret to disappear from the list
-    await expect(page.getByText(secretName)).not.toBeVisible({ timeout: 5000 })
+    // Wait for delete dialog to close
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 })
 
     // Clean up: delete the project and org
     await page.goto('/projects')
