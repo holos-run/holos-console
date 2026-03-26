@@ -13,6 +13,9 @@ import { defineConfig, devices } from '@playwright/test'
  *   Terminal 2: make dev     (Vite dev server on https://localhost:5173)
  *   Terminal 3: npm run test:e2e
  */
+const backendPort = process.env.HOLOS_BACKEND_PORT || '8443'
+const vitePort = process.env.HOLOS_VITE_PORT || '5173'
+
 export default defineConfig({
   testDir: './e2e',
   // Run tests serially — they share Dex OIDC state and K8s resources
@@ -25,7 +28,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     // Base URL for the Vite dev server (proxies to Go backend)
-    baseURL: 'https://localhost:5173',
+    baseURL: `https://localhost:${vitePort}`,
 
     // Accept self-signed certificates in development
     ignoreHTTPSErrors: true,
@@ -55,8 +58,8 @@ export default defineConfig({
     {
       // Go backend - must be built first (make build or make test-e2e)
       // Use exec to ensure signals reach the Go binary directly
-      command: 'exec ../bin/holos-console --enable-insecure-dex --cert ../certs/tls.crt --key ../certs/tls.key',
-      url: 'https://localhost:8443/',
+      command: `exec ../bin/holos-console --enable-insecure-dex --cert ../certs/tls.crt --key ../certs/tls.key --listen :${backendPort}`,
+      url: `https://localhost:${backendPort}/`,
       timeout: 30_000,
       reuseExistingServer: !process.env.CI,
       ignoreHTTPSErrors: true,
@@ -66,7 +69,7 @@ export default defineConfig({
     {
       // Vite dev server - depends on Go backend for proxy
       command: 'npm run dev',
-      url: 'https://localhost:5173/',
+      url: `https://localhost:${vitePort}/`,
       timeout: 30_000,
       reuseExistingServer: !process.env.CI,
       ignoreHTTPSErrors: true,
