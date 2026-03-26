@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Visual verification of time-bound defaults in the sharing panel.
+#
+# Prerequisites:
+#   - Dev stack running: make run + make dev
+#   - Authenticated session: scripts/browser-login
+#   - K8s fixtures applied:
+#       kubectl apply -f frontend/e2e/fixtures/project-namespace.yaml
+#       kubectl apply -f frontend/e2e/fixtures/secret-no-time-bounds.yaml
+#
+# Usage: scripts/browser-verify-time-bounds [--session-name NAME]
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+SECRET_URL="https://localhost:5173/projects/time-test/secrets/no-time-bounds"
+
+echo "==> Navigating to secret detail page (read mode)"
+$AB open "$SECRET_URL"
+$AB wait --load networkidle
+$AB wait 2000
+
+DEST="$SCREENSHOTS_DIR/time-bounds-read-mode.png"
+$AB screenshot "$DEST"
+echo "Screenshot saved to $DEST"
+
+echo "==> Clicking Edit to enter edit mode"
+$AB click "text=Edit"
+$AB wait 1000
+
+DEST="$SCREENSHOTS_DIR/time-bounds-edit-mode.png"
+$AB screenshot "$DEST"
+echo "Screenshot saved to $DEST"
+
+echo "Done. Screenshots in $SCREENSHOTS_DIR/"
