@@ -33,29 +33,49 @@ export async function navigatePastConnectorSelection(page: Page): Promise<void> 
 
 /**
  * Navigate to the Dex authorize endpoint and wait for the login page.
+ * Returns true if the Dex login form is shown, false if Dex auto-completed
+ * (e.g., due to an existing server-side session).
  */
-export async function navigateToDexLogin(page: Page): Promise<void> {
+export async function navigateToDexLogin(page: Page): Promise<boolean> {
   await page.goto(buildAuthorizeUrl())
-  await page.waitForURL(/\/dex\//, { timeout: 5000 })
+  await page.waitForURL(/\/dex\/|\/pkce\/verify/, { timeout: 5000 })
+
+  if (!page.url().includes('/dex/')) {
+    return false
+  }
+
   await navigatePastConnectorSelection(page)
+  return true
 }
 
 /**
  * Complete the full login flow via the profile page: navigate to /profile,
  * click Sign In, fill credentials, submit, and wait for redirect back.
+ *
+ * Handles two cases:
+ * 1. Dex has no session: shows login form, fill credentials, submit
+ * 2. Dex has existing session: auto-completes auth, redirects back immediately
  */
 export async function loginViaProfilePage(page: Page): Promise<void> {
   await page.goto('/profile')
   await page.getByRole('button', { name: 'Sign In' }).click()
-  await page.waitForURL(/\/dex\//, { timeout: 5000 })
-  await navigatePastConnectorSelection(page)
 
-  const usernameInput = page.locator('input[name="login"]')
-  const passwordInput = page.locator('input[name="password"]')
+  // Wait for either the Dex login page or a redirect back to profile
+  // (Dex may auto-complete if it has an existing server-side session)
+  await page.waitForURL(/\/dex\/|\/profile|\/pkce\/verify/, { timeout: 10000 })
 
-  await usernameInput.fill(DEFAULT_USERNAME)
-  await passwordInput.fill(DEFAULT_PASSWORD)
-  await page.locator('button[type="submit"]').click()
+  // If we landed on Dex, complete the login form
+  if (page.url().includes('/dex/')) {
+    await navigatePastConnectorSelection(page)
 
+    const usernameInput = page.locator('input[name="login"]')
+    const passwordInput = page.locator('input[name="password"]')
+
+    await usernameInput.fill(DEFAULT_USERNAME)
+    await passwordInput.fill(DEFAULT_PASSWORD)
+    await page.locator('button[type="submit"]').click()
+  }
+
+  // Wait for redirect back to profile
   await page.waitForURL(/\/profile/, { timeout: 15000 })
 }
