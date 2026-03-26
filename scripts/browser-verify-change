@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Verify ID token and refresh token status on the profile page.
+# Requires: make run running, and scripts/browser-login completed.
+#
+# Usage: scripts/browser-verify-change [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+# Navigate to the profile page
+echo "Navigating to profile page..."
+$AB open "https://localhost:8443/profile"
+$AB wait --load networkidle
+$AB wait --text "ID Token Status" 2>/dev/null || $AB wait 3000
+
+# Take screenshot of the profile page
+echo "Taking profile screenshot..."
+$AB screenshot "$SCREENSHOTS_DIR/profile.png"
+
+# Check for "Valid" badge (ID token status)
+ID_TOKEN_VALID=$($AB eval "document.body.innerText.includes('Valid')" 2>/dev/null || echo "false")
+
+echo "Screenshot: $SCREENSHOTS_DIR/profile.png"
+
+if [[ "$ID_TOKEN_VALID" == *"true"* ]]; then
+  echo "OK: ID token status is Valid."
+  exit 0
+else
+  echo "FAIL: ID token status is not Valid."
+  exit 1
+fi

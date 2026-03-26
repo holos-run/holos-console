@@ -85,6 +85,11 @@ tidy: ## Tidy go module.
 tools: frontend/node_modules ## Install tool dependencies.
 	go install $$(go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go)
 
+.PHONY: agent-tools
+agent-tools: ## Install agent-browser for AI agent browser automation.
+	npm install -g agent-browser
+	agent-browser install
+
 .PHONY: test
 test: test-go test-ui ## Run tests.
 
@@ -147,6 +152,12 @@ docker-buildx: ## Build multi-platform container images (amd64, arm64).
 .PHONY: docker-push
 docker-push: ## Build and push multi-platform container images.
 	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest --push .
+
+.PHONY: cluster
+cluster: ## Create local k3d cluster (DNS + cluster + CA).
+	./scripts/local-dns
+	./scripts/local-k3d
+	./scripts/local-ca
 
 .PHONY: help
 help: ## Display this help menu.

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Verify agent-browser is installed and configured for this project.
+set -euo pipefail
+
+errors=0
+
+# 1. agent-browser CLI is available
+if command -v agent-browser &>/dev/null; then
+  echo "OK: agent-browser $(agent-browser --version 2>&1 || true)"
+else
+  echo "FAIL: agent-browser not found in PATH"
+  echo "  Run 'make agent-tools' to install it."
+  errors=$((errors + 1))
+fi
+
+# 2. Chrome for Testing is available
+if agent-browser install --status &>/dev/null; then
+  echo "OK: Chrome for Testing is available"
+else
+  echo "FAIL: Chrome for Testing is not installed"
+  echo "  Run 'agent-browser install' to download it."
+  errors=$((errors + 1))
+fi
+
+# 3. Project config exists
+config="$(cd "$(dirname "$0")/.." && pwd)/agent-browser.json"
+if [[ -f "$config" ]]; then
+  echo "OK: agent-browser.json exists at project root"
+else
+  echo "FAIL: agent-browser.json not found at $config"
+  errors=$((errors + 1))
+fi
+
+if [[ $errors -gt 0 ]]; then
+  echo ""
+  echo "$errors check(s) failed."
+  exit 1
+fi
+
+echo ""
+echo "All checks passed."

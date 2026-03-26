@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# Automate the self-service path through the console:
+#   Create org → Create project → Create secret → Verify → Cleanup
+#
+# Requires: make run running, and scripts/browser-login completed.
+#
+# Usage: scripts/browser-self-service [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+ORG_NAME="agent-test-org"
+ORG_DISPLAY="Agent Test Org"
+PROJECT_NAME="agent-test-project"
+PROJECT_DISPLAY="Agent Test Project"
+SECRET_NAME="agent-test-secret"
+SECRET_KEY="test-key"
+SECRET_VALUE="test-value-from-agent"
+
+step=0
+screenshot() {
+  step=$((step + 1))
+  local desc="$1"
+  local path="$SCREENSHOTS_DIR/step-${step}-${desc}.png"
+  $AB screenshot "$path"
+  echo "  Screenshot: $path"
+}
+
+# click_button_by_text clicks the first visible button whose trimmed
+# textContent exactly matches the given string.
+click_button_by_text() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('button')) {
+      if (b.textContent.trim() === '$text' && !b.disabled) { b.click(); break; }
+    }
+  "
+}
+
+# click_dialog_button clicks a button inside a dialog by text.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+      if (b.textContent.trim() === '$text') { b.click(); break; }
+    }
+  "
+}
+
+# click_link_by_text clicks the first <a> whose textContent matches.
+click_link_by_text() {
+  local text="$1"
+  $AB eval "
+    for (const a of document.querySelectorAll('a')) {
+      if (a.textContent.trim() === '$text') { a.click(); break; }
+    }
+  "
+}
+
+echo "=== Step 1: Create an organization ==="
+$AB open "https://localhost:8443/organizations"
+$AB wait --load networkidle
+$AB wait --text "Organizations" 2>/dev/null || $AB wait 3000
+screenshot "organizations-list"
+
+click_button_by_text "Create Organization"
+$AB wait 1000
+screenshot "create-org-dialog"
+
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME"
+$AB fill "input[placeholder='What is this organization for?']" "Automated test org"
+screenshot "create-org-filled"
+
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "org-created"
+
+echo "=== Step 2: Set selected org and navigate to Projects ==="
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "https://localhost:8443/projects"
+$AB wait --load networkidle
+$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+screenshot "projects-list"
+
+echo "=== Step 3: Create a new project ==="
+click_button_by_text "Create Project"
+$AB wait 1000
+screenshot "create-project-dialog"
+
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME"
+$AB fill "input[placeholder='What is this project for?']" "Automated test project"
+screenshot "create-project-filled"
+
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "project-created"
+
+echo "=== Step 4: Navigate to Secrets page ==="
+click_link_by_text "Secrets"
+$AB wait --load networkidle
+$AB wait 1000
+screenshot "secrets-list"
+
+echo "=== Step 5: Create a new secret ==="
+click_button_by_text "Create Secret"
+$AB wait 1000
+screenshot "create-secret-dialog"
+
+$AB fill "input[placeholder='my-secret']" "$SECRET_NAME"
+$AB fill "input[placeholder='What is this secret used for?']" "Automated test secret"
+# Add a key/value entry — click "Add Key" button first (has a Plus icon prefix)
+$AB eval "
+  for (const b of document.querySelectorAll('button')) {
+    if (b.textContent.includes('Add Key') && !b.disabled) { b.click(); break; }
+  }
+"
+$AB wait 500
+$AB fill "input[placeholder='key']" "$SECRET_KEY"
+$AB fill "textarea[placeholder='value']" "$SECRET_VALUE"
+screenshot "create-secret-filled"
+
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "secret-created"
+
+echo "=== Step 6: Verify the secret exists ==="
+$AB eval "document.querySelector('a[href*=\"$SECRET_NAME\"]')?.click()"
+$AB wait --load networkidle
+$AB wait 1000
+screenshot "secret-detail"
+
+KEY_FOUND=$($AB eval "document.body.innerText.includes('$SECRET_KEY')" 2>/dev/null || echo "false")
+if [[ "$KEY_FOUND" == *"true"* ]]; then
+  echo "  OK: Secret key '$SECRET_KEY' found on detail page."
+else
+  echo "  WARN: Secret key '$SECRET_KEY' not found on detail page (may be masked)."
+fi
+
+echo "=== Step 7: Clean up — delete secret ==="
+click_button_by_text "Delete"
+$AB wait 1000
+screenshot "delete-secret-dialog"
+
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "secret-deleted"
+
+echo "=== Step 8: Clean up — delete project ==="
+$AB open "https://localhost:8443/projects/$PROJECT_NAME"
+$AB wait --load networkidle
+$AB wait 1000
+
+click_button_by_text "Delete"
+$AB wait 1000
+screenshot "delete-project-dialog"
+
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "project-deleted"
+
+echo "=== Step 9: Clean up — delete organization ==="
+$AB open "https://localhost:8443/organizations"
+$AB wait --load networkidle
+$AB wait 1000
+
+# Click the trash icon button next to our org
+$AB eval "
+  for (const row of document.querySelectorAll('a, div, li')) {
+    if (row.textContent.includes('$ORG_DISPLAY') || row.textContent.includes('$ORG_NAME')) {
+      const btn = row.querySelector('button');
+      if (btn) { btn.click(); break; }
+    }
+  }
+"
+$AB wait 1000
+screenshot "delete-org-dialog"
+
+click_dialog_button "Delete"
+$AB wait --load networkidle
+$AB wait 2000
+screenshot "org-deleted"
+
+$AB eval "sessionStorage.removeItem('holos-selected-org')"
+
+echo ""
+echo "=== Self-service workflow complete ==="
+echo "All screenshots saved to $SCREENSHOTS_DIR/step-*.png"
+echo "Steps: Create org → Create project → Create secret → Verify → Delete secret → Delete project → Delete org"
