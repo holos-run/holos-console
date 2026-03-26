@@ -6,6 +6,10 @@
 #   Default session name: holos-dev
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=browser-env
+source "$SCRIPT_DIR/browser-env"
+
 SESSION_NAME="${1:-holos-dev}"
 AB="agent-browser --session-name $SESSION_NAME"
 
@@ -14,7 +18,7 @@ mkdir -p "$SCREENSHOTS_DIR"
 
 # Navigate to the profile page
 echo "Navigating to profile page..."
-$AB open "https://localhost:8443/profile"
+$AB open "$HOLOS_BACKEND_URL/profile"
 $AB wait --load networkidle
 $AB wait --text "ID Token Status" 2>/dev/null || $AB wait 3000
 

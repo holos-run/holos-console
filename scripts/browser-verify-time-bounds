@@ -11,13 +11,17 @@
 # Usage: scripts/browser-verify-time-bounds [--session-name NAME]
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=browser-env
+source "$SCRIPT_DIR/browser-env"
+
 SESSION_NAME="${1:-holos-dev}"
 AB="agent-browser --session-name $SESSION_NAME"
 
 SCREENSHOTS_DIR="tmp/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
 
-SECRET_URL="https://localhost:5173/projects/time-test/secrets/no-time-bounds"
+SECRET_URL="$HOLOS_VITE_URL/projects/time-test/secrets/no-time-bounds"
 
 echo "==> Navigating to secret detail page (read mode)"
 $AB open "$SECRET_URL"
