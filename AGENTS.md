@@ -24,6 +24,10 @@ Plans are recorded as GitHub issues. Implement each plan on a feature branch wit
 2. **Make regular commits** as you work. Each commit should be a logical unit of change.
 3. **Open a PR** when the work is complete. Include `Closes: #NN` (where NN is the issue number) in the PR description so the issue is automatically closed when the PR is merged.
 
+### Identifying Your Agent Slot
+
+Agents run in worktrees whose path encodes the agent slot. Identify your slot from your working directory — for example, if `pwd` is `/path/to/worktrees/holos-run/agent-2/holos-console`, your slot is `agent-2`. Include the slot in PR descriptions so reviewers know which agent produced the work.
+
 Example workflow:
 ```bash
 git checkout -b feat/add-playwright-config
@@ -44,7 +48,7 @@ Closes: #42
 ## Test plan
 - [ ] `make test-e2e` passes
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Claude Code](https://claude.com/claude-code) · agent-2
 EOF
 )"
 ```
