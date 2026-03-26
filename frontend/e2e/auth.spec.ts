@@ -140,6 +140,12 @@ test.describe('Profile Page', () => {
     await page.goto('/version')
     await expect(page.getByText('Server Version')).toBeVisible({ timeout: 10000 })
 
+    // On mobile viewports, open the sidebar drawer first
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible().catch(() => false)) {
+      await sidebarTrigger.click()
+    }
+
     // Click Profile link in sidebar
     await page.getByRole('link', { name: 'Profile' }).click()
 
