@@ -268,9 +268,27 @@ scripts/browser-verify-change
 # Run the full self-service workflow (create org → project → secret → verify → cleanup)
 # Requires a Kubernetes cluster (e.g. k3d cluster create holos-dev)
 scripts/browser-self-service
+
+# Capture a screenshot of a secret detail page (or any URL)
+scripts/browser-capture-secret [URL]
+
+# Test per-key trailing newline affordance in the secret grid
+scripts/browser-test-newline
 ```
 
 Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `scripts/browser-logout && scripts/browser-login` to get a fresh OIDC token (the old Dex signing keys are invalidated).
+
+### Visual Verification for Frontend PRs
+
+When a PR changes the web UI, capture screenshots of the affected pages and post them as a PR comment. This provides reviewers with visual evidence and catches layout regressions.
+
+1. **Capture**: Use `scripts/browser-capture-secret` or write a similar script to navigate to the affected page and save a screenshot. Ensure the dev stack is running (`make run` + `make dev`) and the browser session is authenticated (`scripts/browser-login`).
+2. **Post**: Add the screenshots to the PR as a comment with `gh pr comment`. Encode images as base64 data URIs since GitHub's API does not support file uploads:
+   ```bash
+   IMG=$(base64 -i tmp/screenshots/screenshot.png)
+   gh pr comment <PR> --body "<img src=\"data:image/png;base64,${IMG}\" width=\"960\" />"
+   ```
+3. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
 
 ### Configuration
 
