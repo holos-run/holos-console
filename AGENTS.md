@@ -280,15 +280,25 @@ Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `s
 
 ### Visual Verification for Frontend PRs
 
-When a PR changes the web UI, capture screenshots of the affected pages and post them as a PR comment. This provides reviewers with visual evidence and catches layout regressions.
+When a PR changes the web UI, capture screenshots of the affected pages, commit them to the repo, and reference them in the PR. This provides reviewers with visual evidence and catches layout regressions.
 
 1. **Capture**: Use `scripts/browser-capture-secret` or write a similar script to navigate to the affected page and save a screenshot. Ensure the dev stack is running (`make run` + `make dev`) and the browser session is authenticated (`scripts/browser-login`).
-2. **Post**: Add the screenshots to the PR as a comment with `gh pr comment`. Encode images as base64 data URIs since GitHub's API does not support file uploads:
+2. **Commit images**: Save screenshots to `docs/screenshots/pr-<N>/` (where N is the PR number) and commit them to the feature branch:
    ```bash
-   IMG=$(base64 -i tmp/screenshots/screenshot.png)
-   gh pr comment <PR> --body "<img src=\"data:image/png;base64,${IMG}\" width=\"960\" />"
+   mkdir -p docs/screenshots/pr-<N>
+   cp tmp/screenshots/relevant.png docs/screenshots/pr-<N>/
+   git add docs/screenshots/pr-<N>/ && git commit -m "Add visual verification screenshots for PR #<N>"
+   git push
    ```
-3. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
+3. **Reference in PR**: Add a comment linking to the committed images using raw GitHub URLs. After pushing, the images are available at:
+   ```
+   https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png
+   ```
+   Post them in a PR comment with markdown image syntax:
+   ```bash
+   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png)"
+   ```
+4. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
 
 ### Configuration
 
