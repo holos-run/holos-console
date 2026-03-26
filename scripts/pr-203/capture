@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# PR #203 — capture profile page showing Token Claims section (iss and aud).
+#
+# Called by scripts/browser-capture-pr 203. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+PROFILE_URL="$HOLOS_BACKEND_URL/profile"
+
+echo "==> Navigating to profile page"
+$AB open "$PROFILE_URL"
+$AB wait --load networkidle
+$AB wait --text "Token Claims" 2>/dev/null || $AB wait 5000
+
+# Full-page screenshot showing top of page (ID Token Status + start of Token Claims)
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-page-top.png"
+echo "Saved profile-page-top.png"
+
+echo "==> Scrolling to Token Claims section"
+$AB eval "document.querySelector('h3')?.scrollIntoView ? (() => { const cards = document.querySelectorAll('[class*=CardTitle]'); for(const c of cards){ if(c.textContent.includes('Token Claims')) { c.scrollIntoView({behavior:'instant'}); break; } } })() : window.scrollTo(0, 400)"
+$AB wait 500
+
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-token-claims-view.png"
+echo "Saved profile-token-claims-view.png"
+
+echo "==> Switching to Raw JSON view"
+$AB eval "
+  const buttons = [...document.querySelectorAll('button')];
+  const rawBtn = buttons.find(b => b.textContent.trim() === 'Raw');
+  if (rawBtn) rawBtn.click();
+"
+$AB wait 1000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-raw-claims-view.png"
+echo "Saved profile-raw-claims-view.png"

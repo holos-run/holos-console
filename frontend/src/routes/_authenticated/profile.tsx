@@ -5,13 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { List, Braces } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth'
 
 export const Route = createFileRoute('/_authenticated/profile')({
   component: ProfilePage,
 })
 
-function ProfilePage() {
+export function ProfilePage() {
   const {
     user,
     isAuthenticated,
@@ -25,6 +27,7 @@ function ProfilePage() {
 
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [claimsView, setClaimsView] = useState<'claims' | 'raw'>('claims')
 
   useEffect(() => {
     if (!user?.expires_at) {
@@ -82,10 +85,31 @@ function ProfilePage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  const formatEpoch = (epoch: number | undefined) => {
+    if (!epoch) return 'N/A'
+    return new Date(epoch * 1000).toLocaleString()
+  }
+
   const totalLifetime = user?.expires_in ?? 900
   const progress = timeRemaining !== null
     ? Math.min(100, ((totalLifetime - timeRemaining) / totalLifetime) * 100)
     : 0
+
+  const profile = user?.profile as Record<string, unknown> | undefined
+  const aud = profile?.aud
+  const audDisplay = aud
+    ? Array.isArray(aud) ? (aud as string[]).join(', ') : String(aud)
+    : 'N/A'
+  const groups = Array.isArray(profile?.groups) ? (profile!.groups as string[]) : []
+  const iat = typeof profile?.iat === 'number' ? profile.iat : undefined
+  const exp = typeof profile?.exp === 'number' ? profile.exp : undefined
+
+  const rawJson = JSON.stringify(profile ?? {}, null, 2)
+
+  const handleCopyRaw = () => {
+    navigator.clipboard.writeText(rawJson)
+    toast.success('Copied to clipboard')
+  }
 
   return (
     <div className="space-y-4">
@@ -160,36 +184,94 @@ function ProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Token Details</CardTitle>
+          <CardTitle>Token Claims</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Separator />
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Subject (sub)</p>
-              <p className="font-mono">{user?.profile?.sub ?? 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Email</p>
-              <p>{(user?.profile?.email as string) ?? 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Scopes</p>
-              <p className="font-mono">{user?.scope ?? 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Token Type</p>
-              <p className="font-mono">{user?.token_type ?? 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Roles</p>
-              <p className="font-mono">
-                {(user?.profile?.groups as string[] | undefined)?.length
-                  ? (user?.profile?.groups as string[]).join(', ')
-                  : 'None'}
-              </p>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5">
+              <button
+                onClick={() => setClaimsView('claims')}
+                className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
+                  claimsView === 'claims'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                Claims
+              </button>
+              <button
+                onClick={() => setClaimsView('raw')}
+                className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
+                  claimsView === 'raw'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Braces className="h-3.5 w-3.5" />
+                Raw
+              </button>
             </div>
           </div>
+
+          <Separator />
+
+          {claimsView === 'claims' && (
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Subject (sub)</p>
+                <p className="font-mono">{profile?.sub ? String(profile.sub) : 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Email</p>
+                <p>{profile?.email ? String(profile.email) : 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Issuer (iss)</p>
+                <p className="font-mono break-all">{profile?.iss ? String(profile.iss) : 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Audience (aud)</p>
+                <p className="font-mono">{audDisplay}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Roles / Groups</p>
+                <p className="font-mono">{groups.length ? groups.join(', ') : 'None'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Issued At (iat)</p>
+                <p className="font-mono">{formatEpoch(iat)}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Expires (exp)</p>
+                <p className="font-mono">{formatEpoch(exp)}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Scopes</p>
+                <p className="font-mono">{user?.scope ?? 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Token Type</p>
+                <p className="font-mono">{user?.token_type ?? 'N/A'}</p>
+              </div>
+            </div>
+          )}
+
+          {claimsView === 'raw' && (
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                <Button variant="outline" size="sm" onClick={handleCopyRaw} aria-label="Copy to Clipboard">
+                  Copy to Clipboard
+                </Button>
+              </div>
+              <pre
+                role="code"
+                className="rounded-md bg-muted p-4 text-sm font-mono overflow-auto whitespace-pre-wrap break-words"
+              >
+                {rawJson}
+              </pre>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

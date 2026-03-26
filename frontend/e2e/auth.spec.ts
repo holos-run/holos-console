@@ -134,6 +134,9 @@ test.describe('Profile Page', () => {
   })
 
   test('should navigate to profile page from sidebar', async ({ page }) => {
+    // Login + cross-page navigation takes extra time on mobile CI.
+    test.setTimeout(60_000)
+
     await loginViaProfilePage(page)
 
     // Navigate away from profile to test sidebar navigation
@@ -144,6 +147,8 @@ test.describe('Profile Page', () => {
     const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
     if (await sidebarTrigger.isVisible().catch(() => false)) {
       await sidebarTrigger.click()
+      // Wait for drawer animation to complete before clicking the link
+      await page.waitForTimeout(500)
     }
 
     // Click Profile link in sidebar
@@ -162,37 +167,73 @@ test.describe('Profile Page', () => {
     // Verify profile page shows token status after login
     await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 5000 })
 
-    // Verify token details section is visible
-    await expect(page.getByText('Token Details')).toBeVisible()
+    // Verify token claims section is visible
+    await expect(page.getByText('Token Claims')).toBeVisible()
     await expect(page.getByText('Email', { exact: true })).toBeVisible()
   })
 
-  test('should display token details after login', async ({ page }) => {
+  test('should display token claims after login', async ({ page }) => {
     await loginViaProfilePage(page)
 
-    // Verify token details are visible
-    await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
+    // Verify claims view is visible by default
+    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
     await expect(page.getByText('Subject (sub)')).toBeVisible()
     await expect(page.getByText('Email', { exact: true })).toBeVisible()
+    await expect(page.getByText('Issuer (iss)')).toBeVisible()
+    await expect(page.getByText('Audience (aud)')).toBeVisible()
+    await expect(page.getByText('Issued At (iat)')).toBeVisible()
+    await expect(page.getByText('Expires (exp)')).toBeVisible()
 
-    // Take screenshot for visual verification
     await page.screenshot({
-      path: 'e2e/screenshots/profile-token-details.png',
+      path: 'e2e/screenshots/profile-token-claims.png',
       fullPage: true,
     })
   })
 
-  test('should include roles in profile page', async ({ page }) => {
+  test('should include roles / groups in claims view', async ({ page }) => {
     await loginViaProfilePage(page)
 
-    // Verify token details are visible
-    await expect(page.getByText('Token Details')).toBeVisible({ timeout: 5000 })
-
-    // Verify roles are displayed in the token details
-    await expect(page.getByText('Roles')).toBeVisible()
+    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Roles / Groups')).toBeVisible()
 
     await page.screenshot({
       path: 'e2e/screenshots/profile-roles.png',
+      fullPage: true,
+    })
+  })
+
+  test('should display iss claim from embedded Dex', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Issuer (iss)')).toBeVisible()
+    await expect(page.getByText('Audience (aud)')).toBeVisible()
+
+    // Verify the issuer value from embedded Dex contains /dex
+    const issuerValue = page.locator('p.font-mono.break-all')
+    await expect(issuerValue).toContainText('/dex')
+  })
+
+  test('should switch to raw JSON view and show complete claims', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
+
+    // Click the Raw button in the segmented control
+    await page.getByRole('button', { name: /raw/i }).last().click()
+
+    // Verify JSON is displayed
+    const pre = page.getByRole('code')
+    await expect(pre).toBeVisible()
+    await expect(pre).toContainText('"iss"')
+    await expect(pre).toContainText('"aud"')
+    await expect(pre).toContainText('"sub"')
+
+    // Verify copy button
+    await expect(page.getByRole('button', { name: /copy to clipboard/i })).toBeVisible()
+
+    await page.screenshot({
+      path: 'e2e/screenshots/profile-raw-claims.png',
       fullPage: true,
     })
   })
