@@ -62,6 +62,9 @@ jobs:
           chmod +x /usr/local/bin/mkcert
           mkcert -install
 
+      - name: Install tool dependencies (buf)
+        run: make tools
+
       - name: Generate TLS certificates
         run: make certs
 
