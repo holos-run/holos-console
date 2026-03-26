@@ -284,31 +284,33 @@ Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `s
 
 ### Per-Agent Dev Servers
 
-`scripts/agent-dev` starts backend and Vite on deterministic per-slot ports (backend = 9000+N, vite = 10000+N, where N is derived from the `agent-N` path segment in the working directory). It uses SIGPIPE-based lifecycle: the script writes port assignments to stdout, then enters a heartbeat loop. When the pipe reader exits, SIGPIPE terminates the script and an EXIT trap kills both servers. No PID files, no stale processes.
+`scripts/agent-dev` builds the frontend into the Go binary (`make generate` + `make build`), then starts the backend on a deterministic port (9000+N, where N is derived from the `agent-N` path segment in the working directory). It uses SIGPIPE-based lifecycle: the script writes the port assignment to stdout, then enters a heartbeat loop. When the pipe reader exits, SIGPIPE terminates the script and an EXIT trap kills the server. No PID files, no stale processes.
 
 Usage (pipe pattern):
 ```bash
 scripts/agent-dev | {
-  eval "$(head -2)"                     # sets BACKEND_PORT and VITE_PORT
+  eval "$(head -1)"                     # sets BACKEND_PORT
   export HOLOS_BACKEND_PORT=$BACKEND_PORT
-  export HOLOS_VITE_PORT=$VITE_PORT
-  scripts/browser-login                 # uses HOLOS_BACKEND_PORT
-  scripts/browser-capture-secret        # uses HOLOS_VITE_PORT
-  # block exits → pipe breaks → SIGPIPE → servers cleaned up
+  scripts/browser-login                 # uses HOLOS_BACKEND_URL
+  scripts/browser-capture-secret        # uses HOLOS_BACKEND_URL
+  # block exits → pipe breaks → SIGPIPE → server cleaned up
 }
 ```
 
-`frontend/vite.config.ts` reads `HOLOS_BACKEND_PORT` and `HOLOS_VITE_PORT` from the environment (same defaults) so the dev server proxies to the correct backend and serves OIDC redirect URIs on the right port.
+The Go backend serves the embedded frontend — no Vite dev server is needed for automated screenshot capture. This avoids OIDC port mismatch issues that arise when the Vite dev server runs on a different port than the backend.
+
+`frontend/vite.config.ts` reads `HOLOS_BACKEND_PORT` and `HOLOS_VITE_PORT` from the environment (same defaults) for interactive development with `make dev`.
 
 ### Visual Verification for Frontend PRs
 
 When a PR changes the web UI, include a PR-specific capture script that produces screenshots as visual evidence. This catches layout regressions and gives reviewers visual context.
 
 Every issue implementation that touches the UI must include a `scripts/browser-capture-pr-<N>` script. The script should:
-- Use the `scripts/agent-dev` pipe pattern to start isolated servers
+- Use the `scripts/agent-dev` pipe pattern to build and start an isolated backend
 - Apply any required K8s fixtures
-- Login, navigate, and capture screenshots to `docs/screenshots/pr-<N>/`
-- Exit the pipe block (servers auto-clean via SIGPIPE)
+- Login against `$HOLOS_BACKEND_URL` (the Go backend serves the built frontend — do not use Vite)
+- Navigate, capture screenshots to `docs/screenshots/pr-<N>/`
+- Exit the pipe block (server auto-cleans via SIGPIPE)
 
 Workflow:
 

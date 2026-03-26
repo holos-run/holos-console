@@ -1,25 +1,25 @@
 #!/bin/bash
-# Start per-agent dev servers on isolated ports.
+# Start a per-agent dev server on an isolated port.
 #
-# Derives the agent slot from the working directory (e.g., agent-2 → slot 2)
-# and assigns deterministic ports: backend = 9000+slot, vite = 10000+slot.
+# Builds the frontend into the Go binary, then starts the backend on a
+# deterministic port derived from the agent slot (9000+N where N comes
+# from the "agent-N" segment in the working directory path).
 #
-# Lifecycle: prints BACKEND_PORT and VITE_PORT assignments to stdout, then
-# enters a heartbeat loop. When the reading end of the pipe closes (reader
-# exits), the next write raises SIGPIPE, which terminates this script. The
-# EXIT trap kills both child servers. This is the most reliable cleanup
-# pattern — no PID files, no stale processes.
+# Lifecycle: prints BACKEND_PORT=<port> to stdout, then enters a
+# heartbeat loop. When the reading end of the pipe closes (reader
+# exits), the next write raises SIGPIPE, which terminates this script.
+# The EXIT trap kills the server. No PID files, no stale processes.
 #
 # Usage:
 #   scripts/agent-dev | {
-#     eval "$(head -2)"
+#     eval "$(head -1)"
 #     export HOLOS_BACKEND_PORT=$BACKEND_PORT
-#     export HOLOS_VITE_PORT=$VITE_PORT
 #     scripts/browser-login
 #     scripts/browser-capture-pr-200
 #   }
 #
-# When the { ... } block exits, the pipe breaks and servers are cleaned up.
+# When the { ... } block exits, the pipe breaks and the server is
+# cleaned up automatically.
 
 set -euo pipefail
 
@@ -36,23 +36,22 @@ if [[ "$PWD" =~ agent-([0-9]+) ]]; then
 fi
 
 BACKEND_PORT=$((9000 + SLOT))
-VITE_PORT=$((10000 + SLOT))
 
-# --- Build ---
+# --- Build frontend + binary ---
+make generate >&2
 make build >&2
 
 # --- Cleanup trap ---
 BACKEND_PID=""
-VITE_PID=""
 
 cleanup() {
-  [[ -n "$VITE_PID" ]] && kill "$VITE_PID" 2>/dev/null || true
   [[ -n "$BACKEND_PID" ]] && kill "$BACKEND_PID" 2>/dev/null || true
   wait 2>/dev/null || true
 }
 trap cleanup EXIT
 
-# --- Start backend ---
+# --- Start backend (serves embedded frontend) ---
+mkdir -p "$PROJECT_ROOT/tmp"
 exec ./bin/holos-console \
   --enable-insecure-dex \
   --cert certs/tls.crt \
@@ -76,28 +75,8 @@ if ! curl -sk "https://localhost:$BACKEND_PORT/healthz" >/dev/null 2>&1; then
 fi
 echo "Backend ready on port $BACKEND_PORT" >&2
 
-# --- Start Vite dev server ---
-HOLOS_BACKEND_PORT="$BACKEND_PORT" HOLOS_VITE_PORT="$VITE_PORT" \
-  npm --prefix "$PROJECT_ROOT/frontend" run dev -- --port "$VITE_PORT" \
-  >"$PROJECT_ROOT/tmp/agent-dev-vite.log" 2>&1 &
-VITE_PID=$!
-
-for _ in $(seq 1 30); do
-  if curl -sk "https://localhost:$VITE_PORT/" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-if ! curl -sk "https://localhost:$VITE_PORT/" >/dev/null 2>&1; then
-  echo "ERROR: vite did not become ready on port $VITE_PORT" >&2
-  exit 1
-fi
-echo "Vite ready on port $VITE_PORT" >&2
-
-# --- Output port assignments (consumed by pipe reader) ---
+# --- Output port assignment (consumed by pipe reader) ---
 echo "BACKEND_PORT=$BACKEND_PORT"
-echo "VITE_PORT=$VITE_PORT"
 
 # --- Heartbeat loop: SIGPIPE kills us when pipe reader exits ---
 while sleep 2; do

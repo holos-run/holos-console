@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Capture visual verification screenshots for PR #200.
 #
-# Starts per-agent dev servers via scripts/agent-dev (SIGPIPE cleanup),
+# Starts a per-agent backend via scripts/agent-dev (SIGPIPE cleanup),
 # applies K8s fixtures, logs in, and captures read-mode and edit-mode
 # screenshots of the sharing panel with no time bounds set.
 #
@@ -22,30 +22,33 @@ mkdir -p "$DEST_DIR"
 kubectl apply -f "$REPO_ROOT/frontend/e2e/fixtures/project-namespace.yaml" \
               -f "$REPO_ROOT/frontend/e2e/fixtures/secret-no-time-bounds.yaml"
 
-# Start servers, capture, and clean up via pipe break.
+# Start server, capture, and clean up via pipe break.
 "$SCRIPT_DIR/agent-dev" | {
-  eval "$(head -2)"
+  eval "$(head -1)"
   export HOLOS_BACKEND_PORT=$BACKEND_PORT
-  export HOLOS_VITE_PORT=$VITE_PORT
 
-  echo "==> Servers on backend=$BACKEND_PORT vite=$VITE_PORT"
+  echo "==> Server on backend=$BACKEND_PORT"
 
-  # Login
+  # Login against the backend (serves the built frontend)
   "$SCRIPT_DIR/browser-login"
 
   AB="agent-browser --session-name holos-dev"
-  SECRET_URL="https://localhost:$VITE_PORT/projects/time-test/secrets/no-time-bounds"
+  SECRET_URL="https://localhost:$BACKEND_PORT/projects/time-test/secrets/no-time-bounds"
 
   echo "==> Navigating to secret detail page (read mode)"
   $AB open "$SECRET_URL"
   $AB wait --load networkidle
-  $AB wait 2000
+  $AB wait --text "Sharing" 2>/dev/null || $AB wait 5000
 
   $AB screenshot "$DEST_DIR/read-mode-no-time-bounds.png"
   echo "Saved read-mode-no-time-bounds.png"
 
-  echo "==> Clicking Edit to enter edit mode"
-  $AB click "text=Edit"
+  echo "==> Clicking Sharing Edit button to enter edit mode"
+  $AB eval "
+    const buttons = [...document.querySelectorAll('button')];
+    const editBtns = buttons.filter(b => b.textContent.trim() === 'Edit');
+    if (editBtns.length > 0) editBtns[editBtns.length - 1].click();
+  "
   $AB wait 1000
 
   $AB screenshot "$DEST_DIR/edit-mode-set-buttons.png"
@@ -53,4 +56,4 @@ kubectl apply -f "$REPO_ROOT/frontend/e2e/fixtures/project-namespace.yaml" \
 
   echo "Done. Screenshots in $DEST_DIR/"
 }
-# Pipe closes here → SIGPIPE → agent-dev EXIT trap kills servers.
+# Pipe closes here → SIGPIPE → agent-dev EXIT trap kills server.

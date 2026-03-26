@@ -16,8 +16,14 @@ AB="agent-browser --session-name $SESSION_NAME"
 SCREENSHOTS_DIR="tmp/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
 
-echo "Opening $HOLOS_BACKEND_URL/projects (triggers OIDC redirect)..."
-$AB open "$HOLOS_BACKEND_URL/projects"
+# Use HOLOS_LOGIN_URL to control which origin receives the OIDC token.
+# Default to the backend URL. When using the Vite dev server, set
+# HOLOS_LOGIN_URL=$HOLOS_VITE_URL so the token lands in the correct
+# origin's sessionStorage.
+HOLOS_LOGIN_URL="${HOLOS_LOGIN_URL:-$HOLOS_BACKEND_URL}"
+
+echo "Opening $HOLOS_LOGIN_URL/projects (triggers OIDC redirect)..."
+$AB open "$HOLOS_LOGIN_URL/projects"
 
 echo "Waiting for redirect chain to complete..."
 $AB wait --load networkidle
