@@ -11,7 +11,7 @@ export const Route = createFileRoute('/_authenticated/profile')({
   component: ProfilePage,
 })
 
-function ProfilePage() {
+export function ProfilePage() {
   const {
     user,
     isAuthenticated,
@@ -187,6 +187,31 @@ function ProfilePage() {
                 {(user?.profile?.groups as string[] | undefined)?.length
                   ? (user?.profile?.groups as string[]).join(', ')
                   : 'None'}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Token Claims</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Separator />
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Issuer (iss)</p>
+              <p className="font-mono break-all">{(user?.profile?.iss as string) ?? 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Audience (aud)</p>
+              <p className="font-mono">
+                {user?.profile?.aud
+                  ? Array.isArray(user.profile.aud)
+                    ? (user.profile.aud as string[]).join(', ')
+                    : (user.profile.aud as string)
+                  : 'N/A'}
               </p>
             </div>
           </div>
