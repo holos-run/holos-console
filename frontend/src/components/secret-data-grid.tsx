@@ -8,6 +8,7 @@ interface Entry {
   id: string
   key: string
   value: string
+  trailingNewline: boolean
 }
 
 export interface SecretDataGridProps {
@@ -22,15 +23,26 @@ const decoder = new TextDecoder()
 function dataToEntries(data: Record<string, Uint8Array>, genId: () => string): Entry[] {
   return Object.entries(data)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => ({ id: genId(), key, value: decoder.decode(value) }))
+    .map(([key, rawValue]) => {
+      let value = decoder.decode(rawValue)
+      const baseValue = value.endsWith('\n') ? value.slice(0, -1) : value
+      const isMultiLine = baseValue.includes('\n')
+      let trailingNewline = false
+      if (isMultiLine && value.endsWith('\n')) {
+        trailingNewline = true
+        value = baseValue
+      }
+      return { id: genId(), key, value, trailingNewline }
+    })
 }
 
-function entriesToData(entries: Entry[], trailingNewline: boolean): Record<string, Uint8Array> {
+function entriesToData(entries: Entry[]): Record<string, Uint8Array> {
   const result: Record<string, Uint8Array> = {}
   for (const entry of entries) {
     if (entry.key !== '') {
       let value = entry.value
-      if (trailingNewline && value.length > 0 && !value.endsWith('\n')) {
+      const isMultiLine = value.includes('\n')
+      if (isMultiLine && entry.trailingNewline && value.length > 0 && !value.endsWith('\n')) {
         value += '\n'
       }
       result[entry.key] = encoder.encode(value)
@@ -82,17 +94,16 @@ export function SecretDataGrid({ data, onChange, readOnly = false }: SecretDataG
   const [entries, setEntries] = useState<Entry[]>(() => {
     const parsed = dataToEntries(data, genId)
     // Show one empty row by default when no data
-    return parsed.length > 0 ? parsed : [{ id: genId(), key: '', value: '' }]
+    return parsed.length > 0 ? parsed : [{ id: genId(), key: '', value: '', trailingNewline: false }]
   })
-  const [trailingNewline, setTrailingNewline] = useState(true)
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())
 
   const emitChange = useCallback(
-    (newEntries: Entry[], newTrailingNewline?: boolean) => {
+    (newEntries: Entry[]) => {
       setEntries(newEntries)
-      onChange(entriesToData(newEntries, newTrailingNewline ?? trailingNewline))
+      onChange(entriesToData(newEntries))
     },
-    [onChange, trailingNewline],
+    [onChange],
   )
 
   const handleKeyChange = (id: string, key: string) => {
@@ -100,21 +111,33 @@ export function SecretDataGrid({ data, onChange, readOnly = false }: SecretDataG
   }
 
   const handleValueChange = (id: string, value: string) => {
-    emitChange(entries.map((e) => (e.id === id ? { ...e, value } : e)))
+    const isMultiLine = value.includes('\n')
+    emitChange(
+      entries.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              value,
+              trailingNewline: isMultiLine
+                ? (e.value.includes('\n') ? e.trailingNewline : true)
+                : false,
+            }
+          : e,
+      ),
+    )
   }
 
   const handleAddRow = () => {
-    emitChange([...entries, { id: genId(), key: '', value: '' }])
+    emitChange([...entries, { id: genId(), key: '', value: '', trailingNewline: false }])
   }
 
   const handleRemoveRow = (id: string) => {
     const newEntries = entries.filter((e) => e.id !== id)
-    emitChange(newEntries.length > 0 ? newEntries : [{ id: genId(), key: '', value: '' }])
+    emitChange(newEntries.length > 0 ? newEntries : [{ id: genId(), key: '', value: '', trailingNewline: false }])
   }
 
-  const handleTrailingNewlineChange = (checked: boolean) => {
-    setTrailingNewline(checked)
-    onChange(entriesToData(entries, checked))
+  const handleEntryTrailingNewlineChange = (id: string, checked: boolean) => {
+    emitChange(entries.map((e) => (e.id === id ? { ...e, trailingNewline: checked } : e)))
   }
 
   const toggleReveal = (key: string) => {
@@ -205,11 +228,30 @@ export function SecretDataGrid({ data, onChange, readOnly = false }: SecretDataG
                 <p className="text-xs text-destructive mt-1">Duplicate key</p>
               )}
             </div>
-            <AutoExpandTextarea
-              value={entry.value}
-              onChange={(v) => handleValueChange(entry.id, v)}
-              placeholder="value"
-            />
+            <div>
+              <AutoExpandTextarea
+                value={entry.value}
+                onChange={(v) => handleValueChange(entry.id, v)}
+                placeholder="value"
+              />
+              {entry.value.includes('\n') && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Checkbox
+                    id={`trailing-newline-${entry.id}`}
+                    checked={entry.trailingNewline}
+                    onCheckedChange={(checked) =>
+                      handleEntryTrailingNewlineChange(entry.id, checked === true)
+                    }
+                  />
+                  <label
+                    htmlFor={`trailing-newline-${entry.id}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Ensure trailing newline
+                  </label>
+                </div>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -227,16 +269,6 @@ export function SecretDataGrid({ data, onChange, readOnly = false }: SecretDataG
           <Plus className="h-4 w-4 mr-1" />
           Add Row
         </Button>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="grid-trailing-newline"
-            checked={trailingNewline}
-            onCheckedChange={(checked) => handleTrailingNewlineChange(checked === true)}
-          />
-          <label htmlFor="grid-trailing-newline" className="text-sm">
-            Ensure trailing newline
-          </label>
-        </div>
       </div>
     </div>
   )

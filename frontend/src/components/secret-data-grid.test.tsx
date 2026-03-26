@@ -65,7 +65,7 @@ describe('SecretDataGrid', () => {
     expect((screen.getByPlaceholderText('key') as HTMLInputElement).value).toBe('')
   })
 
-  it('fires onChange with correct data on key change (trailing newline by default)', () => {
+  it('fires onChange with correct data on key change (no trailing newline for single-line)', () => {
     const onChange = vi.fn()
     render(<SecretDataGrid data={{ old: encode('val') }} onChange={onChange} />)
 
@@ -73,17 +73,17 @@ describe('SecretDataGrid', () => {
 
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
     expect(lastCall).toHaveProperty('new')
-    expect(new TextDecoder().decode(lastCall['new'])).toBe('val\n')
+    expect(new TextDecoder().decode(lastCall['new'])).toBe('val')
   })
 
-  it('fires onChange with correct data on value change', () => {
+  it('fires onChange with correct data on value change (single-line, no trailing newline)', () => {
     const onChange = vi.fn()
     render(<SecretDataGrid data={{ token: encode('old') }} onChange={onChange} />)
 
     fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'new' } })
 
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
-    expect(new TextDecoder().decode(lastCall['token'])).toBe('new\n')
+    expect(new TextDecoder().decode(lastCall['token'])).toBe('new')
   })
 
   it('does not add trailing newline to empty values', () => {
@@ -96,14 +96,89 @@ describe('SecretDataGrid', () => {
     expect(new TextDecoder().decode(lastCall['token'])).toBe('')
   })
 
-  it('unchecking trailing newline removes it', () => {
+  it('shows per-key trailing newline checkbox only for multi-line values', () => {
     const onChange = vi.fn()
-    render(<SecretDataGrid data={{ token: encode('val') }} onChange={onChange} />)
+    render(
+      <SecretDataGrid
+        data={{ single: encode('one-liner'), multi: encode('line1\nline2\n') }}
+        onChange={onChange}
+      />,
+    )
+
+    const checkboxes = screen.getAllByRole('checkbox', { name: /ensure trailing newline/i })
+    expect(checkboxes).toHaveLength(1)
+  })
+
+  it('multi-line value defaults to trailing newline enabled and appends it', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataGrid
+        data={{ config: encode('line1\nline2\n') }}
+        onChange={onChange}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: /ensure trailing newline/i })
+    expect(checkbox).toBeChecked()
+
+    // The initial parse strips the trailing \n and sets trailingNewline=true.
+    // Trigger a value change to capture the emitted data (use a different multi-line value).
+    fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'a\nb' } })
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['config'])).toBe('a\nb\n')
+  })
+
+  it('unchecking per-key trailing newline removes it from output', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataGrid
+        data={{ config: encode('line1\nline2\n') }}
+        onChange={onChange}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('checkbox', { name: /ensure trailing newline/i }))
 
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
-    expect(new TextDecoder().decode(lastCall['token'])).toBe('val')
+    expect(new TextDecoder().decode(lastCall['config'])).toBe('line1\nline2')
+  })
+
+  it('transitioning from single-line to multi-line shows checkbox defaulting to true', () => {
+    const onChange = vi.fn()
+    render(<SecretDataGrid data={{ token: encode('val') }} onChange={onChange} />)
+
+    expect(screen.queryByRole('checkbox', { name: /ensure trailing newline/i })).toBeNull()
+
+    fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'line1\nline2' } })
+
+    const checkbox = screen.getByRole('checkbox', { name: /ensure trailing newline/i })
+    expect(checkbox).toBeChecked()
+
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['token'])).toBe('line1\nline2\n')
+  })
+
+  it('toggling per-key trailing newline on and off works', () => {
+    const onChange = vi.fn()
+    render(
+      <SecretDataGrid
+        data={{ config: encode('a\nb\n') }}
+        onChange={onChange}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: /ensure trailing newline/i })
+    expect(checkbox).toBeChecked()
+
+    // Uncheck
+    fireEvent.click(checkbox)
+    let lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['config'])).toBe('a\nb')
+
+    // Re-check
+    fireEvent.click(checkbox)
+    lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0]
+    expect(new TextDecoder().decode(lastCall['config'])).toBe('a\nb\n')
   })
 
   it('shows duplicate key error', () => {
