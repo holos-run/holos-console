@@ -65,6 +65,7 @@ make run            # Build and run server with generated certificates
 make dev            # Start Vite dev server with hot reload (use alongside make run)
 make dispatch ISSUE=N  # Dispatch a plan issue to a Claude Code agent in a new worktree
 make agent-tools    # Install agent-browser for browser automation
+make cluster        # Create local k3d cluster (DNS + cluster + CA)
 make fmt            # Format code
 make vet            # Run go vet
 make lint           # Run golangci-lint
@@ -261,7 +262,7 @@ scripts/browser-login
 # Clear session state (triggers fresh OIDC login on next navigation)
 scripts/browser-logout
 
-# Verify Vite hot reload delivers changes to the browser (requires make dev)
+# Verify ID token and refresh token status on the profile page
 scripts/browser-verify-change
 
 # Run the full self-service workflow (create org → project → secret → verify → cleanup)

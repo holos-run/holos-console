@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Verify that Vite hot reload delivers code changes to the browser.
-# Requires: make run + make dev running, and scripts/browser-login completed.
+# Verify ID token and refresh token status on the profile page.
+# Requires: make run running, and scripts/browser-login completed.
 #
 # Usage: scripts/browser-verify-change [--session-name NAME]
 #   Default session name: holos-dev
@@ -12,47 +12,38 @@ AB="agent-browser --ignore-https-errors --session-name $SESSION_NAME"
 SCREENSHOTS_DIR="tmp/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
 
-# The file and line we'll modify for the visual probe
-TARGET_FILE="frontend/src/routes/_authenticated/projects/index.tsx"
-PROBE_ATTR='data-testid="visual-probe"'
-
-# Navigate to the projects page
-echo "Navigating to Projects page..."
-$AB open "https://localhost:5173/projects"
+# Navigate to the profile page
+echo "Navigating to profile page..."
+$AB open "https://localhost:8443/profile"
 $AB wait --load networkidle
-$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+$AB wait --text "ID Token Status" 2>/dev/null || $AB wait 3000
 
-# Take before screenshot
-echo "Taking before screenshot..."
-$AB screenshot "$SCREENSHOTS_DIR/before.png"
+# Take screenshot of the profile page
+echo "Taking profile screenshot..."
+$AB screenshot "$SCREENSHOTS_DIR/profile.png"
 
-# Make a trivial, reversible change: add a data-testid to the CardTitle
-echo "Applying visual probe to $TARGET_FILE..."
-sed -i.bak "s|<CardTitle>|<CardTitle $PROBE_ATTR>|" "$TARGET_FILE"
+# Check for "Valid" badge (ID token status)
+ID_TOKEN_VALID=$($AB eval "document.body.innerText.includes('Valid')" 2>/dev/null || echo "false")
 
-# Wait for HMR to apply
-echo "Waiting for Vite HMR..."
-sleep 3
+# Check for "success" badge (last refresh status)
+REFRESH_SUCCESS=$($AB eval "document.body.innerText.includes('success')" 2>/dev/null || echo "false")
 
-# Take after screenshot
-echo "Taking after screenshot..."
-$AB screenshot "$SCREENSHOTS_DIR/after.png"
+FAILED=0
 
-# Check if the probe attribute is now in the DOM
-PROBE_FOUND=$($AB eval "Boolean(document.querySelector('[data-testid=\"visual-probe\"]'))" 2>/dev/null || echo "false")
-
-# Revert the change
-echo "Reverting code change..."
-mv "$TARGET_FILE.bak" "$TARGET_FILE"
-
-if [[ "$PROBE_FOUND" == *"true"* ]]; then
-  echo "OK: Visual probe detected in DOM after hot reload."
-  echo "OK: Before screenshot: $SCREENSHOTS_DIR/before.png"
-  echo "OK: After screenshot: $SCREENSHOTS_DIR/after.png"
-  exit 0
+if [[ "$ID_TOKEN_VALID" == *"true"* ]]; then
+  echo "OK: ID token status is Valid."
 else
-  echo "FAIL: Visual probe not detected after hot reload."
-  echo "  The data-testid=\"visual-probe\" attribute was not found in the DOM."
-  echo "  Check that the Vite dev server is running (make dev)."
-  exit 1
+  echo "FAIL: ID token status is not Valid."
+  FAILED=1
 fi
+
+if [[ "$REFRESH_SUCCESS" == *"true"* ]]; then
+  echo "OK: Last refresh status is success."
+else
+  echo "FAIL: Last refresh status is not success."
+  FAILED=1
+fi
+
+echo "Screenshot: $SCREENSHOTS_DIR/profile.png"
+
+exit $FAILED
