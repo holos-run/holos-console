@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Verify that Vite hot reload delivers code changes to the browser.
+# Requires: make run + make dev running, and scripts/browser-login completed.
+#
+# Usage: scripts/browser-verify-change [--session-name NAME]
+#   Default session name: holos-dev
+set -euo pipefail
+
+SESSION_NAME="${1:-holos-dev}"
+AB="agent-browser --ignore-https-errors --session-name $SESSION_NAME"
+
+SCREENSHOTS_DIR="tmp/screenshots"
+mkdir -p "$SCREENSHOTS_DIR"
+
+# The file and line we'll modify for the visual probe
+TARGET_FILE="frontend/src/routes/_authenticated/projects/index.tsx"
+PROBE_ATTR='data-testid="visual-probe"'
+
+# Navigate to the projects page
+echo "Navigating to Projects page..."
+$AB open "https://localhost:5173/projects"
+$AB wait --load networkidle
+$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+
+# Take before screenshot
+echo "Taking before screenshot..."
+$AB screenshot "$SCREENSHOTS_DIR/before.png"
+
+# Make a trivial, reversible change: add a data-testid to the CardTitle
+echo "Applying visual probe to $TARGET_FILE..."
+sed -i.bak "s|<CardTitle>|<CardTitle $PROBE_ATTR>|" "$TARGET_FILE"
+
+# Wait for HMR to apply
+echo "Waiting for Vite HMR..."
+sleep 3
+
+# Take after screenshot
+echo "Taking after screenshot..."
+$AB screenshot "$SCREENSHOTS_DIR/after.png"
+
+# Check if the probe attribute is now in the DOM
+PROBE_FOUND=$($AB eval "Boolean(document.querySelector('[data-testid=\"visual-probe\"]'))" 2>/dev/null || echo "false")
+
+# Revert the change
+echo "Reverting code change..."
+mv "$TARGET_FILE.bak" "$TARGET_FILE"
+
+if [[ "$PROBE_FOUND" == *"true"* ]]; then
+  echo "OK: Visual probe detected in DOM after hot reload."
+  echo "OK: Before screenshot: $SCREENSHOTS_DIR/before.png"
+  echo "OK: After screenshot: $SCREENSHOTS_DIR/after.png"
+  exit 0
+else
+  echo "FAIL: Visual probe not detected after hot reload."
+  echo "  The data-testid=\"visual-probe\" attribute was not found in the DOM."
+  echo "  Check that the Vite dev server is running (make dev)."
+  exit 1
+fi
