@@ -216,10 +216,11 @@ test.describe('Secrets Page', () => {
 
     // Verify sharing panel and edit button
     await expect(page.getByText('Sharing', { exact: true })).toBeVisible({ timeout: 5000 })
-    await expect(page.getByRole('button', { name: /edit/i })).toBeVisible()
 
-    // Enter edit mode
-    await page.getByRole('button', { name: /edit/i }).click()
+    // Click the sharing Edit button (last Edit button on the page)
+    const sharingEditBtn = page.getByRole('button', { name: /^edit$/i }).last()
+    await expect(sharingEditBtn).toBeVisible()
+    await sharingEditBtn.click()
 
     // Add a role grant
     await page.getByRole('button', { name: /add role/i }).click()
