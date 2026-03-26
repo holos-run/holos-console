@@ -99,7 +99,6 @@ test.describe('Secrets Page', () => {
     const secretName = `e2e-sharing-${Date.now()}`
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.getByLabel(/name/i).fill(secretName)
-    await page.getByRole('button', { name: /add key/i }).click()
     await page.getByPlaceholder('key').fill('.env')
     await page.getByPlaceholder('value').fill('TEST_KEY=test_value')
     await page.getByRole('button', { name: /^create$/i }).click()
@@ -264,14 +263,13 @@ test.describe('Secrets Page', () => {
     await page.getByRole('link', { name: secretName }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
-    // Editor tab should show an Add Key button even though secret is empty
-    await expect(page.getByRole('button', { name: /add key/i })).toBeVisible({ timeout: 5000 })
+    // Click Edit to enter edit mode — grid should show one empty row
+    await expect(page.getByRole('button', { name: /^edit$/i })).toBeVisible({ timeout: 5000 })
+    await page.getByRole('button', { name: /^edit$/i }).click()
 
-    // Click Add Key, fill in key and value, click Done
-    await page.getByRole('button', { name: /add key/i }).click()
-    await page.getByPlaceholder('key name').fill('token')
+    // Fill the empty row with key and value
+    await page.getByPlaceholder('key').fill('token')
     await page.getByPlaceholder('value').fill('abc123')
-    await page.getByRole('button', { name: /^done$/i }).click()
 
     // Save the secret
     await page.getByRole('button', { name: /^save$/i }).click()

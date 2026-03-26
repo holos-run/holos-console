@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Check, Pencil, X, ExternalLink } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
-import { SecretDataViewer } from '@/components/secret-data-viewer'
+import { SecretDataGrid } from '@/components/secret-data-grid'
 import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { isSafeUrl } from '@/lib/utils'
@@ -69,6 +69,7 @@ function SecretPage() {
   const [draftUrl, setDraftUrl] = useState('')
 
   // View mode
+  const [editMode, setEditMode] = useState(false)
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
   const [rawJson, setRawJson] = useState<string | null>(null)
   const [rawError, setRawError] = useState<Error | null>(null)
@@ -295,7 +296,19 @@ function SecretPage() {
         </Tabs>
 
         {viewMode === 'editor' && (
-          <SecretDataViewer data={effectiveData} onChange={(newData) => setSecretData(newData)} />
+          <>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={editMode ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setEditMode(!editMode)}
+              >
+                <Pencil className="h-4 w-4 mr-1" />
+                {editMode ? 'Editing' : 'Edit'}
+              </Button>
+            </div>
+            <SecretDataGrid data={effectiveData} onChange={(newData) => setSecretData(newData)} readOnly={!editMode} />
+          </>
         )}
 
         {viewMode === 'raw' && rawJson && (
