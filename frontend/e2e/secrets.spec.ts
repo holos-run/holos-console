@@ -69,6 +69,12 @@ async function createAndSelectOrg(page: import('@playwright/test').Page, orgName
   // Wait for redirect to org detail page (confirms creation succeeded)
   await page.waitForURL(/\/organizations\//, { timeout: 10000 })
 
+  // On mobile, open the sidebar drawer to access the org picker
+  const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+  if (await sidebarTrigger.isVisible().catch(() => false)) {
+    await sidebarTrigger.click()
+  }
+
   // Select the org in the sidebar dropdown picker
   await page.getByRole('button', { name: /all organizations/i }).click()
   await page.getByRole('menuitem', { name: orgName }).click()
@@ -86,12 +92,24 @@ test.describe('Secrets Page', () => {
   test('should show projects link in sidebar', async ({ page }) => {
     await loginAndNavigate(page, '/profile')
 
+    // On mobile, open the sidebar drawer first
+    const trigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await trigger.isVisible().catch(() => false)) {
+      await trigger.click()
+    }
+
     // Verify Projects link is in sidebar
     await expect(page.getByRole('link', { name: 'Projects' })).toBeVisible()
   })
 
   test('should navigate to projects page from sidebar', async ({ page }) => {
     await loginAndNavigate(page, '/profile')
+
+    // On mobile, open the sidebar drawer first
+    const trigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await trigger.isVisible().catch(() => false)) {
+      await trigger.click()
+    }
 
     // Click Projects link
     await page.getByRole('link', { name: 'Projects' }).click()
@@ -136,7 +154,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel is present
-    await expect(page.getByText('Sharing')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Sharing', { exact: true })).toBeVisible({ timeout: 5000 })
 
     // Verify the creator is shown as owner (admin user email)
     await expect(page.getByText(/admin@example.com|admin/)).toBeVisible()
@@ -192,7 +210,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel and edit button
-    await expect(page.getByText('Sharing')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Sharing', { exact: true })).toBeVisible({ timeout: 5000 })
     await expect(page.getByRole('button', { name: /edit/i })).toBeVisible()
 
     // Enter edit mode
@@ -301,8 +319,10 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Click Edit to enter edit mode — grid should show one empty row
-    await expect(page.getByRole('button', { name: /^edit$/i })).toBeVisible({ timeout: 5000 })
-    await page.getByRole('button', { name: /^edit$/i }).click()
+    // Use the data Edit button (near the Delete button), not the sharing Edit
+    const dataEditBtn = page.getByRole('button', { name: /^edit$/i }).first()
+    await expect(dataEditBtn).toBeVisible({ timeout: 5000 })
+    await dataEditBtn.click()
 
     // Fill the empty row with key and value
     await page.getByPlaceholder('key').fill('token')
