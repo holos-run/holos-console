@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
@@ -59,6 +60,7 @@ export function RawView({ raw, includeAllFields, onToggleIncludeAllFields }: Raw
 
   const handleCopy = () => {
     navigator.clipboard.writeText(formattedJson)
+    toast.success('Copied to clipboard')
   }
 
   return (

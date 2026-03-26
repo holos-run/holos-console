@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -37,6 +38,7 @@ export function SecretDataViewer({ data, onChange }: SecretDataViewerProps) {
   const handleCopy = (key: string) => {
     const value = decoder.decode(data[key])
     navigator.clipboard.writeText(value)
+    toast.success('Copied to clipboard')
   }
 
   const handleEditStart = (key: string) => {
