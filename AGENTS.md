@@ -64,6 +64,7 @@ make certs          # Generate TLS certificates with mkcert (one-time setup)
 make run            # Build and run server with generated certificates
 make dev            # Start Vite dev server with hot reload (use alongside make run)
 make dispatch ISSUE=N  # Dispatch a plan issue to a Claude Code agent in a new worktree
+make agent-tools    # Install agent-browser for browser automation
 make fmt            # Format code
 make vet            # Run go vet
 make lint           # Run golangci-lint
@@ -237,6 +238,42 @@ Every plan must include a final phase to scan the entire repository for dead, de
 ### Tracking Progress
 
 When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes. When the PR is merged, the `Closes: #NN` line in the PR description automatically closes the issue.
+
+## Browser Automation (agent-browser)
+
+Coding agents can interact with the running console UI via `agent-browser`. This enables visual verification of changes, OIDC login automation, and end-to-end workflow testing through the browser.
+
+### Setup
+
+```bash
+make agent-tools              # Install agent-browser + Chrome for Testing
+scripts/test-agent-browser    # Verify installation
+```
+
+### Usage
+
+All browser scripts require the dev stack running (`make run`). For hot reload verification, also run `make dev`.
+
+```bash
+# Authenticate (OIDC auto-login via embedded Dex, no password prompt)
+scripts/browser-login
+
+# Clear session state (triggers fresh OIDC login on next navigation)
+scripts/browser-logout
+
+# Verify Vite hot reload delivers changes to the browser (requires make dev)
+scripts/browser-verify-change
+
+# Run the full self-service workflow (create org → project → secret → verify → cleanup)
+# Requires a Kubernetes cluster (e.g. k3d cluster create holos-dev)
+scripts/browser-self-service
+```
+
+Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `scripts/browser-logout && scripts/browser-login` to get a fresh OIDC token (the old Dex signing keys are invalidated).
+
+### Configuration
+
+Project defaults are in `agent-browser.json`: headless mode, self-signed cert acceptance, 1280x720 viewport, screenshots to `tmp/screenshots/`.
 
 ## Contributing
 
