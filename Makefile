@@ -119,8 +119,8 @@ certs: ## Generate TLS certificates using mkcert.
 	./scripts/certs
 
 .PHONY: run
-run: build ## Run the server with generated certificates.
-	./bin/$(BIN_NAME) --enable-insecure-dex --cert certs/tls.crt --key certs/tls.key --ca-cert "$$(mkcert -CAROOT)/rootCA.pem"
+run: ## Build and run the server with generated certificates.
+	./scripts/run
 
 .PHONY: dev
 dev: ## Start the Vite dev server for frontend development.

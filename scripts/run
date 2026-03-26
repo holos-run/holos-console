@@ -1,0 +1,20 @@
+#!/bin/bash
+# Build and run the dev server with generated certificates.
+# Extra arguments are appended to the server flags, e.g.:
+#   scripts/run --listen :9443
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_ROOT"
+
+make build
+
+exec ./bin/holos-console \
+    --enable-insecure-dex \
+    --cert certs/tls.crt \
+    --key certs/tls.key \
+    --ca-cert "$(mkcert -CAROOT)/rootCA.pem" \
+    "$@"
