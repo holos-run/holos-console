@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SESSION_NAME="${1:-holos-dev}"
-AB="agent-browser --ignore-https-errors --session-name $SESSION_NAME"
+AB="agent-browser --session-name $SESSION_NAME"
 
 SCREENSHOTS_DIR="tmp/screenshots"
 mkdir -p "$SCREENSHOTS_DIR"
