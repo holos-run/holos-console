@@ -15,7 +15,8 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // Run tests serially — they share Dex OIDC state and K8s resources
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
@@ -43,7 +44,9 @@ export default defineConfig({
     },
     {
       name: 'mobile-chrome',
-      use: { ...devices['iPhone 13'] },
+      use: {
+        ...devices['Pixel 7'],
+      },
     },
   ],
 

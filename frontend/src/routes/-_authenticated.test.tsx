@@ -66,17 +66,16 @@ describe('AuthenticatedLayout silent renewal', () => {
     expect(mockLogin).not.toHaveBeenCalled()
   })
 
-  it('falls back to login redirect when silent renewal fails', async () => {
+  it('does not redirect when silent renewal fails (child routes handle auth)', async () => {
     mockRefreshTokens.mockRejectedValue(new Error('silent renew failed'))
-    mockLogin.mockResolvedValue(undefined)
     setAuthState({ isAuthenticated: false, isLoading: false })
 
     render(<AuthenticatedLayout />)
 
     await waitFor(() => {
       expect(mockRefreshTokens).toHaveBeenCalled()
-      expect(mockLogin).toHaveBeenCalled()
     })
+    expect(mockLogin).not.toHaveBeenCalled()
   })
 
   it('does not attempt auth when still loading', async () => {

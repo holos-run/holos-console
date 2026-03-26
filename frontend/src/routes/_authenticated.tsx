@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useAuth } from '@/lib/auth'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { OrgProvider } from '@/lib/org-context'
@@ -11,25 +11,20 @@ export const Route = createFileRoute('/_authenticated')({
 })
 
 export function AuthenticatedLayout() {
-  const { isAuthenticated, isLoading, login, refreshTokens } = useAuth()
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const { isAuthenticated, isLoading, refreshTokens } = useAuth()
   const silentRenewAttempted = useRef(false)
 
+  // Attempt silent token renewal once in the background.
+  // If it succeeds, isAuthenticated flips to true and we re-render with sidebar.
+  // If it fails, child routes handle auth (e.g., profile page shows "Sign In").
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !silentRenewAttempted.current) {
       silentRenewAttempted.current = true
-      setIsRefreshing(true)
-      refreshTokens()
-        .catch(() => {
-          login(window.location.pathname)
-        })
-        .finally(() => {
-          setIsRefreshing(false)
-        })
+      refreshTokens().catch(() => {})
     }
-  }, [isLoading, isAuthenticated, login, refreshTokens])
+  }, [isLoading, isAuthenticated, refreshTokens])
 
-  if (isLoading || isRefreshing) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -38,7 +33,11 @@ export function AuthenticatedLayout() {
   }
 
   if (!isAuthenticated) {
-    return null
+    return (
+      <main className="flex-1 p-4 md:p-6">
+        <Outlet />
+      </main>
+    )
   }
 
   return (
