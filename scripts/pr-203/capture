@@ -13,12 +13,24 @@ $AB open "$PROFILE_URL"
 $AB wait --load networkidle
 $AB wait --text "Token Claims" 2>/dev/null || $AB wait 5000
 
-$AB screenshot "$PR_SCREENSHOT_DIR/profile-token-claims.png"
-echo "Saved profile-token-claims.png"
+# Full-page screenshot showing top of page (ID Token Status + start of Token Claims)
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-page-top.png"
+echo "Saved profile-page-top.png"
 
-echo "==> Scrolling down to show full Token Claims section"
-$AB eval "document.querySelector('body').scrollTo(0, document.body.scrollHeight)"
+echo "==> Scrolling to Token Claims section"
+$AB eval "document.querySelector('h3')?.scrollIntoView ? (() => { const cards = document.querySelectorAll('[class*=CardTitle]'); for(const c of cards){ if(c.textContent.includes('Token Claims')) { c.scrollIntoView({behavior:'instant'}); break; } } })() : window.scrollTo(0, 400)"
 $AB wait 500
 
-$AB screenshot "$PR_SCREENSHOT_DIR/profile-token-claims-scrolled.png"
-echo "Saved profile-token-claims-scrolled.png"
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-token-claims-view.png"
+echo "Saved profile-token-claims-view.png"
+
+echo "==> Switching to Raw JSON view"
+$AB eval "
+  const buttons = [...document.querySelectorAll('button')];
+  const rawBtn = buttons.find(b => b.textContent.trim() === 'Raw');
+  if (rawBtn) rawBtn.click();
+"
+$AB wait 1000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/profile-raw-claims-view.png"
+echo "Saved profile-raw-claims-view.png"

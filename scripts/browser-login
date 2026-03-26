@@ -2,6 +2,10 @@
 # Automate OIDC login via embedded Dex auto-connector.
 # Requires the dev stack to be running (make run).
 #
+# Works with both existing sessions (silent renewal) and fresh sessions
+# (no Dex cookies). For fresh sessions, navigates to /profile and clicks
+# "Sign In" to trigger the full OIDC flow through the Dex auto-connector.
+#
 # Usage: scripts/browser-login [--session-name NAME]
 #   Default session name: holos-dev
 set -euo pipefail
@@ -22,24 +26,40 @@ mkdir -p "$SCREENSHOTS_DIR"
 # origin's sessionStorage.
 HOLOS_LOGIN_URL="${HOLOS_LOGIN_URL:-$HOLOS_BACKEND_URL}"
 
-echo "Opening $HOLOS_LOGIN_URL/projects (triggers OIDC redirect)..."
-$AB open "$HOLOS_LOGIN_URL/projects"
-
-echo "Waiting for redirect chain to complete..."
+echo "Opening $HOLOS_LOGIN_URL/profile..."
+$AB open "$HOLOS_LOGIN_URL/profile"
 $AB wait --load networkidle
+$AB wait 1000
 
-# Check for password form — if present, auto-login failed
-if $AB eval "Boolean(document.querySelector('input[name=\"login\"], input[name=\"password\"]'))" 2>/dev/null | grep -q "true"; then
-  $AB screenshot "$SCREENSHOTS_DIR/login-failed.png"
-  echo "FAIL: OIDC auto-login did not work — embedded Dex may be misconfigured."
-  echo "  A password form appeared. Screenshot saved to $SCREENSHOTS_DIR/login-failed.png"
-  echo "  Ensure the server was started with --enable-insecure-dex."
-  exit 1
+# Check if "Sign In" button is visible (unauthenticated state).
+# If present, click it to start the full OIDC flow via Dex auto-connector.
+SIGN_IN_VISIBLE=$($AB eval "Boolean(Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Sign In'))" 2>/dev/null || echo "false")
+
+if echo "$SIGN_IN_VISIBLE" | grep -q "true"; then
+  echo "No session found — clicking Sign In to start OIDC flow..."
+  $AB eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Sign In')?.click()"
+
+  # Wait for Dex redirect and auto-connector to complete
+  $AB wait --load networkidle
+  $AB wait 2000
+
+  # Check for password form — if present, auto-login failed
+  if $AB eval "Boolean(document.querySelector('input[name=\"login\"], input[name=\"password\"]'))" 2>/dev/null | grep -q "true"; then
+    $AB screenshot "$SCREENSHOTS_DIR/login-failed.png"
+    echo "FAIL: OIDC auto-login did not work — embedded Dex may be misconfigured."
+    echo "  A password form appeared. Screenshot saved to $SCREENSHOTS_DIR/login-failed.png"
+    echo "  Ensure the server was started with --enable-insecure-dex."
+    exit 1
+  fi
+
+  # Dex auto-connector redirects back to /profile — wait for it
+  $AB wait --load networkidle
+  $AB wait 2000
 fi
 
 # Wait for authenticated content to render
 echo "Waiting for authenticated content..."
-$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
+$AB wait --text "Token Claims" 2>/dev/null || $AB wait 3000
 
 # Verify OIDC token in sessionStorage
 TOKEN_KEY=$($AB eval "Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'))" 2>/dev/null || true)

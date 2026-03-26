@@ -57,8 +57,14 @@ mkdir -p "$DEST_DIR"
 
   echo "==> Server on backend=$BACKEND_PORT"
 
+  # Clear stale OIDC session tokens. Each agent-dev start has a different
+  # origin (port-based) so sessionStorage tokens don't carry across ports.
+  # Clearing avoids stale-origin confusion; the Dex auto-connector handles
+  # fresh login without cookies via the profile page Sign In flow.
+  agent-browser --session-name holos-dev eval "sessionStorage.clear()" 2>/dev/null || true
+
   # Login against the backend (serves the built frontend)
-  "$SCRIPT_DIR/browser-login"
+  HOLOS_LOGIN_URL="$HOLOS_BACKEND_URL" "$SCRIPT_DIR/browser-login"
 
   if [[ -n "$URL_PATH" ]]; then
     # Simple mode: navigate to URL and capture a single screenshot
