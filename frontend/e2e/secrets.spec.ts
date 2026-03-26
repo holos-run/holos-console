@@ -234,7 +234,6 @@ test.describe('Secrets Page', () => {
     const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
     await projectDeleteButton.click()
   })
-})
 
   test('should allow adding a key to an empty secret on the detail page', async ({ page }) => {
     // Login first via profile page
