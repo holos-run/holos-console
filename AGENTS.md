@@ -274,7 +274,7 @@ Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `s
 
 ### Configuration
 
-Project defaults are in `agent-browser.json`: headless mode, self-signed cert acceptance, 1280x720 viewport, screenshots to `tmp/screenshots/`.
+Project defaults are in `agent-browser.json`: headless mode, self-signed cert acceptance, 1920x1080 viewport, screenshots to `tmp/screenshots/`.
 
 ## Contributing
 
