@@ -294,14 +294,12 @@ When a PR changes the web UI, capture screenshots of the affected pages, commit 
    git add docs/screenshots/pr-<N>/ && git commit -m "Add visual verification screenshots for PR #<N>"
    git push
    ```
-3. **Reference in PR**: Add a comment linking to the committed images using raw GitHub URLs. After pushing, the images are available at:
-   ```
-   https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png
-   ```
-   Post them in a PR comment with markdown image syntax:
+3. **Reference in PR**: Use the **commit SHA** in raw GitHub URLs so images remain accessible after the branch is deleted on merge. Get the SHA after pushing, then post:
    ```bash
-   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/<branch>/docs/screenshots/pr-<N>/filename.png)"
+   SHA=$(git rev-parse HEAD)
+   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/${SHA}/docs/screenshots/pr-<N>/filename.png)"
    ```
+   Using the commit SHA (not the branch name) is the conventional approach — the SHA is immutable and resolves correctly both before and after merge. **Important**: PRs with screenshot references must be merged using a **merge commit** (not squash), so the referenced commit SHA survives in the target branch history.
 4. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
 
 ### Configuration
