@@ -4,6 +4,7 @@ import { TransportProvider } from '@connectrpc/connect-query'
 import { queryClient } from '@/lib/query-client'
 import { transport } from '@/lib/transport'
 import { AuthProvider } from '@/lib/auth'
+import { Toaster } from '@/components/ui/sonner'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -15,6 +16,7 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Outlet />
+          <Toaster />
         </AuthProvider>
       </QueryClientProvider>
     </TransportProvider>
