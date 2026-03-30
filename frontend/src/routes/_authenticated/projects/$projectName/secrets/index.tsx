@@ -1,5 +1,13 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  flexRender,
+  createColumnHelper,
+  type SortingState,
+} from '@tanstack/react-table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,12 +28,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Lock, Trash2, ExternalLink } from 'lucide-react'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ArrowUpDown, ArrowUp, ArrowDown, Lock, Trash2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { SecretDataGrid } from '@/components/secret-data-grid'
-import { isSafeUrl } from '@/lib/utils'
 import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import type { SecretMetadata } from '@/gen/holos/console/v1/secrets_pb.js'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/secrets/')({
   component: SecretsListPage,
@@ -38,6 +55,8 @@ function sharingSummary(userCount: number, roleCount: number): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined
 }
 
+const columnHelper = createColumnHelper<SecretMetadata>()
+
 function SecretsListPage() {
   const { projectName } = Route.useParams()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -45,6 +64,8 @@ function SecretsListPage() {
   const { data: secrets = [], isLoading, error } = useListSecrets(projectName)
   const createMutation = useCreateSecret(projectName)
   const deleteMutation = useDeleteSecret(projectName)
+
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
@@ -55,6 +76,113 @@ function SecretsListPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+
+  const columns = useMemo(() => [
+    columnHelper.accessor('name', {
+      header: ({ column }) => {
+        const sorted = column.getIsSorted()
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-3 h-8 font-medium"
+            onClick={() => column.toggleSorting(sorted === 'asc')}
+          >
+            Name
+            {sorted === 'asc' ? (
+              <ArrowUp className="ml-1 h-3.5 w-3.5" />
+            ) : sorted === 'desc' ? (
+              <ArrowDown className="ml-1 h-3.5 w-3.5" />
+            ) : (
+              <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-50" />
+            )}
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const secret = row.original
+        if (!secret.accessible) {
+          return <span className="font-medium opacity-50">{secret.name}</span>
+        }
+        return (
+          <Link
+            to="/projects/$projectName/secrets/$name"
+            params={{ projectName, name: secret.name }}
+            className="font-medium hover:underline"
+          >
+            {secret.name}
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('description', {
+      header: 'Description',
+      cell: ({ getValue }) => {
+        const desc = getValue()
+        if (!desc) return <span className="text-muted-foreground">—</span>
+        return (
+          <span className="text-muted-foreground truncate max-w-[60ch] block">
+            {desc.length > 60 ? `${desc.slice(0, 60)}…` : desc}
+          </span>
+        )
+      },
+    }),
+    columnHelper.display({
+      id: 'sharing',
+      header: 'Sharing',
+      cell: ({ row }) => {
+        const secret = row.original
+        if (!secret.accessible) {
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline">
+                    <Lock className="h-3 w-3 mr-1" />
+                    No access
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent><p>You do not have access to this secret</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )
+        }
+        const summary = sharingSummary(secret.userGrants.length, secret.roleGrants.length)
+        return summary ? (
+          <Badge variant="outline">{summary}</Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )
+      },
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: '',
+      cell: ({ row }) => {
+        const secret = row.original
+        if (!secret.accessible) return null
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`delete ${secret.name}`}
+            onClick={() => { setDeleteTarget(secret.name); deleteMutation.reset(); setDeleteOpen(true) }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )
+      },
+    }),
+  ], [projectName, deleteMutation])
+
+  const table = useReactTable({
+    data: secrets,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  })
 
   const handleCreateOpen = () => {
     setCreateName('')
@@ -98,10 +226,15 @@ function SecretsListPage() {
   if (authLoading || (isAuthenticated && isLoading)) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span>Loading...</span>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <CardTitle>{projectName ? `${projectName} / Secrets` : 'Secrets'}</CardTitle>
+          <Button size="sm" disabled>Create Secret</Button>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -127,83 +260,37 @@ function SecretsListPage() {
         </CardHeader>
         <CardContent>
           {secrets.length === 0 ? (
-            <p className="text-muted-foreground">
-              No secrets available. Secrets must have the label{' '}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">app.kubernetes.io/managed-by=console.holos.run</code>{' '}
-              to appear here.
-            </p>
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-muted-foreground">No secrets yet.</p>
+              <Button size="sm" onClick={handleCreateOpen}>Create Secret</Button>
+            </div>
           ) : (
-            <ul className="divide-y">
-              {secrets.map((secret) => (
-                <li key={secret.name} className="flex items-center gap-2 py-2">
-                  {(() => {
-                    const summary = sharingSummary(secret.userGrants.length, secret.roleGrants.length)
-                    return (
-                      <>
-                        {secret.accessible ? (
-                          <Link
-                            to="/projects/$projectName/secrets/$name"
-                            params={{ projectName, name: secret.name }}
-                            className="flex-1 min-w-0 hover:underline"
-                          >
-                            <div className="font-medium truncate">{secret.name}</div>
-                            <div className="text-sm text-muted-foreground truncate">
-                              {secret.description || summary || secret.name}
-                            </div>
-                          </Link>
-                        ) : (
-                          <div className="flex-1 min-w-0 opacity-50">
-                            <div className="font-medium truncate">{secret.name}</div>
-                            <div className="text-sm text-muted-foreground truncate">
-                              {secret.description || secret.name}
-                            </div>
-                          </div>
-                        )}
-                        {secret.url && isSafeUrl(secret.url) && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`open ${secret.name} url`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              e.preventDefault()
-                              window.open(secret.url, '_blank', 'noopener,noreferrer')
-                            }}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {secret.description && summary && (
-                          <Badge variant="outline" className="shrink-0">{summary}</Badge>
-                        )}
-                      </>
-                    )
-                  })()}
-                  {!secret.accessible ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge variant="outline" className="shrink-0">
-                            <Lock className="h-3 w-3 mr-1" />
-                            No access
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent><p>You do not have access to this secret</p></TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`delete ${secret.name}`}
-                      onClick={() => { setDeleteTarget(secret.name); deleteMutation.reset(); setDeleteOpen(true) }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
