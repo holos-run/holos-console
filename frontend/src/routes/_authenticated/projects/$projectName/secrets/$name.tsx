@@ -14,7 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Check, Pencil, X, ExternalLink, Table2, Braces } from 'lucide-react'
+import { Braces, Check, Pencil, X, ExternalLink, Table2 } from 'lucide-react'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { useAuth } from '@/lib/auth'
 import { SecretDataGrid } from '@/components/secret-data-grid'
 import { RawView } from '@/components/raw-view'
@@ -297,30 +298,14 @@ function SecretPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5">
-            <button
-              onClick={() => handleViewModeChange('editor')}
-              className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
-                viewMode === 'editor'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Table2 className="h-3.5 w-3.5" />
-              Data
-            </button>
-            <button
-              onClick={() => handleViewModeChange('raw')}
-              className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
-                viewMode === 'raw'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Braces className="h-3.5 w-3.5" />
-              Resource
-            </button>
-          </div>
+          <ViewModeToggle
+            value={viewMode}
+            onValueChange={handleViewModeChange}
+            options={[
+              { value: 'editor', label: 'Data', icon: <Table2 className="h-3.5 w-3.5" /> },
+              { value: 'raw', label: 'Resource', icon: <Braces className="h-3.5 w-3.5" /> },
+            ]}
+          />
           <div className="flex-1" />
           {viewMode === 'editor' && !editMode && (
             <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>

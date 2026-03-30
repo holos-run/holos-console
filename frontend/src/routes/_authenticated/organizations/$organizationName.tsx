@@ -14,9 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Check, Pencil, X } from 'lucide-react'
-import { useOrg } from '@/lib/org-context'
+import { Braces, Check, Pencil, Pen, X } from 'lucide-react'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
 import { useGetOrganization, useDeleteOrganization, useUpdateOrganization, useUpdateOrganizationSharing } from '@/queries/organizations'
@@ -30,7 +29,6 @@ export const Route = createFileRoute('/_authenticated/organizations/$organizatio
 function OrganizationPage() {
   const { organizationName: name } = Route.useParams()
   const navigate = useNavigate()
-  const { setSelectedOrg } = useOrg()
   const transport = useTransport()
 
   const { data, isLoading, error } = useGetOrganization(name)
@@ -214,27 +212,24 @@ function OrganizationPage() {
           )}
         </div>
 
-        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-          <TabsList>
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <ViewModeToggle
+          value={viewMode}
+          onValueChange={handleViewModeChange}
+          options={[
+            { value: 'editor', label: 'Editor', icon: <Pen className="h-3.5 w-3.5" /> },
+            { value: 'raw', label: 'Raw', icon: <Braces className="h-3.5 w-3.5" /> },
+          ]}
+        />
 
         {viewMode === 'raw' && rawJson && (
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 
-        {viewMode === 'editor' && (
+        {viewMode === 'editor' && isOwner && (
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={() => { setSelectedOrg(name); navigate({ to: '/projects' }) }}>
-              Projects
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              Delete
             </Button>
-            {isOwner && (
-              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-                Delete
-              </Button>
-            )}
           </div>
         )}
 

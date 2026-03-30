@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { List, Braces } from 'lucide-react'
+import { Braces, List } from 'lucide-react'
 import { toast } from 'sonner'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { useAuth } from '@/lib/auth'
 
 export const Route = createFileRoute('/_authenticated/profile')({
@@ -187,32 +188,14 @@ export function ProfilePage() {
           <CardTitle>Token Claims</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5">
-              <button
-                onClick={() => setClaimsView('claims')}
-                className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
-                  claimsView === 'claims'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <List className="h-3.5 w-3.5" />
-                Claims
-              </button>
-              <button
-                onClick={() => setClaimsView('raw')}
-                className={`inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors ${
-                  claimsView === 'raw'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Braces className="h-3.5 w-3.5" />
-                Raw
-              </button>
-            </div>
-          </div>
+          <ViewModeToggle
+            value={claimsView}
+            onValueChange={(v) => setClaimsView(v as 'claims' | 'raw')}
+            options={[
+              { value: 'claims', label: 'Claims', icon: <List className="h-3.5 w-3.5" /> },
+              { value: 'raw', label: 'Raw', icon: <Braces className="h-3.5 w-3.5" /> },
+            ]}
+          />
 
           <Separator />
 

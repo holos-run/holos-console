@@ -14,8 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Check, Pencil, X } from 'lucide-react'
+import { Braces, Check, Pencil, Pen, X } from 'lucide-react'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
 import { useGetProject, useDeleteProject, useUpdateProject, useUpdateProjectSharing } from '@/queries/projects'
@@ -56,14 +56,10 @@ function ProjectPage() {
   const [localDescription, setLocalDescription] = useState<string | null>(null)
   const [localProject, setLocalProject] = useState<typeof project | null>(null)
 
-  // Check if we're rendering a child route (secrets)
+  // Check if we're rendering a child route (e.g. secrets); if so, render it directly.
   const matchRoute = useMatchRoute()
   const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
-
-  // If we're on a child route, just render the outlet
-  if (isChildRoute) {
-    return <Outlet />
-  }
+  if (isChildRoute) return <Outlet />
 
   const effectiveProject = localProject ?? project
   const displayName = localDisplayName ?? effectiveProject?.displayName
@@ -233,25 +229,22 @@ function ProjectPage() {
           <Alert variant="destructive"><AlertDescription>{updateMutation.error.message}</AlertDescription></Alert>
         )}
 
-        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-          <TabsList>
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <ViewModeToggle
+          value={viewMode}
+          onValueChange={handleViewModeChange}
+          options={[
+            { value: 'editor', label: 'Editor', icon: <Pen className="h-3.5 w-3.5" /> },
+            { value: 'raw', label: 'Raw', icon: <Braces className="h-3.5 w-3.5" /> },
+          ]}
+        />
 
         {viewMode === 'raw' && rawJson && (
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 
-        {viewMode === 'editor' && (
+        {viewMode === 'editor' && isOwner && (
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button asChild>
-              <Link to="/projects/$projectName/secrets" params={{ projectName: name }}>Secrets</Link>
-            </Button>
-            {isOwner && (
-              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-            )}
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
           </div>
         )}
 
