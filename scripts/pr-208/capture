@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #208: Secrets data grid.
+# Called by scripts/browser-capture-pr 208 after agent-dev starts the backend.
+#
+# Shows:
+#   1. Secrets list rendered as a sortable data grid (table with column headers)
+#   2. Secrets grid after clicking Name column header to sort descending
+#
+# Expects: HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_DISPLAY="PR208 Org ${TS}"
+ORG_NAME="pr208-org-${TS}"
+PROJECT_DISPLAY="PR208 Project ${TS}"
+PROJECT_NAME="pr208-prj-${TS}"
+SECRET1="alpha-secret-${TS}"
+SECRET2="zeta-secret-${TS}"
+
+# Helper: click the first button whose innerText includes the given text.
+click_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('button')) {
+        if ((b.innerText || b.textContent || '').includes('$text') && !b.disabled) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# Helper: click a button inside the open dialog.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+        if ((b.innerText || b.textContent || '').includes('$text')) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# 1. Create org
+echo "==> Creating org: $ORG_NAME"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 1000
+click_button "Create Organization"
+$AB wait 2000
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 2. Create project
+echo "==> Creating project: $PROJECT_NAME"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects"
+$AB wait --load networkidle
+$AB wait 1000
+click_button "Create Project"
+$AB wait 2000
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 3. Create two secrets on the secrets list page
+echo "==> Creating secrets"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+$AB wait 1000
+
+click_button "Create Secret"
+$AB wait 1500
+$AB fill "input[placeholder='my-secret']" "$SECRET1"
+$AB wait 500
+$AB fill "input[placeholder='What is this secret used for?']" "First secret description"
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 1500
+
+click_button "Create Secret"
+$AB wait 1500
+$AB fill "input[placeholder='my-secret']" "$SECRET2"
+$AB wait 500
+$AB fill "input[placeholder='What is this secret used for?']" "Second secret description"
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 4. Screenshot 1: secrets data grid (default ascending sort by name)
+echo "==> Screenshot 1: secrets data grid (ascending sort)"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/01-secrets-data-grid.png"
+echo "Saved 01-secrets-data-grid.png"
+
+# 5. Click Name column header to toggle to descending sort
+echo "==> Screenshot 2: secrets data grid (descending sort)"
+$AB eval "
+  (function() {
+    const btns = document.querySelectorAll('thead button');
+    const nameBtn = Array.from(btns).find(b => (b.innerText || b.textContent || '').trim() === 'Name' || (b.innerText || b.textContent || '').includes('Name'));
+    if (nameBtn) { nameBtn.click(); return 'clicked Name header'; }
+    return 'Name header not found';
+  })()
+"
+$AB wait 500
+$AB screenshot "$PR_SCREENSHOT_DIR/02-secrets-grid-sorted-desc.png"
+echo "Saved 02-secrets-grid-sorted-desc.png"
+
+echo "All screenshots saved to $PR_SCREENSHOT_DIR"
