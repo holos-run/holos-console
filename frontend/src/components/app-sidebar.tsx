@@ -3,6 +3,8 @@ import {
   Building2,
   FolderKanban,
   Info,
+  KeyRound,
+  Settings,
   User,
   ChevronsUpDown,
 } from 'lucide-react'
@@ -28,7 +30,7 @@ import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 
-const navItems = [
+const globalNavItems = [
   { label: 'Organizations', to: '/organizations' as const, icon: Building2 },
   { label: 'Projects', to: '/projects' as const, icon: FolderKanban },
 ]
@@ -42,6 +44,24 @@ export function AppSidebar() {
   const { data: versionData } = useVersion()
   const router = useRouter()
   const pathname = router.state.location.pathname
+  const { selectedProject } = useProject()
+
+  const navItems = selectedProject
+    ? [
+        {
+          label: 'Secrets',
+          to: '/projects/$projectName/secrets' as const,
+          params: { projectName: selectedProject },
+          icon: KeyRound,
+        },
+        {
+          label: 'Settings',
+          to: '/projects/$projectName' as const,
+          params: { projectName: selectedProject },
+          icon: Settings,
+        },
+      ]
+    : globalNavItems.map((item) => ({ ...item, params: undefined }))
 
   return (
     <Sidebar>
@@ -65,8 +85,12 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)}>
-                    <Link to={item.to}>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(
+                    item.params
+                      ? `/projects/${item.params.projectName}`
+                      : item.to
+                  )}>
+                    <Link to={item.to} params={item.params ?? {}}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.label}</span>
                     </Link>
