@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# PR #218 — capture navigation friction removal screenshots.
+#
+# Shows:
+#   1. Org detail page — no "Projects" button (only Delete for owners)
+#   2. Project detail page — no "Secrets" button (only Delete for owners)
+#   3. Sidebar org picker → project picker → secrets grid (2-click flow)
+#
+# Called by scripts/browser-capture-pr 218. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_NAME="pr218-org-${TS}"
+PROJECT_NAME="pr218-prj-${TS}"
+SECRET_NAME="pr218-secret-${TS}"
+
+# Helper: click the first button whose innerText includes the given text.
+click_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('button')) {
+        if ((b.innerText || b.textContent || '').includes('$text') && !b.disabled) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# Helper: click a button inside the open dialog.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+        if ((b.innerText || b.textContent || '').includes('$text')) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# Clear session state
+$AB eval "sessionStorage.removeItem('holos-selected-org'); sessionStorage.removeItem('holos-selected-project')"
+
+# 1. Create org
+echo "==> Creating org: $ORG_NAME"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 1000
+click_button "Create Organization"
+$AB wait 2000
+$AB fill "input[placeholder='My Organization']" "$ORG_NAME"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# Screenshot 1: org detail page — no "Projects" button
+echo "==> Screenshot 1: org detail page (no Projects button)"
+$AB open "$HOLOS_BACKEND_URL/organizations/$ORG_NAME"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/01-org-detail-no-projects-button.png"
+echo "Saved 01-org-detail-no-projects-button.png"
+
+# 2. Create project
+echo "==> Creating project: $PROJECT_NAME"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects"
+$AB wait --load networkidle
+$AB wait 1000
+click_button "Create Project"
+$AB wait 2000
+$AB fill "input[placeholder='My Project']" "$PROJECT_NAME"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 3000
+
+# Screenshot 2: project detail page — no "Secrets" button
+echo "==> Screenshot 2: project detail page (no Secrets button)"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/02-project-detail-no-secrets-button.png"
+echo "Saved 02-project-detail-no-secrets-button.png"
+
+# 3. Create a secret so the grid has data (longer wait for K8s namespace provisioning)
+echo "==> Creating secret: $SECRET_NAME"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+$AB wait 3000
+click_button "Create Secret"
+$AB wait 2000
+$AB fill "input[placeholder='my-secret']" "$SECRET_NAME"
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# Screenshot 3: sidebar picker flow → secrets grid (2 clicks: org picker + project picker)
+echo "==> Screenshot 3: 2-click flow reaches secrets grid"
+$AB eval "sessionStorage.removeItem('holos-selected-org'); sessionStorage.removeItem('holos-selected-project')"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 1000
+
+# Click 1: open org picker and select org
+$AB eval "document.querySelector('[data-testid=\"org-picker\"]')?.click()"
+$AB wait 1000
+$AB eval "
+  (function() {
+    for (const mi of document.querySelectorAll('[role=\"menuitem\"]')) {
+      if ((mi.textContent || '').includes('$ORG_NAME')) { mi.click(); return 'selected: $ORG_NAME'; }
+    }
+    return 'not found: $ORG_NAME';
+  })()
+"
+$AB wait 2000
+
+# Click 2: open project picker and select project
+$AB eval "
+  (function() {
+    for (const b of document.querySelectorAll('button')) {
+      const t = (b.innerText || b.textContent || '').trim();
+      if (/select project|no projects|all projects/i.test(t)) { b.click(); return 'clicked project picker: ' + t; }
+    }
+    return 'project picker not found';
+  })()
+"
+$AB wait 1000
+$AB eval "
+  (function() {
+    for (const mi of document.querySelectorAll('[role=\"menuitem\"]')) {
+      if ((mi.textContent || '').includes('$PROJECT_NAME')) { mi.click(); return 'selected: $PROJECT_NAME'; }
+    }
+    return 'not found: $PROJECT_NAME';
+  })()
+"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/03-sidebar-picker-flow-secrets-grid.png"
+echo "Saved 03-sidebar-picker-flow-secrets-grid.png"
+
+echo "All screenshots saved to $PR_SCREENSHOT_DIR"
