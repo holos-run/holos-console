@@ -27,10 +27,10 @@ test.describe('Authentication', () => {
     await expect(page).toHaveURL(/\/profile/)
   })
 
-  test('should have version page accessible', async ({ page }) => {
-    await page.goto('/version')
+  test('should have about page accessible', async ({ page }) => {
+    await page.goto('/about')
 
-    // The version page should load and show version info from the backend
+    // The about page should load and show version info from the backend
     // This verifies the RPC connection works through the proxy
     await expect(page.getByText('Server Version')).toBeVisible({ timeout: 10000 })
   })
@@ -140,7 +140,7 @@ test.describe('Profile Page', () => {
     await loginViaProfilePage(page)
 
     // Navigate away from profile to test sidebar navigation
-    await page.goto('/version')
+    await page.goto('/about')
     await expect(page.getByText('Server Version')).toBeVisible({ timeout: 10000 })
 
     // On mobile viewports, open the sidebar drawer first

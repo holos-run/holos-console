@@ -33,8 +33,8 @@ const navItems = [
 ]
 
 const bottomItems = [
+  { label: 'About', to: '/about' as const, icon: Info },
   { label: 'Profile', to: '/profile' as const, icon: User },
-  { label: 'Version', to: '/version' as const, icon: Info },
 ]
 
 export function AppSidebar() {
