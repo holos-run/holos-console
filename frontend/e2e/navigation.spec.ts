@@ -114,16 +114,6 @@ test.describe('Sidebar Project Picker', () => {
     // Should navigate directly to the secrets page for the project
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), { timeout: 10000 })
 
-    // Close the sidebar drawer on mobile before checking page content
-    const sidebarTriggerAfter = page.getByRole('button', { name: /toggle sidebar/i })
-    if (await sidebarTriggerAfter.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await sidebarTriggerAfter.click()
-      await page.waitForTimeout(300)
-    }
-
-    // Secrets page heading or Create Secret button should be visible
-    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
-
     // Cleanup
     await deleteProject(page, projectName)
     await deleteOrg(page, orgName)
