@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -39,8 +40,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     return sessionStorage.getItem(SESSION_STORAGE_KEY)
   })
 
-  // Clear selected project when org changes
+  // Clear selected project when org changes, but not on initial mount.
+  const isMounted = useRef(false)
   useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true
+      return
+    }
     setSelectedProjectState(null)
     sessionStorage.removeItem(SESSION_STORAGE_KEY)
   }, [selectedOrg])
