@@ -14,8 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Check, Pencil, X } from 'lucide-react'
+import { Braces, Check, Pencil, Pen, X } from 'lucide-react'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
 import { useGetOrganization, useDeleteOrganization, useUpdateOrganization, useUpdateOrganizationSharing } from '@/queries/organizations'
@@ -212,12 +212,14 @@ function OrganizationPage() {
           )}
         </div>
 
-        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-          <TabsList>
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <ViewModeToggle
+          value={viewMode}
+          onValueChange={handleViewModeChange}
+          options={[
+            { value: 'editor', label: 'Editor', icon: <Pen className="h-3.5 w-3.5" /> },
+            { value: 'raw', label: 'Raw', icon: <Braces className="h-3.5 w-3.5" /> },
+          ]}
+        />
 
         {viewMode === 'raw' && rawJson && (
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
