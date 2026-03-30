@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# PR #212 — capture context-aware sidebar navigation screenshots.
+#
+# Shows:
+#   1. Sidebar with no project selected (global nav: Organizations + Projects)
+#   2. Sidebar with a project selected (project nav: Secrets + Settings)
+#   3. Secrets page reached with project-scoped nav visible in sidebar
+#
+# Called by scripts/browser-capture-pr 212. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_DISPLAY="PR212 Org ${TS}"
+ORG_NAME="pr212-org-${TS}"
+PROJECT_DISPLAY="PR212 Project ${TS}"
+PROJECT_NAME="pr212-prj-${TS}"
+
+# Helper: click the first button whose innerText includes the given text.
+click_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('button')) {
+        if ((b.innerText || b.textContent || '').includes('$text') && !b.disabled) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# Helper: click a button inside the open dialog.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    (function() {
+      for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+        if ((b.innerText || b.textContent || '').includes('$text')) { b.click(); return 'clicked: ' + (b.innerText || b.textContent).trim().slice(0, 40); }
+      }
+      return 'not found: $text';
+    })()
+  "
+}
+
+# 1. Capture baseline: no project selected, global nav visible
+echo "==> Screenshot 1: global nav (no project selected)"
+$AB eval "sessionStorage.removeItem('holos-selected-org'); sessionStorage.removeItem('holos-selected-project')"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/01-sidebar-global-nav.png"
+echo "Saved 01-sidebar-global-nav.png"
+
+# 2. Create an org
+echo "==> Creating org: $ORG_NAME"
+click_button "Create Organization"
+$AB wait 2000
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 3. Create a project using sessionStorage to set org context, then navigate
+echo "==> Creating project: $PROJECT_NAME"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects"
+$AB wait --load networkidle
+$AB wait 1000
+click_button "Create Project"
+$AB wait 2000
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME" 2>/dev/null || true
+$AB wait 500
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 4. Set both org and project in sessionStorage, then navigate to show project-scoped nav.
+# The fixed ProjectProvider now skips clearing project on initial mount, so this works.
+echo "==> Screenshot 2: project-scoped nav (Secrets + Settings visible)"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME'); sessionStorage.setItem('holos-selected-project', '$PROJECT_NAME')"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/02-sidebar-project-nav.png"
+echo "Saved 02-sidebar-project-nav.png"
+
+# 5. Navigate to secrets page with project context in place
+echo "==> Screenshot 3: secrets page with project-scoped nav"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+$AB wait 2000
+$AB screenshot "$PR_SCREENSHOT_DIR/03-secrets-page-project-nav.png"
+echo "Saved 03-secrets-page-project-nav.png"
+
+echo "All screenshots saved to $PR_SCREENSHOT_DIR"
