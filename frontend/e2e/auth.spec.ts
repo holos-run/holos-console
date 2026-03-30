@@ -139,9 +139,11 @@ test.describe('Profile Page', () => {
 
     await loginViaProfilePage(page)
 
-    // Navigate away from profile to test sidebar navigation
-    await page.goto('/about')
-    await expect(page.getByText('Server Version')).toBeVisible({ timeout: 10000 })
+    // Navigate away from profile to test sidebar navigation.
+    // Use /organizations (top nav) rather than /about (sidebar footer, adjacent
+    // to Profile) to avoid the About link intercepting clicks on Profile on mobile.
+    await page.goto('/organizations')
+    await expect(page.getByText(/organizations/i)).toBeVisible({ timeout: 10000 })
 
     // On mobile viewports, open the sidebar drawer first
     const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
