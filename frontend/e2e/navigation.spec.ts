@@ -273,10 +273,13 @@ test.describe('Phase 4: Navigation friction removal', () => {
     // Assert URL is /projects/$projectName/secrets
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), { timeout: 10000 })
 
-    // On mobile, close the sidebar drawer so the main content is visible
-    if (await sidebarTrigger.isVisible({ timeout: 1000 }).catch(() => false)) {
+    // On mobile, close the sidebar drawer if it is currently open so the
+    // main content is visible. Check the drawer's open state via the
+    // [data-mobile="true"] panel — present and visible only when open.
+    const mobileDrawer = page.locator('[data-mobile="true"]')
+    if (await mobileDrawer.isVisible({ timeout: 1000 }).catch(() => false)) {
       await sidebarTrigger.click()
-      await page.waitForLoadState('networkidle')
+      await mobileDrawer.waitFor({ state: 'hidden', timeout: 5000 })
     }
 
     // Assert secrets data grid (table) is visible
