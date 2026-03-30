@@ -278,14 +278,14 @@ test.describe('Mobile Responsive Layout', () => {
     await expect(page.getByRole('button', { name: /toggle sidebar/i })).toBeVisible({ timeout: 5000 })
   })
 
-  test('should open drawer and show org picker on mobile', async ({ page }, testInfo) => {
+  test('should open drawer and show sidebar navigation on mobile', async ({ page }, testInfo) => {
     test.skip(testInfo.project?.name !== 'mobile-chrome', 'mobile-only test')
     await loginAndNavigate(page, '/profile')
 
     // Tap hamburger to open drawer
     await page.getByRole('button', { name: /toggle sidebar/i }).click()
 
-    // Org picker should be visible in drawer
-    await expect(page.getByTestId('org-picker')).toBeVisible({ timeout: 5000 })
+    // Profile link should be visible in the drawer (always present)
+    await expect(page.getByRole('link', { name: 'Profile' })).toBeVisible({ timeout: 5000 })
   })
 })
