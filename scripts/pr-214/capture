@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# PR #214 — capture About page and sidebar footer order.
+#
+# Called by scripts/browser-capture-pr 214. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+echo "==> Capturing About page"
+$AB open "$HOLOS_BACKEND_URL/about"
+$AB wait --load networkidle
+$AB wait 1000
+$AB screenshot "$PR_SCREENSHOT_DIR/about-page.png"
+echo "Saved about-page.png"
+
+echo "==> Capturing sidebar footer (About before Profile)"
+$AB open "$HOLOS_BACKEND_URL/about"
+$AB wait --load networkidle
+$AB wait 500
+# Expand sidebar if collapsed (mobile)
+$AB eval "document.querySelector('[aria-label=\"Toggle Sidebar\"]')?.click()" 2>/dev/null || true
+$AB wait 500
+$AB screenshot "$PR_SCREENSHOT_DIR/sidebar-footer.png"
+echo "Saved sidebar-footer.png"
