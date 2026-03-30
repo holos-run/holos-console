@@ -273,14 +273,11 @@ test.describe('Phase 4: Navigation friction removal', () => {
     // Assert URL is /projects/$projectName/secrets
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), { timeout: 10000 })
 
-    // On mobile, close the sidebar drawer if it is currently open so the
-    // main content is visible. Use Escape to close the Sheet since the
-    // toggle trigger button may be behind the sheet overlay/focus trap.
-    const mobileDrawer = page.locator('[data-mobile="true"]')
-    if (await mobileDrawer.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await page.keyboard.press('Escape')
-      await mobileDrawer.waitFor({ state: 'hidden', timeout: 5000 })
-    }
+    // On mobile the sidebar drawer remains open after picker navigation since
+    // the React sidebar has no route-change listener. Navigate directly to the
+    // URL to get a fresh render with the drawer closed.
+    await page.goto(`/projects/${projectName}/secrets`)
+    await page.waitForLoadState('networkidle')
 
     // Assert secrets data grid (table) is visible
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 })
