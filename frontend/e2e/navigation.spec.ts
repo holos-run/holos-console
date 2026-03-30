@@ -2,10 +2,11 @@ import { test, expect } from '@playwright/test'
 import { loginViaProfilePage } from './helpers'
 
 /**
- * E2E tests for Phase 1: Project picker in sidebar navigation.
+ * E2E tests for Phase 1 and Phase 2: Project picker and context-aware sidebar nav.
  *
  * Part of #205 — Flatten UI navigation.
  * Implements RED tests for #206 — Add project context and project picker to sidebar.
+ * Implements RED tests for #207 — Context-aware sidebar navigation.
  */
 
 const TEST_ORG = `e2e-nav-org-${process.pid}`
@@ -126,5 +127,74 @@ test.describe('Sidebar Project Picker', () => {
     // Cleanup
     await deleteProject(page, projectName)
     await deleteOrg(page, orgName)
+  })
+})
+
+test.describe('Context-aware sidebar navigation', () => {
+  test('sidebar shows project-scoped nav items when a project is selected', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    const orgName = `e2e-ctx-nav-org-${Date.now()}`
+    const projectName = `e2e-ctx-nav-prj-${Date.now()}`
+
+    await createOrg(page, orgName)
+    await selectOrg(page, orgName)
+    await createProject(page, projectName)
+
+    // Navigate back and re-select the org
+    await page.goto('/organizations')
+    await page.waitForLoadState('networkidle')
+    await selectOrg(page, orgName)
+
+    // On mobile, open the sidebar drawer
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+    }
+
+    // Select the project from the picker
+    const projectPicker = page.getByRole('button', { name: /all projects/i })
+    await expect(projectPicker).toBeVisible({ timeout: 5000 })
+    await projectPicker.click()
+    await page.getByRole('menuitem', { name: projectName }).click()
+
+    // On mobile, reopen sidebar after navigation
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+    }
+
+    // Assert project-scoped nav links are visible
+    await expect(page.getByRole('link', { name: /^secrets$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('link', { name: /^settings$/i })).toBeVisible({ timeout: 5000 })
+
+    // Assert global nav links are NOT visible
+    await expect(page.getByRole('link', { name: /^organizations$/i })).not.toBeVisible()
+    await expect(page.getByRole('link', { name: /^projects$/i })).not.toBeVisible()
+
+    // Cleanup
+    await deleteProject(page, projectName)
+    await deleteOrg(page, orgName)
+  })
+
+  test('sidebar reverts to global nav when no project is selected', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    // Clear any session state by navigating fresh (no project selected)
+    await page.goto('/organizations')
+    await page.waitForLoadState('networkidle')
+
+    // On mobile, open the sidebar drawer
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+    }
+
+    // Assert global nav links are visible
+    await expect(page.getByRole('link', { name: /^organizations$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('link', { name: /^projects$/i })).toBeVisible({ timeout: 5000 })
+
+    // Assert project-scoped nav links are NOT visible
+    await expect(page.getByRole('link', { name: /^secrets$/i })).not.toBeVisible()
+    await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible()
   })
 })
