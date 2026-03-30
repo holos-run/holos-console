@@ -274,11 +274,11 @@ test.describe('Phase 4: Navigation friction removal', () => {
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), { timeout: 10000 })
 
     // On mobile, close the sidebar drawer if it is currently open so the
-    // main content is visible. Check the drawer's open state via the
-    // [data-mobile="true"] panel — present and visible only when open.
+    // main content is visible. Use Escape to close the Sheet since the
+    // toggle trigger button may be behind the sheet overlay/focus trap.
     const mobileDrawer = page.locator('[data-mobile="true"]')
     if (await mobileDrawer.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await sidebarTrigger.click()
+      await page.keyboard.press('Escape')
       await mobileDrawer.waitFor({ state: 'hidden', timeout: 5000 })
     }
 
