@@ -140,9 +140,8 @@ test.describe('Profile Page', () => {
     await loginViaProfilePage(page)
 
     // Navigate away from profile to test sidebar navigation.
-    // Use /organizations (top nav) rather than /about (sidebar footer, adjacent
-    // to Profile) to avoid the About link intercepting clicks on Profile on mobile.
-    await page.goto('/organizations')
+    // Use /about rather than the removed /organizations page.
+    await page.goto('/about')
     await page.waitForLoadState('networkidle')
 
     // On mobile viewports, open the sidebar drawer first
