@@ -1,7 +1,5 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import {
-  Building2,
-  FolderKanban,
   Info,
   KeyRound,
   Settings,
@@ -30,11 +28,6 @@ import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 
-const globalNavItems = [
-  { label: 'Organizations', to: '/organizations' as const, icon: Building2 },
-  { label: 'Projects', to: '/projects' as const, icon: FolderKanban },
-]
-
 const bottomItems = [
   { label: 'About', to: '/about' as const, icon: Info },
   { label: 'Profile', to: '/profile' as const, icon: User },
@@ -61,7 +54,7 @@ export function AppSidebar() {
           icon: Settings,
         },
       ]
-    : globalNavItems.map((item) => ({ ...item, params: undefined }))
+    : []
 
   return (
     <Sidebar>
@@ -124,7 +117,6 @@ export function AppSidebar() {
 
 function OrgPicker() {
   const { organizations, selectedOrg, setSelectedOrg, isLoading } = useOrg()
-  const router = useRouter()
 
   if (isLoading || organizations.length === 0) return null
 
@@ -143,21 +135,13 @@ function OrgPicker() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="start">
-          <DropdownMenuItem
-            onClick={() => {
-              setSelectedOrg(null)
-              router.navigate({ to: '/organizations' })
-            }}
-          >
+          <DropdownMenuItem onClick={() => setSelectedOrg(null)}>
             All Organizations
           </DropdownMenuItem>
           {organizations.map((org) => (
             <DropdownMenuItem
               key={org.name}
-              onClick={() => {
-                setSelectedOrg(org.name)
-                router.navigate({ to: '/projects' })
-              }}
+              onClick={() => setSelectedOrg(org.name)}
             >
               {org.displayName || org.name}
             </DropdownMenuItem>
@@ -192,12 +176,7 @@ function ProjectPicker() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="start">
-          <DropdownMenuItem
-            onClick={() => {
-              setSelectedProject(null)
-              router.navigate({ to: '/projects' })
-            }}
-          >
+          <DropdownMenuItem onClick={() => setSelectedProject(null)}>
             All Projects
           </DropdownMenuItem>
           {projects.map((project) => (
