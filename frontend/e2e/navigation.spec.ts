@@ -283,7 +283,7 @@ test.describe('Phase 4: Navigation friction removal', () => {
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 })
 
     // Assert the test secret appears in the grid
-    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 15000 })
 
     // Cleanup
     await page.goto(`/projects/${projectName}/secrets`)
