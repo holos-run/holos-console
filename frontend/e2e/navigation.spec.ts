@@ -294,3 +294,96 @@ test.describe('Phase 4: Navigation friction removal', () => {
     await deleteOrg(page, orgName)
   })
 })
+
+test.describe('ViewModeToggle shared component', () => {
+  /**
+   * Assert the shared ViewModeToggle pill appears on all four pages that use it,
+   * each with context-appropriate labels injected as options.
+   */
+
+  test('org detail page shows Editor/Raw toggle', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    const orgName = `e2e-vmt-org-${Date.now()}`
+    await createOrg(page, orgName)
+
+    await page.goto(`/organizations/${orgName}`)
+    await page.waitForLoadState('networkidle')
+
+    // Both toggle options must be visible
+    await expect(page.getByRole('button', { name: /^editor$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /^raw$/i })).toBeVisible({ timeout: 5000 })
+
+    // Clicking Raw switches to raw view (raw JSON content appears)
+    await page.getByRole('button', { name: /^raw$/i }).click()
+    await expect(page.getByRole('code')).toBeVisible({ timeout: 5000 })
+
+    await deleteOrg(page, orgName)
+  })
+
+  test('project detail page shows Editor/Raw toggle', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    const orgName = `e2e-vmt-prj-org-${Date.now()}`
+    const projectName = `e2e-vmt-prj-${Date.now()}`
+
+    await createOrg(page, orgName)
+    await selectOrg(page, orgName)
+    await createProject(page, projectName)
+
+    await page.goto(`/projects/${projectName}`)
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.getByRole('button', { name: /^editor$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /^raw$/i })).toBeVisible({ timeout: 5000 })
+
+    await page.getByRole('button', { name: /^raw$/i }).click()
+    await expect(page.getByRole('code')).toBeVisible({ timeout: 5000 })
+
+    await deleteProject(page, projectName)
+    await deleteOrg(page, orgName)
+  })
+
+  test('secret detail page shows Data/Resource toggle', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    const orgName = `e2e-vmt-sec-org-${Date.now()}`
+    const projectName = `e2e-vmt-sec-prj-${Date.now()}`
+    const secretName = `e2e-vmt-sec-${Date.now()}`
+
+    await createOrg(page, orgName)
+    await selectOrg(page, orgName)
+    await createProject(page, projectName)
+    await createSecret(page, projectName, secretName)
+
+    await page.goto(`/projects/${projectName}/secrets/${secretName}`)
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.getByRole('button', { name: /^data$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /^resource$/i })).toBeVisible({ timeout: 5000 })
+
+    await page.getByRole('button', { name: /^resource$/i }).click()
+    await expect(page.getByRole('code')).toBeVisible({ timeout: 5000 })
+
+    // Cleanup
+    await page.goto(`/projects/${projectName}/secrets`)
+    await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()
+    await page.getByRole('dialog').getByRole('button', { name: /delete/i }).click()
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 })
+    await deleteProject(page, projectName)
+    await deleteOrg(page, orgName)
+  })
+
+  test('profile page shows Claims/Raw toggle', async ({ page }) => {
+    await loginViaProfilePage(page)
+
+    await page.goto('/profile')
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.getByRole('button', { name: /^claims$/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /^raw$/i })).toBeVisible({ timeout: 5000 })
+
+    await page.getByRole('button', { name: /^raw$/i }).click()
+    await expect(page.getByRole('code')).toBeVisible({ timeout: 5000 })
+  })
+})
