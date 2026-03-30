@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -55,6 +55,11 @@ function ProjectPage() {
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
   const [localDescription, setLocalDescription] = useState<string | null>(null)
   const [localProject, setLocalProject] = useState<typeof project | null>(null)
+
+  // Check if we're rendering a child route (e.g. secrets); if so, render it directly.
+  const matchRoute = useMatchRoute()
+  const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
+  if (isChildRoute) return <Outlet />
 
   const effectiveProject = localProject ?? project
   const displayName = localDisplayName ?? effectiveProject?.displayName
