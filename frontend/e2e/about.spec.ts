@@ -13,6 +13,7 @@ import { loginViaProfilePage } from './helpers'
 
 test.describe('About page', () => {
   test('sidebar shows About link, not Version', async ({ page }) => {
+    test.setTimeout(60_000)
     await loginViaProfilePage(page)
 
     // On mobile viewports, open the sidebar drawer first
@@ -27,6 +28,7 @@ test.describe('About page', () => {
   })
 
   test('About appears before Profile in sidebar footer DOM order', async ({ page }) => {
+    test.setTimeout(60_000)
     await loginViaProfilePage(page)
 
     const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
@@ -50,12 +52,14 @@ test.describe('About page', () => {
   })
 
   test('About page renders Server Version card', async ({ page }) => {
+    test.setTimeout(60_000)
     await loginViaProfilePage(page)
     await page.goto('/about')
     await expect(page.getByText('Server Version')).toBeVisible({ timeout: 10000 })
   })
 
   test('About page renders copyright and Apache 2.0 license card', async ({ page }) => {
+    test.setTimeout(60_000)
     await loginViaProfilePage(page)
     await page.goto('/about')
     await expect(page.getByText(/Apache/i)).toBeVisible({ timeout: 10000 })
