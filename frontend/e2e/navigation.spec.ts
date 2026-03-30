@@ -273,6 +273,12 @@ test.describe('Phase 4: Navigation friction removal', () => {
     // Assert URL is /projects/$projectName/secrets
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), { timeout: 10000 })
 
+    // On mobile, close the sidebar drawer so the main content is visible
+    if (await sidebarTrigger.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+      await page.waitForLoadState('networkidle')
+    }
+
     // Assert secrets data grid (table) is visible
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 })
 
