@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -151,6 +152,7 @@ export function SecretDataGrid({ data, onChange, readOnly = false }: SecretDataG
 
   const handleCopy = (value: string) => {
     navigator.clipboard.writeText(value)
+    toast.success('Copied to clipboard')
   }
 
   // Detect duplicate keys

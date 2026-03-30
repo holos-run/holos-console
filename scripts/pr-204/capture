@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# PR #204 — capture copy-button toast feedback on a secret detail page.
+#
+# Called by scripts/browser-capture-pr 204. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_DISPLAY="PR204 Org ${TS}"
+ORG_NAME="pr204-org-${TS}"
+PROJECT_DISPLAY="PR204 Project"
+PROJECT_NAME="pr204-prj-${TS}"
+SECRET_NAME="pr204-secret-${TS}"
+
+# Helper: click the first button whose trimmed text matches exactly.
+click_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('button')) {
+      if (b.textContent.trim() === '$text' && !b.disabled) { b.click(); break; }
+    }
+  "
+}
+
+# Helper: click a button inside the open dialog.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+      if (b.textContent.trim() === '$text') { b.click(); break; }
+    }
+  "
+}
+
+echo "==> Creating org: $ORG_NAME"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+click_button "Create Organization"
+$AB wait 1000
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+# Overwrite the auto-slugified name with a stable value
+$AB fill "input[placeholder='my-org']" "$ORG_NAME" 2>/dev/null || true
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+echo "==> Setting selected org and creating project: $PROJECT_NAME"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects"
+$AB wait --load networkidle
+click_button "Create Project"
+$AB wait 1000
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME" 2>/dev/null || true
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+echo "==> Creating secret: $SECRET_NAME"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+click_button "Create Secret"
+$AB wait 1000
+$AB fill "input[placeholder='my-secret']" "$SECRET_NAME"
+$AB fill "input[placeholder='key']" "api-key"
+$AB fill "textarea[placeholder='value']" "supersecret"
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+echo "==> Navigating to secret detail page"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets/$SECRET_NAME"
+$AB wait --load networkidle
+$AB wait --text "api-key" 2>/dev/null || $AB wait 3000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/secret-detail-before-copy.png"
+echo "Saved secret-detail-before-copy.png"
+
+echo "==> Clicking copy button (eval-based to trigger React onClick)"
+$AB eval "document.querySelector('[aria-label=\"copy\"]')?.click()"
+$AB wait 800
+
+$AB screenshot "$PR_SCREENSHOT_DIR/secret-detail-copy-toast.png"
+echo "Saved secret-detail-copy-toast.png"
