@@ -3,6 +3,8 @@ import {
   Building2,
   FolderKanban,
   Info,
+  KeyRound,
+  Settings,
   User,
   ChevronsUpDown,
 } from 'lucide-react'
@@ -25,9 +27,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useOrg } from '@/lib/org-context'
+import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 
-const navItems = [
+const globalNavItems = [
   { label: 'Organizations', to: '/organizations' as const, icon: Building2 },
   { label: 'Projects', to: '/projects' as const, icon: FolderKanban },
 ]
@@ -41,6 +44,24 @@ export function AppSidebar() {
   const { data: versionData } = useVersion()
   const router = useRouter()
   const pathname = router.state.location.pathname
+  const { selectedProject } = useProject()
+
+  const navItems = selectedProject
+    ? [
+        {
+          label: 'Secrets',
+          to: '/projects/$projectName/secrets' as const,
+          params: { projectName: selectedProject },
+          icon: KeyRound,
+        },
+        {
+          label: 'Settings',
+          to: '/projects/$projectName' as const,
+          params: { projectName: selectedProject },
+          icon: Settings,
+        },
+      ]
+    : globalNavItems.map((item) => ({ ...item, params: undefined }))
 
   return (
     <Sidebar>
@@ -54,6 +75,7 @@ export function AppSidebar() {
       <SidebarSeparator />
 
       <OrgPicker />
+      <ProjectPicker />
 
       <SidebarSeparator />
 
@@ -63,8 +85,12 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)}>
-                    <Link to={item.to}>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(
+                    item.params
+                      ? `/projects/${item.params.projectName}`
+                      : item.to
+                  )}>
+                    <Link to={item.to} params={item.params ?? {}}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.label}</span>
                     </Link>
@@ -111,7 +137,7 @@ function OrgPicker() {
     <div className="px-2 py-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent">
+          <button data-testid="org-picker" className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent">
             <span className="truncate">{displayLabel}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </button>
@@ -134,6 +160,58 @@ function OrgPicker() {
               }}
             >
               {org.displayName || org.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+function ProjectPicker() {
+  const { selectedOrg } = useOrg()
+  const { projects, selectedProject, setSelectedProject, isLoading } = useProject()
+  const router = useRouter()
+
+  // Only show when an org is selected
+  if (!selectedOrg) return null
+  if (isLoading) return null
+
+  const selectedProjectObj = projects.find((p) => p.name === selectedProject)
+  const displayLabel = selectedProjectObj
+    ? (selectedProjectObj.displayName || selectedProjectObj.name)
+    : 'All Projects'
+
+  return (
+    <div className="px-2 py-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent">
+            <span className="truncate">{displayLabel}</span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56" align="start">
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedProject(null)
+              router.navigate({ to: '/projects' })
+            }}
+          >
+            All Projects
+          </DropdownMenuItem>
+          {projects.map((project) => (
+            <DropdownMenuItem
+              key={project.name}
+              onClick={() => {
+                setSelectedProject(project.name)
+                router.navigate({
+                  to: '/projects/$projectName/secrets',
+                  params: { projectName: project.name },
+                })
+              }}
+            >
+              {project.displayName || project.name}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

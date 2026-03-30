@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# PR #211 — capture project picker in sidebar screenshots.
+#
+# Shows:
+#   1. Sidebar with no org selected (org picker only, no project picker)
+#   2. Sidebar after selecting an org (project picker appears below org picker)
+#   3. Secrets page after selecting a project from the picker
+#
+# Called by scripts/browser-capture-pr 211. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_DISPLAY="PR211 Org ${TS}"
+ORG_NAME="pr211-org-${TS}"
+PROJECT_DISPLAY="PR211 Project"
+PROJECT_NAME="pr211-prj-${TS}"
+
+# Helper: click the first button whose trimmed text matches exactly.
+click_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('button')) {
+      if (b.textContent.trim() === '$text' && !b.disabled) { b.click(); break; }
+    }
+  "
+}
+
+# Helper: click a button inside the open dialog.
+click_dialog_button() {
+  local text="$1"
+  $AB eval "
+    for (const b of document.querySelectorAll('[role=\"dialog\"] button')) {
+      if (b.textContent.trim() === '$text') { b.click(); break; }
+    }
+  "
+}
+
+# 1. Capture baseline: no org selected, only org picker visible
+echo "==> Screenshot 1: sidebar without org selected"
+$AB eval "sessionStorage.removeItem('holos-selected-org'); sessionStorage.removeItem('holos-selected-project')"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 1500
+$AB screenshot "$PR_SCREENSHOT_DIR/01-sidebar-no-org.png"
+echo "Saved 01-sidebar-no-org.png"
+
+# 2. Create an org
+echo "==> Creating org: $ORG_NAME"
+click_button "Create Organization"
+$AB wait 1000
+$AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-org']" "$ORG_NAME" 2>/dev/null || true
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 3. Create a project
+echo "==> Creating project: $PROJECT_NAME"
+$AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects"
+$AB wait --load networkidle
+click_button "Create Project"
+$AB wait 1000
+$AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
+$AB wait 500
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME" 2>/dev/null || true
+click_dialog_button "Create"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 4. Capture: org selected, project picker now visible
+echo "==> Screenshot 2: sidebar with org selected (project picker visible)"
+$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB wait --load networkidle
+$AB wait 1500
+$AB screenshot "$PR_SCREENSHOT_DIR/02-sidebar-with-org-project-picker.png"
+echo "Saved 02-sidebar-with-org-project-picker.png"
+
+# 5. Select the project from the picker via sessionStorage shortcut then navigate
+echo "==> Selecting project from picker and navigating to secrets"
+$AB eval "sessionStorage.setItem('holos-selected-project', '$PROJECT_NAME')"
+$AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME/secrets"
+$AB wait --load networkidle
+$AB wait 2000
+
+# 6. Capture: secrets page reached directly
+$AB screenshot "$PR_SCREENSHOT_DIR/03-secrets-page-via-project-picker.png"
+echo "Saved 03-secrets-page-via-project-picker.png"
+
+echo "All screenshots saved to $PR_SCREENSHOT_DIR"

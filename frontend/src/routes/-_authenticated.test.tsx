@@ -22,6 +22,11 @@ vi.mock('@/components/app-sidebar', () => ({ AppSidebar: () => null }))
 
 vi.mock('@/lib/org-context', () => ({
   OrgProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useOrg: () => ({ organizations: [], selectedOrg: null, setSelectedOrg: vi.fn(), isLoading: false }),
+}))
+
+vi.mock('@/lib/project-context', () => ({
+  ProjectProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 vi.mock('@/components/ui/separator', () => ({ Separator: () => null }))

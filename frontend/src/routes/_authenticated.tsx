@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { OrgProvider } from '@/lib/org-context'
+import { ProjectProvider } from '@/lib/project-context'
 import { Separator } from '@/components/ui/separator'
 
 export const Route = createFileRoute('/_authenticated')({
@@ -42,6 +43,7 @@ export function AuthenticatedLayout() {
 
   return (
     <OrgProvider>
+      <ProjectProvider>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -55,6 +57,7 @@ export function AuthenticatedLayout() {
           </main>
         </SidebarInset>
       </SidebarProvider>
+      </ProjectProvider>
     </OrgProvider>
   )
 }
