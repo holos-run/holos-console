@@ -36,6 +36,10 @@ vi.mock('@/lib/org-context', () => ({
   useOrg: () => ({ organizations: [], selectedOrg: null, setSelectedOrg: vi.fn(), isLoading: false }),
 }))
 
+vi.mock('@/lib/project-context', () => ({
+  useProject: () => ({ projects: [], selectedProject: null, setSelectedProject: vi.fn(), isLoading: false }),
+}))
+
 vi.mock('@/queries/version', () => ({
   useVersion: () => ({ data: { version: 'v0.0.0-test' } }),
 }))
