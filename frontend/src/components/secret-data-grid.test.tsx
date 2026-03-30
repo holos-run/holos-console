@@ -1,6 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
+import { toast } from 'sonner'
 import { SecretDataGrid } from './secret-data-grid'
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn() },
+}))
 
 const encode = (s: string) => new TextEncoder().encode(s)
 
@@ -240,7 +245,7 @@ describe('SecretDataGrid readOnly', () => {
     expect(screen.queryByText('admin')).not.toBeInTheDocument()
   })
 
-  it('copy button copies the value', async () => {
+  it('copy button copies the value and shows a toast', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
 
@@ -255,6 +260,7 @@ describe('SecretDataGrid readOnly', () => {
 
     fireEvent.click(screen.getByLabelText('copy'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('admin'))
+    expect(toast.success).toHaveBeenCalledWith('Copied to clipboard')
   })
 
   it('shows empty message when data is empty', () => {
