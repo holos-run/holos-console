@@ -55,8 +55,8 @@ function AboutPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3 text-sm">
-            <p>Copyright &copy; 2024&ndash;present Oakestra, Inc. All rights reserved.</p>
-            <p>Holos is a trademark of Oakestra, Inc.</p>
+            <p>Copyright &copy; 2024&ndash;present Open Infrastructure Services, LLC. All rights reserved.</p>
+            <p>Holos is a trademark of Open Infrastructure Services, LLC.</p>
             <p>
               Licensed under the{' '}
               <a
