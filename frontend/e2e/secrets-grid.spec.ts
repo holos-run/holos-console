@@ -153,20 +153,20 @@ test.describe('Secrets Data Grid', () => {
     await expect(page.getByRole('link', { name: secretAaa })).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('link', { name: secretZzz })).toBeVisible({ timeout: 5000 })
 
-    // Get the Name column header for sorting
-    const nameHeader = page.getByRole('columnheader', { name: /^name$/i })
-    await expect(nameHeader).toBeVisible()
+    // The Name column header renders as a <th> containing a sort <button>
+    const nameHeaderBtn = page.locator('thead').getByRole('button', { name: /name/i })
+    await expect(nameHeaderBtn).toBeVisible()
 
     // Default sort is ascending — aaa should appear before zzz
     const firstRow = page.locator('tbody tr').first()
     await expect(firstRow).toContainText(secretAaa, { timeout: 5000 })
 
-    // Click Name header once → toggles from ascending to descending (zzz first)
-    await nameHeader.click()
+    // Click Name header button once → toggles ascending→descending (zzz first)
+    await nameHeaderBtn.click()
     await expect(firstRow).toContainText(secretZzz, { timeout: 5000 })
 
-    // Click Name header again → back to ascending (aaa first)
-    await nameHeader.click()
+    // Click Name header button again → back to ascending (aaa first)
+    await nameHeaderBtn.click()
     await expect(firstRow).toContainText(secretAaa, { timeout: 5000 })
 
     // Cleanup
