@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { createFileRoute, Link, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -55,15 +55,6 @@ function ProjectPage() {
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
   const [localDescription, setLocalDescription] = useState<string | null>(null)
   const [localProject, setLocalProject] = useState<typeof project | null>(null)
-
-  // Check if we're rendering a child route (secrets)
-  const matchRoute = useMatchRoute()
-  const isChildRoute = !matchRoute({ to: '/projects/$projectName', params: { projectName: name } })
-
-  // If we're on a child route, just render the outlet
-  if (isChildRoute) {
-    return <Outlet />
-  }
 
   const effectiveProject = localProject ?? project
   const displayName = localDisplayName ?? effectiveProject?.displayName
@@ -244,14 +235,9 @@ function ProjectPage() {
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 
-        {viewMode === 'editor' && (
+        {viewMode === 'editor' && isOwner && (
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button asChild>
-              <Link to="/projects/$projectName/secrets" params={{ projectName: name }}>Secrets</Link>
-            </Button>
-            {isOwner && (
-              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-            )}
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
           </div>
         )}
 

@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Check, Pencil, X } from 'lucide-react'
-import { useOrg } from '@/lib/org-context'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { RawView } from '@/components/raw-view'
 import { useGetOrganization, useDeleteOrganization, useUpdateOrganization, useUpdateOrganizationSharing } from '@/queries/organizations'
@@ -30,7 +29,6 @@ export const Route = createFileRoute('/_authenticated/organizations/$organizatio
 function OrganizationPage() {
   const { organizationName: name } = Route.useParams()
   const navigate = useNavigate()
-  const { setSelectedOrg } = useOrg()
   const transport = useTransport()
 
   const { data, isLoading, error } = useGetOrganization(name)
@@ -225,16 +223,11 @@ function OrganizationPage() {
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 
-        {viewMode === 'editor' && (
+        {viewMode === 'editor' && isOwner && (
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={() => { setSelectedOrg(name); navigate({ to: '/projects' }) }}>
-              Projects
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              Delete
             </Button>
-            {isOwner && (
-              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-                Delete
-              </Button>
-            )}
           </div>
         )}
 
