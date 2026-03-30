@@ -53,3 +53,26 @@ toast.error('Something went wrong')
 ```
 
 Do not import from `@/components/ui/sonner` — that file exports the `Toaster` component only (used once in the root layout). The `toast` function always comes from `'sonner'` directly.
+
+## Browser Automation (agent-browser)
+
+**Use `eval`-based clicking for React buttons**, not `agent-browser click`.
+
+`agent-browser click <selector>` uses CDP's `Input.dispatchMouseEvent` which does **not** bubble through React's synthetic event system. React attaches event handlers to the document root via event delegation, so CDP mouse events that bypass bubbling will not trigger React `onClick` handlers.
+
+```bash
+# Wrong — CDP click, React onClick never fires
+$AB click '[aria-label="copy"]'
+
+# Correct — DOM .click() bubbles normally through React's event system
+$AB eval "document.querySelector('[aria-label=\"copy\"]')?.click()"
+
+# Correct — find by text and click
+$AB eval "
+  for (const b of document.querySelectorAll('button')) {
+    if (b.textContent.trim() === 'Create Organization' && !b.disabled) { b.click(); break; }
+  }
+"
+```
+
+This applies to any React `onClick` handler. For non-React interactions (scrolling, focus, native inputs), `agent-browser click` / `agent-browser fill` works fine.
