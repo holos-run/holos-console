@@ -1,4 +1,12 @@
 import { test, expect } from '@playwright/test'
+import {
+  loginViaProfilePage,
+  apiCreateOrg,
+  apiDeleteOrg,
+  apiCreateProject,
+  apiDeleteProject,
+  selectOrg,
+} from './helpers'
 
 /**
  * E2E tests for Secrets page.
@@ -16,10 +24,6 @@ import { test, expect } from '@playwright/test'
 // Default credentials for embedded Dex OIDC provider
 const DEFAULT_USERNAME = 'admin'
 const DEFAULT_PASSWORD = 'verysecret'
-
-// Test org/project names - created and cleaned up by these tests
-const TEST_ORG = `e2e-org-${process.pid}`
-const TEST_PROJECT = `e2e-secrets-${process.pid}`
 
 // Helper function to log in via Dex.
 // Handles both cases: Dex showing login form or auto-completing with existing session.
@@ -57,87 +61,17 @@ async function loginAndNavigate(page: import('@playwright/test').Page, path: str
   }
 }
 
-// Helper to create an organization and select it in the org picker
-async function createAndSelectOrg(page: import('@playwright/test').Page, orgName: string) {
-  await page.goto('/organizations')
-
-  // Click Create Organization and fill display name (slug auto-populates)
-  await page.getByRole('button', { name: /create organization/i }).click()
-  await page.getByPlaceholder('My Organization').fill(orgName)
-  await page.getByRole('button', { name: /^create$/i }).click()
-
-  // Wait for redirect to org detail page (confirms creation succeeded)
-  await page.waitForURL(/\/organizations\//, { timeout: 10000 })
-
-  // Navigate to organizations list to ensure sidebar loads with org data
-  await page.goto('/organizations')
-  await page.waitForLoadState('networkidle')
-
-  // On mobile, open the sidebar drawer to access the org picker
-  const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-  if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await sidebarTrigger.click()
-  }
-
-  // Select the org in the sidebar dropdown picker
-  await page.getByRole('button', { name: /all organizations/i }).waitFor({ timeout: 5000 })
-  await page.getByRole('button', { name: /all organizations/i }).click()
-  await page.getByRole('menuitem', { name: orgName }).click()
-}
-
-// Helper to delete an organization
-async function deleteOrg(page: import('@playwright/test').Page, orgName: string) {
-  await page.goto('/organizations')
-  await page.getByLabel(new RegExp(`delete ${orgName}`, 'i')).click()
-  const deleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
-  await deleteButton.click()
-}
-
 test.describe('Secrets Page', () => {
-  test('should show projects link in sidebar', async ({ page }) => {
-    await loginAndNavigate(page, '/profile')
-
-    // On mobile, open the sidebar drawer first
-    const trigger = page.getByRole('button', { name: /toggle sidebar/i })
-    if (await trigger.isVisible().catch(() => false)) {
-      await trigger.click()
-    }
-
-    // Verify Projects link is in sidebar
-    await expect(page.getByRole('link', { name: 'Projects' })).toBeVisible()
-  })
-
-  test('should navigate to projects page from sidebar', async ({ page }) => {
-    await loginAndNavigate(page, '/profile')
-
-    // On mobile, open the sidebar drawer first
-    const trigger = page.getByRole('button', { name: /toggle sidebar/i })
-    if (await trigger.isVisible().catch(() => false)) {
-      await trigger.click()
-    }
-
-    // Click Projects link
-    await page.getByRole('link', { name: 'Projects' }).click()
-
-    // Verify URL changed to projects page
-    await expect(page).toHaveURL(/\/projects/)
-  })
-
   test('should create secret with sharing and show sharing panel', async ({ page }) => {
     // Login and create an org first
     await loginAndNavigate(page, '/profile')
     const orgName = `e2e-sharing-org-${Date.now()}`
-    await createAndSelectOrg(page, orgName)
+    await apiCreateOrg(page, orgName)
+    await selectOrg(page, orgName)
 
-    // Create a test project
-    await page.goto('/projects')
-    await expect(page.getByRole('button', { name: /create project/i })).toBeVisible({ timeout: 5000 })
+    // Create a test project via API
     const projectName = `e2e-sharing-prj-${Date.now()}`
-    await page.getByRole('button', { name: /create project/i }).click()
-    await page.getByPlaceholder('My Project').fill(projectName)
-    await page.getByRole('button', { name: /^create$/i }).click()
-    // Wait for redirect to project detail page (confirms creation succeeded)
-    await page.waitForURL(new RegExp(`/projects/${projectName}`), { timeout: 10000 })
+    await apiCreateProject(page, projectName, orgName)
 
     // Navigate to secrets list for this project
     await page.goto(`/projects/${projectName}/secrets`)
@@ -174,28 +108,20 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Clean up: delete the project and org
-    await page.goto('/projects')
-    await page.getByLabel(new RegExp(`delete ${projectName}`, 'i')).click()
-    const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
-    await projectDeleteButton.click()
-    await deleteOrg(page, orgName)
+    await apiDeleteProject(page, projectName)
+    await apiDeleteOrg(page, orgName)
   })
 
   test('should update sharing grants on secret page', async ({ page }) => {
     // Login and create an org first
     await loginAndNavigate(page, '/profile')
     const orgName = `e2e-share-upd-org-${Date.now()}`
-    await createAndSelectOrg(page, orgName)
+    await apiCreateOrg(page, orgName)
+    await selectOrg(page, orgName)
 
-    // Create a test project
-    await page.goto('/projects')
-    await expect(page.getByRole('button', { name: /create project/i })).toBeVisible({ timeout: 5000 })
+    // Create a test project via API
     const projectName = `e2e-share-upd-${Date.now()}`
-    await page.getByRole('button', { name: /create project/i }).click()
-    await page.getByPlaceholder('My Project').fill(projectName)
-    await page.getByRole('button', { name: /^create$/i }).click()
-    // Wait for redirect to project detail page (confirms creation succeeded)
-    await page.waitForURL(new RegExp(`/projects/${projectName}`), { timeout: 10000 })
+    await apiCreateProject(page, projectName, orgName)
 
     // Navigate to secrets list and create a test secret
     await page.goto(`/projects/${projectName}/secrets`)
@@ -242,28 +168,20 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Clean up: delete the project and org
-    await page.goto('/projects')
-    await page.getByLabel(new RegExp(`delete ${projectName}`, 'i')).click()
-    const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
-    await projectDeleteButton.click()
-    await deleteOrg(page, orgName)
+    await apiDeleteProject(page, projectName)
+    await apiDeleteOrg(page, orgName)
   })
 
   test('should show sharing summary in secrets list', async ({ page }) => {
     // Login and create an org first
     await loginAndNavigate(page, '/profile')
     const orgName = `e2e-list-sum-org-${Date.now()}`
-    await createAndSelectOrg(page, orgName)
+    await apiCreateOrg(page, orgName)
+    await selectOrg(page, orgName)
 
-    // Create a test project
-    await page.goto('/projects')
-    await expect(page.getByRole('button', { name: /create project/i })).toBeVisible({ timeout: 5000 })
+    // Create a test project via API
     const projectName = `e2e-list-sum-${Date.now()}`
-    await page.getByRole('button', { name: /create project/i }).click()
-    await page.getByPlaceholder('My Project').fill(projectName)
-    await page.getByRole('button', { name: /^create$/i }).click()
-    // Wait for redirect to project detail page (confirms creation succeeded)
-    await page.waitForURL(new RegExp(`/projects/${projectName}`), { timeout: 10000 })
+    await apiCreateProject(page, projectName, orgName)
 
     // Navigate to secrets list
     await page.goto(`/projects/${projectName}/secrets`)
@@ -287,28 +205,20 @@ test.describe('Secrets Page', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 })
 
     // Clean up: delete the project and org
-    await page.goto('/projects')
-    await page.getByLabel(new RegExp(`delete ${projectName}`, 'i')).click()
-    const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
-    await projectDeleteButton.click()
-    await deleteOrg(page, orgName)
+    await apiDeleteProject(page, projectName)
+    await apiDeleteOrg(page, orgName)
   })
 
   test('should allow adding a key to an empty secret on the detail page', async ({ page }) => {
     // Login and create an org first
     await loginAndNavigate(page, '/profile')
     const orgName = `e2e-empty-org-${Date.now()}`
-    await createAndSelectOrg(page, orgName)
+    await apiCreateOrg(page, orgName)
+    await selectOrg(page, orgName)
 
-    // Create a test project
-    await page.goto('/projects')
-    await expect(page.getByRole('button', { name: /create project/i })).toBeVisible({ timeout: 5000 })
+    // Create a test project via API
     const projectName = `e2e-empty-secret-${Date.now()}`
-    await page.getByRole('button', { name: /create project/i }).click()
-    await page.getByPlaceholder('My Project').fill(projectName)
-    await page.getByRole('button', { name: /^create$/i }).click()
-    // Wait for redirect to project detail page (confirms creation succeeded)
-    await page.waitForURL(new RegExp(`/projects/${projectName}`), { timeout: 10000 })
+    await apiCreateProject(page, projectName, orgName)
 
     // Create a secret with no data (skip Add Key, just name and submit)
     await page.goto(`/projects/${projectName}/secrets`)
@@ -351,11 +261,8 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Clean up: delete the project and org
-    await page.goto('/projects')
-    await page.getByLabel(new RegExp(`delete ${projectName}`, 'i')).click()
-    const projectDeleteButton = page.getByRole('dialog').getByRole('button', { name: /delete/i })
-    await projectDeleteButton.click()
-    await deleteOrg(page, orgName)
+    await apiDeleteProject(page, projectName)
+    await apiDeleteOrg(page, orgName)
   })
 })
 
@@ -371,20 +278,14 @@ test.describe('Mobile Responsive Layout', () => {
     await expect(page.getByRole('button', { name: /toggle sidebar/i })).toBeVisible({ timeout: 5000 })
   })
 
-  test('should open drawer and navigate via hamburger on mobile', async ({ page }, testInfo) => {
+  test('should open drawer and show org picker on mobile', async ({ page }, testInfo) => {
     test.skip(testInfo.project?.name !== 'mobile-chrome', 'mobile-only test')
     await loginAndNavigate(page, '/profile')
 
     // Tap hamburger to open drawer
     await page.getByRole('button', { name: /toggle sidebar/i }).click()
 
-    // Projects link should now be visible in drawer
-    await expect(page.getByRole('link', { name: 'Projects' })).toBeVisible({ timeout: 5000 })
-
-    // Navigate to Projects
-    await page.getByRole('link', { name: 'Projects' }).click()
-
-    // Should navigate to projects page
-    await expect(page).toHaveURL(/\/projects/)
+    // Org picker should be visible in drawer
+    await expect(page.getByTestId('org-picker')).toBeVisible({ timeout: 5000 })
   })
 })

@@ -79,3 +79,154 @@ export async function loginViaProfilePage(page: Page): Promise<void> {
   // Wait for redirect back to profile
   await page.waitForURL(/\/profile/, { timeout: 15000 })
 }
+
+/**
+ * Extract the OIDC access token and user email from sessionStorage.
+ */
+async function getRpcAuth(page: Page): Promise<{ token: string; email: string }> {
+  return page.evaluate(() => {
+    const key = Object.keys(sessionStorage).find((k) => k.startsWith('oidc.user:'))
+    if (!key) throw new Error('No OIDC session found in sessionStorage')
+    const data = JSON.parse(sessionStorage.getItem(key)!) as {
+      access_token?: string
+      profile?: { email?: string }
+    }
+    if (!data?.access_token) throw new Error('No access_token in OIDC session')
+    return { token: data.access_token, email: data.profile?.email ?? '' }
+  })
+}
+
+/**
+ * Create an organization via the RPC API.
+ * The current user is added as owner.
+ */
+export async function apiCreateOrg(page: Page, name: string): Promise<void> {
+  const { token, email } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, email, token }) => {
+      const resp = await fetch('/holos.console.v1.OrganizationService/CreateOrganization', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name,
+          displayName: name,
+          userGrants: [{ principal: email, role: 3 }],
+          roleGrants: [],
+        }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`CreateOrganization failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, email, token },
+  )
+}
+
+/**
+ * Delete an organization via the RPC API.
+ */
+export async function apiDeleteOrg(page: Page, name: string): Promise<void> {
+  const { token } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, token }) => {
+      const resp = await fetch('/holos.console.v1.OrganizationService/DeleteOrganization', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`DeleteOrganization failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, token },
+  )
+}
+
+/**
+ * Create a project via the RPC API.
+ * The current user is added as owner.
+ */
+export async function apiCreateProject(
+  page: Page,
+  name: string,
+  organization: string,
+): Promise<void> {
+  const { token, email } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, organization, email, token }) => {
+      const resp = await fetch('/holos.console.v1.ProjectService/CreateProject', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name,
+          displayName: name,
+          organization,
+          userGrants: [{ principal: email, role: 3 }],
+          roleGrants: [],
+        }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`CreateProject failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, organization, email, token },
+  )
+}
+
+/**
+ * Delete a project via the RPC API.
+ */
+export async function apiDeleteProject(page: Page, name: string): Promise<void> {
+  const { token } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, token }) => {
+      const resp = await fetch('/holos.console.v1.ProjectService/DeleteProject', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`DeleteProject failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, token },
+  )
+}
+
+/**
+ * Select an org in the sidebar org picker.
+ * Navigates to /profile to ensure the sidebar is loaded with org data.
+ */
+export async function selectOrg(page: Page, orgName: string): Promise<void> {
+  await page.goto('/profile')
+  await page.waitForLoadState('networkidle')
+
+  const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+  if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await sidebarTrigger.click()
+  }
+
+  await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
+  await page.getByTestId('org-picker').click()
+  await page.getByRole('menuitem', { name: orgName }).click()
+}
