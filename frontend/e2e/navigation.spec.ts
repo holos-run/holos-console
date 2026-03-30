@@ -29,8 +29,8 @@ async function selectOrg(page: import('@playwright/test').Page, orgName: string)
     await sidebarTrigger.click()
   }
 
-  await page.getByRole('button', { name: /all organizations/i }).waitFor({ timeout: 5000 })
-  await page.getByRole('button', { name: /all organizations/i }).click()
+  await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
+  await page.getByTestId('org-picker').click()
   await page.getByRole('menuitem', { name: orgName }).click()
 }
 

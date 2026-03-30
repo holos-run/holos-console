@@ -113,7 +113,7 @@ function OrgPicker() {
     <div className="px-2 py-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent">
+          <button data-testid="org-picker" className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent">
             <span className="truncate">{displayLabel}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </button>
