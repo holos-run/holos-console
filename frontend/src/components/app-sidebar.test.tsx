@@ -52,10 +52,10 @@ describe('AppSidebar', () => {
     expect(screen.queryByRole('button', { name: /toggle theme/i })).toBeNull()
   })
 
-  it('renders navigation items', () => {
+  it('renders no org/project nav items when no project is selected', () => {
     render(<AppSidebar />)
-    expect(screen.getByText('Organizations')).toBeDefined()
-    expect(screen.getByText('Projects')).toBeDefined()
+    expect(screen.queryByText('Organizations')).toBeNull()
+    expect(screen.queryByText('Projects')).toBeNull()
   })
 
   it('renders version info', () => {
