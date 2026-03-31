@@ -116,7 +116,7 @@ describe('CreateProjectDialog', () => {
     })
   })
 
-  it('renders name, displayName, description, and org select when open', () => {
+  it('renders org select, displayName, name, and description when open', () => {
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
     expect(screen.getByPlaceholderText(/my-project/i)).toBeDefined()
     expect(screen.getByPlaceholderText(/my project/i)).toBeDefined()
@@ -135,11 +135,42 @@ describe('CreateProjectDialog', () => {
     expect(select.getAttribute('data-default')).toBe('my-org')
   })
 
+  it('auto-derives name from display name as user types', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test Project' } })
+    expect((screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value).toBe('test-project')
+  })
+
+  it('stops auto-deriving name once user manually edits name field', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test Project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'custom-slug' } })
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test Project Updated' } })
+    expect((screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value).toBe('custom-slug')
+  })
+
+  it('shows reset link when name has been manually edited', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test Project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'custom-slug' } })
+    expect(screen.getByText(/auto-derive from display name/i)).toBeDefined()
+  })
+
+  it('re-enables auto-derivation when reset link is clicked', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test Project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'custom-slug' } })
+    fireEvent.click(screen.getByText(/auto-derive from display name/i))
+    expect((screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value).toBe('test-project')
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'New Project' } })
+    expect((screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value).toBe('new-project')
+  })
+
   it('calls mutateAsync with correct organization field on submit', async () => {
     mockMutateAsync.mockResolvedValue({ name: 'new-project' })
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'new-project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'New Project' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
@@ -153,7 +184,7 @@ describe('CreateProjectDialog', () => {
     mockMutateAsync.mockResolvedValue({ name: 'new-project' })
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'new-project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'New Project' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
@@ -165,7 +196,7 @@ describe('CreateProjectDialog', () => {
     mockMutateAsync.mockRejectedValue(new Error('project already exists'))
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'taken-project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Taken Project' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
@@ -178,7 +209,7 @@ describe('CreateProjectDialog', () => {
     mockMutateAsync.mockRejectedValue(new Error('server error'))
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'bad-project' } })
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Bad Project' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
