@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# PR #240 — capture org projects index page with search and pagination.
+#
+# Called by scripts/browser-capture-pr 240. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+PROJECTS_URL="$HOLOS_BACKEND_URL/orgs/test-org/projects"
+
+echo "==> Navigating to org projects index page"
+$AB open "$PROJECTS_URL"
+$AB wait --load networkidle
+$AB wait 2000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/projects-index.png"
+echo "Saved projects-index.png"
