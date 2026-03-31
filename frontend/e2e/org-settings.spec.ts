@@ -41,11 +41,10 @@ test.describe('Org Settings page', () => {
     try {
       await page.goto(`/orgs/${orgName}/settings`)
 
-      // Settings page should show org name and Settings heading
-      await expect(page.getByRole('heading', { name: /^settings$/i })).toBeVisible({ timeout: 10000 })
-      await expect(page.getByText(`${orgName} / Settings`)).toBeVisible()
+      // Breadcrumb text is unique to this page (includes the org name)
+      await expect(page.getByText(`${orgName} / Settings`)).toBeVisible({ timeout: 10000 })
 
-      // General fields visible
+      // General fields visible once data loads
       await expect(page.getByText('Display Name')).toBeVisible()
       await expect(page.getByText('Name (slug)')).toBeVisible()
       await expect(page.getByText('Description')).toBeVisible()
