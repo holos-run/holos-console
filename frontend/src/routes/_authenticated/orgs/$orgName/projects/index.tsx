@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   useReactTable,
@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Plus } from 'lucide-react'
 import { useListProjects } from '@/queries/projects'
 import { useProject } from '@/lib/project-context'
+import { useOrg } from '@/lib/org-context'
 import { CreateProjectDialog } from '@/components/create-project-dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { Project } from '@/gen/holos/console/v1/projects_pb'
@@ -45,8 +46,16 @@ export function ProjectsIndexPage() {
   const { orgName } = Route.useParams()
   const navigate = useNavigate()
   const { setSelectedProject } = useProject()
+  const { selectedOrg, setSelectedOrg } = useOrg()
   const { data, isLoading, error } = useListProjects(orgName)
   const projects = data?.projects ?? []
+
+  // Sync org context when navigating directly to this URL via bookmark
+  useEffect(() => {
+    if (selectedOrg !== orgName) {
+      setSelectedOrg(orgName)
+    }
+  }, [orgName, selectedOrg, setSelectedOrg])
 
   const [globalFilter, setGlobalFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)

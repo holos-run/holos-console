@@ -41,6 +41,15 @@ vi.mock('@/lib/project-context', () => ({
   useProject: vi.fn(),
 }))
 
+vi.mock('@/lib/org-context', () => ({
+  useOrg: vi.fn().mockReturnValue({
+    selectedOrg: 'test-org',
+    setSelectedOrg: vi.fn(),
+    organizations: [],
+    isLoading: false,
+  }),
+}))
+
 vi.mock('@/components/create-project-dialog', () => ({
   CreateProjectDialog: ({ open }: { open: boolean }) =>
     open ? <div data-testid="create-project-dialog" /> : null,
