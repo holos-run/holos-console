@@ -27,9 +27,11 @@ test.describe('localStorage persistence across browser sessions', () => {
     const storedOrg = await page.evaluate(() => localStorage.getItem('holos-selected-org'))
     expect(storedOrg).toBe(orgName)
 
-    // Open a new page in the same context (same localStorage origin, fresh tab)
+    // Open a new page in the same context (same localStorage origin, but fresh
+    // sessionStorage means the OIDC token is absent — the user must sign in again).
+    // Dex's server-side session is shared via cookies so sign-in auto-completes.
     const newPage = await context.newPage()
-    await newPage.goto('/profile')
+    await loginViaProfilePage(newPage)
     await newPage.waitForLoadState('networkidle')
 
     // On mobile, open the sidebar drawer
@@ -57,13 +59,17 @@ test.describe('localStorage persistence across browser sessions', () => {
     await selectOrg(page, orgName)
     await apiCreateProject(page, projectName, orgName)
 
+    // Navigate back to /profile (selectOrg) to refresh the project list in React Query's
+    // cache — without this, the stale empty list prevents the picker from finding the project.
+    await selectOrg(page, orgName)
+
     // On mobile, open the sidebar drawer
     const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
     if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
       await sidebarTrigger.click()
     }
 
-    // Select the project
+    // Select the project from the picker
     const projectPicker = page.getByRole('button', { name: /select project|no projects|all projects/i })
     await expect(projectPicker).toBeVisible({ timeout: 5000 })
     await projectPicker.click()
@@ -76,9 +82,9 @@ test.describe('localStorage persistence across browser sessions', () => {
     const storedProject = await page.evaluate(() => localStorage.getItem('holos-selected-project'))
     expect(storedProject).toBe(projectName)
 
-    // Open a new page in the same context (fresh tab, same localStorage)
+    // Open a new page in the same context (same localStorage, fresh sessionStorage)
     const newPage = await context.newPage()
-    await newPage.goto('/profile')
+    await loginViaProfilePage(newPage)
     await newPage.waitForLoadState('networkidle')
 
     // On mobile, open the sidebar drawer
@@ -106,6 +112,10 @@ test.describe('localStorage persistence across browser sessions', () => {
     await selectOrg(page, orgName)
     await apiCreateProject(page, projectName, orgName)
 
+    // Refresh the project list in React Query's cache so it is available when we
+    // navigate directly to the project URL below.
+    await selectOrg(page, orgName)
+
     // Navigate directly to the project secrets page via URL (bookmark/deep link)
     await page.goto(`/projects/${projectName}/secrets`)
     await page.waitForLoadState('networkidle')
@@ -116,7 +126,8 @@ test.describe('localStorage persistence across browser sessions', () => {
       await sidebarTrigger.click()
     }
 
-    // Sidebar project picker must reflect the project from the URL
+    // Sidebar project picker must reflect the project from the URL (synced by useEffect
+    // in the $projectName route layout)
     const projectPicker = page.getByRole('button', { name: new RegExp(projectName) })
     await expect(projectPicker).toBeVisible({ timeout: 5000 })
 
