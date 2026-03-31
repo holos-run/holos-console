@@ -93,9 +93,12 @@ test.describe('localStorage persistence across browser sessions', () => {
       await newSidebarTrigger.click()
     }
 
-    // Project picker should show the previously selected project without re-selection
-    const newProjectPicker = newPage.getByRole('button', { name: new RegExp(projectName) })
-    await expect(newProjectPicker).toBeVisible({ timeout: 5000 })
+    // Project picker should show the previously selected project without re-selection.
+    // Use data-testid (not accessible name) and a generous timeout to account for
+    // API latency on CI: auth → OrgProvider mounts → ListProjects fetch completes.
+    const newProjectPicker = newPage.getByTestId('project-picker')
+    await expect(newProjectPicker).toBeVisible({ timeout: 15000 })
+    await expect(newProjectPicker).toContainText(projectName, { timeout: 15000 })
 
     // Cleanup
     await apiDeleteProject(page, projectName)
@@ -127,9 +130,11 @@ test.describe('localStorage persistence across browser sessions', () => {
     }
 
     // Sidebar project picker must reflect the project from the URL (synced by useEffect
-    // in the $projectName route layout)
-    const projectPicker = page.getByRole('button', { name: new RegExp(projectName) })
-    await expect(projectPicker).toBeVisible({ timeout: 5000 })
+    // in the $projectName route layout).  Use data-testid with a generous timeout to
+    // account for the useEffect firing after paint + project list fetch on CI.
+    const projectPicker = page.getByTestId('project-picker')
+    await expect(projectPicker).toBeVisible({ timeout: 10000 })
+    await expect(projectPicker).toContainText(projectName, { timeout: 10000 })
 
     // localStorage must also be updated to the URL-derived project
     const storedProject = await page.evaluate(() => localStorage.getItem('holos-selected-project'))
