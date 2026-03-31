@@ -5,8 +5,10 @@
 package main
 
 import (
+	_ "connectrpc.com/connect/cmd/protoc-gen-connect-go"
 	_ "filippo.io/mkcert"
 	_ "github.com/bufbuild/buf/cmd/buf"
 	_ "github.com/fullstorydev/grpcurl/cmd/grpcurl"
 	_ "github.com/rogpeppe/go-internal/testscript"
+	_ "google.golang.org/protobuf/cmd/protoc-gen-go"
 )
