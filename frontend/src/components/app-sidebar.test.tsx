@@ -258,7 +258,9 @@ describe('AppSidebar — project selected', () => {
 
   it('renders Settings nav link when a project is selected', () => {
     render(<AppSidebar />)
-    expect(screen.getByText('Settings')).toBeInTheDocument()
+    // Both org and project nav groups show when both are selected, so there are two Settings links.
+    const settingsLinks = screen.getAllByText('Settings')
+    expect(settingsLinks.length).toBeGreaterThanOrEqual(1)
   })
 
   it('project Settings link points to /projects/$projectName/settings', () => {
