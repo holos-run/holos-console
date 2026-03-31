@@ -26,7 +26,13 @@ Plans are recorded as GitHub issues. Implement each plan on a feature branch wit
 
 ### Identifying Your Agent Slot
 
-Agents run in worktrees whose path encodes the agent slot. Identify your slot from your working directory — for example, if `pwd` is `/path/to/worktrees/holos-run/agent-2/holos-console`, your slot is `agent-2`. Include the slot in PR descriptions so reviewers know which agent produced the work.
+Agents run in worktrees whose path encodes the agent slot. Identify your slot from your working directory — for example, if `pwd` is `/path/to/worktrees/holos-run/agent-2/holos-console`, your slot is `agent-2`.
+
+**PR title**: Prepend the slot to the title so it shows up clearly in `gh pr list`, e.g. `[agent-2] Add Playwright E2E test infrastructure`.
+
+**PR description**: Include the slot in the footer so reviewers know which agent produced the work.
+
+**PR comment**: After creating the PR, post a comment explaining the rationale and motivation for the implementation approach, including alternatives considered and why they were rejected.
 
 Example workflow:
 ```bash
@@ -37,8 +43,11 @@ git commit -m "Add webServer configuration to playwright.config.ts
 Configure Playwright to automatically start Go backend and Vite dev
 server before running E2E tests."
 
+# Determine agent slot from working directory
+SLOT=$(pwd | grep -oP 'agent-\d+' || echo "agent-0")
+
 # Open a PR that closes the plan issue
-gh pr create --title "Add Playwright E2E test infrastructure" --body "$(cat <<'EOF'
+gh pr create --title "[${SLOT}] Add Playwright E2E test infrastructure" --body "$(cat <<'EOF'
 ## Summary
 - Configure Playwright to start Go backend and Vite dev server
 - Add E2E test for the login flow
@@ -48,7 +57,21 @@ Closes: #42
 ## Test plan
 - [ ] `make test-e2e` passes
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code) · agent-2
+🤖 Generated with [Claude Code](https://claude.com/claude-code) · ${SLOT}
+EOF
+)"
+
+# Add a comment explaining rationale and alternatives
+gh pr comment <N> --body "$(cat <<'EOF'
+## Rationale
+
+Explain why this approach was chosen over alternatives...
+
+## Alternatives considered
+
+| Option | Verdict |
+|--------|---------|
+| Alternative A | Rejected because... |
 EOF
 )"
 ```
