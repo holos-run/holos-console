@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# PR #235 — capture create org/project dialog screenshots.
+#
+# Shows:
+#   1. Org picker dropdown OPEN — "New Organization" item at the bottom
+#   2. CreateOrgDialog open with name/displayName/description fields
+#   3. After org creation — "No projects yet / New Project" CTA in sidebar
+#   4. CreateProjectDialog open with org select + name/displayName/description
+#   5. Secrets page after project creation (auto-navigate)
+#
+# Called by scripts/browser-capture-pr 235. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+AB="agent-browser --session-name holos-dev"
+
+TS=$(date +%s)
+ORG_NAME="pr235-org-${TS}"
+PROJECT_NAME="pr235-prj-${TS}"
+
+# Navigate to profile to get a stable starting point
+echo "==> Navigating to profile"
+$AB open "$HOLOS_BACKEND_URL/profile"
+$AB wait --load networkidle
+$AB wait 2000
+
+# Screenshot 1: org picker dropdown open with "New Organization" at the bottom
+echo "==> Opening org picker dropdown using click command"
+$AB click '[data-testid="org-picker"]'
+$AB wait 1500
+
+echo "==> Screenshot 1: org picker dropdown with New Organization at bottom"
+$AB screenshot "$PR_SCREENSHOT_DIR/01-org-picker-dropdown-with-new-org.png"
+echo "Saved 01-org-picker-dropdown-with-new-org.png"
+
+# Click "New Organization" menu item at the bottom of the dropdown
+echo "==> Clicking New Organization menu item"
+$AB eval "
+  (function() {
+    const items = Array.from(document.querySelectorAll('[role=\"menuitem\"]'));
+    const item = items.find(mi => (mi.innerText || mi.textContent || '').trim().includes('New Organization'));
+    if (item) { item.click(); return 'clicked'; }
+    // Log all items for debugging
+    return 'not found. Items: ' + items.map(m => (m.innerText||m.textContent||'').trim().slice(0,30)).join(' | ');
+  })()
+"
+$AB wait 1500
+
+echo "==> Screenshot 2: CreateOrgDialog open with fields"
+$AB screenshot "$PR_SCREENSHOT_DIR/02-create-org-dialog-open.png"
+echo "Saved 02-create-org-dialog-open.png"
+
+# Fill in name and submit to create a fresh org
+echo "==> Filling org name: $ORG_NAME"
+$AB fill "input[placeholder='my-org']" "$ORG_NAME"
+$AB wait 500
+
+echo "==> Submitting create org form"
+$AB eval "
+  (function() {
+    const buttons = Array.from(document.querySelectorAll('[role=\"dialog\"] button'));
+    const btn = buttons.find(b => {
+      const t = (b.innerText || b.textContent || '').trim();
+      return t === 'Create' && !b.disabled;
+    });
+    if (btn) { btn.click(); return 'clicked Create'; }
+    return 'not found. Buttons: ' + buttons.map(b => (b.innerText||b.textContent||'').trim()).join(' | ');
+  })()
+"
+$AB wait --load networkidle
+$AB wait 3000
+
+# Select the newly created org in the picker
+echo "==> Selecting new org: $ORG_NAME"
+$AB eval "
+  (function() {
+    const picker = document.querySelector('[data-testid=\"org-picker\"]');
+    if (picker) { picker.click(); return 'opened picker'; }
+    // No picker? Might be showing empty state + new org button
+    return 'picker not found (may be empty state)';
+  })()
+"
+$AB wait 1000
+$AB eval "
+  (function() {
+    const items = Array.from(document.querySelectorAll('[role=\"menuitem\"]'));
+    const item = items.find(mi => (mi.innerText || mi.textContent || '').trim().includes('${ORG_NAME}'));
+    if (item) { item.click(); return 'selected: ${ORG_NAME}'; }
+    return 'not found. Items: ' + items.map(m => (m.innerText||m.textContent||'').trim().slice(0,30)).join(' | ');
+  })()
+"
+$AB wait --load networkidle
+$AB wait 2000
+
+# Screenshot 3: empty project state — "New Project" CTA visible
+echo "==> Screenshot 3: empty project state with New Project CTA"
+$AB screenshot "$PR_SCREENSHOT_DIR/03-empty-project-state-new-project-cta.png"
+echo "Saved 03-empty-project-state-new-project-cta.png"
+
+# Open the CreateProjectDialog by clicking the New Project button
+echo "==> Clicking New Project button"
+$AB eval "
+  (function() {
+    for (const b of document.querySelectorAll('button')) {
+      const t = (b.innerText || b.textContent || '').trim();
+      if (t.includes('New Project') && !b.disabled) { b.click(); return 'clicked: ' + t.slice(0,40); }
+    }
+    return 'not found';
+  })()
+"
+$AB wait 1500
+
+# Screenshot 4: CreateProjectDialog open
+echo "==> Screenshot 4: CreateProjectDialog open"
+$AB screenshot "$PR_SCREENSHOT_DIR/04-create-project-dialog-open.png"
+echo "Saved 04-create-project-dialog-open.png"
+
+# Fill project name and submit
+echo "==> Filling project name: $PROJECT_NAME"
+$AB fill "input[placeholder='my-project']" "$PROJECT_NAME"
+$AB wait 500
+
+echo "==> Submitting create project form"
+$AB eval "
+  (function() {
+    const buttons = Array.from(document.querySelectorAll('[role=\"dialog\"] button'));
+    const btn = buttons.find(b => {
+      const t = (b.innerText || b.textContent || '').trim();
+      return t === 'Create' && !b.disabled;
+    });
+    if (btn) { btn.click(); return 'clicked Create'; }
+    return 'not found or disabled. Buttons: ' + buttons.map(b => {
+      const t = (b.innerText||b.textContent||'').trim();
+      return t + (b.disabled ? ' (disabled)' : '');
+    }).join(' | ');
+  })()
+"
+$AB wait --load networkidle
+$AB wait 4000
+
+# Screenshot 5: secrets page after project creation
+echo "==> Screenshot 5: secrets page after project creation"
+$AB screenshot "$PR_SCREENSHOT_DIR/05-secrets-page-after-project-creation.png"
+echo "Saved 05-secrets-page-after-project-creation.png"
+
+echo "All screenshots saved to $PR_SCREENSHOT_DIR"
