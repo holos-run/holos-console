@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useAuth } from '@/lib/auth'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { OrgProvider } from '@/lib/org-context'
@@ -12,26 +12,15 @@ export const Route = createFileRoute('/_authenticated')({
 })
 
 export function AuthenticatedLayout() {
-  const { isAuthenticated, isLoading, refreshTokens, login } = useAuth()
-  const silentRenewAttempted = useRef(false)
-  const [silentRenewPending, setSilentRenewPending] = useState(false)
+  const { isAuthenticated, isLoading, login } = useAuth()
 
-  // Attempt silent token renewal once. If it succeeds, isAuthenticated flips
-  // to true and we re-render with the sidebar. If it fails, redirect the user
-  // through the OIDC auth flow so they land back at the same URL after login.
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && !silentRenewAttempted.current) {
-      silentRenewAttempted.current = true
-      setSilentRenewPending(true)
-      refreshTokens()
-        .catch(() => {
-          login(window.location.pathname + window.location.search).catch(() => {})
-        })
-        .finally(() => setSilentRenewPending(false))
+    if (!isLoading && !isAuthenticated) {
+      login(window.location.pathname + window.location.search).catch(() => {})
     }
-  }, [isLoading, isAuthenticated, refreshTokens, login])
+  }, [isLoading, isAuthenticated, login])
 
-  if (isLoading || silentRenewPending || !isAuthenticated) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
