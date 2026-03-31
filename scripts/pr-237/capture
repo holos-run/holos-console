@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #237 — display name first with auto-slug derivation.
+# Called by scripts/browser-capture-pr with HOLOS_BACKEND_URL and PR_SCREENSHOT_DIR set.
+set -euo pipefail
+
+AB="agent-browser"
+OUT="${PR_SCREENSHOT_DIR}"
+SCRIPTS="$(dirname "$(dirname "$(dirname "$0")")")/scripts"
+
+# Login
+"$SCRIPTS/browser-login"
+
+# Navigate to profile page and wait for the React app to render
+$AB open "${HOLOS_BACKEND_URL}/profile"
+sleep 2
+
+# Radix UI DropdownMenu responds to native pointer events — use CDP click, not eval.click()
+$AB click '[data-testid="org-picker"]'
+sleep 1
+
+# Click "New Organization" menu item via CDP click
+$AB eval "
+  const item = Array.from(document.querySelectorAll('[role=\"menuitem\"]'))
+    .find(el => /new organization/i.test(el.textContent));
+  item?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+  item?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  item?.click();
+"
+sleep 1
+
+# 1. Screenshot: dialog in initial state (Display Name first, Name empty)
+$AB screenshot "$OUT/01-create-org-dialog-initial.png"
+
+# 2. Type a display name and see the auto-derived slug
+$AB fill '#org-display-name' 'My Test Organization'
+sleep 0.5
+$AB screenshot "$OUT/02-create-org-dialog-with-slug.png"
+
+# 3. Override name manually to show reset affordance
+$AB fill '#org-name' 'custom-org-name'
+sleep 0.5
+$AB screenshot "$OUT/03-create-org-dialog-name-edited.png"
+
+# Close dialog
+$AB eval "
+  Array.from(document.querySelectorAll('button'))
+    .find(b => /cancel/i.test(b.textContent))
+    ?.click()
+"
+sleep 0.5
+
+echo "Screenshots saved to $OUT"
