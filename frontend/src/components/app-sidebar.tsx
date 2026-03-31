@@ -15,6 +15,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -45,12 +46,39 @@ export function AppSidebar() {
   const router = useRouter()
   const pathname = router.state.location.pathname
   const { selectedProject } = useProject()
-  const { selectedOrg } = useOrg()
+  const { selectedOrg, organizations } = useOrg()
 
-  const navItems: Array<{
+  const selectedOrgObj = organizations.find((o) => o.name === selectedOrg)
+  const orgDisplayName = selectedOrgObj
+    ? (selectedOrgObj.displayName || selectedOrgObj.name)
+    : selectedOrg ?? ''
+
+  const orgNavItems: Array<{
     label: string
     to: string
-    params?: Record<string, string>
+    params: Record<string, string>
+    icon: React.ComponentType<{ className?: string }>
+  }> = selectedOrg
+    ? [
+        {
+          label: 'Projects',
+          to: '/orgs/$orgName/projects' as const,
+          params: { orgName: selectedOrg },
+          icon: KeyRound,
+        },
+        {
+          label: 'Settings',
+          to: '/orgs/$orgName/settings/' as const,
+          params: { orgName: selectedOrg },
+          icon: Settings,
+        },
+      ]
+    : []
+
+  const projectNavItems: Array<{
+    label: string
+    to: string
+    params: Record<string, string>
     icon: React.ComponentType<{ className?: string }>
   }> = selectedProject
     ? [
@@ -67,22 +95,7 @@ export function AppSidebar() {
           icon: Settings,
         },
       ]
-    : selectedOrg
-      ? [
-          {
-            label: 'Projects',
-            to: '/orgs/$orgName/projects' as const,
-            params: { orgName: selectedOrg },
-            icon: KeyRound,
-          },
-          {
-            label: 'Settings',
-            to: '/orgs/$orgName/settings/' as const,
-            params: { orgName: selectedOrg },
-            icon: Settings,
-          },
-        ]
-      : []
+    : []
 
   return (
     <Sidebar>
@@ -101,32 +114,51 @@ export function AppSidebar() {
       <SidebarSeparator />
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                let activePath: string
-                if (item.params?.projectName) {
-                  activePath = `/projects/${item.params.projectName}`
-                } else if (item.params?.orgName) {
-                  activePath = (item.to as string).replace('$orgName', item.params.orgName).replace(/\/$/, '')
-                } else {
-                  activePath = item.to
-                }
-                return (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
-                      <Link to={item.to} params={item.params ?? {}}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {orgNavItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>{orgDisplayName}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {orgNavItems.map((item) => {
+                  const activePath = (item.to as string)
+                    .replace('$orgName', item.params.orgName)
+                    .replace(/\/$/, '')
+                  return (
+                    <SidebarMenuItem key={item.label}>
+                      <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
+                        <Link to={item.to} params={item.params}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {projectNavItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {projectNavItems.map((item) => {
+                  const activePath = `/projects/${item.params.projectName}`
+                  return (
+                    <SidebarMenuItem key={item.label}>
+                      <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
+                        <Link to={item.to} params={item.params}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
