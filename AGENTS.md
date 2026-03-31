@@ -206,9 +206,14 @@ See `docs/rpc-service-definitions.md` for detailed examples.
 
 ### Testing Patterns
 
+**Preference: unit tests first, E2E only for full-stack behaviours.**  
+Rendering, interaction, navigation logic, and ConnectRPC data shaping belong in unit tests with mocked query hooks. Reserve E2E for the OIDC login flow and real Kubernetes CRUD round-trips.
+
+See `docs/testing.md` for the complete decision rule, the ConnectRPC mock pattern with a worked example, file-naming conventions for route-directory test files, and a table of all existing test files.
+
 **Go tests**: Standard `*_test.go` files with table-driven tests. Uses `k8s.io/client-go/kubernetes/fake` for K8s operations. CLI integration tests use `testscript` in `console/testscript_test.go`.
 
-**UI unit tests**: Vitest + React Testing Library + jsdom. Mock ConnectRPC clients with `vi.mock()`, cast mock responses with `as unknown as ReturnType<...>`. Setup in `frontend/src/test/setup.ts`.
+**UI unit tests**: Vitest + React Testing Library + jsdom. Mock query hooks (`@/queries/*`) with `vi.mock()` and `vi.fn()`. Route-directory test files must be prefixed with `-` (e.g. `-about.test.tsx`) so TanStack Router's generator ignores them. Run with `make test-ui`.
 
 **E2E tests**: Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For tight iteration, start servers once and run targeted tests — see `docs/e2e-testing.md` for the full workflow including K8s-backed tests.
 
