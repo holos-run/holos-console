@@ -62,7 +62,7 @@ export function AppSidebar() {
         },
         {
           label: 'Settings',
-          to: '/projects/$projectName' as const,
+          to: '/projects/$projectName/settings/' as const,
           params: { projectName: selectedProject },
           icon: Settings,
         },
