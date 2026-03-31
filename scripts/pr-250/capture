@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #250: org settings page
+# Called by scripts/browser-capture-pr 250
+# Environment: HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR are set by the launcher
+
+set -euo pipefail
+
+# Navigate directly to the settings path - renders with loading/error state showing the page layout
+agent-browser open "$HOLOS_BACKEND_URL/orgs/demo-org/settings"
+agent-browser wait 2000
+agent-browser screenshot "$PR_SCREENSHOT_DIR/org-settings-page.png"
+
+echo "Screenshots saved to $PR_SCREENSHOT_DIR"
