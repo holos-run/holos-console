@@ -54,25 +54,12 @@ function setAuthState({
   })
 }
 
-describe('AuthenticatedLayout silent renewal', () => {
+describe('AuthenticatedLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('attempts silent renewal before redirecting when not authenticated', async () => {
-    mockRefreshTokens.mockResolvedValue(undefined)
-    setAuthState({ isAuthenticated: false, isLoading: false })
-
-    render(<AuthenticatedLayout />)
-
-    await waitFor(() => {
-      expect(mockRefreshTokens).toHaveBeenCalled()
-    })
-    expect(mockLogin).not.toHaveBeenCalled()
-  })
-
-  it('redirects through OIDC login when silent renewal fails', async () => {
-    mockRefreshTokens.mockRejectedValue(new Error('silent renew failed'))
+  it('calls login() immediately without refreshTokens() when not authenticated', async () => {
     mockLogin.mockResolvedValue(undefined)
     setAuthState({ isAuthenticated: false, isLoading: false })
 
@@ -81,6 +68,7 @@ describe('AuthenticatedLayout silent renewal', () => {
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalled()
     })
+    expect(mockRefreshTokens).not.toHaveBeenCalled()
   })
 
   it('does not attempt auth when still loading', async () => {
