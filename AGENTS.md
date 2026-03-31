@@ -23,6 +23,16 @@ Plans are recorded as GitHub issues. Implement each plan on a feature branch wit
 1. **Create a feature branch** from `main` for the plan.
 2. **Make regular commits** as you work. Each commit should be a logical unit of change.
 3. **Open a PR** when the work is complete. Include `Closes: #NN` (where NN is the issue number) in the PR description so the issue is automatically closed when the PR is merged.
+4. **Loop on PR checks**: after pushing, watch CI checks (`gh pr checks <N> --watch`) and fix any failures. Iterate until all checks pass.
+5. **Merge via merge commit** once all checks pass: `gh pr merge <N> --merge`. Do not squash or rebase — the project uses merge commits so that commit SHAs referenced in screenshot URLs remain reachable in `main` history.
+
+### Test Strategy
+
+**Prefer unit tests over E2E tests.** Rendering, interaction, navigation logic, and ConnectRPC data shaping all belong in unit tests using mocked query hooks. Reserve E2E tests for:
+- The OIDC login flow (requires a real Dex server)
+- Full-stack CRUD round-trips that verify server-side behavior (requires a real Kubernetes cluster)
+
+When a behavior can be verified with a unit test, write a unit test. Do not add an E2E test for the same behavior.
 
 ### Identifying Your Agent Slot
 
