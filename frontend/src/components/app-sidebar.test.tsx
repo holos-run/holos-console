@@ -8,7 +8,23 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    Link: ({
+      children,
+      to,
+      params,
+    }: {
+      children: React.ReactNode
+      to: string
+      params?: Record<string, string>
+    }) => {
+      let href = to as string
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          href = href.replace(`$${k}`, v)
+        })
+      }
+      return <a href={href}>{children}</a>
+    },
     useRouter: () => ({ state: { location: { pathname: '/' } } }),
     useNavigate: () => vi.fn(),
   }
@@ -20,9 +36,13 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarGroupContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="sidebar-group-label">{children}</div>
+  ),
   SidebarHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
-  SidebarMenuButton: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuButton: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <li>{children}</li>,
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarSeparator: () => <hr />,
 }))
@@ -139,6 +159,36 @@ describe('AppSidebar — org selected', () => {
     // With no projects, ProjectPicker shows the empty state with "New Project" button.
     expect(screen.getByRole('button', { name: /new project/i })).toBeDefined()
   })
+
+  it('renders org Settings link with correct href', () => {
+    render(<AppSidebar />)
+    const link = screen.getByRole('link', { name: /settings/i })
+    expect(link.getAttribute('href')).toBe('/orgs/my-org/settings/')
+  })
+
+  it('renders org Projects link with correct href', () => {
+    render(<AppSidebar />)
+    const link = screen.getByRole('link', { name: /projects/i })
+    expect(link.getAttribute('href')).toBe('/orgs/my-org/projects')
+  })
+
+  it('renders org display name as group label', () => {
+    render(<AppSidebar />)
+    const labels = screen.getAllByTestId('sidebar-group-label')
+    const labelTexts = labels.map((l) => l.textContent)
+    expect(labelTexts).toContain('My Org')
+  })
+
+  it('hides org nav group when selectedOrg is null', () => {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [],
+      selectedOrg: null,
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    render(<AppSidebar />)
+    expect(screen.queryByTestId('sidebar-group-label')).toBeNull()
+  })
 })
 
 describe('AppSidebar — OrgPicker empty state', () => {
@@ -209,5 +259,21 @@ describe('AppSidebar — project selected', () => {
   it('renders Settings nav link when a project is selected', () => {
     render(<AppSidebar />)
     expect(screen.getByText('Settings')).toBeInTheDocument()
+  })
+
+  it('project Settings link points to /projects/$projectName/settings', () => {
+    render(<AppSidebar />)
+    const links = screen.getAllByRole('link', { name: /settings/i })
+    const projectSettingsLink = links.find((l) =>
+      l.getAttribute('href')?.startsWith('/projects/'),
+    )
+    expect(projectSettingsLink?.getAttribute('href')).toBe('/projects/my-project/settings/')
+  })
+
+  it('org nav group is also visible when a project is selected', () => {
+    render(<AppSidebar />)
+    const labels = screen.getAllByTestId('sidebar-group-label')
+    const labelTexts = labels.map((l) => l.textContent)
+    expect(labelTexts).toContain('My Org')
   })
 })
