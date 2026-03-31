@@ -12,7 +12,7 @@ import { useListProjects } from '@/queries/projects'
 import type { Project } from '@/gen/holos/console/v1/projects_pb'
 import { useOrg } from '@/lib/org-context'
 
-const SESSION_STORAGE_KEY = 'holos-selected-project'
+const STORAGE_KEY = 'holos-selected-project'
 
 export interface ProjectContextValue {
   projects: Project[]
@@ -37,7 +37,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const projects = data?.projects ?? []
 
   const [selectedProject, setSelectedProjectState] = useState<string | null>(() => {
-    return sessionStorage.getItem(SESSION_STORAGE_KEY)
+    return localStorage.getItem(STORAGE_KEY)
   })
 
   // Clear selected project when org changes, but not on initial mount.
@@ -48,15 +48,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       return
     }
     setSelectedProjectState(null)
-    sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    localStorage.removeItem(STORAGE_KEY)
   }, [selectedOrg])
 
   const setSelectedProject = useCallback((name: string | null) => {
     setSelectedProjectState(name)
     if (name) {
-      sessionStorage.setItem(SESSION_STORAGE_KEY, name)
+      localStorage.setItem(STORAGE_KEY, name)
     } else {
-      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      localStorage.removeItem(STORAGE_KEY)
     }
   }, [])
 
