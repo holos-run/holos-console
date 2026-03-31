@@ -149,6 +149,15 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/-about.test.tsx` | About page: Server Version card, license card |
 | `src/routes/_authenticated/-profile.test.tsx` | Profile page: token claims, raw JSON view |
 | `src/routes/_authenticated/projects/$projectName/secrets/-index.test.tsx` | Secrets list page: table, sorting, error/loading |
+| `src/routes/_authenticated/projects/$projectName/secrets/-$name.test.tsx` | Secret detail page: display, edit, delete |
+| `src/routes/_authenticated/projects/$projectName/settings/-settings.test.tsx` | Project settings page: display name, description, sharing, delete |
+| `src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` | Org settings page: display name, description, sharing, delete |
+| `src/routes/_authenticated/projects/-$projectName.test.tsx` | ProjectLayout: sets selected project from URL param |
+| `src/routes/_authenticated/orgs/$orgName/projects/-index.test.tsx` | Org projects page: list, navigate to project |
 | `src/routes/-_authenticated.test.tsx` | Auth layout: silent renewal, OIDC redirect |
 | `src/lib/isOwner.test.ts` | RBAC owner check logic |
+| `src/lib/org-context.test.tsx` | Org context: persistence, reset, filtering |
+| `src/lib/project-context.test.tsx` | Project context: persistence, reset, filtering |
 | `src/lib/transport.test.ts` | Token storage and transport setup |
+| `src/queries/-organizations.test.ts` | useListOrganizations and useCreateOrganization hooks |
+| `src/queries/-projects.test.ts` | useListProjects and useCreateProject hooks |
