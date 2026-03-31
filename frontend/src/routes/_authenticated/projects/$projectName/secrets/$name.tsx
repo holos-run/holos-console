@@ -40,7 +40,7 @@ function serializeData(data: Record<string, Uint8Array>): string {
   return JSON.stringify(obj)
 }
 
-function SecretPage() {
+export function SecretPage() {
   const { projectName, name } = Route.useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
