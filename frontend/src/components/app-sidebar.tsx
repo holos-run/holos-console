@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
   Info,
   KeyRound,
+  Plus,
   Settings,
   User,
   ChevronsUpDown,
@@ -22,11 +24,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
+import { CreateOrgDialog } from '@/components/create-org-dialog'
+import { CreateProjectDialog } from '@/components/create-project-dialog'
 
 const bottomItems = [
   { label: 'About', to: '/about' as const, icon: Info },
@@ -117,8 +123,29 @@ export function AppSidebar() {
 
 function OrgPicker() {
   const { organizations, selectedOrg, setSelectedOrg, isLoading } = useOrg()
+  const [createOpen, setCreateOpen] = useState(false)
 
-  if (isLoading || organizations.length === 0) return null
+  if (isLoading) return null
+
+  if (organizations.length === 0) {
+    return (
+      <div className="px-2 py-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="h-4 w-4 mr-2" /> New Organization
+        </Button>
+        <CreateOrgDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(name) => setSelectedOrg(name)}
+        />
+      </div>
+    )
+  }
 
   const selectedOrgObj = organizations.find((o) => o.name === selectedOrg)
   const displayLabel = selectedOrgObj
@@ -146,8 +173,17 @@ function OrgPicker() {
               {org.displayName || org.name}
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> New Organization
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <CreateOrgDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(name) => setSelectedOrg(name)}
+      />
     </div>
   )
 }
@@ -156,10 +192,33 @@ function ProjectPicker() {
   const { selectedOrg } = useOrg()
   const { projects, selectedProject, setSelectedProject, isLoading } = useProject()
   const router = useRouter()
+  const [createOpen, setCreateOpen] = useState(false)
 
   // Only show when an org is selected
   if (!selectedOrg) return null
   if (isLoading) return null
+
+  if (projects.length === 0) {
+    return (
+      <div className="px-2 py-1">
+        <p className="px-1 pb-1 text-sm text-muted-foreground">No projects yet.</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="h-4 w-4 mr-2" /> New Project
+        </Button>
+        <CreateProjectDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          defaultOrganization={selectedOrg}
+          onCreated={(name) => setSelectedProject(name)}
+        />
+      </div>
+    )
+  }
 
   const selectedProjectObj = projects.find((p) => p.name === selectedProject)
   const displayLabel = selectedProjectObj
@@ -193,8 +252,18 @@ function ProjectPicker() {
               {project.displayName || project.name}
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> New Project
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <CreateProjectDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        defaultOrganization={selectedOrg}
+        onCreated={(name) => setSelectedProject(name)}
+      />
     </div>
   )
 }
