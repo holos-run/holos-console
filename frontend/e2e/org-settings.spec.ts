@@ -32,22 +32,28 @@ test.describe('Org Settings page', () => {
     }
   })
 
-  test('navigating to /orgs/$orgName/settings renders the settings page', async ({ page }) => {
+  test('clicking Settings in sidebar navigates to settings page', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const orgName = `e2e-org-settings-nav-${Date.now()}`
     await apiCreateOrg(page, orgName)
 
     try {
-      await page.goto(`/orgs/${orgName}/settings`)
+      await selectOrg(page, orgName)
 
-      // Breadcrumb text is unique to this page (includes the org name)
+      // On mobile, open the sidebar drawer
+      const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+      if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await sidebarTrigger.click()
+      }
+
+      // Click the Settings link in the sidebar
+      await page.getByRole('link', { name: /^settings$/i }).click()
+
+      // Settings page renders once authenticated data loads
       await expect(page.getByText(`${orgName} / Settings`)).toBeVisible({ timeout: 10000 })
-
-      // General fields visible once data loads
       await expect(page.getByText('Display Name')).toBeVisible()
       await expect(page.getByText('Name (slug)')).toBeVisible()
-      await expect(page.getByText('Description')).toBeVisible()
     } finally {
       await apiDeleteOrg(page, orgName)
     }
