@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useCreateOrganization } from '@/queries/organizations'
+import { toSlug } from '@/lib/slug'
 
 export interface CreateOrgDialogProps {
   open: boolean
@@ -20,12 +21,31 @@ export interface CreateOrgDialogProps {
 }
 
 export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDialogProps) {
-  const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [name, setName] = useState('')
+  const [nameEdited, setNameEdited] = useState(false)
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { mutateAsync, isPending } = useCreateOrganization()
+
+  const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setDisplayName(val)
+    if (!nameEdited) {
+      setName(toSlug(val))
+    }
+  }
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNameEdited(true)
+    setName(e.target.value)
+  }
+
+  const handleResetName = () => {
+    setNameEdited(false)
+    setName(toSlug(displayName))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +55,7 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
       setName('')
       setDisplayName('')
       setDescription('')
+      setNameEdited(false)
       onCreated?.(response.name)
       onOpenChange(false)
     } catch (err) {
@@ -56,25 +77,38 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
               </Alert>
             )}
             <div className="space-y-1">
-              <Label htmlFor="org-name">Name</Label>
-              <Input
-                id="org-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="my-org"
-                pattern="[a-z0-9-]+"
-                required
-              />
-              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>
-            </div>
-            <div className="space-y-1">
               <Label htmlFor="org-display-name">Display Name</Label>
               <Input
                 id="org-display-name"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onChange={handleDisplayNameChange}
                 placeholder="My Organization"
+                autoFocus
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="org-name">Name</Label>
+              <Input
+                id="org-name"
+                value={name}
+                onChange={handleNameChange}
+                placeholder="my-org"
+                pattern="[a-z0-9-]+"
+                required
+              />
+              {nameEdited ? (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline"
+                  onClick={handleResetName}
+                >
+                  Auto-derive from display name
+                </button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Auto-derived from display name. Lowercase letters, numbers, and hyphens only.
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="org-description">Description</Label>

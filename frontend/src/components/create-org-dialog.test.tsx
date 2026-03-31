@@ -64,7 +64,7 @@ describe('CreateOrgDialog', () => {
     })
   })
 
-  it('renders name, displayName, and description fields when open', () => {
+  it('renders displayName, name, and description fields when open', () => {
     render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
     expect(screen.getByPlaceholderText(/my-org/i)).toBeDefined()
     expect(screen.getByPlaceholderText(/my organization/i)).toBeDefined()
@@ -76,11 +76,44 @@ describe('CreateOrgDialog', () => {
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
+  it('auto-derives name from display name as user types', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Test Org' } })
+    expect((screen.getByPlaceholderText(/my-org/i) as HTMLInputElement).value).toBe('test-org')
+  })
+
+  it('stops auto-deriving name once user manually edits name field', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Test Org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'custom-slug' } })
+    // Further display name changes should not override the custom name
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Test Org Updated' } })
+    expect((screen.getByPlaceholderText(/my-org/i) as HTMLInputElement).value).toBe('custom-slug')
+  })
+
+  it('shows reset link when name has been manually edited', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Test Org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'custom-slug' } })
+    expect(screen.getByText(/auto-derive from display name/i)).toBeDefined()
+  })
+
+  it('re-enables auto-derivation when reset link is clicked', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Test Org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'custom-slug' } })
+    fireEvent.click(screen.getByText(/auto-derive from display name/i))
+    // After reset, name should be re-derived from current display name
+    expect((screen.getByPlaceholderText(/my-org/i) as HTMLInputElement).value).toBe('test-org')
+    // And further display name changes should update name again
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'New Org' } })
+    expect((screen.getByPlaceholderText(/my-org/i) as HTMLInputElement).value).toBe('new-org')
+  })
+
   it('calls mutateAsync with form values on submit', async () => {
     mockMutateAsync.mockResolvedValue({ name: 'new-org' })
     render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'new-org' } })
     fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'New Org' } })
     fireEvent.submit(screen.getByRole('form'))
 
@@ -95,7 +128,7 @@ describe('CreateOrgDialog', () => {
     mockMutateAsync.mockResolvedValue({ name: 'new-org' })
     render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'new-org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'New Org' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
@@ -107,7 +140,7 @@ describe('CreateOrgDialog', () => {
     mockMutateAsync.mockRejectedValue(new Error('name already taken'))
     render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'taken-org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Taken Org' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
@@ -120,7 +153,7 @@ describe('CreateOrgDialog', () => {
     mockMutateAsync.mockRejectedValue(new Error('server error'))
     render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/my-org/i), { target: { value: 'bad-org' } })
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'Bad Org' } })
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {

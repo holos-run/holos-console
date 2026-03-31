@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { useListOrganizations } from '@/queries/organizations'
 import { useCreateProject } from '@/queries/projects'
+import { toSlug } from '@/lib/slug'
 
 export interface CreateProjectDialogProps {
   open: boolean
@@ -35,8 +36,9 @@ export function CreateProjectDialog({
   defaultOrganization,
   onCreated,
 }: CreateProjectDialogProps) {
-  const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [name, setName] = useState('')
+  const [nameEdited, setNameEdited] = useState(false)
   const [description, setDescription] = useState('')
   const [organization, setOrganization] = useState(defaultOrganization ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +49,24 @@ export function CreateProjectDialog({
   const { mutateAsync, isPending } = useCreateProject()
   const navigate = useNavigate()
 
+  const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setDisplayName(val)
+    if (!nameEdited) {
+      setName(toSlug(val))
+    }
+  }
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNameEdited(true)
+    setName(e.target.value)
+  }
+
+  const handleResetName = () => {
+    setNameEdited(false)
+    setName(toSlug(displayName))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -55,6 +75,7 @@ export function CreateProjectDialog({
       setName('')
       setDisplayName('')
       setDescription('')
+      setNameEdited(false)
       onCreated?.(response.name)
       onOpenChange(false)
       navigate({
@@ -95,25 +116,37 @@ export function CreateProjectDialog({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="project-name">Name</Label>
-              <Input
-                id="project-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="my-project"
-                pattern="[a-z0-9-]+"
-                required
-              />
-              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>
-            </div>
-            <div className="space-y-1">
               <Label htmlFor="project-display-name">Display Name</Label>
               <Input
                 id="project-display-name"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onChange={handleDisplayNameChange}
                 placeholder="My Project"
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="project-name">Name</Label>
+              <Input
+                id="project-name"
+                value={name}
+                onChange={handleNameChange}
+                placeholder="my-project"
+                pattern="[a-z0-9-]+"
+                required
+              />
+              {nameEdited ? (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline"
+                  onClick={handleResetName}
+                >
+                  Auto-derive from display name
+                </button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Auto-derived from display name. Lowercase letters, numbers, and hyphens only.
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="project-description">Description</Label>
