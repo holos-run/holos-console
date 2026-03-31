@@ -1,14 +1,14 @@
 version: v2
 plugins:
-  # Go plugins
-  - remote: buf.build/protocolbuffers/go
+  # Go plugins — installed via make tools (tools.go)
+  - local: protoc-gen-go
     out: gen
     opt: paths=source_relative
-  - remote: buf.build/connectrpc/go
+  - local: protoc-gen-connect-go
     out: gen
     opt: paths=source_relative
-  # TypeScript plugins for frontend
-  - remote: buf.build/bufbuild/es
+  # TypeScript plugins — installed via npm install in frontend/
+  - local: ./frontend/node_modules/.bin/protoc-gen-es
     out: frontend/src/gen
-  - remote: buf.build/connectrpc/es
+  - local: ./frontend/node_modules/.bin/protoc-gen-connect-es
     out: frontend/src/gen
