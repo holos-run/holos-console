@@ -1,0 +1,188 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi } from 'vitest'
+import type { Mock } from 'vitest'
+import React from 'react'
+
+vi.mock('@/queries/organizations', () => ({
+  useListOrganizations: vi.fn(),
+  useCreateOrganization: vi.fn(),
+}))
+
+vi.mock('@/queries/projects', () => ({
+  useListProjects: vi.fn(),
+  useCreateProject: vi.fn(),
+}))
+
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+  }
+})
+
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
+vi.mock('@/components/ui/input', () => ({
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
+}))
+
+vi.mock('@/components/ui/label', () => ({
+  Label: ({ children, ...props }: React.LabelHTMLAttributes<HTMLLabelElement> & { children?: React.ReactNode }) => (
+    <label {...props}>{children}</label>
+  ),
+}))
+
+vi.mock('@/components/ui/textarea', () => ({
+  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
+}))
+
+vi.mock('@/components/ui/button', () => ({
+  Button: ({ children, onClick, type, disabled }: {
+    children: React.ReactNode
+    onClick?: () => void
+    type?: string
+    disabled?: boolean
+  }) => (
+    <button onClick={onClick} type={type as 'button' | 'submit' | 'reset'} disabled={disabled}>
+      {children}
+    </button>
+  ),
+}))
+
+vi.mock('@/components/ui/alert', () => ({
+  Alert: ({ children }: { children: React.ReactNode }) => <div role="alert">{children}</div>,
+  AlertDescription: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+}))
+
+vi.mock('@/components/ui/select', () => ({
+  Select: ({ children, onValueChange, defaultValue }: {
+    children: React.ReactNode
+    onValueChange?: (v: string) => void
+    defaultValue?: string
+  }) => (
+    <div data-testid="select" data-default={defaultValue}>
+      {React.Children.map(children, (child) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child as React.ReactElement<{ onValueChange?: (v: string) => void }>, { onValueChange })
+        }
+        return child
+      })}
+    </div>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
+  SelectContent: ({ children, onValueChange }: { children: React.ReactNode; onValueChange?: (v: string) => void }) => (
+    <div>
+      {React.Children.map(children, (child) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child as React.ReactElement<{ onValueChange?: (v: string) => void }>, { onValueChange })
+        }
+        return child
+      })}
+    </div>
+  ),
+  SelectItem: ({ children, value, onValueChange }: { children: React.ReactNode; value: string; onValueChange?: (v: string) => void }) => (
+    <button data-testid={`select-item-${value}`} onClick={() => onValueChange?.(value)}>
+      {children}
+    </button>
+  ),
+}))
+
+import { useListOrganizations } from '@/queries/organizations'
+import { useCreateProject } from '@/queries/projects'
+import { CreateProjectDialog } from './create-project-dialog'
+
+describe('CreateProjectDialog', () => {
+  const mockMutateAsync = vi.fn()
+  const onOpenChange = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(useListOrganizations as Mock).mockReturnValue({
+      data: { organizations: [{ name: 'my-org', displayName: 'My Org' }] },
+      isLoading: false,
+    })
+    ;(useCreateProject as Mock).mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    })
+  })
+
+  it('renders name, displayName, description, and org select when open', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+    expect(screen.getByPlaceholderText(/my-project/i)).toBeDefined()
+    expect(screen.getByPlaceholderText(/my project/i)).toBeDefined()
+    expect(screen.getByPlaceholderText(/optional description/i)).toBeDefined()
+    expect(screen.getByTestId('select')).toBeDefined()
+  })
+
+  it('does not render when closed', () => {
+    render(<CreateProjectDialog open={false} onOpenChange={onOpenChange} />)
+    expect(screen.queryByTestId('dialog')).toBeNull()
+  })
+
+  it('pre-selects defaultOrganization in the org select', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+    const select = screen.getByTestId('select')
+    expect(select.getAttribute('data-default')).toBe('my-org')
+  })
+
+  it('calls mutateAsync with correct organization field on submit', async () => {
+    mockMutateAsync.mockResolvedValue({ name: 'new-project' })
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'new-project' } })
+    fireEvent.submit(screen.getByRole('form'))
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'new-project', organization: 'my-org' })
+      )
+    })
+  })
+
+  it('closes dialog on successful create', async () => {
+    mockMutateAsync.mockResolvedValue({ name: 'new-project' })
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'new-project' } })
+    fireEvent.submit(screen.getByRole('form'))
+
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
+  })
+
+  it('renders error alert on server error', async () => {
+    mockMutateAsync.mockRejectedValue(new Error('project already exists'))
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'taken-project' } })
+    fireEvent.submit(screen.getByRole('form'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeDefined()
+      expect(screen.getByText(/project already exists/i)).toBeDefined()
+    })
+  })
+
+  it('does not close dialog on error', async () => {
+    mockMutateAsync.mockRejectedValue(new Error('server error'))
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my-project/i), { target: { value: 'bad-project' } })
+    fireEvent.submit(screen.getByRole('form'))
+
+    await waitFor(() => {
+      expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    })
+  })
+})

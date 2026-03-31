@@ -32,11 +32,26 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuSeparator: () => <hr />,
 }))
 
 vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({ useVersion: vi.fn() }))
+vi.mock('@/queries/organizations', () => ({
+  useListOrganizations: vi.fn().mockReturnValue({ data: { organizations: [] }, isLoading: false }),
+  useCreateOrganization: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/queries/projects', () => ({
+  useListProjects: vi.fn().mockReturnValue({ data: { projects: [] }, isLoading: false }),
+  useCreateProject: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/components/create-org-dialog', () => ({
+  CreateOrgDialog: () => <div data-testid="create-org-dialog" />,
+}))
+vi.mock('@/components/create-project-dialog', () => ({
+  CreateProjectDialog: () => <div data-testid="create-project-dialog" />,
+}))
 
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
@@ -119,12 +134,52 @@ describe('AppSidebar — org selected', () => {
     })
   })
 
-  it('renders project picker when an org is selected', () => {
+  it('renders project picker area when an org is selected', () => {
     render(<AppSidebar />)
-    // ProjectPicker shows when selectedOrg is set; the picker button label defaults to All Projects.
-    // Use getAllByText since the DropdownMenuContent mock also renders the menu item text.
-    const matches = screen.getAllByText('All Projects')
-    expect(matches.length).toBeGreaterThanOrEqual(1)
+    // With no projects, ProjectPicker shows the empty state with "New Project" button.
+    expect(screen.getByRole('button', { name: /new project/i })).toBeDefined()
+  })
+})
+
+describe('AppSidebar — OrgPicker empty state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    // organizations is empty and not loading
+  })
+
+  it('renders "New Organization" button when no orgs and not loading', () => {
+    render(<AppSidebar />)
+    expect(screen.getByRole('button', { name: /new organization/i })).toBeDefined()
+  })
+
+  it('does not render org picker dropdown when no orgs', () => {
+    render(<AppSidebar />)
+    expect(screen.queryByTestId('org-picker')).toBeNull()
+  })
+})
+
+describe('AppSidebar — ProjectPicker empty state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    // projects is empty and not loading
+  })
+
+  it('renders "New Project" button when org is selected but no projects', () => {
+    render(<AppSidebar />)
+    expect(screen.getByRole('button', { name: /new project/i })).toBeDefined()
+  })
+
+  it('does not render project picker dropdown when no projects', () => {
+    render(<AppSidebar />)
+    expect(screen.queryByTestId('project-picker')).toBeNull()
   })
 })
 
