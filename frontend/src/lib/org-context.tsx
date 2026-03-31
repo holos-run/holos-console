@@ -9,7 +9,7 @@ import {
 import { useListOrganizations } from '@/queries/organizations'
 import type { Organization } from '@/gen/holos/console/v1/organizations_pb'
 
-const SESSION_STORAGE_KEY = 'holos-selected-org'
+const STORAGE_KEY = 'holos-selected-org'
 
 export interface OrgContextValue {
   organizations: Organization[]
@@ -33,15 +33,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const organizations = data?.organizations ?? []
 
   const [selectedOrg, setSelectedOrgState] = useState<string | null>(() => {
-    return sessionStorage.getItem(SESSION_STORAGE_KEY)
+    return localStorage.getItem(STORAGE_KEY)
   })
 
   const setSelectedOrg = useCallback((name: string | null) => {
     setSelectedOrgState(name)
     if (name) {
-      sessionStorage.setItem(SESSION_STORAGE_KEY, name)
+      localStorage.setItem(STORAGE_KEY, name)
     } else {
-      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      localStorage.removeItem(STORAGE_KEY)
     }
   }, [])
 
