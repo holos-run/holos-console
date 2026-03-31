@@ -1,6 +1,6 @@
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
-// isOwner returns true if the user has the owner role on a secret.
+// isOwner returns true if the user has the owner role on a resource.
 // It checks both direct user grants (by email) and role grants (by group membership).
 export function isOwner(
   email: string | undefined,
