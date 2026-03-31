@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Capture a screenshot of an arbitrary URL on first load (no login).
+#
+# Clears sessionStorage before navigating to simulate an unauthenticated
+# first-load visit. Useful for documenting UI behavior before OIDC redirect.
+#
+# Usage: scripts/browser-capture-url <URL> [--out FILE] [--session-name NAME]
+#   URL              Full URL to navigate to (required)
+#   --out FILE       Output path for the screenshot (default: tmp/screenshots/capture-url.png)
+#   --session-name   Browser session name (default: holos-dev)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=browser-env
+source "$SCRIPT_DIR/browser-env"
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <URL> [--out FILE] [--session-name NAME]" >&2
+  exit 1
+fi
+
+URL="$1"
+shift
+
+OUT="tmp/screenshots/capture-url.png"
+SESSION_NAME="holos-dev"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --out)
+      OUT="$2"
+      shift 2
+      ;;
+    --session-name)
+      SESSION_NAME="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+AB="agent-browser --session-name $SESSION_NAME"
+
+mkdir -p "$(dirname "$OUT")"
+
+echo "Clearing session state..."
+$AB eval "sessionStorage.clear()" 2>/dev/null || true
+$AB eval "localStorage.clear()" 2>/dev/null || true
+
+echo "Navigating to $URL"
+$AB open "$URL"
+$AB wait --load networkidle
+$AB wait 2000
+
+$AB screenshot "$OUT"
+echo "Screenshot saved to $OUT"
