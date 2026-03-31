@@ -10,6 +10,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/dexidp/dex v0.0.0-20251209162832-8ab38ebb7920
 	github.com/fullstorydev/grpcurl v1.9.3
+	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/spf13/cobra v1.10.2
@@ -76,7 +77,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
 	github.com/go-chi/chi/v5 v5.2.3 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-ldap/ldap/v3 v3.4.12 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
