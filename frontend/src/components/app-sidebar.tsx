@@ -75,6 +75,12 @@ export function AppSidebar() {
             params: { orgName: selectedOrg },
             icon: KeyRound,
           },
+          {
+            label: 'Settings',
+            to: '/orgs/$orgName/settings/' as const,
+            params: { orgName: selectedOrg },
+            icon: Settings,
+          },
         ]
       : []
 
@@ -103,7 +109,7 @@ export function AppSidebar() {
                 if (item.params?.projectName) {
                   activePath = `/projects/${item.params.projectName}`
                 } else if (item.params?.orgName) {
-                  activePath = `/orgs/${item.params.orgName}/projects`
+                  activePath = (item.to as string).replace('$orgName', item.params.orgName).replace(/\/$/, '')
                 } else {
                   activePath = item.to
                 }
