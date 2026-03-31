@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type React from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
   Info,
@@ -44,8 +45,14 @@ export function AppSidebar() {
   const router = useRouter()
   const pathname = router.state.location.pathname
   const { selectedProject } = useProject()
+  const { selectedOrg } = useOrg()
 
-  const navItems = selectedProject
+  const navItems: Array<{
+    label: string
+    to: string
+    params?: Record<string, string>
+    icon: React.ComponentType<{ className?: string }>
+  }> = selectedProject
     ? [
         {
           label: 'Secrets',
@@ -60,7 +67,16 @@ export function AppSidebar() {
           icon: Settings,
         },
       ]
-    : []
+    : selectedOrg
+      ? [
+          {
+            label: 'Projects',
+            to: '/orgs/$orgName/projects' as const,
+            params: { orgName: selectedOrg },
+            icon: KeyRound,
+          },
+        ]
+      : []
 
   return (
     <Sidebar>
@@ -82,20 +98,26 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith(
-                    item.params
-                      ? `/projects/${item.params.projectName}`
-                      : item.to
-                  )}>
-                    <Link to={item.to} params={item.params ?? {}}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                let activePath: string
+                if (item.params?.projectName) {
+                  activePath = `/projects/${item.params.projectName}`
+                } else if (item.params?.orgName) {
+                  activePath = `/orgs/${item.params.orgName}/projects`
+                } else {
+                  activePath = item.to
+                }
+                return (
+                  <SidebarMenuItem key={item.label}>
+                    <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
+                      <Link to={item.to} params={item.params ?? {}}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -235,7 +257,15 @@ function ProjectPicker() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="start">
-          <DropdownMenuItem onClick={() => setSelectedProject(null)}>
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedProject(null)
+              router.navigate({
+                to: '/orgs/$orgName/projects',
+                params: { orgName: selectedOrg },
+              })
+            }}
+          >
             All Projects
           </DropdownMenuItem>
           {projects.map((project) => (
