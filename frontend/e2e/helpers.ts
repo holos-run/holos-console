@@ -50,7 +50,13 @@ export async function navigateToDexLogin(page: Page): Promise<boolean> {
 
 /**
  * Complete the full login flow via the profile page: navigate to /profile,
- * click Sign In, fill credentials, submit, and wait for redirect back.
+ * wait for the automatic OIDC redirect to Dex, fill credentials, and wait
+ * for redirect back.
+ *
+ * After PR #230 the auth layout no longer shows a Sign In button — unauthenticated
+ * users are automatically redirected through the OIDC flow. The auth layout
+ * shows a spinner, attempts a silent token refresh, then calls login() which
+ * triggers a full browser navigation to Dex.
  *
  * Handles two cases:
  * 1. Dex has no session: shows login form, fill credentials, submit
@@ -58,21 +64,17 @@ export async function navigateToDexLogin(page: Page): Promise<boolean> {
  */
 export async function loginViaProfilePage(page: Page): Promise<void> {
   await page.goto('/profile')
-  await page.getByRole('button', { name: 'Sign In' }).click()
+  // Wait for the OIDC redirect to Dex (or pkce/verify if Dex auto-completes).
+  // Do NOT match /profile here — we're already at /profile and waitForURL
+  // would resolve immediately without waiting for the Dex redirect.
+  await page.waitForURL(/\/dex\/|\/pkce\/verify/, { timeout: 15000 })
 
-  // Wait for either the Dex login page or a redirect back to profile
-  // (Dex may auto-complete if it has an existing server-side session)
-  await page.waitForURL(/\/dex\/|\/profile|\/pkce\/verify/, { timeout: 10000 })
-
-  // If we landed on Dex, complete the login form
+  // If we landed on the Dex login form, fill credentials and submit
   if (page.url().includes('/dex/')) {
     await navigatePastConnectorSelection(page)
 
-    const usernameInput = page.locator('input[name="login"]')
-    const passwordInput = page.locator('input[name="password"]')
-
-    await usernameInput.fill(DEFAULT_USERNAME)
-    await passwordInput.fill(DEFAULT_PASSWORD)
+    await page.locator('input[name="login"]').fill(DEFAULT_USERNAME)
+    await page.locator('input[name="password"]').fill(DEFAULT_PASSWORD)
     await page.locator('button[type="submit"]').click()
   }
 

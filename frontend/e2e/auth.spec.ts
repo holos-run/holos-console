@@ -20,14 +20,20 @@ import {
  */
 
 test.describe('Authentication', () => {
-  test('should redirect to profile page by default', async ({ page }) => {
+  test('should auto-login unauthenticated users via OIDC', async ({ page }) => {
     await page.goto('/')
 
-    // Root redirects to /profile (which requires auth, triggering OIDC login)
-    await expect(page).toHaveURL(/\/profile/)
+    // Root → /profile → OIDC auto-redirect (PR #230 removed the Sign In button).
+    // With --enable-insecure-dex the Dex auto-connector completes auth without a
+    // login form, so the full redirect chain (/ → /dex/auth → /pkce/verify → /profile)
+    // resolves faster than Playwright can poll for /dex/. Verify the end state instead:
+    // the user is authenticated and the profile page content is visible.
+    await expect(page).toHaveURL(/\/profile/, { timeout: 15000 })
+    await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 10000 })
   })
 
-  test('should have about page accessible', async ({ page }) => {
+  test('should have about page accessible after login', async ({ page }) => {
+    await loginViaProfilePage(page)
     await page.goto('/about')
 
     // The about page should load and show version info from the backend
@@ -124,13 +130,16 @@ test.describe('Login Flow', () => {
 })
 
 test.describe('Profile Page', () => {
-  test('should show profile page with sign in button when not authenticated', async ({
+  test('should auto-login unauthenticated users navigating to profile', async ({
     page,
   }) => {
+    // After PR #230, unauthenticated users navigating to /profile are
+    // automatically redirected through OIDC — no Sign In button is shown.
+    // With --enable-insecure-dex the Dex auto-connector completes auth without
+    // a form, so verify the end state: user lands back at /profile authenticated.
     await page.goto('/profile')
-
-    // Verify Sign In button is visible
-    await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible()
+    await expect(page).toHaveURL(/\/profile/, { timeout: 15000 })
+    await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 10000 })
   })
 
   test('should navigate to profile page from sidebar', async ({ page }) => {

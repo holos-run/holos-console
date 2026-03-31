@@ -1,0 +1,155 @@
+import { render, screen, fireEvent } from '@testing-library/react'
+import { vi } from 'vitest'
+import type { Mock } from 'vitest'
+import React from 'react'
+
+// Mock router — Route.useParams() must return a stable projectName for the component
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    createFileRoute: () => () => ({ useParams: () => ({ projectName: 'test-project' }) }),
+    Link: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+      <a href="#" className={className}>{children}</a>
+    ),
+    useNavigate: () => vi.fn(),
+  }
+})
+
+vi.mock('@/queries/secrets', () => ({
+  useListSecrets: vi.fn(),
+  useCreateSecret: vi.fn(),
+  useDeleteSecret: vi.fn(),
+}))
+
+vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
+
+import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
+import { useAuth } from '@/lib/auth'
+import { SecretsListPage } from './index'
+
+function makeSecret(name: string, description = '') {
+  return {
+    name,
+    description,
+    accessible: true,
+    userGrants: [{ principal: 'test@example.com', role: 3 }],
+    roleGrants: [],
+    url: '',
+  }
+}
+
+function setupMocks(secrets = [makeSecret('test-secret')]) {
+  ;(useListSecrets as Mock).mockReturnValue({ data: secrets, isLoading: false, error: null })
+  ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
+  ;(useDeleteSecret as Mock).mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    reset: vi.fn(),
+    error: null,
+  })
+  ;(useAuth as Mock).mockReturnValue({
+    isAuthenticated: true,
+    isLoading: false,
+    user: { profile: { email: 'test@example.com' } },
+  })
+}
+
+describe('SecretsListPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders table with Name and Description column headers', () => {
+    setupMocks()
+    render(<SecretsListPage />)
+    expect(screen.getByRole('columnheader', { name: /name/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /description/i })).toBeInTheDocument()
+  })
+
+  it('renders secret name as a link', () => {
+    setupMocks([makeSecret('my-secret')])
+    render(<SecretsListPage />)
+    expect(screen.getByText('my-secret')).toBeInTheDocument()
+  })
+
+  it('renders multiple secrets as links', () => {
+    setupMocks([makeSecret('alpha-secret'), makeSecret('zebra-secret')])
+    render(<SecretsListPage />)
+    expect(screen.getByText('alpha-secret')).toBeInTheDocument()
+    expect(screen.getByText('zebra-secret')).toBeInTheDocument()
+  })
+
+  it('renders description text in the row', () => {
+    setupMocks([makeSecret('my-secret', 'A useful description')])
+    render(<SecretsListPage />)
+    expect(screen.getByText('A useful description')).toBeInTheDocument()
+  })
+
+  it('shows empty state when no secrets exist', () => {
+    setupMocks([])
+    render(<SecretsListPage />)
+    expect(screen.getByText(/no secrets/i)).toBeInTheDocument()
+  })
+
+  it('renders loading skeleton when auth is loading', () => {
+    ;(useListSecrets as Mock).mockReturnValue({ data: [], isLoading: false, error: null })
+    ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
+    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn(), error: null })
+    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: false, isLoading: true, user: null })
+    render(<SecretsListPage />)
+    // Loading state renders skeleton, no table
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('renders error state when secrets fetch fails', () => {
+    ;(useListSecrets as Mock).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('failed to fetch secrets'),
+    })
+    ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
+    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn(), error: null })
+    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
+    render(<SecretsListPage />)
+    expect(screen.getByText(/failed to fetch secrets/)).toBeInTheDocument()
+  })
+
+  it('renders Create Secret button', () => {
+    setupMocks()
+    render(<SecretsListPage />)
+    expect(screen.getByRole('button', { name: /create secret/i })).toBeInTheDocument()
+  })
+
+  it('renders sharing summary badge for secrets with grants', () => {
+    setupMocks([{ ...makeSecret('my-secret'), userGrants: [{ principal: 'a@b.com', role: 3 }], roleGrants: [] }])
+    render(<SecretsListPage />)
+    expect(screen.getByText('1 user')).toBeInTheDocument()
+  })
+
+  it('Name column header is sortable — click toggles sort direction', () => {
+    setupMocks([makeSecret('zebra-secret'), makeSecret('alpha-secret')])
+    render(<SecretsListPage />)
+
+    const rows = screen.getAllByRole('row')
+    // rows[0] is the header row, rows[1] and rows[2] are data rows
+    // Default sort: ascending (alpha first)
+    expect(rows[1]).toHaveTextContent('alpha-secret')
+    expect(rows[2]).toHaveTextContent('zebra-secret')
+
+    // Click Name sort button → descending (zebra first)
+    const sortBtn = screen.getByRole('button', { name: /name/i })
+    fireEvent.click(sortBtn)
+    const rowsAfter = screen.getAllByRole('row')
+    expect(rowsAfter[1]).toHaveTextContent('zebra-secret')
+    expect(rowsAfter[2]).toHaveTextContent('alpha-secret')
+
+    // Click again → back to ascending
+    fireEvent.click(sortBtn)
+    const rowsFinal = screen.getAllByRole('row')
+    expect(rowsFinal[1]).toHaveTextContent('alpha-secret')
+    expect(rowsFinal[2]).toHaveTextContent('zebra-secret')
+  })
+})

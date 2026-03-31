@@ -57,7 +57,7 @@ function sharingSummary(userCount: number, roleCount: number): string | undefine
 
 const columnHelper = createColumnHelper<SecretMetadata>()
 
-function SecretsListPage() {
+export function SecretsListPage() {
   const { projectName } = Route.useParams()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 

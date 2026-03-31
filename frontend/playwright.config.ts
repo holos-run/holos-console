@@ -18,6 +18,9 @@ const vitePort = process.env.HOLOS_VITE_PORT || '5173'
 
 export default defineConfig({
   testDir: './e2e',
+  // Global per-test timeout. Prevents any single test from hanging indefinitely.
+  // Individual tests that need more time can override with test.setTimeout().
+  timeout: 60_000,
   // Run tests serially — they share Dex OIDC state and K8s resources
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

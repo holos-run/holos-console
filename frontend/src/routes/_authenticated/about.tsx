@@ -10,7 +10,7 @@ function formatValue(value: string) {
   return value && value.length > 0 ? value : 'unknown'
 }
 
-function AboutPage() {
+export function AboutPage() {
   const { data, isLoading, error } = useVersion()
 
   return (
