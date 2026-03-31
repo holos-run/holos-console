@@ -21,41 +21,11 @@ import {
  *   Password: verysecret (HOLOS_DEX_INITIAL_ADMIN_PASSWORD)
  */
 
-// Default credentials for embedded Dex OIDC provider
-const DEFAULT_USERNAME = 'admin'
-const DEFAULT_PASSWORD = 'verysecret'
-
 // Helper function to log in via Dex.
-// Handles both cases: Dex showing login form or auto-completing with existing session.
+// After PR #230 the auth layout auto-redirects unauthenticated users to Dex
+// OIDC — there is no Sign In button. Wait for the automatic redirect instead.
 async function loginAndNavigate(page: import('@playwright/test').Page, path: string) {
-  await page.goto('/profile')
-
-  const signInButton = page.getByRole('button', { name: 'Sign In' })
-  await signInButton.click()
-
-  // Wait for either the Dex login page or a redirect back
-  await page.waitForURL(/\/dex\/|\/profile|\/pkce\/verify/, { timeout: 10000 })
-
-  // If we landed on Dex, complete the login form
-  if (page.url().includes('/dex/')) {
-    // Navigate past connector selection if present
-    const connectorLink = page.locator('a[href*="connector"]').first()
-    if ((await connectorLink.count()) > 0) {
-      await connectorLink.click()
-      await page.waitForLoadState('networkidle')
-    }
-
-    const usernameInput = page.locator('input[name="login"]')
-    const passwordInput = page.locator('input[name="password"]')
-
-    await expect(usernameInput).toBeVisible({ timeout: 5000 })
-    await usernameInput.fill(DEFAULT_USERNAME)
-    await passwordInput.fill(DEFAULT_PASSWORD)
-
-    await page.locator('button[type="submit"]').click()
-  }
-
-  await page.waitForURL(/\/profile/, { timeout: 15000 })
+  await loginViaProfilePage(page)
   if (path !== '/profile') {
     await page.goto(path)
   }

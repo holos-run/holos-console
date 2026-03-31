@@ -20,14 +20,16 @@ import {
  */
 
 test.describe('Authentication', () => {
-  test('should redirect to profile page by default', async ({ page }) => {
+  test('should redirect unauthenticated users through OIDC', async ({ page }) => {
     await page.goto('/')
 
-    // Root redirects to /profile (which requires auth, triggering OIDC login)
-    await expect(page).toHaveURL(/\/profile/)
+    // Root redirects to /profile; auth layout then triggers OIDC auto-redirect
+    // to Dex (PR #230 removed the Sign In button in favour of automatic redirect)
+    await expect(page).toHaveURL(/\/dex\//, { timeout: 15000 })
   })
 
-  test('should have about page accessible', async ({ page }) => {
+  test('should have about page accessible after login', async ({ page }) => {
+    await loginViaProfilePage(page)
     await page.goto('/about')
 
     // The about page should load and show version info from the backend
@@ -124,13 +126,13 @@ test.describe('Login Flow', () => {
 })
 
 test.describe('Profile Page', () => {
-  test('should show profile page with sign in button when not authenticated', async ({
+  test('should redirect to Dex OIDC when not authenticated', async ({
     page,
   }) => {
+    // After PR #230, unauthenticated users navigating to /profile are
+    // automatically redirected through OIDC — no Sign In button is shown.
     await page.goto('/profile')
-
-    // Verify Sign In button is visible
-    await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible()
+    await expect(page).toHaveURL(/\/dex\//, { timeout: 15000 })
   })
 
   test('should navigate to profile page from sidebar', async ({ page }) => {
