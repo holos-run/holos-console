@@ -76,11 +76,15 @@ test.describe('Create Project dialog', () => {
     await apiDeleteOrg(page, orgName)
   })
 
-  test('create project dialog opens, submits, and navigates to secrets page', async ({ page }) => {
+  test('create project dialog opens, submits via display name auto-slug, and navigates to secrets page', async ({
+    page,
+  }) => {
     await loginViaProfilePage(page)
 
     const orgName = `e2e-create-prj-org-${Date.now()}`
-    const projectName = `e2e-create-prj-${Date.now()}`
+    const displayName = `E2E Create Project ${Date.now()}`
+    // toSlug equivalent: lower, replace non-alnum runs with hyphen, strip leading/trailing hyphens
+    const expectedSlug = displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
     await apiCreateOrg(page, orgName)
     await selectOrg(page, orgName)
@@ -93,17 +97,61 @@ test.describe('Create Project dialog', () => {
     // Click New Project to open the dialog
     await page.getByRole('button', { name: /new project/i }).click()
 
-    // Fill in the form (org should be pre-selected)
-    await page.getByPlaceholder('my-project').fill(projectName)
+    // Type a Display Name and verify the Name field auto-derives the slug
+    await page.getByPlaceholder('My Project').fill(displayName)
+    await expect(page.getByPlaceholder('my-project')).toHaveValue(expectedSlug)
+
     await page.getByRole('button', { name: /^create$/i }).click()
 
     // After creation should navigate to the new project's secrets page
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets`), {
+    await expect(page).toHaveURL(new RegExp(`/projects/${expectedSlug}/secrets`), {
       timeout: 15000,
     })
 
     // Cleanup
-    await apiDeleteProject(page, projectName)
+    await apiDeleteProject(page, expectedSlug)
+    await apiDeleteOrg(page, orgName)
+  })
+
+  test('create project dialog: manually overriding name stops auto-derivation and shows reset affordance', async ({
+    page,
+  }) => {
+    await loginViaProfilePage(page)
+
+    const orgName = `e2e-slug-override-org-${Date.now()}`
+    const projectName = `e2e-slug-override-${Date.now()}`
+
+    await apiCreateOrg(page, orgName)
+    await selectOrg(page, orgName)
+
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+    }
+
+    await page.getByRole('button', { name: /new project/i }).click()
+
+    // Type a Display Name to start auto-derivation
+    await page.getByPlaceholder('My Project').fill('Test Project')
+    await expect(page.getByPlaceholder('my-project')).toHaveValue('test-project')
+
+    // Override the Name field directly — auto-derivation should stop
+    await page.getByPlaceholder('my-project').fill(projectName)
+
+    // Reset affordance should appear
+    await expect(page.getByText(/auto-derive from display name/i)).toBeVisible()
+
+    // Further display name changes should NOT update the name field
+    await page.getByPlaceholder('My Project').fill('Different Display Name')
+    await expect(page.getByPlaceholder('my-project')).toHaveValue(projectName)
+
+    // Click reset — name should re-derive from current display name
+    await page.getByText(/auto-derive from display name/i).click()
+    await expect(page.getByPlaceholder('my-project')).toHaveValue('different-display-name')
+    await expect(page.getByText(/auto-derive from display name/i)).not.toBeVisible()
+
+    // Cleanup (close dialog without submitting)
+    await page.getByRole('button', { name: /cancel/i }).click()
     await apiDeleteOrg(page, orgName)
   })
 

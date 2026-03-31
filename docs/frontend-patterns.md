@@ -54,6 +54,58 @@ toast.error('Something went wrong')
 
 Do not import from `@/components/ui/sonner` — that file exports the `Toaster` component only (used once in the root layout). The `toast` function always comes from `'sonner'` directly.
 
+## Resource Display Name and Name Fields
+
+When a resource has both a human-readable **Display Name** and a machine-safe **Name** (slug):
+
+- **Display Name comes first** in every create/edit form. It is what users think of first.
+- **Name is auto-derived** from Display Name using `toSlug()` (`frontend/src/lib/slug.ts`) as the user types.
+- **Name is overridable** — once the user edits it directly, auto-derivation stops. Show a reset affordance (`"Auto-derive from display name"`) that re-enables derivation.
+- **Name validation** uses the pattern `[a-z0-9-]+`. Display Name has no constraints.
+- This pattern applies to all future resource creation dialogs (organizations, projects, secrets, etc.).
+
+### Slug algorithm
+
+```ts
+import { toSlug } from '@/lib/slug'
+
+// "Test Project" → "test-project"
+// "  Hello World  " → "hello-world"
+// "My Org 2" → "my-org-2"
+toSlug(displayName)
+```
+
+### State shape
+
+```ts
+const [displayName, setDisplayName] = useState('')
+const [name, setName] = useState('')
+const [nameEdited, setNameEdited] = useState(false)
+
+const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const val = e.target.value
+  setDisplayName(val)
+  if (!nameEdited) setName(toSlug(val))
+}
+
+const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  setNameEdited(true)
+  setName(e.target.value)
+}
+
+const handleResetName = () => {
+  setNameEdited(false)
+  setName(toSlug(displayName))
+}
+```
+
+Reset state (`nameEdited = false`, clear fields) on successful submit so re-opening the dialog starts fresh.
+
+### Helper text
+
+- Default: `"Auto-derived from display name. Lowercase letters, numbers, and hyphens only."`
+- When edited: render a `<button type="button">` with text `"Auto-derive from display name"` that calls `handleResetName`.
+
 ## Browser Automation (agent-browser)
 
 **Use `eval`-based clicking for React buttons**, not `agent-browser click`.
