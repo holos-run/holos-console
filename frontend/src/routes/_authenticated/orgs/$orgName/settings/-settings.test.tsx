@@ -18,6 +18,7 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
   useUpdateOrganization: vi.fn(),
   useUpdateOrganizationSharing: vi.fn(),
+  useUpdateOrganizationDefaultSharing: vi.fn(),
   useDeleteOrganization: vi.fn(),
 }))
 
@@ -28,6 +29,7 @@ import {
   useGetOrganization,
   useUpdateOrganization,
   useUpdateOrganizationSharing,
+  useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from '@/queries/organizations'
 import { useAuth } from '@/lib/auth'
@@ -39,6 +41,8 @@ const mockOrg = {
   description: 'A test organization',
   userGrants: [{ principal: 'alice@example.com', role: 3 }],
   roleGrants: [],
+  defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
+  defaultRoleGrants: [{ principal: 'engineering', role: 2 }],
   userRole: 3, // OWNER
 }
 
@@ -55,6 +59,10 @@ function setupMocks(overrides: Partial<typeof mockOrg> = {}) {
     isPending: false,
   })
   ;(useUpdateOrganizationSharing as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
+  ;(useUpdateOrganizationDefaultSharing as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
@@ -92,6 +100,7 @@ describe('OrgSettingsPage', () => {
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
     ;(useUpdateOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useUpdateOrganizationDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
@@ -104,6 +113,7 @@ describe('OrgSettingsPage', () => {
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('Not found') })
     ;(useUpdateOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useUpdateOrganizationDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
@@ -199,10 +209,43 @@ describe('OrgSettingsPage', () => {
     it('saving sharing calls useUpdateOrganizationSharing', async () => {
       setupMocks()
       render(<OrgSettingsPage />)
+      // The first "Edit" button in the sharing panels belongs to the Sharing section
       const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
-      fireEvent.click(editButtons[editButtons.length - 1])
+      fireEvent.click(editButtons[0])
       fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
       const mutateAsync = (useUpdateOrganizationSharing as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'test-org' }),
+        )
+      })
+    })
+  })
+
+  describe('Default Sharing section', () => {
+    it('renders Default Sharing panel with default grants', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('Default Sharing')).toBeInTheDocument()
+      expect(screen.getByText('bob@example.com')).toBeInTheDocument()
+      expect(screen.getByText('engineering')).toBeInTheDocument()
+    })
+
+    it('renders Default Sharing panel with empty grants', () => {
+      setupMocks({ defaultUserGrants: [], defaultRoleGrants: [] })
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('Default Sharing')).toBeInTheDocument()
+    })
+
+    it('saving default sharing calls useUpdateOrganizationDefaultSharing', async () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      // Find the edit buttons — the Default Sharing panel's edit button
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      // The last edit button belongs to the Default Sharing panel
+      fireEvent.click(editButtons[editButtons.length - 1])
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateOrganizationDefaultSharing as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({ name: 'test-org' }),
