@@ -2983,3 +2983,258 @@ func TestGetSecret_NoGrantsDeniesAccess(t *testing.T) {
 		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
 	}
 }
+
+// mockDefaultShareResolver implements DefaultShareResolver for testing.
+type mockDefaultShareResolver struct {
+	defaultUsers []AnnotationGrant
+	defaultRoles []AnnotationGrant
+	err          error
+}
+
+func (m *mockDefaultShareResolver) GetDefaultGrants(_ context.Context, _ string) ([]AnnotationGrant, []AnnotationGrant, error) {
+	return m.defaultUsers, m.defaultRoles, m.err
+}
+
+// mockCombinedResolver implements both ProjectResolver and DefaultShareResolver.
+type mockCombinedResolver struct {
+	defaultUsers []AnnotationGrant
+	defaultRoles []AnnotationGrant
+}
+
+func (m *mockCombinedResolver) GetProjectGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return nil, nil, nil
+}
+
+func (m *mockCombinedResolver) GetDefaultGrants(_ context.Context, _ string) ([]AnnotationGrant, []AnnotationGrant, error) {
+	return m.defaultUsers, m.defaultRoles, nil
+}
+
+func TestCreateSecret_MergesDefaultGrants(t *testing.T) {
+	// Default grants on the project: alice gets viewer
+	resolver := &mockCombinedResolver{
+		defaultUsers: []AnnotationGrant{{Principal: "alice@example.com", Role: "viewer"}},
+	}
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	handler := NewProjectScopedHandler(k8sClient, resolver)
+
+	claims := &rpc.Claims{
+		Sub:   "user-123",
+		Email: "creator@example.com",
+		Roles: []string{"editor"},
+	}
+	ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+	req := connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		Data:    map[string][]byte{"key": []byte("value")},
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "creator@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	})
+
+	_, err := handler.CreateSecret(ctx, req)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the created secret has default grants merged in
+	secret, err := fakeClient.CoreV1().Secrets("prj-test-namespace").Get(context.Background(), "new-secret", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected secret to exist, got %v", err)
+	}
+	users, err := GetShareUsers(secret)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+	principals := make(map[string]string)
+	for _, u := range users {
+		principals[u.Principal] = u.Role
+	}
+	if _, ok := principals["alice@example.com"]; !ok {
+		t.Errorf("expected alice@example.com in share-users from defaults, got %v", principals)
+	}
+}
+
+func TestCreateSecret_RequestGrantOverridesDefaultForSamePrincipal(t *testing.T) {
+	// Default gives bob viewer, request gives bob editor — editor should win.
+	// Creator is a different user (alice) so bob is not elevated to owner.
+	resolver := &mockCombinedResolver{
+		defaultUsers: []AnnotationGrant{{Principal: "bob@example.com", Role: "viewer"}},
+	}
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	handler := NewProjectScopedHandler(k8sClient, resolver)
+
+	claims := &rpc.Claims{
+		Sub:   "user-alice",
+		Email: "alice@example.com",
+		Roles: []string{"editor"},
+	}
+	ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+	req := connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		Data:    map[string][]byte{"key": []byte("value")},
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_EDITOR},
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	})
+
+	_, err := handler.CreateSecret(ctx, req)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	secret, err := fakeClient.CoreV1().Secrets("prj-test-namespace").Get(context.Background(), "new-secret", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected secret to exist, got %v", err)
+	}
+	users, err := GetShareUsers(secret)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+	for _, u := range users {
+		if u.Principal == "bob@example.com" {
+			if u.Role != "editor" {
+				t.Errorf("expected bob to have editor role (request overrides default viewer), got %q", u.Role)
+			}
+			return
+		}
+	}
+	t.Errorf("expected bob@example.com in share-users, got %v", users)
+}
+
+func TestCreateSecret_EmptyDefaultsNoChange(t *testing.T) {
+	// Empty defaults — behavior unchanged from before
+	resolver := &mockCombinedResolver{
+		defaultUsers: nil,
+		defaultRoles: nil,
+	}
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	handler := NewProjectScopedHandler(k8sClient, resolver)
+
+	claims := &rpc.Claims{
+		Sub:   "user-123",
+		Email: "creator@example.com",
+		Roles: []string{"editor"},
+	}
+	ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+	req := connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		Data:    map[string][]byte{"key": []byte("value")},
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "creator@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	})
+
+	resp, err := handler.CreateSecret(ctx, req)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-secret" {
+		t.Errorf("expected name 'new-secret', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateSecret_CreatorAlwaysOwner(t *testing.T) {
+	// Creator should always be added as owner after merging grants
+	resolver := &mockCombinedResolver{
+		defaultUsers: []AnnotationGrant{{Principal: "alice@example.com", Role: "viewer"}},
+	}
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	handler := NewProjectScopedHandler(k8sClient, resolver)
+
+	claims := &rpc.Claims{
+		Sub:   "user-123",
+		Email: "creator@example.com",
+		Roles: []string{"editor"},
+	}
+	ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+	// Creator included as editor in request grants
+	req := connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		Data:    map[string][]byte{"key": []byte("value")},
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "creator@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	})
+
+	_, err := handler.CreateSecret(ctx, req)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	secret, err := fakeClient.CoreV1().Secrets("prj-test-namespace").Get(context.Background(), "new-secret", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected secret to exist, got %v", err)
+	}
+	users, err := GetShareUsers(secret)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+	for _, u := range users {
+		if u.Principal == "creator@example.com" {
+			if u.Role != "owner" {
+				t.Errorf("expected creator to have owner role, got %q", u.Role)
+			}
+			return
+		}
+	}
+	t.Errorf("expected creator@example.com in share-users as owner, got %v", users)
+}
+
+func TestCreateSecret_DefaultRoleGrantsMerged(t *testing.T) {
+	// Default role grants should be included in created secret
+	resolver := &mockCombinedResolver{
+		defaultRoles: []AnnotationGrant{{Principal: "engineering", Role: "viewer"}},
+	}
+	fakeClient := fake.NewClientset(testProjectNS())
+	k8sClient := NewK8sClient(fakeClient, testResolver())
+	handler := NewProjectScopedHandler(k8sClient, resolver)
+
+	claims := &rpc.Claims{
+		Sub:   "user-123",
+		Email: "creator@example.com",
+		Roles: []string{"editor"},
+	}
+	ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+	req := connect.NewRequest(&consolev1.CreateSecretRequest{
+		Name:    "new-secret",
+		Project: "test-namespace",
+		Data:    map[string][]byte{"key": []byte("value")},
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "creator@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	})
+
+	_, err := handler.CreateSecret(ctx, req)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	secret, err := fakeClient.CoreV1().Secrets("prj-test-namespace").Get(context.Background(), "new-secret", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected secret to exist, got %v", err)
+	}
+	roles, err := GetShareRoles(secret)
+	if err != nil {
+		t.Fatalf("failed to parse share-roles: %v", err)
+	}
+	for _, r := range roles {
+		if r.Principal == "engineering" {
+			return // found
+		}
+	}
+	t.Errorf("expected engineering in share-roles from defaults, got %v", roles)
+}
