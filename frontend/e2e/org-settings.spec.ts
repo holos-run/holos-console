@@ -26,7 +26,7 @@ test.describe('Org Settings page', () => {
         await sidebarTrigger.click()
       }
 
-      await expect(page.getByRole('link', { name: /^settings$/i })).toBeVisible({ timeout: 5000 })
+      await expect(page.getByRole('link', { name: /^org settings$/i })).toBeVisible({ timeout: 5000 })
     } finally {
       await apiDeleteOrg(page, orgName)
     }
@@ -47,8 +47,8 @@ test.describe('Org Settings page', () => {
         await sidebarTrigger.click()
       }
 
-      // Click the Settings link in the sidebar
-      await page.getByRole('link', { name: /^settings$/i }).click()
+      // Click the Org Settings link in the sidebar
+      await page.getByRole('link', { name: /^org settings$/i }).click()
 
       // Settings page renders once authenticated data loads
       await expect(page.getByText(`${orgName} / Settings`)).toBeVisible({ timeout: 10000 })
