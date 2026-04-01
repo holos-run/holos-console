@@ -66,6 +66,20 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
    * @generated from field: string organization = 7;
    */
   organization: string;
+
+  /**
+   * default_user_grants are the per-user sharing grants applied by default to new secrets in this project.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_user_grants = 8;
+   */
+  defaultUserGrants: ShareGrant[];
+
+  /**
+   * default_role_grants are the per-role sharing grants applied by default to new secrets in this project.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 9;
+   */
+  defaultRoleGrants: ShareGrant[];
 };
 
 /**
@@ -406,6 +420,60 @@ export declare type GetProjectRawResponse = Message<"holos.console.v1.GetProject
 export declare const GetProjectRawResponseSchema: GenMessage<GetProjectRawResponse>;
 
 /**
+ * UpdateProjectDefaultSharingRequest contains the default sharing grants to set on a project.
+ *
+ * @generated from message holos.console.v1.UpdateProjectDefaultSharingRequest
+ */
+export declare type UpdateProjectDefaultSharingRequest = Message<"holos.console.v1.UpdateProjectDefaultSharingRequest"> & {
+  /**
+   * name is the name of the project to update default sharing for.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * default_user_grants are the per-user sharing grants applied by default to new secrets.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_user_grants = 2;
+   */
+  defaultUserGrants: ShareGrant[];
+
+  /**
+   * default_role_grants are the per-role sharing grants applied by default to new secrets.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 3;
+   */
+  defaultRoleGrants: ShareGrant[];
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateProjectDefaultSharingRequest.
+ * Use `create(UpdateProjectDefaultSharingRequestSchema)` to create a new message.
+ */
+export declare const UpdateProjectDefaultSharingRequestSchema: GenMessage<UpdateProjectDefaultSharingRequest>;
+
+/**
+ * UpdateProjectDefaultSharingResponse contains the updated project.
+ *
+ * @generated from message holos.console.v1.UpdateProjectDefaultSharingResponse
+ */
+export declare type UpdateProjectDefaultSharingResponse = Message<"holos.console.v1.UpdateProjectDefaultSharingResponse"> & {
+  /**
+   * project is the updated project with new default sharing grants.
+   *
+   * @generated from field: holos.console.v1.Project project = 1;
+   */
+  project?: Project;
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateProjectDefaultSharingResponse.
+ * Use `create(UpdateProjectDefaultSharingResponseSchema)` to create a new message.
+ */
+export declare const UpdateProjectDefaultSharingResponseSchema: GenMessage<UpdateProjectDefaultSharingResponse>;
+
+/**
  * ProjectService provides CRUD operations for projects.
  * A project is a Kubernetes Namespace labeled app.kubernetes.io/managed-by=console.holos.run.
  *
@@ -487,6 +555,18 @@ export declare const ProjectService: GenService<{
     methodKind: "unary";
     input: typeof GetProjectRawRequestSchema;
     output: typeof GetProjectRawResponseSchema;
+  },
+  /**
+   * UpdateProjectDefaultSharing updates the default sharing grants on a project.
+   * These grants are applied by default to new secrets created in this project.
+   * Requires PERMISSION_PROJECTS_ADMIN on the project.
+   *
+   * @generated from rpc holos.console.v1.ProjectService.UpdateProjectDefaultSharing
+   */
+  updateProjectDefaultSharing: {
+    methodKind: "unary";
+    input: typeof UpdateProjectDefaultSharingRequestSchema;
+    output: typeof UpdateProjectDefaultSharingResponseSchema;
   },
 }>;
 

@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRawRequest, GetProjectRawResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectRequest, UpdateProjectResponse, UpdateProjectSharingRequest, UpdateProjectSharingResponse } from "./projects_pb.js";
+import { CreateProjectRequest, CreateProjectResponse, DeleteProjectRequest, DeleteProjectResponse, GetProjectRawRequest, GetProjectRawResponse, GetProjectRequest, GetProjectResponse, ListProjectsRequest, ListProjectsResponse, UpdateProjectDefaultSharingRequest, UpdateProjectDefaultSharingResponse, UpdateProjectRequest, UpdateProjectResponse, UpdateProjectSharingRequest, UpdateProjectSharingResponse } from "./projects_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -96,6 +96,19 @@ export const ProjectService = {
       name: "GetProjectRaw",
       I: GetProjectRawRequest,
       O: GetProjectRawResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * UpdateProjectDefaultSharing updates the default sharing grants on a project.
+     * These grants are applied by default to new secrets created in this project.
+     * Requires PERMISSION_PROJECTS_ADMIN on the project.
+     *
+     * @generated from rpc holos.console.v1.ProjectService.UpdateProjectDefaultSharing
+     */
+    updateProjectDefaultSharing: {
+      name: "UpdateProjectDefaultSharing",
+      I: UpdateProjectDefaultSharingRequest,
+      O: UpdateProjectDefaultSharingResponse,
       kind: MethodKind.Unary,
     },
   }

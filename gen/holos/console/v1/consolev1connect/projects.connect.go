@@ -54,6 +54,9 @@ const (
 	// ProjectServiceGetProjectRawProcedure is the fully-qualified name of the ProjectService's
 	// GetProjectRaw RPC.
 	ProjectServiceGetProjectRawProcedure = "/holos.console.v1.ProjectService/GetProjectRaw"
+	// ProjectServiceUpdateProjectDefaultSharingProcedure is the fully-qualified name of the
+	// ProjectService's UpdateProjectDefaultSharing RPC.
+	ProjectServiceUpdateProjectDefaultSharingProcedure = "/holos.console.v1.ProjectService/UpdateProjectDefaultSharing"
 )
 
 // ProjectServiceClient is a client for the holos.console.v1.ProjectService service.
@@ -78,6 +81,10 @@ type ProjectServiceClient interface {
 	// The backend returns the Namespace exactly as the K8s API provides it, with no
 	// field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
 	GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error)
+	// UpdateProjectDefaultSharing updates the default sharing grants on a project.
+	// These grants are applied by default to new secrets created in this project.
+	// Requires PERMISSION_PROJECTS_ADMIN on the project.
+	UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error)
 }
 
 // NewProjectServiceClient constructs a client for the holos.console.v1.ProjectService service. By
@@ -133,18 +140,25 @@ func NewProjectServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(projectServiceMethods.ByName("GetProjectRaw")),
 			connect.WithClientOptions(opts...),
 		),
+		updateProjectDefaultSharing: connect.NewClient[v1.UpdateProjectDefaultSharingRequest, v1.UpdateProjectDefaultSharingResponse](
+			httpClient,
+			baseURL+ProjectServiceUpdateProjectDefaultSharingProcedure,
+			connect.WithSchema(projectServiceMethods.ByName("UpdateProjectDefaultSharing")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // projectServiceClient implements ProjectServiceClient.
 type projectServiceClient struct {
-	listProjects         *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	getProject           *connect.Client[v1.GetProjectRequest, v1.GetProjectResponse]
-	createProject        *connect.Client[v1.CreateProjectRequest, v1.CreateProjectResponse]
-	updateProject        *connect.Client[v1.UpdateProjectRequest, v1.UpdateProjectResponse]
-	deleteProject        *connect.Client[v1.DeleteProjectRequest, v1.DeleteProjectResponse]
-	updateProjectSharing *connect.Client[v1.UpdateProjectSharingRequest, v1.UpdateProjectSharingResponse]
-	getProjectRaw        *connect.Client[v1.GetProjectRawRequest, v1.GetProjectRawResponse]
+	listProjects                *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+	getProject                  *connect.Client[v1.GetProjectRequest, v1.GetProjectResponse]
+	createProject               *connect.Client[v1.CreateProjectRequest, v1.CreateProjectResponse]
+	updateProject               *connect.Client[v1.UpdateProjectRequest, v1.UpdateProjectResponse]
+	deleteProject               *connect.Client[v1.DeleteProjectRequest, v1.DeleteProjectResponse]
+	updateProjectSharing        *connect.Client[v1.UpdateProjectSharingRequest, v1.UpdateProjectSharingResponse]
+	getProjectRaw               *connect.Client[v1.GetProjectRawRequest, v1.GetProjectRawResponse]
+	updateProjectDefaultSharing *connect.Client[v1.UpdateProjectDefaultSharingRequest, v1.UpdateProjectDefaultSharingResponse]
 }
 
 // ListProjects calls holos.console.v1.ProjectService.ListProjects.
@@ -182,6 +196,11 @@ func (c *projectServiceClient) GetProjectRaw(ctx context.Context, req *connect.R
 	return c.getProjectRaw.CallUnary(ctx, req)
 }
 
+// UpdateProjectDefaultSharing calls holos.console.v1.ProjectService.UpdateProjectDefaultSharing.
+func (c *projectServiceClient) UpdateProjectDefaultSharing(ctx context.Context, req *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error) {
+	return c.updateProjectDefaultSharing.CallUnary(ctx, req)
+}
+
 // ProjectServiceHandler is an implementation of the holos.console.v1.ProjectService service.
 type ProjectServiceHandler interface {
 	// ListProjects returns all projects the user has access to.
@@ -204,6 +223,10 @@ type ProjectServiceHandler interface {
 	// The backend returns the Namespace exactly as the K8s API provides it, with no
 	// field filtering. Requires authentication and PERMISSION_PROJECTS_READ.
 	GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error)
+	// UpdateProjectDefaultSharing updates the default sharing grants on a project.
+	// These grants are applied by default to new secrets created in this project.
+	// Requires PERMISSION_PROJECTS_ADMIN on the project.
+	UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error)
 }
 
 // NewProjectServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -255,6 +278,12 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 		connect.WithSchema(projectServiceMethods.ByName("GetProjectRaw")),
 		connect.WithHandlerOptions(opts...),
 	)
+	projectServiceUpdateProjectDefaultSharingHandler := connect.NewUnaryHandler(
+		ProjectServiceUpdateProjectDefaultSharingProcedure,
+		svc.UpdateProjectDefaultSharing,
+		connect.WithSchema(projectServiceMethods.ByName("UpdateProjectDefaultSharing")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.ProjectService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ProjectServiceListProjectsProcedure:
@@ -271,6 +300,8 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 			projectServiceUpdateProjectSharingHandler.ServeHTTP(w, r)
 		case ProjectServiceGetProjectRawProcedure:
 			projectServiceGetProjectRawHandler.ServeHTTP(w, r)
+		case ProjectServiceUpdateProjectDefaultSharingProcedure:
+			projectServiceUpdateProjectDefaultSharingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -306,4 +337,8 @@ func (UnimplementedProjectServiceHandler) UpdateProjectSharing(context.Context, 
 
 func (UnimplementedProjectServiceHandler) GetProjectRaw(context.Context, *connect.Request[v1.GetProjectRawRequest]) (*connect.Response[v1.GetProjectRawResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.GetProjectRaw is not implemented"))
+}
+
+func (UnimplementedProjectServiceHandler) UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.UpdateProjectDefaultSharing is not implemented"))
 }
