@@ -294,7 +294,6 @@ func TestProjectCascadeSecretPerms(t *testing.T) {
 	})
 }
 
-
 func TestCheckCascadeAccess(t *testing.T) {
 	t.Run("project viewer can list secrets via cascade", func(t *testing.T) {
 		err := CheckCascadeAccess(
@@ -436,4 +435,3 @@ func TestCheckAccessGrants(t *testing.T) {
 		}
 	})
 }
-

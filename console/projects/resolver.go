@@ -45,4 +45,3 @@ func (r *ProjectGrantResolver) GetDefaultGrants(ctx context.Context, project str
 	defaultRoles, _ := GetDefaultShareRoles(ns)
 	return defaultUsers, defaultRoles, nil
 }
-

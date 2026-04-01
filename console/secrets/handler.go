@@ -64,7 +64,6 @@ func (h *Handler) ListSecrets(
 	// Resolve project grants for fallback access checks
 	projUsers, projRoles := h.resolveProjectGrants(ctx, project)
 
-
 	// List secrets from Kubernetes with console label
 	secretList, err := h.k8s.ListSecrets(ctx, project)
 	if err != nil {
@@ -563,9 +562,9 @@ func (h *Handler) buildSecretMetadata(secret *corev1.Secret, shareUsers, shareRo
 	roleGrants := annotationGrantsToProto(shareRoles)
 
 	md := &consolev1.SecretMetadata{
-		Name:        secret.Name,
-		Accessible:  accessible,
-		UserGrants:  userGrants,
+		Name:       secret.Name,
+		Accessible: accessible,
+		UserGrants: userGrants,
 		RoleGrants: roleGrants,
 	}
 	if desc := GetDescription(secret); desc != "" {

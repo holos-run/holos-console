@@ -98,7 +98,7 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		secrets.ShareUsersAnnotation:  string(usersJSON),
+		secrets.ShareUsersAnnotation: string(usersJSON),
 		secrets.ShareRolesAnnotation: string(rolesJSON),
 	}
 	if displayName != "" {

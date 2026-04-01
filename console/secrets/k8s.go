@@ -123,7 +123,7 @@ func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		ShareUsersAnnotation:  string(usersJSON),
+		ShareUsersAnnotation: string(usersJSON),
 		ShareRolesAnnotation: string(rolesJSON),
 	}
 	if description != "" {

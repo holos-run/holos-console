@@ -107,7 +107,7 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		secrets.ShareUsersAnnotation:  string(usersJSON),
+		secrets.ShareUsersAnnotation: string(usersJSON),
 		secrets.ShareRolesAnnotation: string(rolesJSON),
 	}
 	if displayName != "" {

@@ -177,7 +177,7 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation:        "My Project",
+				DisplayNameAnnotation:         "My Project",
 				secrets.DescriptionAnnotation: "Test project",
 			},
 		},
@@ -576,7 +576,7 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,
+				secrets.ShareUsersAnnotation: `[{"principal":"old@example.com","role":"viewer"}]`,
 				secrets.ShareRolesAnnotation: `[]`,
 			},
 		},

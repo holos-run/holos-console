@@ -54,7 +54,7 @@ func newFakeOIDCServer(t *testing.T) *fakeOIDCServer {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"issuer":                 serverURL,
-			"jwks_uri":              serverURL + "/keys",
+			"jwks_uri":               serverURL + "/keys",
 			"authorization_endpoint": serverURL + "/auth",
 			"token_endpoint":         serverURL + "/token",
 		})

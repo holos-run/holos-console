@@ -120,12 +120,12 @@ func generateTestCA() (caCertPEM []byte, caKey *ecdsa.PrivateKey, err error) {
 	}
 
 	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      pkix.Name{Organization: []string{"Test CA"}},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(1 * time.Hour),
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		IsCA:         true,
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{Organization: []string{"Test CA"}},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(1 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
 

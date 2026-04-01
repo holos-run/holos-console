@@ -118,7 +118,7 @@ func TestGetOrganization_ReturnsOrgByName(t *testing.T) {
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation:        "ACME Corp",
+				DisplayNameAnnotation:         "ACME Corp",
 				secrets.DescriptionAnnotation: "Test org",
 			},
 		},
@@ -340,7 +340,7 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation:  `[{"principal":"old@example.com","role":"viewer"}]`,
+				secrets.ShareUsersAnnotation: `[{"principal":"old@example.com","role":"viewer"}]`,
 				secrets.ShareRolesAnnotation: `[]`,
 			},
 		},
