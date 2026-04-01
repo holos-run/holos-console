@@ -33,3 +33,16 @@ func (r *ProjectGrantResolver) GetProjectGrants(ctx context.Context, project str
 	return activeUsers, activeRoles, nil
 }
 
+// GetDefaultGrants returns the default sharing grants for a project.
+// These are applied to new secrets created in the project.
+// Implements secrets.DefaultShareResolver.
+func (r *ProjectGrantResolver) GetDefaultGrants(ctx context.Context, project string) ([]secrets.AnnotationGrant, []secrets.AnnotationGrant, error) {
+	ns, err := r.k8s.GetProject(ctx, project)
+	if err != nil {
+		return nil, nil, err
+	}
+	defaultUsers, _ := GetDefaultShareUsers(ns)
+	defaultRoles, _ := GetDefaultShareRoles(ns)
+	return defaultUsers, defaultRoles, nil
+}
+
