@@ -22,9 +22,9 @@ changelog:
       order: 999
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
+      - '^docs'
+      - '^test'
+      - '^chore'
       - '^Merge '
       - '^version '
 
