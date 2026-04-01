@@ -92,7 +92,7 @@ func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namesp
 }
 
 // CreateProject creates a new namespace with managed-by and resource-type labels.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
@@ -109,6 +109,20 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	annotations := map[string]string{
 		secrets.ShareUsersAnnotation: string(usersJSON),
 		secrets.ShareRolesAnnotation: string(rolesJSON),
+	}
+	if len(defaultShareUsers) > 0 {
+		defaultUsersJSON, err := json.Marshal(defaultShareUsers)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling default-share-users: %w", err)
+		}
+		annotations[DefaultShareUsersAnnotation] = string(defaultUsersJSON)
+	}
+	if len(defaultShareRoles) > 0 {
+		defaultRolesJSON, err := json.Marshal(defaultShareRoles)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
+		}
+		annotations[DefaultShareRolesAnnotation] = string(defaultRolesJSON)
 	}
 	if displayName != "" {
 		annotations[DisplayNameAnnotation] = displayName

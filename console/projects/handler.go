@@ -27,6 +27,13 @@ type OrgResolver interface {
 	GetOrgGrants(ctx context.Context, org string) (users, roles map[string]string, err error)
 }
 
+// OrgDefaultShareResolver is an optional interface that an OrgResolver can also
+// implement to provide default sharing grants from the organization.  These
+// defaults are merged into new projects created within the organization.
+type OrgDefaultShareResolver interface {
+	GetOrgDefaultGrants(ctx context.Context, org string) (defaultUsers, defaultRoles []secrets.AnnotationGrant, err error)
+}
+
 // Handler implements the ProjectService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
@@ -181,10 +188,34 @@ func (h *Handler) CreateProject(
 	shareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	shareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
+	// Merge organization-level default sharing grants (if the resolver supports it).
+	// Request-supplied grants override defaults for the same principal via DeduplicateGrants
+	// (highest role wins, so explicit grants at a higher role shadow lower defaults).
+	// Also copy org defaults as the project's default sharing so new secrets inherit them.
+	var defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant
+	if req.Msg.Organization != "" {
+		if ds, ok := h.orgResolver.(OrgDefaultShareResolver); ok {
+			orgDefaultUsers, orgDefaultRoles, err := ds.GetOrgDefaultGrants(ctx, req.Msg.Organization)
+			if err != nil {
+				slog.WarnContext(ctx, "failed to resolve org default grants, proceeding without them",
+					slog.String("organization", req.Msg.Organization),
+					slog.Any("error", err),
+				)
+			} else {
+				// Concatenate: request grants first so they win over defaults for the same principal.
+				shareUsers = secrets.DeduplicateGrants(append(shareUsers, orgDefaultUsers...))
+				shareRoles = secrets.DeduplicateGrants(append(shareRoles, orgDefaultRoles...))
+				// Copy org defaults as project defaults so new secrets also inherit them.
+				defaultShareUsers = orgDefaultUsers
+				defaultShareRoles = orgDefaultRoles
+			}
+		}
+	}
+
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, shareUsers, shareRoles)
+	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}

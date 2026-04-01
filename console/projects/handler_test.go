@@ -935,6 +935,241 @@ func TestBuildProject_PopulatesDefaultGrants(t *testing.T) {
 	}
 }
 
+// ---- CreateProject with org default sharing tests ----
+
+// mockOrgDefaultShareResolver implements both OrgResolver and OrgDefaultShareResolver.
+type mockOrgDefaultShareResolver struct {
+	users         map[string]string
+	groups        map[string]string
+	defaultUsers  []secrets.AnnotationGrant
+	defaultRoles  []secrets.AnnotationGrant
+	defaultCalled bool
+}
+
+func (m *mockOrgDefaultShareResolver) GetOrgGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return m.users, m.groups, nil
+}
+
+func (m *mockOrgDefaultShareResolver) GetOrgDefaultGrants(_ context.Context, _ string) ([]secrets.AnnotationGrant, []secrets.AnnotationGrant, error) {
+	m.defaultCalled = true
+	return m.defaultUsers, m.defaultRoles, nil
+}
+
+func TestCreateProject_MergesOrgDefaultsIntoProjectGrants(t *testing.T) {
+	// Existing project so alice has create permission
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgResolver := &mockOrgDefaultShareResolver{
+		users:  map[string]string{"alice@example.com": "owner"},
+		groups: nil,
+		defaultUsers: []secrets.AnnotationGrant{
+			{Principal: "bob@example.com", Role: "viewer"},
+			{Principal: "carol@example.com", Role: "editor"},
+		},
+		defaultRoles: []secrets.AnnotationGrant{
+			{Principal: "engineering", Role: "viewer"},
+		},
+	}
+
+	objs := []runtime.Object{existing}
+	fakeClient := fake.NewClientset(objs...)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, orgResolver)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the created namespace has merged grants
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace to exist, got %v", err)
+	}
+
+	users, err := GetShareUsers(ns)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+
+	// Should contain: alice (owner from ensureCreatorOwner), bob (viewer from org default), carol (editor from org default)
+	principalRoles := make(map[string]string)
+	for _, u := range users {
+		principalRoles[u.Principal] = u.Role
+	}
+	if principalRoles["alice@example.com"] != "owner" {
+		t.Errorf("expected alice as owner, got %q", principalRoles["alice@example.com"])
+	}
+	if principalRoles["bob@example.com"] != "viewer" {
+		t.Errorf("expected bob as viewer from org default, got %q", principalRoles["bob@example.com"])
+	}
+	if principalRoles["carol@example.com"] != "editor" {
+		t.Errorf("expected carol as editor from org default, got %q", principalRoles["carol@example.com"])
+	}
+
+	// Verify role grants merged
+	roles, err := GetShareRoles(ns)
+	if err != nil {
+		t.Fatalf("failed to parse share-roles: %v", err)
+	}
+	roleMap := make(map[string]string)
+	for _, r := range roles {
+		roleMap[r.Principal] = r.Role
+	}
+	if roleMap["engineering"] != "viewer" {
+		t.Errorf("expected engineering as viewer from org default, got %q", roleMap["engineering"])
+	}
+}
+
+func TestCreateProject_CopiesOrgDefaultsAsProjectDefaults(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgResolver := &mockOrgDefaultShareResolver{
+		users:  map[string]string{"alice@example.com": "owner"},
+		groups: nil,
+		defaultUsers: []secrets.AnnotationGrant{
+			{Principal: "bob@example.com", Role: "viewer"},
+		},
+		defaultRoles: []secrets.AnnotationGrant{
+			{Principal: "engineering", Role: "editor"},
+		},
+	}
+
+	fakeClient := fake.NewClientset(existing)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, orgResolver)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace to exist, got %v", err)
+	}
+
+	// Verify default sharing annotations were set
+	defaultUsers, err := GetDefaultShareUsers(ns)
+	if err != nil {
+		t.Fatalf("failed to parse default-share-users: %v", err)
+	}
+	if len(defaultUsers) != 1 || defaultUsers[0].Principal != "bob@example.com" || defaultUsers[0].Role != "viewer" {
+		t.Errorf("expected default-share-users [{bob@example.com viewer}], got %v", defaultUsers)
+	}
+
+	defaultRoles, err := GetDefaultShareRoles(ns)
+	if err != nil {
+		t.Fatalf("failed to parse default-share-roles: %v", err)
+	}
+	if len(defaultRoles) != 1 || defaultRoles[0].Principal != "engineering" || defaultRoles[0].Role != "editor" {
+		t.Errorf("expected default-share-roles [{engineering editor}], got %v", defaultRoles)
+	}
+}
+
+func TestCreateProject_RequestGrantsOverrideOrgDefaults(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgResolver := &mockOrgDefaultShareResolver{
+		users:  map[string]string{"alice@example.com": "owner"},
+		groups: nil,
+		defaultUsers: []secrets.AnnotationGrant{
+			{Principal: "bob@example.com", Role: "viewer"},
+		},
+	}
+
+	fakeClient := fake.NewClientset(existing)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, orgResolver)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	// Request grants bob as editor — should override the org default of viewer
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "acme",
+		UserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace to exist, got %v", err)
+	}
+	users, err := GetShareUsers(ns)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+	for _, u := range users {
+		if u.Principal == "bob@example.com" {
+			if u.Role != "editor" {
+				t.Errorf("expected bob as editor (request override), got %q", u.Role)
+			}
+			return
+		}
+	}
+	t.Error("expected bob@example.com in share-users")
+}
+
+func TestCreateProject_WithoutOrg_BehavesAsBeforeNoDefaults(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgResolver := &mockOrgDefaultShareResolver{
+		users: map[string]string{"alice@example.com": "owner"},
+		defaultUsers: []secrets.AnnotationGrant{
+			{Principal: "should-not-appear@example.com", Role: "viewer"},
+		},
+	}
+
+	fakeClient := fake.NewClientset(existing)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, orgResolver)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	// Create without organization — org defaults should NOT be applied
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name: "standalone-project",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if orgResolver.defaultCalled {
+		t.Error("expected org default resolver to NOT be called when no organization is specified")
+	}
+
+	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-standalone-project", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected namespace to exist, got %v", err)
+	}
+
+	// Should only have creator as owner, no org defaults
+	users, err := GetShareUsers(ns)
+	if err != nil {
+		t.Fatalf("failed to parse share-users: %v", err)
+	}
+	if len(users) != 1 || users[0].Principal != "alice@example.com" {
+		t.Errorf("expected only creator alice, got %v", users)
+	}
+
+	// Should have no default sharing annotations
+	defaultUsers, _ := GetDefaultShareUsers(ns)
+	if len(defaultUsers) != 0 {
+		t.Errorf("expected no default-share-users, got %v", defaultUsers)
+	}
+}
+
 func assertInvalidArgument(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
