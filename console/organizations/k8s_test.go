@@ -413,6 +413,124 @@ func TestListOrganizations_FiltersPrefixMismatchNamespaces(t *testing.T) {
 	}
 }
 
+func TestGetDefaultShareUsers_ParsesAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Annotations: map[string]string{
+				DefaultShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor"}]`,
+			},
+		},
+	}
+	grants, err := GetDefaultShareUsers(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grants))
+	}
+	if grants[0].Principal != "alice@example.com" || grants[0].Role != "editor" {
+		t.Errorf("unexpected grant: %+v", grants[0])
+	}
+}
+
+func TestGetDefaultShareRoles_ParsesAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Annotations: map[string]string{
+				DefaultShareRolesAnnotation: `[{"principal":"engineering","role":"viewer"}]`,
+			},
+		},
+	}
+	grants, err := GetDefaultShareRoles(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grants))
+	}
+	if grants[0].Principal != "engineering" || grants[0].Role != "viewer" {
+		t.Errorf("unexpected grant: %+v", grants[0])
+	}
+}
+
+func TestGetDefaultShareUsers_ReturnsNilWhenAbsent(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+		},
+	}
+	grants, err := GetDefaultShareUsers(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if grants != nil {
+		t.Errorf("expected nil, got %v", grants)
+	}
+}
+
+func TestUpdateOrgDefaultSharing_UpdatesAnnotations(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+			},
+			Annotations: map[string]string{
+				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	defaultUsers := []secrets.AnnotationGrant{
+		{Principal: "bob@example.com", Role: "editor"},
+	}
+	defaultRoles := []secrets.AnnotationGrant{
+		{Principal: "engineering", Role: "viewer"},
+	}
+	result, err := k8s.UpdateOrganizationDefaultSharing(context.Background(), "acme", defaultUsers, defaultRoles)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	users, err := GetDefaultShareUsers(result)
+	if err != nil {
+		t.Fatalf("failed to parse default-share-users: %v", err)
+	}
+	if len(users) != 1 || users[0].Principal != "bob@example.com" {
+		t.Errorf("expected [{bob@example.com editor}], got %v", users)
+	}
+	roles, err := GetDefaultShareRoles(result)
+	if err != nil {
+		t.Fatalf("failed to parse default-share-roles: %v", err)
+	}
+	if len(roles) != 1 || roles[0].Principal != "engineering" {
+		t.Errorf("expected [{engineering viewer}], got %v", roles)
+	}
+	// Verify existing share-users preserved
+	if result.Annotations[secrets.ShareUsersAnnotation] != `[{"principal":"alice@example.com","role":"owner"}]` {
+		t.Error("expected share-users annotation preserved")
+	}
+}
+
+func TestUpdateOrgDefaultSharing_RejectsNonOrg(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-fake",
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	_, err := k8s.UpdateOrganizationDefaultSharing(context.Background(), "fake", nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

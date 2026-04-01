@@ -54,6 +54,9 @@ const (
 	// OrganizationServiceGetOrganizationRawProcedure is the fully-qualified name of the
 	// OrganizationService's GetOrganizationRaw RPC.
 	OrganizationServiceGetOrganizationRawProcedure = "/holos.console.v1.OrganizationService/GetOrganizationRaw"
+	// OrganizationServiceUpdateOrganizationDefaultSharingProcedure is the fully-qualified name of the
+	// OrganizationService's UpdateOrganizationDefaultSharing RPC.
+	OrganizationServiceUpdateOrganizationDefaultSharingProcedure = "/holos.console.v1.OrganizationService/UpdateOrganizationDefaultSharing"
 )
 
 // OrganizationServiceClient is a client for the holos.console.v1.OrganizationService service.
@@ -78,6 +81,10 @@ type OrganizationServiceClient interface {
 	// The backend returns the Namespace exactly as the K8s API provides it, with no
 	// field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
 	GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error)
+	// UpdateOrganizationDefaultSharing updates the default sharing grants on an organization.
+	// These grants are applied by default to new projects created in this organization.
+	// Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
+	UpdateOrganizationDefaultSharing(context.Context, *connect.Request[v1.UpdateOrganizationDefaultSharingRequest]) (*connect.Response[v1.UpdateOrganizationDefaultSharingResponse], error)
 }
 
 // NewOrganizationServiceClient constructs a client for the holos.console.v1.OrganizationService
@@ -133,18 +140,25 @@ func NewOrganizationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(organizationServiceMethods.ByName("GetOrganizationRaw")),
 			connect.WithClientOptions(opts...),
 		),
+		updateOrganizationDefaultSharing: connect.NewClient[v1.UpdateOrganizationDefaultSharingRequest, v1.UpdateOrganizationDefaultSharingResponse](
+			httpClient,
+			baseURL+OrganizationServiceUpdateOrganizationDefaultSharingProcedure,
+			connect.WithSchema(organizationServiceMethods.ByName("UpdateOrganizationDefaultSharing")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // organizationServiceClient implements OrganizationServiceClient.
 type organizationServiceClient struct {
-	listOrganizations         *connect.Client[v1.ListOrganizationsRequest, v1.ListOrganizationsResponse]
-	getOrganization           *connect.Client[v1.GetOrganizationRequest, v1.GetOrganizationResponse]
-	createOrganization        *connect.Client[v1.CreateOrganizationRequest, v1.CreateOrganizationResponse]
-	updateOrganization        *connect.Client[v1.UpdateOrganizationRequest, v1.UpdateOrganizationResponse]
-	deleteOrganization        *connect.Client[v1.DeleteOrganizationRequest, v1.DeleteOrganizationResponse]
-	updateOrganizationSharing *connect.Client[v1.UpdateOrganizationSharingRequest, v1.UpdateOrganizationSharingResponse]
-	getOrganizationRaw        *connect.Client[v1.GetOrganizationRawRequest, v1.GetOrganizationRawResponse]
+	listOrganizations                *connect.Client[v1.ListOrganizationsRequest, v1.ListOrganizationsResponse]
+	getOrganization                  *connect.Client[v1.GetOrganizationRequest, v1.GetOrganizationResponse]
+	createOrganization               *connect.Client[v1.CreateOrganizationRequest, v1.CreateOrganizationResponse]
+	updateOrganization               *connect.Client[v1.UpdateOrganizationRequest, v1.UpdateOrganizationResponse]
+	deleteOrganization               *connect.Client[v1.DeleteOrganizationRequest, v1.DeleteOrganizationResponse]
+	updateOrganizationSharing        *connect.Client[v1.UpdateOrganizationSharingRequest, v1.UpdateOrganizationSharingResponse]
+	getOrganizationRaw               *connect.Client[v1.GetOrganizationRawRequest, v1.GetOrganizationRawResponse]
+	updateOrganizationDefaultSharing *connect.Client[v1.UpdateOrganizationDefaultSharingRequest, v1.UpdateOrganizationDefaultSharingResponse]
 }
 
 // ListOrganizations calls holos.console.v1.OrganizationService.ListOrganizations.
@@ -182,6 +196,12 @@ func (c *organizationServiceClient) GetOrganizationRaw(ctx context.Context, req 
 	return c.getOrganizationRaw.CallUnary(ctx, req)
 }
 
+// UpdateOrganizationDefaultSharing calls
+// holos.console.v1.OrganizationService.UpdateOrganizationDefaultSharing.
+func (c *organizationServiceClient) UpdateOrganizationDefaultSharing(ctx context.Context, req *connect.Request[v1.UpdateOrganizationDefaultSharingRequest]) (*connect.Response[v1.UpdateOrganizationDefaultSharingResponse], error) {
+	return c.updateOrganizationDefaultSharing.CallUnary(ctx, req)
+}
+
 // OrganizationServiceHandler is an implementation of the holos.console.v1.OrganizationService
 // service.
 type OrganizationServiceHandler interface {
@@ -205,6 +225,10 @@ type OrganizationServiceHandler interface {
 	// The backend returns the Namespace exactly as the K8s API provides it, with no
 	// field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
 	GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error)
+	// UpdateOrganizationDefaultSharing updates the default sharing grants on an organization.
+	// These grants are applied by default to new projects created in this organization.
+	// Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
+	UpdateOrganizationDefaultSharing(context.Context, *connect.Request[v1.UpdateOrganizationDefaultSharingRequest]) (*connect.Response[v1.UpdateOrganizationDefaultSharingResponse], error)
 }
 
 // NewOrganizationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -256,6 +280,12 @@ func NewOrganizationServiceHandler(svc OrganizationServiceHandler, opts ...conne
 		connect.WithSchema(organizationServiceMethods.ByName("GetOrganizationRaw")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationServiceUpdateOrganizationDefaultSharingHandler := connect.NewUnaryHandler(
+		OrganizationServiceUpdateOrganizationDefaultSharingProcedure,
+		svc.UpdateOrganizationDefaultSharing,
+		connect.WithSchema(organizationServiceMethods.ByName("UpdateOrganizationDefaultSharing")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.OrganizationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrganizationServiceListOrganizationsProcedure:
@@ -272,6 +302,8 @@ func NewOrganizationServiceHandler(svc OrganizationServiceHandler, opts ...conne
 			organizationServiceUpdateOrganizationSharingHandler.ServeHTTP(w, r)
 		case OrganizationServiceGetOrganizationRawProcedure:
 			organizationServiceGetOrganizationRawHandler.ServeHTTP(w, r)
+		case OrganizationServiceUpdateOrganizationDefaultSharingProcedure:
+			organizationServiceUpdateOrganizationDefaultSharingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -307,4 +339,8 @@ func (UnimplementedOrganizationServiceHandler) UpdateOrganizationSharing(context
 
 func (UnimplementedOrganizationServiceHandler) GetOrganizationRaw(context.Context, *connect.Request[v1.GetOrganizationRawRequest]) (*connect.Response[v1.GetOrganizationRawResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.OrganizationService.GetOrganizationRaw is not implemented"))
+}
+
+func (UnimplementedOrganizationServiceHandler) UpdateOrganizationDefaultSharing(context.Context, *connect.Request[v1.UpdateOrganizationDefaultSharingRequest]) (*connect.Response[v1.UpdateOrganizationDefaultSharingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.OrganizationService.UpdateOrganizationDefaultSharing is not implemented"))
 }
