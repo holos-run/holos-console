@@ -221,10 +221,11 @@ describe('SecretsListPage', () => {
     render(<SecretsListPage />)
     fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
     expect(screen.getByText('team@example.com')).toBeInTheDocument()
-    // Find and click the remove button for team@example.com
-    const removeButtons = screen.getAllByRole('button', { name: /remove/i })
-    // The first remove button should be for test@example.com (creator), second for team@example.com
-    fireEvent.click(removeButtons[1])
+    // Find the remove button closest to team@example.com's grant row
+    const teamText = screen.getByText('team@example.com')
+    const grantRow = teamText.closest('div')!
+    const removeBtn = grantRow.querySelector('button[aria-label="remove"]')!
+    fireEvent.click(removeBtn)
     expect(screen.queryByText('team@example.com')).not.toBeInTheDocument()
   })
 })
