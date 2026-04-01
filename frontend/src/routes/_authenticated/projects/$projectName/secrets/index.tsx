@@ -41,8 +41,14 @@ import { ArrowUpDown, ArrowUp, ArrowDown, Lock, Trash2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { SecretDataGrid } from '@/components/secret-data-grid'
 import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
+import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { SecretMetadata } from '@/gen/holos/console/v1/secrets_pb.js'
+
+interface CreateGrant {
+  principal: string
+  role: Role
+}
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/secrets/')({
   component: SecretsListPage,
@@ -62,6 +68,7 @@ export function SecretsListPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 
   const { data: secrets = [], isLoading, error } = useListSecrets(projectName)
+  const { data: project } = useGetProject(projectName)
   const createMutation = useCreateSecret(projectName)
   const deleteMutation = useDeleteSecret(projectName)
 
@@ -73,6 +80,9 @@ export function SecretsListPage() {
   const [createUrl, setCreateUrl] = useState('')
   const [createData, setCreateData] = useState<Record<string, Uint8Array>>({})
   const [createError, setCreateError] = useState<string | null>(null)
+  const [createUserGrants, setCreateUserGrants] = useState<CreateGrant[]>([])
+  const [createRoleGrants, setCreateRoleGrants] = useState<CreateGrant[]>([])
+  const [hasDefaults, setHasDefaults] = useState(false)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -190,6 +200,26 @@ export function SecretsListPage() {
     setCreateUrl('')
     setCreateData({})
     setCreateError(null)
+
+    const creatorEmail = (user?.profile?.email as string) || ''
+    const creatorGrant: CreateGrant = { principal: creatorEmail, role: Role.OWNER }
+
+    const defaultUserGrants = (project?.defaultUserGrants ?? []) as CreateGrant[]
+    const defaultRoleGrants = (project?.defaultRoleGrants ?? []) as CreateGrant[]
+
+    // Deduplicate: creator-as-OWNER + default user grants
+    const seenPrincipals = new Set([creatorEmail])
+    const userGrants = [creatorGrant]
+    for (const g of defaultUserGrants) {
+      if (!seenPrincipals.has(g.principal)) {
+        seenPrincipals.add(g.principal)
+        userGrants.push({ principal: g.principal, role: g.role })
+      }
+    }
+
+    setCreateUserGrants(userGrants)
+    setCreateRoleGrants(defaultRoleGrants.map(g => ({ principal: g.principal, role: g.role })))
+    setHasDefaults(defaultUserGrants.length > 0 || defaultRoleGrants.length > 0)
     setCreateOpen(true)
   }
 
@@ -203,8 +233,8 @@ export function SecretsListPage() {
       await createMutation.mutateAsync({
         name: createName.trim(),
         data: createData,
-        userGrants: [{ principal: (user?.profile?.email as string) || '', role: Role.OWNER }],
-        roleGrants: [],
+        userGrants: createUserGrants.filter(g => g.principal.trim() !== ''),
+        roleGrants: createRoleGrants.filter(g => g.principal.trim() !== ''),
         description: createDescription.trim() || undefined,
         url: createUrl.trim() || undefined,
       })
@@ -331,6 +361,38 @@ export function SecretsListPage() {
             <div>
               <Label>Data</Label>
               <SecretDataGrid data={createData} onChange={setCreateData} />
+            </div>
+            <div>
+              <Label>Sharing</Label>
+              {hasDefaults && (
+                <p className="text-xs text-muted-foreground mt-1">Pre-filled from project default sharing settings</p>
+              )}
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground">Users</p>
+                {createUserGrants.map((g, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-sm flex-1">{g.principal}</span>
+                    <Badge variant="outline">{g.role === Role.OWNER ? 'Owner' : g.role === Role.EDITOR ? 'Editor' : 'Viewer'}</Badge>
+                    <Button variant="ghost" size="icon" aria-label="remove" onClick={() => setCreateUserGrants(createUserGrants.filter((_, j) => j !== i))}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                {createRoleGrants.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground">Roles</p>
+                    {createRoleGrants.map((g, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-sm flex-1">{g.principal}</span>
+                        <Badge variant="outline">{g.role === Role.OWNER ? 'Owner' : g.role === Role.EDITOR ? 'Editor' : 'Viewer'}</Badge>
+                        <Button variant="ghost" size="icon" aria-label="remove" onClick={() => setCreateRoleGrants(createRoleGrants.filter((_, j) => j !== i))}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
             {createError && (
               <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>

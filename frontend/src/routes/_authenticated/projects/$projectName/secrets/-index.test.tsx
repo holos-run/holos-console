@@ -22,12 +22,18 @@ vi.mock('@/queries/secrets', () => ({
   useDeleteSecret: vi.fn(),
 }))
 
+vi.mock('@/queries/projects', () => ({
+  useGetProject: vi.fn(),
+}))
+
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
 
 import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
+import { useGetProject } from '@/queries/projects'
 import { useAuth } from '@/lib/auth'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { SecretsListPage } from './index'
 
 function makeSecret(name: string, description = '') {
@@ -41,7 +47,10 @@ function makeSecret(name: string, description = '') {
   }
 }
 
-function setupMocks(secrets = [makeSecret('test-secret')]) {
+function setupMocks(secrets = [makeSecret('test-secret')], projectOverrides?: {
+  defaultUserGrants?: { principal: string; role: number }[]
+  defaultRoleGrants?: { principal: string; role: number }[]
+}) {
   ;(useListSecrets as Mock).mockReturnValue({ data: secrets, isLoading: false, error: null })
   ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
   ;(useDeleteSecret as Mock).mockReturnValue({
@@ -54,6 +63,14 @@ function setupMocks(secrets = [makeSecret('test-secret')]) {
     isAuthenticated: true,
     isLoading: false,
     user: { profile: { email: 'test@example.com' } },
+  })
+  ;(useGetProject as Mock).mockReturnValue({
+    data: {
+      name: 'test-project',
+      defaultUserGrants: projectOverrides?.defaultUserGrants ?? [],
+      defaultRoleGrants: projectOverrides?.defaultRoleGrants ?? [],
+    },
+    isLoading: false,
   })
 }
 
@@ -151,5 +168,64 @@ describe('SecretsListPage', () => {
     const rowsFinal = screen.getAllByRole('row')
     expect(rowsFinal[1]).toHaveTextContent('alpha-secret')
     expect(rowsFinal[2]).toHaveTextContent('zebra-secret')
+  })
+
+  it('pre-populates create dialog with default grants from project', () => {
+    setupMocks([makeSecret('existing')], {
+      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
+      defaultRoleGrants: [{ principal: 'engineering', role: Role.VIEWER }],
+    })
+    render(<SecretsListPage />)
+    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+    // Creator OWNER grant is always present
+    expect(screen.getByText('test@example.com')).toBeInTheDocument()
+    // Default user grant is pre-filled
+    expect(screen.getByText('team@example.com')).toBeInTheDocument()
+    // Default role grant is pre-filled
+    expect(screen.getByText('engineering')).toBeInTheDocument()
+  })
+
+  it('creator-as-OWNER is always present even with defaults', () => {
+    setupMocks([makeSecret('existing')], {
+      defaultUserGrants: [{ principal: 'other@example.com', role: Role.EDITOR }],
+      defaultRoleGrants: [],
+    })
+    render(<SecretsListPage />)
+    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+    expect(screen.getByText('test@example.com')).toBeInTheDocument()
+    expect(screen.getByText('other@example.com')).toBeInTheDocument()
+  })
+
+  it('shows hint text when project has default grants', () => {
+    setupMocks([makeSecret('existing')], {
+      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
+      defaultRoleGrants: [],
+    })
+    render(<SecretsListPage />)
+    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+    expect(screen.getByText(/pre-filled from project default sharing/i)).toBeInTheDocument()
+  })
+
+  it('does not show hint text when project has no defaults', () => {
+    setupMocks([makeSecret('existing')])
+    render(<SecretsListPage />)
+    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+    expect(screen.queryByText(/pre-filled from project default sharing/i)).not.toBeInTheDocument()
+  })
+
+  it('user can remove a default grant in the dialog', () => {
+    setupMocks([makeSecret('existing')], {
+      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
+      defaultRoleGrants: [],
+    })
+    render(<SecretsListPage />)
+    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
+    expect(screen.getByText('team@example.com')).toBeInTheDocument()
+    // Find the remove button closest to team@example.com's grant row
+    const teamText = screen.getByText('team@example.com')
+    const grantRow = teamText.closest('div')!
+    const removeBtn = grantRow.querySelector('button[aria-label="remove"]')!
+    fireEvent.click(removeBtn)
+    expect(screen.queryByText('team@example.com')).not.toBeInTheDocument()
   })
 })

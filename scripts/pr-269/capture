@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Navigate to the secrets page and open the create dialog to capture the pre-populated grants
+agent-browser \
+  --url "${HOLOS_BACKEND_URL}/projects/default/secrets" \
+  --click "button:has-text('Create Secret')" \
+  --wait 1000 \
+  --screenshot "${PR_SCREENSHOT_DIR}/create-dialog-with-defaults.png"
