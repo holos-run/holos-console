@@ -147,7 +147,7 @@ describe('AppSidebar', () => {
   it('does not render project nav links when no project is selected', () => {
     render(<AppSidebar />)
     expect(screen.queryByText('Secrets')).toBeNull()
-    expect(screen.queryByText('Settings')).toBeNull()
+    expect(screen.queryByText('Project Settings')).toBeNull()
   })
 })
 
@@ -303,20 +303,27 @@ describe('AppSidebar — project selected', () => {
     expect(screen.getByText('Secrets')).toBeInTheDocument()
   })
 
-  it('renders project Settings nav link when a project is selected', () => {
+  it('renders project Settings nav link labeled "Project Settings" when a project is selected', () => {
     render(<AppSidebar />)
-    // Org nav shows "Org Settings"; project nav shows "Settings".
-    expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^project settings$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^org settings$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^settings$/i })).toBeNull()
   })
 
   it('project Settings link points to /projects/$projectName/settings', () => {
     render(<AppSidebar />)
-    const links = screen.getAllByRole('link', { name: /settings/i })
+    const links = screen.getAllByRole('link', { name: /project settings/i })
     const projectSettingsLink = links.find((l) =>
       l.getAttribute('href')?.startsWith('/projects/'),
     )
     expect(projectSettingsLink?.getAttribute('href')).toBe('/projects/my-project/settings/')
+  })
+
+  it('renders project display name as group label in project nav section', () => {
+    render(<AppSidebar />)
+    const labels = screen.getAllByTestId('sidebar-group-label')
+    const labelTexts = labels.map((l) => l.textContent)
+    expect(labelTexts).toContain('My Project')
   })
 
   it('org nav group is also visible when a project is selected', () => {

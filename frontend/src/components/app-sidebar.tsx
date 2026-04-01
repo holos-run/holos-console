@@ -46,13 +46,18 @@ export function AppSidebar() {
   const { data: versionData } = useVersion()
   const router = useRouter()
   const pathname = router.state.location.pathname
-  const { selectedProject } = useProject()
+  const { projects, selectedProject } = useProject()
   const { selectedOrg, organizations } = useOrg()
 
   const selectedOrgObj = organizations.find((o) => o.name === selectedOrg)
   const orgDisplayName = selectedOrgObj
     ? (selectedOrgObj.displayName || selectedOrgObj.name)
     : selectedOrg ?? ''
+
+  const selectedProjectObj = projects.find((p) => p.name === selectedProject)
+  const projectDisplayName = selectedProjectObj
+    ? (selectedProjectObj.displayName || selectedProjectObj.name)
+    : selectedProject ?? ''
 
   const orgNavItems: Array<{
     label: string
@@ -90,7 +95,7 @@ export function AppSidebar() {
           icon: KeyRound,
         },
         {
-          label: 'Settings',
+          label: 'Project Settings',
           to: '/projects/$projectName/settings/' as const,
           params: { projectName: selectedProject },
           icon: Settings,
@@ -141,6 +146,7 @@ export function AppSidebar() {
         )}
         {projectNavItems.length > 0 && (
           <SidebarGroup>
+            <SidebarGroupLabel>{projectDisplayName}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {projectNavItems.map((item) => {
