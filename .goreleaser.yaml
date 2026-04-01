@@ -25,6 +25,8 @@ changelog:
       - '^docs:'
       - '^test:'
       - '^chore:'
+      - '^Merge '
+      - '^version '
 
 release:
   footer: |
