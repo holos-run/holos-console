@@ -24,6 +24,7 @@ import {
   useGetProject,
   useUpdateProject,
   useUpdateProjectSharing,
+  useUpdateProjectDefaultSharing,
   useDeleteProject,
 } from './projects'
 
@@ -168,6 +169,49 @@ describe('useUpdateProjectSharing', () => {
 
     await act(async () => {
       await result.current.mutateAsync({ name: 'my-project', userGrants: [], roleGrants: [] })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+  })
+})
+
+describe('useUpdateProjectDefaultSharing', () => {
+  let queryClient: QueryClient
+  let mockClient: Record<string, Mock>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockClient = {
+      updateProjectDefaultSharing: vi.fn().mockResolvedValue({}),
+    }
+    ;(createClient as Mock).mockReturnValue(mockClient)
+    ;(useTransport as Mock).mockReturnValue({})
+  })
+
+  it('calls updateProjectDefaultSharing RPC with correct params', async () => {
+    const { result } = renderHook(() => useUpdateProjectDefaultSharing(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    const params = { name: 'my-project', defaultUserGrants: [{ principal: 'a@b.com', role: 1 }], defaultRoleGrants: [] }
+
+    await act(async () => {
+      await result.current.mutateAsync(params)
+    })
+
+    expect(mockClient.updateProjectDefaultSharing).toHaveBeenCalledWith(params)
+  })
+
+  it('invalidates connect-query cache on success', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useUpdateProjectDefaultSharing(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ name: 'my-project', defaultUserGrants: [], defaultRoleGrants: [] })
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })

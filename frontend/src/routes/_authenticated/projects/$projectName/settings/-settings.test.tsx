@@ -18,13 +18,14 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
   useUpdateProject: vi.fn(),
   useUpdateProjectSharing: vi.fn(),
+  useUpdateProjectDefaultSharing: vi.fn(),
   useDeleteProject: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetProject, useUpdateProject, useUpdateProjectSharing, useDeleteProject } from '@/queries/projects'
+import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 import { useAuth } from '@/lib/auth'
 import { ProjectSettingsPage } from './index'
 
@@ -35,6 +36,8 @@ const mockProject = {
   organization: 'my-org',
   userGrants: [{ principal: 'alice@example.com', role: 3 }],
   roleGrants: [],
+  defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
+  defaultRoleGrants: [],
   userRole: 3, // OWNER
 }
 
@@ -51,6 +54,10 @@ function setupMocks(overrides: Partial<typeof mockProject> = {}) {
     isPending: false,
   })
   ;(useUpdateProjectSharing as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
+  ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
@@ -88,6 +95,7 @@ describe('ProjectSettingsPage', () => {
     ;(useGetProject as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
     ;(useUpdateProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateProjectSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
@@ -100,6 +108,7 @@ describe('ProjectSettingsPage', () => {
     ;(useGetProject as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('Not found') })
     ;(useUpdateProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateProjectSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
@@ -195,8 +204,9 @@ describe('ProjectSettingsPage', () => {
     it('saving sharing calls useUpdateProjectSharing', async () => {
       setupMocks()
       render(<ProjectSettingsPage />)
+      // First Edit button is the Sharing section (index 0), second is Default Secret Sharing (index 1)
       const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
-      fireEvent.click(editButtons[editButtons.length - 1])
+      fireEvent.click(editButtons[0])
       fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
       const mutateAsync = (useUpdateProjectSharing as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
@@ -204,6 +214,44 @@ describe('ProjectSettingsPage', () => {
           expect.objectContaining({ name: 'test-project' }),
         )
       })
+    })
+  })
+
+  describe('Default Secret Sharing section', () => {
+    it('renders default grants from project data', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText('Default Secret Sharing')).toBeInTheDocument()
+      expect(screen.getByText('bob@example.com')).toBeInTheDocument()
+    })
+
+    it('shows explanatory description text', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText(/automatically applied to every new secret/i)).toBeInTheDocument()
+    })
+
+    it('save calls UpdateProjectDefaultSharing mutation', async () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      // Second Edit button is the Default Secret Sharing section (index 1)
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      fireEvent.click(editButtons[1])
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateProjectDefaultSharing as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'test-project' }),
+        )
+      })
+    })
+
+    it('non-owners cannot edit default sharing grants', () => {
+      setupMocks({ userRole: 1 }) // VIEWER
+      render(<ProjectSettingsPage />)
+      // With userRole=VIEWER, there are no Edit buttons since isOwner=false
+      const editButtons = screen.queryAllByRole('button', { name: /^edit$/i })
+      expect(editButtons.length).toBe(0)
     })
   })
 
