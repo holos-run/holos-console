@@ -24,6 +24,7 @@ import {
   useGetOrganization,
   useUpdateOrganization,
   useUpdateOrganizationSharing,
+  useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from './organizations'
 
@@ -167,6 +168,53 @@ describe('useUpdateOrganizationSharing', () => {
 
     await act(async () => {
       await result.current.mutateAsync({ name: 'my-org', userGrants: [], roleGrants: [] })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+  })
+})
+
+describe('useUpdateOrganizationDefaultSharing', () => {
+  let queryClient: QueryClient
+  let mockClient: Record<string, Mock>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockClient = {
+      updateOrganizationDefaultSharing: vi.fn().mockResolvedValue({}),
+    }
+    ;(createClient as Mock).mockReturnValue(mockClient)
+    ;(useTransport as Mock).mockReturnValue({})
+  })
+
+  it('calls updateOrganizationDefaultSharing RPC with correct params', async () => {
+    const { result } = renderHook(() => useUpdateOrganizationDefaultSharing(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    const params = {
+      name: 'my-org',
+      defaultUserGrants: [{ principal: 'a@b.com', role: 3 }],
+      defaultRoleGrants: [],
+    }
+
+    await act(async () => {
+      await result.current.mutateAsync(params)
+    })
+
+    expect(mockClient.updateOrganizationDefaultSharing).toHaveBeenCalledWith(params)
+  })
+
+  it('invalidates connect-query cache on success', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useUpdateOrganizationDefaultSharing(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ name: 'my-org', defaultUserGrants: [], defaultRoleGrants: [] })
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
