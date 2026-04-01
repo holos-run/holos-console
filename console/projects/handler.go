@@ -377,6 +377,72 @@ func (h *Handler) UpdateProjectSharing(
 	}), nil
 }
 
+// UpdateProjectDefaultSharing updates the default sharing grants on a project.
+func (h *Handler) UpdateProjectDefaultSharing(
+	ctx context.Context,
+	req *connect.Request[consolev1.UpdateProjectDefaultSharingRequest],
+) (*connect.Response[consolev1.UpdateProjectDefaultSharingResponse], error) {
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	ns, err := h.k8s.GetProject(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareRoles, _ := GetShareRoles(ns)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+
+	org := GetOrganization(ns)
+	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsAdmin); err != nil {
+		slog.WarnContext(ctx, "project default sharing update denied",
+			slog.String("action", "project_default_sharing_denied"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("project", req.Msg.Name),
+			slog.String("organization", org),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	newDefaultUsers := shareGrantsToAnnotations(req.Msg.DefaultUserGrants)
+	newDefaultRoles := shareGrantsToAnnotations(req.Msg.DefaultRoleGrants)
+
+	updated, err := h.k8s.UpdateProjectDefaultSharing(ctx, req.Msg.Name, newDefaultUsers, newDefaultRoles)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "project default sharing updated",
+		slog.String("action", "project_default_sharing_update"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", req.Msg.Name),
+		slog.String("organization", org),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	updatedShareUsers, _ := GetShareUsers(updated)
+	updatedShareRoles, _ := GetShareRoles(updated)
+	updatedActiveUsers := secrets.ActiveGrantsMap(updatedShareUsers, now)
+	updatedActiveRoles := secrets.ActiveGrantsMap(updatedShareRoles, now)
+	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveRoles)
+
+	return connect.NewResponse(&consolev1.UpdateProjectDefaultSharingResponse{
+		Project: h.buildProject(updated, updatedShareUsers, updatedShareRoles, userRole),
+	}), nil
+}
+
 // GetProjectRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
 func (h *Handler) GetProjectRaw(
 	ctx context.Context,
@@ -458,6 +524,15 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 		if annotations != nil {
 			p.DisplayName = annotations[DisplayNameAnnotation]
 			p.Description = annotations[secrets.DescriptionAnnotation]
+		}
+		// Populate default sharing grants from annotations
+		if nsTyped, ok := ns.(*corev1.Namespace); ok {
+			if defaultUsers, err := GetDefaultShareUsers(nsTyped); err == nil {
+				p.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
+			}
+			if defaultRoles, err := GetDefaultShareRoles(nsTyped); err == nil {
+				p.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
+			}
 		}
 	}
 	if l, ok := ns.(labeled); ok {

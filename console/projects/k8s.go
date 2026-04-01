@@ -17,6 +17,12 @@ import (
 // DisplayNameAnnotation is the annotation key for a project's display name.
 const DisplayNameAnnotation = "console.holos.run/display-name"
 
+// DefaultShareUsersAnnotation is the annotation key for default per-user sharing grants on a project.
+const DefaultShareUsersAnnotation = "console.holos.run/default-share-users"
+
+// DefaultShareRolesAnnotation is the annotation key for default per-role sharing grants on a project.
+const DefaultShareRolesAnnotation = "console.holos.run/default-share-roles"
+
 // K8sClient wraps Kubernetes client operations for projects (namespaces).
 type K8sClient struct {
 	client   kubernetes.Interface
@@ -230,6 +236,43 @@ func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 // Returns nil if the annotation is absent.
 func GetShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 	return parseGrantAnnotation(ns, secrets.ShareRolesAnnotation)
+}
+
+// GetDefaultShareUsers parses the default-share-users annotation from a namespace.
+// Returns nil if the annotation is absent.
+func GetDefaultShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
+	return parseGrantAnnotation(ns, DefaultShareUsersAnnotation)
+}
+
+// GetDefaultShareRoles parses the default-share-roles annotation from a namespace.
+// Returns nil if the annotation is absent.
+func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
+	return parseGrantAnnotation(ns, DefaultShareRolesAnnotation)
+}
+
+// UpdateProjectDefaultSharing updates the default sharing annotations on a managed namespace.
+func (c *K8sClient) UpdateProjectDefaultSharing(ctx context.Context, name string, defaultUsers, defaultRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	slog.DebugContext(ctx, "updating project default sharing in kubernetes",
+		slog.String("name", name),
+	)
+	ns, err := c.GetProject(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	usersJSON, err := json.Marshal(defaultUsers)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling default-share-users: %w", err)
+	}
+	rolesJSON, err := json.Marshal(defaultRoles)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
+	}
+	ns.Annotations[DefaultShareUsersAnnotation] = string(usersJSON)
+	ns.Annotations[DefaultShareRolesAnnotation] = string(rolesJSON)
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {

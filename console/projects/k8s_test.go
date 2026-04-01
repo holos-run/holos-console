@@ -444,6 +444,128 @@ func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
 	}
 }
 
+func TestGetDefaultShareUsers_ParsesAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+			Annotations: map[string]string{
+				DefaultShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+			},
+		},
+	}
+	grants, err := GetDefaultShareUsers(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grants))
+	}
+	if grants[0].Principal != "alice@example.com" {
+		t.Errorf("expected alice@example.com, got %q", grants[0].Principal)
+	}
+}
+
+func TestGetDefaultShareUsers_ReturnsNilWhenAbsent(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+		},
+	}
+	grants, err := GetDefaultShareUsers(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if grants != nil {
+		t.Errorf("expected nil, got %v", grants)
+	}
+}
+
+func TestGetDefaultShareRoles_ParsesAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+			Annotations: map[string]string{
+				DefaultShareRolesAnnotation: `[{"principal":"engineering","role":"editor"}]`,
+			},
+		},
+	}
+	grants, err := GetDefaultShareRoles(ns)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(grants))
+	}
+	if grants[0].Principal != "engineering" {
+		t.Errorf("expected engineering, got %q", grants[0].Principal)
+	}
+}
+
+func TestUpdateProjectDefaultSharing_PersistsAnnotations(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	defaultUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "viewer"}}
+	defaultRoles := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
+
+	result, err := k8s.UpdateProjectDefaultSharing(context.Background(), "my-project", defaultUsers, defaultRoles)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	gotUsers, err := GetDefaultShareUsers(result)
+	if err != nil {
+		t.Fatalf("failed to parse default share-users: %v", err)
+	}
+	if len(gotUsers) != 1 || gotUsers[0].Principal != "alice@example.com" {
+		t.Errorf("expected alice@example.com in default share-users, got %v", gotUsers)
+	}
+	gotRoles, err := GetDefaultShareRoles(result)
+	if err != nil {
+		t.Fatalf("failed to parse default share-roles: %v", err)
+	}
+	if len(gotRoles) != 1 || gotRoles[0].Principal != "engineering" {
+		t.Errorf("expected engineering in default share-roles, got %v", gotRoles)
+	}
+}
+
+func TestUpdateProjectDefaultSharing_RejectsUnmanagedNamespace(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	_, err := k8s.UpdateProjectDefaultSharing(context.Background(), "nonexistent", nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.IsNotFound(err) {
+		t.Errorf("expected NotFound error, got %v", err)
+	}
+}
+
 func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

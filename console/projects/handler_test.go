@@ -828,6 +828,113 @@ func TestUpdateProject_OrgOwnerCannotUpdateProjectWithoutProjectGrant(t *testing
 	assertPermissionDenied(t, err)
 }
 
+// ---- UpdateProjectDefaultSharing tests ----
+
+func TestUpdateProjectDefaultSharing_UpdatesGrantsForOwner(t *testing.T) {
+	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, logHandler := newHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.UpdateProjectDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateProjectDefaultSharingRequest{
+		Name: "my-project",
+		DefaultUserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
+		},
+		DefaultRoleGrants: []*consolev1.ShareGrant{
+			{Principal: "engineering", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Project.DefaultUserGrants) != 1 {
+		t.Errorf("expected 1 default user grant, got %d", len(resp.Msg.Project.DefaultUserGrants))
+	}
+	if resp.Msg.Project.DefaultUserGrants[0].Principal != "bob@example.com" {
+		t.Errorf("expected bob@example.com, got %q", resp.Msg.Project.DefaultUserGrants[0].Principal)
+	}
+	if len(resp.Msg.Project.DefaultRoleGrants) != 1 {
+		t.Errorf("expected 1 default role grant, got %d", len(resp.Msg.Project.DefaultRoleGrants))
+	}
+
+	if r := logHandler.findRecord("project_default_sharing_update"); r == nil {
+		t.Error("expected project_default_sharing_update audit log")
+	}
+}
+
+func TestUpdateProjectDefaultSharing_DeniesNonOwner(t *testing.T) {
+	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler, logHandler := newHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateProjectDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateProjectDefaultSharingRequest{
+		Name: "my-project",
+		DefaultUserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
+		},
+	}))
+	assertPermissionDenied(t, err)
+
+	if r := logHandler.findRecord("project_default_sharing_denied"); r == nil {
+		t.Error("expected project_default_sharing_denied audit log")
+	}
+}
+
+func TestUpdateProjectDefaultSharing_RequiresProjectName(t *testing.T) {
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateProjectDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateProjectDefaultSharingRequest{Name: ""}))
+	assertInvalidArgument(t, err)
+}
+
+func TestUpdateProjectDefaultSharing_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
+	handler, _ := newHandler()
+	_, err := handler.UpdateProjectDefaultSharing(context.Background(), connect.NewRequest(&consolev1.UpdateProjectDefaultSharingRequest{Name: "test"}))
+	assertUnauthenticated(t, err)
+}
+
+func TestBuildProject_PopulatesDefaultGrants(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+			Annotations: map[string]string{
+				DefaultShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				DefaultShareRolesAnnotation: `[{"principal":"engineering","role":"editor"}]`,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, nil)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	defaultUsers, _ := GetDefaultShareUsers(ns)
+	defaultRoles, _ := GetDefaultShareRoles(ns)
+	p := handler.buildProject(ns, nil, nil, 0)
+
+	_ = defaultUsers
+	_ = defaultRoles
+
+	if len(p.DefaultUserGrants) != 1 {
+		t.Errorf("expected 1 default user grant, got %d", len(p.DefaultUserGrants))
+	}
+	if p.DefaultUserGrants[0].Principal != "alice@example.com" {
+		t.Errorf("expected alice@example.com, got %q", p.DefaultUserGrants[0].Principal)
+	}
+	if len(p.DefaultRoleGrants) != 1 {
+		t.Errorf("expected 1 default role grant, got %d", len(p.DefaultRoleGrants))
+	}
+	if p.DefaultRoleGrants[0].Principal != "engineering" {
+		t.Errorf("expected engineering, got %q", p.DefaultRoleGrants[0].Principal)
+	}
+}
+
 func assertInvalidArgument(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
