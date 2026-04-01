@@ -30,3 +30,16 @@ func (r *OrgGrantResolver) GetOrgGrants(ctx context.Context, org string) (map[st
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 	return activeUsers, activeRoles, nil
 }
+
+// GetOrgDefaultGrants returns the default sharing grants for an organization.
+// These are applied to new projects created within the organization.
+// Implements projects.OrgDefaultShareResolver.
+func (r *OrgGrantResolver) GetOrgDefaultGrants(ctx context.Context, org string) ([]secrets.AnnotationGrant, []secrets.AnnotationGrant, error) {
+	ns, err := r.k8s.GetOrganization(ctx, org)
+	if err != nil {
+		return nil, nil, err
+	}
+	defaultUsers, _ := GetDefaultShareUsers(ns)
+	defaultRoles, _ := GetDefaultShareRoles(ns)
+	return defaultUsers, defaultRoles, nil
+}
