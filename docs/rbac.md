@@ -85,6 +85,8 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 |---|---|---|
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
 | `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
+| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants applied to new projects in the org |
+| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants applied to new projects in the org |
 
 Each grant is a JSON object with:
 
@@ -122,6 +124,10 @@ Parent grants do **not** implicitly grant full access to child resources:
 `PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization (checked via a separate authorization path, not cascade).
 
 Organization creation is controlled by CLI flags (`--disable-org-creation`, `--org-creator-users`, `--org-creator-roles`), not by grant-based authorization.
+
+## Organization Default Sharing
+
+Organizations can define **default sharing grants** that are automatically applied to new projects created within the organization. These defaults are stored as annotations on the organization namespace (`console.holos.run/default-share-users` and `console.holos.run/default-share-roles`) and are copied to the project namespace at creation time. Changing the defaults does not retroactively update existing projects.
 
 ## Example: Organization with Project and Secrets
 
