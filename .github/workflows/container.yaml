@@ -92,13 +92,25 @@ jobs:
   release:
     needs: buildx
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && startsWith(inputs.git_ref, 'refs/tags/v'))
     permissions:
       contents: write
     steps:
+      - name: Set ref
+        id: opts
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=${{ inputs.git_ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${GITHUB_REF}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ steps.opts.outputs.ref }}
           fetch-depth: 0
 
       - name: Set up Go
