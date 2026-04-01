@@ -72,6 +72,22 @@ export function useUpdateOrganizationSharing() {
   })
 }
 
+export function useUpdateOrganizationDefaultSharing() {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(OrganizationService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      name: string
+      defaultUserGrants: { principal: string; role: number }[]
+      defaultRoleGrants: { principal: string; role: number }[]
+    }) => client.updateOrganizationDefaultSharing(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+    },
+  })
+}
+
 export function useDeleteOrganization() {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])

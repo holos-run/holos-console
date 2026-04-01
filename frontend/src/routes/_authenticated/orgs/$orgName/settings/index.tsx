@@ -23,6 +23,7 @@ import {
   useGetOrganization,
   useUpdateOrganization,
   useUpdateOrganizationSharing,
+  useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from '@/queries/organizations'
 
@@ -50,6 +51,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const { data: org, isPending, error } = useGetOrganization(orgName)
   const updateOrganization = useUpdateOrganization()
   const updateOrganizationSharing = useUpdateOrganizationSharing()
+  const updateOrganizationDefaultSharing = useUpdateOrganizationDefaultSharing()
   const deleteOrganization = useDeleteOrganization()
 
   // Display Name inline edit
@@ -85,6 +87,10 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
 
   const handleSaveSharing = async (userGrants: Grant[], roleGrants: Grant[]) => {
     await updateOrganizationSharing.mutateAsync({ name: orgName, userGrants, roleGrants })
+  }
+
+  const handleSaveDefaultSharing = async (defaultUserGrants: Grant[], defaultRoleGrants: Grant[]) => {
+    await updateOrganizationDefaultSharing.mutateAsync({ name: orgName, defaultUserGrants, defaultRoleGrants })
   }
 
   const handleDelete = async () => {
@@ -126,6 +132,8 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const description = org?.description ?? ''
   const userGrants = (org?.userGrants ?? []) as Grant[]
   const roleGrants = (org?.roleGrants ?? []) as Grant[]
+  const defaultUserGrants = (org?.defaultUserGrants ?? []) as Grant[]
+  const defaultRoleGrants = (org?.defaultRoleGrants ?? []) as Grant[]
 
   return (
     <Card>
@@ -249,6 +257,17 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={updateOrganizationSharing.isPending}
+        />
+
+        {/* Default Sharing section */}
+        <SharingPanel
+          title="Default Sharing"
+          description="These grants are automatically applied to every new project and secret created in this organization."
+          userGrants={defaultUserGrants}
+          roleGrants={defaultRoleGrants}
+          isOwner={isOwner}
+          onSave={handleSaveDefaultSharing}
+          isSaving={updateOrganizationDefaultSharing.isPending}
         />
 
         {/* Danger Zone */}
