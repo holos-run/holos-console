@@ -50,6 +50,8 @@ The `/projects/:projectName/secrets` page displays all secrets in the project's 
 4. Add one or more key-value entries using the file-based editor. Each entry has a **Key** field (the filename) and a **Value** field (multiline content area with monospace font).
 5. Click **Create**. You are automatically added as the Owner of the new secret.
 
+If the project has default sharing grants configured in Project Settings, they are pre-populated in the sharing section of the dialog. You can modify these grants before submitting. The server also merges project defaults on the backend, so defaults are applied even if the client omits them.
+
 Duplicate keys are detected and flagged in the editor before submission.
 
 ### Viewing and Editing a Secret
