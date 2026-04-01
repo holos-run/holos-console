@@ -26,6 +26,12 @@ type ProjectResolver interface {
 	GetProjectGrants(ctx context.Context, project string) (shareUsers, shareRoles map[string]string, err error)
 }
 
+// DefaultShareResolver is an optional interface that a ProjectResolver can also implement
+// to provide default sharing grants applied to new secrets created in a project.
+type DefaultShareResolver interface {
+	GetDefaultGrants(ctx context.Context, project string) (defaultUsers, defaultRoles []AnnotationGrant, err error)
+}
+
 // Handler implements the SecretsService.
 type Handler struct {
 	consolev1connect.UnimplementedSecretsServiceHandler
@@ -219,8 +225,26 @@ func (h *Handler) CreateSecret(
 	shareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	shareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
+	// Merge project-level default sharing grants (if the resolver supports it).
+	// Request-supplied grants override defaults for the same principal via DeduplicateGrants
+	// (highest role wins, so explicit grants at a higher role shadow lower defaults).
+	if ds, ok := h.projectResolver.(DefaultShareResolver); ok {
+		defaultUsers, defaultRoles, err := ds.GetDefaultGrants(ctx, project)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to resolve default grants, proceeding without them",
+				slog.String("project", project),
+				slog.Any("error", err),
+			)
+		} else {
+			// Concatenate: request grants first so they win over defaults for the same principal.
+			shareUsers = DeduplicateGrants(append(shareUsers, defaultUsers...))
+			shareRoles = DeduplicateGrants(append(shareRoles, defaultRoles...))
+		}
+	}
+
 	// Check that the user has write permission based on the requested sharing grants
-	// and project grants.
+	// and project grants. Access check happens before adding creator-as-owner so that
+	// viewers cannot bypass the check by being elevated via ensureCreatorOwner.
 	now := time.Now()
 	activeUsers := ActiveGrantsMap(shareUsers, now)
 	activeRoles := ActiveGrantsMap(shareRoles, now)
@@ -237,6 +261,9 @@ func (h *Handler) CreateSecret(
 		)
 		return nil, err
 	}
+
+	// Ensure creator is always an owner after access check passes.
+	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
 	// Merge string_data into data (string_data takes precedence)
 	data := mergeStringData(req.Msg.Data, req.Msg.StringData)
@@ -488,6 +515,17 @@ func mergeStringData(data map[string][]byte, stringData map[string]string) map[s
 		data[k] = []byte(v)
 	}
 	return data
+}
+
+// ensureCreatorOwner ensures the creator email is in the share-users list as owner.
+func ensureCreatorOwner(shareUsers []AnnotationGrant, email string) []AnnotationGrant {
+	emailLower := strings.ToLower(email)
+	for _, g := range shareUsers {
+		if strings.ToLower(g.Principal) == emailLower && strings.ToLower(g.Role) == "owner" {
+			return shareUsers
+		}
+	}
+	return DeduplicateGrants(append(shareUsers, AnnotationGrant{Principal: email, Role: "owner"}))
 }
 
 // shareGrantsToAnnotations converts a slice of ShareGrant protos to []AnnotationGrant
