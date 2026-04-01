@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# PR #268 — capture Default Secret Sharing section in project settings.
+#
+# Called by scripts/browser-capture-pr 268. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Apply K8s fixture with default sharing grants set
+kubectl apply -f "$REPO_ROOT/frontend/e2e/fixtures/project-default-sharing.yaml"
+
+AB="agent-browser --session-name holos-dev"
+SETTINGS_URL="$HOLOS_BACKEND_URL/projects/default-sharing-demo/settings"
+
+echo "==> Navigating to project settings page"
+$AB open "$SETTINGS_URL"
+$AB wait --load networkidle
+$AB wait --text "Default Secret Sharing" 2>/dev/null || $AB wait 3000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/project-settings-default-sharing.png"
+echo "Saved project-settings-default-sharing.png"
+
+echo "==> Clicking Edit button on Default Secret Sharing section"
+$AB eval "
+  const buttons = [...document.querySelectorAll('button')];
+  const editBtns = buttons.filter(b => b.textContent.trim() === 'Edit');
+  if (editBtns.length > 1) editBtns[1].click();
+"
+$AB wait 1000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/project-settings-default-sharing-edit.png"
+echo "Saved project-settings-default-sharing-edit.png"
