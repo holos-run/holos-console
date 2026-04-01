@@ -507,9 +507,9 @@ func (h *Handler) GetProjectRaw(
 // buildProject creates a Project proto message from a namespace.
 func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
 	p := &consolev1.Project{
-		UserGrants:  annotationGrantsToProto(shareUsers),
+		UserGrants: annotationGrantsToProto(shareUsers),
 		RoleGrants: annotationGrantsToProto(shareRoles),
-		UserRole:    consolev1.Role(userRole),
+		UserRole:   consolev1.Role(userRole),
 	}
 
 	// Type-assert to get annotations and labels for metadata

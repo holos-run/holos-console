@@ -34,7 +34,7 @@ type Handler struct {
 	projectLister   ProjectLister
 	disableCreation bool
 	creatorUsers    []string
-	creatorRoles   []string
+	creatorRoles    []string
 }
 
 // NewHandler creates a new OrganizationService handler.
@@ -447,9 +447,9 @@ func (h *Handler) isOrgCreator(email string, roles []string) bool {
 // buildOrganization creates an Organization proto message from a namespace.
 func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Organization {
 	org := &consolev1.Organization{
-		UserGrants:  annotationGrantsToProto(shareUsers),
+		UserGrants: annotationGrantsToProto(shareUsers),
 		RoleGrants: annotationGrantsToProto(shareRoles),
-		UserRole:    consolev1.Role(userRole),
+		UserRole:   consolev1.Role(userRole),
 	}
 
 	type labeled interface {

@@ -26,7 +26,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 		Email:         email,
 		EmailVerified: true,
 		Name:          email,
-		Roles:        groups,
+		Roles:         groups,
 	}
 	return rpc.ContextWithClaims(context.Background(), claims)
 }
@@ -54,7 +54,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 type testHandlerOpts struct {
 	disableOrgCreation bool
 	creatorUsers       []string
-	creatorRoles      []string
+	creatorRoles       []string
 	projectLister      ProjectLister
 }
 
@@ -200,7 +200,7 @@ func TestCreateOrganization_DeniedNotInCreatorLists(t *testing.T) {
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
 		creatorUsers:       []string{"admin@example.com"},
-		creatorRoles:      []string{"platform-admins"},
+		creatorRoles:       []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("alice@example.com", "developers")
 
@@ -263,7 +263,7 @@ func TestCreateOrganization_DisabledHonorsCreatorRoles(t *testing.T) {
 	// With disableOrgCreation=true, explicit --org-creator-roles grants are still honored.
 	handler := newTestHandlerWithOpts(testHandlerOpts{
 		disableOrgCreation: true,
-		creatorRoles:      []string{"platform-admins"},
+		creatorRoles:       []string{"platform-admins"},
 	})
 	ctx := contextWithClaims("bob@example.com", "platform-admins")
 

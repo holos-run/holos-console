@@ -69,7 +69,7 @@ func contextWithClaims(email string, groups ...string) context.Context {
 		Email:         email,
 		EmailVerified: true,
 		Name:          email,
-		Roles:        groups,
+		Roles:         groups,
 	}
 	return rpc.ContextWithClaims(context.Background(), claims)
 }
