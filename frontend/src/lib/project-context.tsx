@@ -40,11 +40,18 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem(STORAGE_KEY)
   })
 
-  // Clear selected project when org changes, but not on initial mount.
+  // Clear selected project when org changes, but not on initial mount
+  // and not when the org change was triggered by navigating to a project URL
+  // (where the project is set before the org syncs from project data).
   const isMounted = useRef(false)
+  const suppressClearRef = useRef(false)
   useEffect(() => {
     if (!isMounted.current) {
       isMounted.current = true
+      return
+    }
+    if (suppressClearRef.current) {
+      suppressClearRef.current = false
       return
     }
     setSelectedProjectState(null)
@@ -55,6 +62,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setSelectedProjectState(name)
     if (name) {
       localStorage.setItem(STORAGE_KEY, name)
+      // When a project is explicitly set (e.g., from URL navigation),
+      // suppress the next org-change clear to avoid a race condition
+      // where syncing the org from project data would clear the project.
+      suppressClearRef.current = true
     } else {
       localStorage.removeItem(STORAGE_KEY)
     }
