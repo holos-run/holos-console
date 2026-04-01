@@ -1,0 +1,33 @@
+# GoReleaser configuration for creating GitHub releases with changelogs.
+# Container builds are handled separately in the container workflow;
+# GoReleaser only generates the changelog and creates the GitHub release.
+version: 2
+
+builds: []
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Build
+      regexp: '^.*?build(\(.+\))?!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  footer: |
+    ## Container Image
+    ```
+    docker pull ghcr.io/holos-run/holos-console:{{ .Tag }}
+    ```
