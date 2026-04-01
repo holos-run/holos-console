@@ -205,8 +205,7 @@ make generate   # or: go generate ./...
 This produces:
 - `gen/**/*.pb.go` - Go structs for messages
 - `gen/**/consolev1connect/*.connect.go` - ConnectRPC client/server bindings
-- `frontend/src/gen/**/*_pb.ts` - TypeScript message classes (protobuf-es)
-- `frontend/src/gen/**/*_connect.ts` - TypeScript ConnectRPC service definitions
+- `frontend/src/gen/**/*_pb.ts` - TypeScript message classes and service definitions (protobuf-es v2)
 
 ### Adding New RPCs
 
