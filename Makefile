@@ -34,9 +34,34 @@ console/dist: | frontend/node_modules
 show-version: ## Show current version.
 	@echo $(VERSION)
 
+.PHONY: bump-major
+bump-major: ## Bump major version (resets minor and patch to 0).
+	@echo $$(( $(shell cat console/version/major) + 1 )) > console/version/major
+	@echo 0 > console/version/minor
+	@echo 0 > console/version/patch
+	@echo "Version bumped to $$(cat console/version/major).$$(cat console/version/minor).$$(cat console/version/patch)"
+
+.PHONY: bump-minor
+bump-minor: ## Bump minor version (resets patch to 0).
+	@echo $$(( $(shell cat console/version/minor) + 1 )) > console/version/minor
+	@echo 0 > console/version/patch
+	@echo "Version bumped to $$(cat console/version/major).$$(cat console/version/minor).$$(cat console/version/patch)"
+
+.PHONY: bump-patch
+bump-patch: ## Bump patch version.
+	@echo $$(( $(shell cat console/version/patch) + 1 )) > console/version/patch
+	@echo "Version bumped to $$(cat console/version/major).$$(cat console/version/minor).$$(cat console/version/patch)"
+
 .PHONY: tag
-tag: ## Create version tag.
-	git tag v$(VERSION)
+tag: ## Create annotated version tag from embedded version files.
+	@if git rev-parse "v$(VERSION)" >/dev/null 2>&1; then \
+		echo "Error: tag v$(VERSION) already exists" >&2; exit 1; \
+	fi
+	@if [ "$$(git status --porcelain)" != "" ]; then \
+		echo "Error: working tree is dirty, commit changes first" >&2; exit 1; \
+	fi
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	@echo "Created tag v$(VERSION)"
 
 .PHONY: build
 build: | console/dist ## Build executable.

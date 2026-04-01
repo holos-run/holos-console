@@ -106,6 +106,10 @@ make dev            # Start Vite dev server with hot reload (use alongside make 
 make dispatch ISSUE=N  # Dispatch a plan issue to a Claude Code agent in a new worktree
 make agent-tools    # Install agent-browser for browser automation
 make cluster        # Create local k3d cluster (DNS + cluster + CA)
+make bump-major     # Bump major version (resets minor and patch to 0)
+make bump-minor     # Bump minor version (resets patch to 0)
+make bump-patch     # Bump patch version
+make tag            # Create annotated git tag from version files (never use git tag directly)
 make fmt            # Format code
 make vet            # Run go vet
 make lint           # Run golangci-lint
@@ -238,6 +242,8 @@ Version is determined by:
 2. `GitDescribe` ldflags override (set by Makefile during build)
 
 Build metadata (commit, tree state, date) injected via ldflags in Makefile.
+
+See `docs/versioning.md` for the complete versioning workflow including bump and tag procedures.
 
 ### Container Builds
 
