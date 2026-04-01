@@ -37,6 +37,11 @@ service OrganizationService {
   // The backend returns the Namespace exactly as the K8s API provides it, with no
   // field filtering. Requires authentication and PERMISSION_ORGANIZATIONS_READ.
   rpc GetOrganizationRaw(GetOrganizationRawRequest) returns (GetOrganizationRawResponse);
+
+  // UpdateOrganizationDefaultSharing updates the default sharing grants on an organization.
+  // These grants are applied by default to new projects created in this organization.
+  // Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
+  rpc UpdateOrganizationDefaultSharing(UpdateOrganizationDefaultSharingRequest) returns (UpdateOrganizationDefaultSharingResponse);
 }
 
 // Organization represents an organization with its metadata and grants.
@@ -53,6 +58,10 @@ message Organization {
   repeated ShareGrant role_grants = 5;
   // user_role is the calling user's effective role on this organization.
   Role user_role = 6;
+  // default_user_grants are the per-user sharing grants applied by default to new projects in this organization.
+  repeated ShareGrant default_user_grants = 7;
+  // default_role_grants are the per-role sharing grants applied by default to new projects in this organization.
+  repeated ShareGrant default_role_grants = 8;
 }
 
 // ListOrganizationsRequest contains optional filters for listing organizations.
@@ -144,4 +153,20 @@ message GetOrganizationRawRequest {
 message GetOrganizationRawResponse {
   // raw is the verbatim JSON-serialized Namespace object from the K8s API.
   string raw = 1;
+}
+
+// UpdateOrganizationDefaultSharingRequest contains the default sharing grants to set on an organization.
+message UpdateOrganizationDefaultSharingRequest {
+  // name is the name of the organization to update default sharing for.
+  string name = 1;
+  // default_user_grants are the per-user sharing grants applied by default to new projects.
+  repeated ShareGrant default_user_grants = 2;
+  // default_role_grants are the per-role sharing grants applied by default to new projects.
+  repeated ShareGrant default_role_grants = 3;
+}
+
+// UpdateOrganizationDefaultSharingResponse contains the updated organization.
+message UpdateOrganizationDefaultSharingResponse {
+  // organization is the updated organization with new default sharing grants.
+  Organization organization = 1;
 }

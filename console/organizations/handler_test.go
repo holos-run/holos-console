@@ -522,6 +522,96 @@ func TestUpdateOrgSharing_NonOwnerDenies(t *testing.T) {
 	assertPermissionDenied(t, err)
 }
 
+// ---- UpdateOrganizationDefaultSharing tests ----
+
+func TestUpdateOrgDefaultSharing_OwnerAllows(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.UpdateOrganizationDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationDefaultSharingRequest{
+		Name: "acme",
+		DefaultUserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+		DefaultRoleGrants: []*consolev1.ShareGrant{
+			{Principal: "engineering", Role: consolev1.Role_ROLE_VIEWER},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	org := resp.Msg.Organization
+	if len(org.DefaultUserGrants) != 1 {
+		t.Errorf("expected 1 default user grant, got %d", len(org.DefaultUserGrants))
+	}
+	if len(org.DefaultRoleGrants) != 1 {
+		t.Errorf("expected 1 default role grant, got %d", len(org.DefaultRoleGrants))
+	}
+	if org.DefaultUserGrants[0].Principal != "bob@example.com" {
+		t.Errorf("expected principal bob@example.com, got %q", org.DefaultUserGrants[0].Principal)
+	}
+}
+
+func TestUpdateOrgDefaultSharing_NonOwnerDenies(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateOrganizationDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationDefaultSharingRequest{
+		Name: "acme",
+		DefaultUserGrants: []*consolev1.ShareGrant{
+			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
+		},
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateOrgDefaultSharing_EmptyNameRejects(t *testing.T) {
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateOrganizationDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationDefaultSharingRequest{
+		Name: "",
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestUpdateOrgDefaultSharing_Unauthenticated(t *testing.T) {
+	handler := newTestHandler()
+	_, err := handler.UpdateOrganizationDefaultSharing(context.Background(), connect.NewRequest(&consolev1.UpdateOrganizationDefaultSharingRequest{
+		Name: "acme",
+	}))
+	assertUnauthenticated(t, err)
+}
+
+func TestBuildOrganization_IncludesDefaultSharing(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	ns.Annotations[DefaultShareUsersAnnotation] = `[{"principal":"bob@example.com","role":"editor"}]`
+	ns.Annotations[DefaultShareRolesAnnotation] = `[{"principal":"engineering","role":"viewer"}]`
+
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.GetOrganization(ctx, connect.NewRequest(&consolev1.GetOrganizationRequest{Name: "acme"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	org := resp.Msg.Organization
+	if len(org.DefaultUserGrants) != 1 {
+		t.Fatalf("expected 1 default user grant, got %d", len(org.DefaultUserGrants))
+	}
+	if org.DefaultUserGrants[0].Principal != "bob@example.com" {
+		t.Errorf("expected bob@example.com, got %q", org.DefaultUserGrants[0].Principal)
+	}
+	if len(org.DefaultRoleGrants) != 1 {
+		t.Fatalf("expected 1 default role grant, got %d", len(org.DefaultRoleGrants))
+	}
+	if org.DefaultRoleGrants[0].Principal != "engineering" {
+		t.Errorf("expected engineering, got %q", org.DefaultRoleGrants[0].Principal)
+	}
+}
+
 // ---- GetOrganizationRaw tests ----
 
 func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {

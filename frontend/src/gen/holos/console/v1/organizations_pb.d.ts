@@ -59,6 +59,20 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
    * @generated from field: holos.console.v1.Role user_role = 6;
    */
   userRole: Role;
+
+  /**
+   * default_user_grants are the per-user sharing grants applied by default to new projects in this organization.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_user_grants = 7;
+   */
+  defaultUserGrants: ShareGrant[];
+
+  /**
+   * default_role_grants are the per-role sharing grants applied by default to new projects in this organization.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 8;
+   */
+  defaultRoleGrants: ShareGrant[];
 };
 
 /**
@@ -386,6 +400,60 @@ export declare type GetOrganizationRawResponse = Message<"holos.console.v1.GetOr
 export declare const GetOrganizationRawResponseSchema: GenMessage<GetOrganizationRawResponse>;
 
 /**
+ * UpdateOrganizationDefaultSharingRequest contains the default sharing grants to set on an organization.
+ *
+ * @generated from message holos.console.v1.UpdateOrganizationDefaultSharingRequest
+ */
+export declare type UpdateOrganizationDefaultSharingRequest = Message<"holos.console.v1.UpdateOrganizationDefaultSharingRequest"> & {
+  /**
+   * name is the name of the organization to update default sharing for.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * default_user_grants are the per-user sharing grants applied by default to new projects.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_user_grants = 2;
+   */
+  defaultUserGrants: ShareGrant[];
+
+  /**
+   * default_role_grants are the per-role sharing grants applied by default to new projects.
+   *
+   * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 3;
+   */
+  defaultRoleGrants: ShareGrant[];
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateOrganizationDefaultSharingRequest.
+ * Use `create(UpdateOrganizationDefaultSharingRequestSchema)` to create a new message.
+ */
+export declare const UpdateOrganizationDefaultSharingRequestSchema: GenMessage<UpdateOrganizationDefaultSharingRequest>;
+
+/**
+ * UpdateOrganizationDefaultSharingResponse contains the updated organization.
+ *
+ * @generated from message holos.console.v1.UpdateOrganizationDefaultSharingResponse
+ */
+export declare type UpdateOrganizationDefaultSharingResponse = Message<"holos.console.v1.UpdateOrganizationDefaultSharingResponse"> & {
+  /**
+   * organization is the updated organization with new default sharing grants.
+   *
+   * @generated from field: holos.console.v1.Organization organization = 1;
+   */
+  organization?: Organization;
+};
+
+/**
+ * Describes the message holos.console.v1.UpdateOrganizationDefaultSharingResponse.
+ * Use `create(UpdateOrganizationDefaultSharingResponseSchema)` to create a new message.
+ */
+export declare const UpdateOrganizationDefaultSharingResponseSchema: GenMessage<UpdateOrganizationDefaultSharingResponse>;
+
+/**
  * OrganizationService provides CRUD operations for organizations.
  * An organization is a top-level administrative boundary backed by a Kubernetes
  * Namespace with a configurable prefix.
@@ -468,6 +536,18 @@ export declare const OrganizationService: GenService<{
     methodKind: "unary";
     input: typeof GetOrganizationRawRequestSchema;
     output: typeof GetOrganizationRawResponseSchema;
+  },
+  /**
+   * UpdateOrganizationDefaultSharing updates the default sharing grants on an organization.
+   * These grants are applied by default to new projects created in this organization.
+   * Requires PERMISSION_ORGANIZATIONS_ADMIN on the organization.
+   *
+   * @generated from rpc holos.console.v1.OrganizationService.UpdateOrganizationDefaultSharing
+   */
+  updateOrganizationDefaultSharing: {
+    methodKind: "unary";
+    input: typeof UpdateOrganizationDefaultSharingRequestSchema;
+    output: typeof UpdateOrganizationDefaultSharingResponseSchema;
   },
 }>;
 

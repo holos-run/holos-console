@@ -366,6 +366,69 @@ func (h *Handler) UpdateOrganizationSharing(
 	}), nil
 }
 
+// UpdateOrganizationDefaultSharing updates the default sharing grants on an organization.
+func (h *Handler) UpdateOrganizationDefaultSharing(
+	ctx context.Context,
+	req *connect.Request[consolev1.UpdateOrganizationDefaultSharingRequest],
+) (*connect.Response[consolev1.UpdateOrganizationDefaultSharingResponse], error) {
+	if req.Msg.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("organization name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	ns, err := h.k8s.GetOrganization(ctx, req.Msg.Name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareRoles, _ := GetShareRoles(ns)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+
+	if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
+		slog.WarnContext(ctx, "organization default sharing update denied",
+			slog.String("action", "organization_default_sharing_denied"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("organization", req.Msg.Name),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return nil, err
+	}
+
+	newDefaultUsers := shareGrantsToAnnotations(req.Msg.DefaultUserGrants)
+	newDefaultRoles := shareGrantsToAnnotations(req.Msg.DefaultRoleGrants)
+
+	updated, err := h.k8s.UpdateOrganizationDefaultSharing(ctx, req.Msg.Name, newDefaultUsers, newDefaultRoles)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "organization default sharing updated",
+		slog.String("action", "organization_default_sharing_update"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("organization", req.Msg.Name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	updatedShareUsers, _ := GetShareUsers(updated)
+	updatedShareRoles, _ := GetShareRoles(updated)
+	updatedActiveUsers := secrets.ActiveGrantsMap(updatedShareUsers, now)
+	updatedActiveRoles := secrets.ActiveGrantsMap(updatedShareRoles, now)
+	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveRoles)
+
+	return connect.NewResponse(&consolev1.UpdateOrganizationDefaultSharingResponse{
+		Organization: buildOrganization(h.k8s, updated, updatedShareUsers, updatedShareRoles, userRole),
+	}), nil
+}
+
 // GetOrganizationRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
 func (h *Handler) GetOrganizationRaw(
 	ctx context.Context,
@@ -487,6 +550,15 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 		if annotations != nil {
 			org.DisplayName = annotations[DisplayNameAnnotation]
 			org.Description = annotations[secrets.DescriptionAnnotation]
+		}
+		// Populate default sharing grants from annotations
+		if nsTyped, ok := ns.(*corev1.Namespace); ok {
+			if defaultUsers, err := GetDefaultShareUsers(nsTyped); err == nil {
+				org.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
+			}
+			if defaultRoles, err := GetDefaultShareRoles(nsTyped); err == nil {
+				org.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
+			}
 		}
 	}
 
