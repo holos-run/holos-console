@@ -4,6 +4,7 @@ import { Link, useRouter } from '@tanstack/react-router'
 import {
   Info,
   KeyRound,
+  FolderKanban,
   Plus,
   Settings,
   User,
@@ -64,10 +65,10 @@ export function AppSidebar() {
           label: 'Projects',
           to: '/orgs/$orgName/projects' as const,
           params: { orgName: selectedOrg },
-          icon: KeyRound,
+          icon: FolderKanban,
         },
         {
-          label: 'Settings',
+          label: 'Org Settings',
           to: '/orgs/$orgName/settings/' as const,
           params: { orgName: selectedOrg },
           icon: Settings,
@@ -183,6 +184,7 @@ export function AppSidebar() {
 
 function OrgPicker() {
   const { organizations, selectedOrg, setSelectedOrg, isLoading } = useOrg()
+  const router = useRouter()
   const [createOpen, setCreateOpen] = useState(false)
 
   if (isLoading) return null
@@ -228,7 +230,13 @@ function OrgPicker() {
           {organizations.map((org) => (
             <DropdownMenuItem
               key={org.name}
-              onClick={() => setSelectedOrg(org.name)}
+              onClick={() => {
+                setSelectedOrg(org.name)
+                router.navigate({
+                  to: '/orgs/$orgName/projects',
+                  params: { orgName: org.name },
+                })
+              }}
             >
               {org.displayName || org.name}
             </DropdownMenuItem>

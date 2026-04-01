@@ -4,6 +4,8 @@ import type { Mock } from 'vitest'
 import React from 'react'
 
 // Mock router and sidebar dependencies
+const mockNavigate = vi.fn()
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
@@ -25,7 +27,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       }
       return <a href={href}>{children}</a>
     },
-    useRouter: () => ({ state: { location: { pathname: '/' } } }),
+    useRouter: () => ({ state: { location: { pathname: '/' } }, navigate: mockNavigate }),
     useNavigate: () => vi.fn(),
   }
 })
@@ -50,7 +52,13 @@ vi.mock('@/components/ui/sidebar', () => ({
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode
+    onClick?: () => void
+  }) => <div onClick={onClick}>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
 }))
@@ -97,6 +105,7 @@ function setDefaults() {
 describe('AppSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockNavigate.mockReset()
     setDefaults()
   })
 
@@ -160,9 +169,9 @@ describe('AppSidebar — org selected', () => {
     expect(screen.getByRole('button', { name: /new project/i })).toBeDefined()
   })
 
-  it('renders org Settings link with correct href', () => {
+  it('renders org Settings link labeled "Org Settings" with correct href', () => {
     render(<AppSidebar />)
-    const link = screen.getByRole('link', { name: /settings/i })
+    const link = screen.getByRole('link', { name: /org settings/i })
     expect(link.getAttribute('href')).toBe('/orgs/my-org/settings/')
   })
 
@@ -179,6 +188,12 @@ describe('AppSidebar — org selected', () => {
     expect(labelTexts).toContain('My Org')
   })
 
+  it('shows "Org Settings" label instead of "Settings" in org nav', () => {
+    render(<AppSidebar />)
+    expect(screen.queryByRole('link', { name: /^org settings$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^settings$/i })).toBeNull()
+  })
+
   it('hides org nav group when selectedOrg is null', () => {
     ;(useOrg as Mock).mockReturnValue({
       organizations: [],
@@ -188,6 +203,38 @@ describe('AppSidebar — org selected', () => {
     })
     render(<AppSidebar />)
     expect(screen.queryByTestId('sidebar-group-label')).toBeNull()
+  })
+})
+
+describe('AppSidebar — OrgPicker navigation', () => {
+  const setSelectedOrg = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockNavigate.mockReset()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [
+        { name: 'org-a', displayName: 'Org A' },
+        { name: 'org-b', displayName: 'Org B' },
+      ],
+      selectedOrg: 'org-a',
+      setSelectedOrg,
+      isLoading: false,
+    })
+  })
+
+  it('navigates to org projects page when an org is selected in the picker', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+    const orgBItem = screen.getByText('Org B')
+    await user.click(orgBItem)
+    expect(setSelectedOrg).toHaveBeenCalledWith('org-b')
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/orgs/$orgName/projects',
+      params: { orgName: 'org-b' },
+    })
   })
 })
 
@@ -256,11 +303,11 @@ describe('AppSidebar — project selected', () => {
     expect(screen.getByText('Secrets')).toBeInTheDocument()
   })
 
-  it('renders Settings nav link when a project is selected', () => {
+  it('renders project Settings nav link when a project is selected', () => {
     render(<AppSidebar />)
-    // Both org and project nav groups show when both are selected, so there are two Settings links.
-    const settingsLinks = screen.getAllByText('Settings')
-    expect(settingsLinks.length).toBeGreaterThanOrEqual(1)
+    // Org nav shows "Org Settings"; project nav shows "Settings".
+    expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^org settings$/i })).toBeInTheDocument()
   })
 
   it('project Settings link points to /projects/$projectName/settings', () => {
