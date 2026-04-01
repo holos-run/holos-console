@@ -3,7 +3,8 @@
 # GoReleaser only generates the changelog and creates the GitHub release.
 version: 2
 
-builds: []
+builds:
+  - skip: true
 
 changelog:
   sort: asc
