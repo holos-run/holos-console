@@ -19,7 +19,7 @@ import {
 import { Check, Pencil, X } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetProject, useUpdateProject, useUpdateProjectSharing, useDeleteProject } from '@/queries/projects'
+import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/settings/')({
   component: ProjectSettingsRoute,
@@ -45,6 +45,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const { data: project, isPending, error } = useGetProject(projectName)
   const updateProject = useUpdateProject()
   const updateProjectSharing = useUpdateProjectSharing()
+  const updateProjectDefaultSharing = useUpdateProjectDefaultSharing()
   const deleteProject = useDeleteProject()
 
   // Display Name inline edit
@@ -80,6 +81,10 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
 
   const handleSaveSharing = async (userGrants: Grant[], roleGrants: Grant[]) => {
     await updateProjectSharing.mutateAsync({ name: projectName, userGrants, roleGrants })
+  }
+
+  const handleSaveDefaultSharing = async (defaultUserGrants: Grant[], defaultRoleGrants: Grant[]) => {
+    await updateProjectDefaultSharing.mutateAsync({ name: projectName, defaultUserGrants, defaultRoleGrants })
   }
 
   const handleDelete = async () => {
@@ -121,6 +126,8 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const description = project?.description ?? ''
   const userGrants = (project?.userGrants ?? []) as Grant[]
   const roleGrants = (project?.roleGrants ?? []) as Grant[]
+  const defaultUserGrants = (project?.defaultUserGrants ?? []) as Grant[]
+  const defaultRoleGrants = (project?.defaultRoleGrants ?? []) as Grant[]
 
   return (
     <Card>
@@ -244,6 +251,17 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
           isOwner={isOwner}
           onSave={handleSaveSharing}
           isSaving={updateProjectSharing.isPending}
+        />
+
+        {/* Default Secret Sharing section */}
+        <SharingPanel
+          title="Default Secret Sharing"
+          description="These grants are automatically applied to every new secret created in this project."
+          userGrants={defaultUserGrants}
+          roleGrants={defaultRoleGrants}
+          isOwner={isOwner}
+          onSave={handleSaveDefaultSharing}
+          isSaving={updateProjectDefaultSharing.isPending}
         />
 
         {/* Danger Zone */}

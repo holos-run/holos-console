@@ -74,6 +74,22 @@ export function useUpdateProjectSharing() {
   })
 }
 
+export function useUpdateProjectDefaultSharing() {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(ProjectService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      name: string
+      defaultUserGrants: { principal: string; role: number }[]
+      defaultRoleGrants: { principal: string; role: number }[]
+    }) => client.updateProjectDefaultSharing(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+    },
+  })
+}
+
 export function useDeleteProject() {
   const transport = useTransport()
   const client = useMemo(() => createClient(ProjectService, transport), [transport])

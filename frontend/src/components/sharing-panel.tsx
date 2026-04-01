@@ -26,6 +26,8 @@ export interface SharingPanelProps {
   isOwner: boolean
   onSave: (userGrants: Grant[], roleGrants: Grant[]) => Promise<void>
   isSaving: boolean
+  title?: string
+  description?: string
 }
 
 function roleName(role: Role): string {
@@ -79,7 +81,7 @@ function defaultExpirationUTC(): bigint {
   return BigInt(Math.floor(lastDayOfNextMonth.getTime() / 1000))
 }
 
-export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving }: SharingPanelProps) {
+export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving, title = 'Sharing', description }: SharingPanelProps) {
   const [editing, setEditing] = useState(false)
   const [editUserGrants, setEditUserGrants] = useState<Grant[]>([])
   const [editRoleGrants, setEditRoleGrants] = useState<Grant[]>([])
@@ -126,11 +128,14 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
     return (
       <div className="mt-6">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Sharing</h3>
+          <h3 className="text-sm font-medium">{title}</h3>
           {isOwner && (
             <Button variant="ghost" size="sm" onClick={handleEdit}>Edit</Button>
           )}
         </div>
+        {description && (
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        )}
         {!hasGrants ? (
           <p className="text-sm text-muted-foreground">No sharing grants configured.</p>
         ) : (
@@ -169,7 +174,10 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
 
   return (
     <div className="mt-6 space-y-4">
-      <h3 className="text-sm font-medium">Sharing</h3>
+      <h3 className="text-sm font-medium">{title}</h3>
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
 
       <div>
         <p className="text-xs text-muted-foreground mb-2">Users</p>
