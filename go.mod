@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
+	cuelang.org/go v0.16.0
 	filippo.io/mkcert v1.4.4
 	github.com/bufbuild/buf v1.62.1
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -14,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.48.0
+	golang.org/x/net v0.50.0
 	google.golang.org/protobuf v1.36.11
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
@@ -57,6 +58,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f // indirect
+	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.18.1 // indirect
@@ -156,16 +158,16 @@ require (
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/oauth2 v0.34.0 // indirect
+	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/api v0.257.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
