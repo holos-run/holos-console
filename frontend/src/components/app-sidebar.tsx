@@ -5,6 +5,7 @@ import {
   Info,
   KeyRound,
   FolderKanban,
+  LayoutTemplate,
   Plus,
   Settings,
   User,
@@ -34,6 +35,7 @@ import { Button } from '@/components/ui/button'
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
+import { useGetProjectSettings } from '@/queries/project-settings'
 import { CreateOrgDialog } from '@/components/create-org-dialog'
 import { CreateProjectDialog } from '@/components/create-project-dialog'
 
@@ -48,6 +50,7 @@ export function AppSidebar() {
   const pathname = router.state.location.pathname
   const { projects, selectedProject } = useProject()
   const { selectedOrg, organizations } = useOrg()
+  const { data: projectSettings } = useGetProjectSettings(selectedProject ?? '')
 
   const selectedOrgObj = organizations.find((o) => o.name === selectedOrg)
   const orgDisplayName = selectedOrgObj
@@ -81,6 +84,8 @@ export function AppSidebar() {
       ]
     : []
 
+  const deploymentsEnabled = projectSettings?.deploymentsEnabled ?? false
+
   const projectNavItems: Array<{
     label: string
     to: string
@@ -94,6 +99,16 @@ export function AppSidebar() {
           params: { projectName: selectedProject },
           icon: KeyRound,
         },
+        ...(deploymentsEnabled
+          ? [
+              {
+                label: 'Templates',
+                to: '/projects/$projectName/templates' as const,
+                params: { projectName: selectedProject },
+                icon: LayoutTemplate,
+              },
+            ]
+          : []),
         {
           label: 'Project Settings',
           to: '/projects/$projectName/settings/' as const,

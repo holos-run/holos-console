@@ -66,6 +66,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({ useVersion: vi.fn() }))
+vi.mock('@/queries/project-settings', () => ({ useGetProjectSettings: vi.fn() }))
 vi.mock('@/queries/organizations', () => ({
   useListOrganizations: vi.fn().mockReturnValue({ data: { organizations: [] }, isLoading: false }),
   useCreateOrganization: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
@@ -84,6 +85,7 @@ vi.mock('@/components/create-project-dialog', () => ({
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
+import { useGetProjectSettings } from '@/queries/project-settings'
 import { AppSidebar } from './app-sidebar'
 
 function setDefaults() {
@@ -100,6 +102,7 @@ function setDefaults() {
     isLoading: false,
   })
   ;(useVersion as Mock).mockReturnValue({ data: { version: 'v0.0.0-test' } })
+  ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
 }
 
 describe('AppSidebar', () => {
@@ -331,5 +334,47 @@ describe('AppSidebar — project selected', () => {
     const labels = screen.getAllByTestId('sidebar-group-label')
     const labelTexts = labels.map((l) => l.textContent)
     expect(labelTexts).toContain('My Org')
+  })
+})
+
+describe('AppSidebar — Templates nav item conditional visibility', () => {
+  function setupProjectSelected() {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'my-project', displayName: 'My Project' }],
+      selectedProject: 'my-project',
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    setupProjectSelected()
+  })
+
+  it('does not show Templates nav when deploymentsEnabled is false', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
+    render(<AppSidebar />)
+    expect(screen.queryByRole('link', { name: /^templates$/i })).not.toBeInTheDocument()
+  })
+
+  it('shows Templates nav when deploymentsEnabled is true', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
+    render(<AppSidebar />)
+    expect(screen.getByRole('link', { name: /^templates$/i })).toBeInTheDocument()
+  })
+
+  it('Templates link points to /projects/$projectName/templates', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
+    render(<AppSidebar />)
+    const link = screen.getByRole('link', { name: /^templates$/i })
+    expect(link.getAttribute('href')).toBe('/projects/my-project/templates')
   })
 })
