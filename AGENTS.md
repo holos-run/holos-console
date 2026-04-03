@@ -147,8 +147,19 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `projects/` - ProjectService with K8s Namespace backend and annotation-based grants
   - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{project-prefix}{name}` for projects)
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
+  - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as K8s ConfigMaps
+  - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue`
+  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render, and apply
   - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` - Protobuf source files
+  - `holos/console/v1/organizations.proto` - OrganizationService
+  - `holos/console/v1/projects.proto` - ProjectService
+  - `holos/console/v1/secrets.proto` - SecretsService
+  - `holos/console/v1/project_settings.proto` - ProjectSettingsService
+  - `holos/console/v1/deployment_templates.proto` - DeploymentTemplateService
+  - `holos/console/v1/deployments.proto` - DeploymentService
+  - `holos/console/v1/rbac.proto` - Role definitions (VIEWER, EDITOR, OWNER)
+  - `holos/console/v1/version.proto` - VersionService
 - `gen/` - Generated protobuf Go code (do not edit)
 - `frontend/` - React frontend source (see UI Architecture below)
 
@@ -257,6 +268,8 @@ gh workflow run container.yaml --ref main -f git_ref=refs/tags/v1.2.3
 ### Tool Dependencies
 
 Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
+
+CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`.
 
 ## Planning and Execution
 
