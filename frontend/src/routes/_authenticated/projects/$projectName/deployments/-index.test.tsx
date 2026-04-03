@@ -31,18 +31,16 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('@/components/ui/select', () => ({
   Select: ({ onValueChange, children }: { onValueChange?: (v: string) => void; children: React.ReactNode }) => (
-    <div data-testid="select-root">
-      <select data-testid="template-select" onChange={(e) => onValueChange?.(e.target.value)}>
-        {children}
-      </select>
-    </div>
+    <select data-testid="template-select" onChange={(e) => onValueChange?.(e.target.value)}>
+      {children}
+    </select>
   ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectTrigger: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
     <option value={value}>{children}</option>
   ),
-  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
+  SelectValue: () => null,
 }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))

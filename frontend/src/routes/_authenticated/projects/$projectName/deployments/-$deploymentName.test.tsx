@@ -81,7 +81,8 @@ describe('DeploymentDetailPage', () => {
   it('renders deployment name', () => {
     setupMocks()
     render(<DeploymentDetailPage />)
-    expect(screen.getByText('api')).toBeInTheDocument()
+    // displayName 'API Service' is shown in the h2; deployment name 'api' appears in the breadcrumb
+    expect(screen.getByText('API Service')).toBeInTheDocument()
   })
 
   it('renders image and tag', () => {
@@ -94,7 +95,7 @@ describe('DeploymentDetailPage', () => {
   it('renders replica status', () => {
     setupMocks()
     render(<DeploymentDetailPage />)
-    expect(screen.getByText(/1.*1/)).toBeInTheDocument()
+    expect(screen.getByText(/1\/1 ready/)).toBeInTheDocument()
   })
 
   it('renders deployment conditions', () => {

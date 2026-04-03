@@ -377,4 +377,23 @@ describe('AppSidebar — Templates nav item conditional visibility', () => {
     const link = screen.getByRole('link', { name: /^templates$/i })
     expect(link.getAttribute('href')).toBe('/projects/my-project/templates')
   })
+
+  it('does not show Deployments nav when deploymentsEnabled is false', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
+    render(<AppSidebar />)
+    expect(screen.queryByRole('link', { name: /^deployments$/i })).not.toBeInTheDocument()
+  })
+
+  it('shows Deployments nav when deploymentsEnabled is true', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
+    render(<AppSidebar />)
+    expect(screen.getByRole('link', { name: /^deployments$/i })).toBeInTheDocument()
+  })
+
+  it('Deployments link points to /projects/$projectName/deployments', () => {
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
+    render(<AppSidebar />)
+    const link = screen.getByRole('link', { name: /^deployments$/i })
+    expect(link.getAttribute('href')).toBe('/projects/my-project/deployments')
+  })
 })
