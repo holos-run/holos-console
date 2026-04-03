@@ -32,6 +32,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
 	"github.com/holos-run/holos-console/console/projects"
@@ -266,6 +267,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesHandler := templates.NewHandler(templatesK8s, projectResolver)
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
+
+		// Deployment service with project grant fallback
+		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
+		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, nil)
+		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
+		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 		// Fallback: secrets handler without K8s (no resolvers)
@@ -286,6 +293,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.DeploymentTemplateServiceName,
+		consolev1connect.DeploymentServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
