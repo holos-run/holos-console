@@ -43,48 +43,91 @@ const (
 	PermissionOrganizationsDelete = consolev1.Permission_PERMISSION_ORGANIZATIONS_DELETE
 	PermissionOrganizationsAdmin  = consolev1.Permission_PERMISSION_ORGANIZATIONS_ADMIN
 	PermissionOrganizationsCreate = consolev1.Permission_PERMISSION_ORGANIZATIONS_CREATE
+
+	PermissionDeploymentsList  = consolev1.Permission_PERMISSION_DEPLOYMENTS_LIST
+	PermissionDeploymentsRead  = consolev1.Permission_PERMISSION_DEPLOYMENTS_READ
+	PermissionDeploymentsWrite = consolev1.Permission_PERMISSION_DEPLOYMENTS_WRITE
+	PermissionDeploymentsDelete = consolev1.Permission_PERMISSION_DEPLOYMENTS_DELETE
+	PermissionDeploymentsAdmin = consolev1.Permission_PERMISSION_DEPLOYMENTS_ADMIN
+	PermissionDeploymentsLogs  = consolev1.Permission_PERMISSION_DEPLOYMENTS_LOGS
+
+	PermissionDeploymentTemplatesList  = consolev1.Permission_PERMISSION_DEPLOYMENT_TEMPLATES_LIST
+	PermissionDeploymentTemplatesRead  = consolev1.Permission_PERMISSION_DEPLOYMENT_TEMPLATES_READ
+	PermissionDeploymentTemplatesWrite = consolev1.Permission_PERMISSION_DEPLOYMENT_TEMPLATES_WRITE
+	PermissionDeploymentTemplatesDelete = consolev1.Permission_PERMISSION_DEPLOYMENT_TEMPLATES_DELETE
+	PermissionDeploymentTemplatesAdmin = consolev1.Permission_PERMISSION_DEPLOYMENT_TEMPLATES_ADMIN
+
+	PermissionProjectSettingsRead  = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_READ
+	PermissionProjectSettingsWrite = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_WRITE
 )
 
 // rolePermissions defines which permissions each role has.
 // Higher-level roles inherit all permissions from lower-level roles.
 var rolePermissions = map[Role]map[Permission]bool{
 	RoleViewer: {
-		PermissionSecretsRead:       true,
-		PermissionSecretsList:       true,
-		PermissionProjectsRead:      true,
-		PermissionProjectsList:      true,
-		PermissionOrganizationsRead: true,
-		PermissionOrganizationsList: true,
+		PermissionSecretsRead:              true,
+		PermissionSecretsList:              true,
+		PermissionProjectsRead:             true,
+		PermissionProjectsList:             true,
+		PermissionOrganizationsRead:        true,
+		PermissionOrganizationsList:        true,
+		PermissionDeploymentsList:          true,
+		PermissionDeploymentsRead:          true,
+		PermissionDeploymentsLogs:          true,
+		PermissionDeploymentTemplatesList:  true,
+		PermissionDeploymentTemplatesRead:  true,
+		PermissionProjectSettingsRead:      true,
 	},
 	RoleEditor: {
-		PermissionSecretsRead:        true,
-		PermissionSecretsList:        true,
-		PermissionSecretsWrite:       true,
-		PermissionProjectsRead:       true,
-		PermissionProjectsList:       true,
-		PermissionProjectsWrite:      true,
-		PermissionOrganizationsRead:  true,
-		PermissionOrganizationsList:  true,
-		PermissionOrganizationsWrite: true,
+		PermissionSecretsRead:              true,
+		PermissionSecretsList:              true,
+		PermissionSecretsWrite:             true,
+		PermissionProjectsRead:             true,
+		PermissionProjectsList:             true,
+		PermissionProjectsWrite:            true,
+		PermissionOrganizationsRead:        true,
+		PermissionOrganizationsList:        true,
+		PermissionOrganizationsWrite:       true,
+		PermissionDeploymentsList:          true,
+		PermissionDeploymentsRead:          true,
+		PermissionDeploymentsWrite:         true,
+		PermissionDeploymentsLogs:          true,
+		PermissionDeploymentTemplatesList:  true,
+		PermissionDeploymentTemplatesRead:  true,
+		PermissionDeploymentTemplatesWrite: true,
+		PermissionProjectSettingsRead:      true,
 	},
 	RoleOwner: {
-		PermissionSecretsRead:         true,
-		PermissionSecretsList:         true,
-		PermissionSecretsWrite:        true,
-		PermissionSecretsDelete:       true,
-		PermissionSecretsAdmin:        true,
-		PermissionProjectsRead:        true,
-		PermissionProjectsList:        true,
-		PermissionProjectsWrite:       true,
-		PermissionProjectsDelete:      true,
-		PermissionProjectsAdmin:       true,
-		PermissionProjectsCreate:      true,
-		PermissionOrganizationsRead:   true,
-		PermissionOrganizationsList:   true,
-		PermissionOrganizationsWrite:  true,
-		PermissionOrganizationsDelete: true,
-		PermissionOrganizationsAdmin:  true,
-		PermissionOrganizationsCreate: true,
+		PermissionSecretsRead:               true,
+		PermissionSecretsList:               true,
+		PermissionSecretsWrite:              true,
+		PermissionSecretsDelete:             true,
+		PermissionSecretsAdmin:              true,
+		PermissionProjectsRead:              true,
+		PermissionProjectsList:              true,
+		PermissionProjectsWrite:             true,
+		PermissionProjectsDelete:            true,
+		PermissionProjectsAdmin:             true,
+		PermissionProjectsCreate:            true,
+		PermissionOrganizationsRead:         true,
+		PermissionOrganizationsList:         true,
+		PermissionOrganizationsWrite:        true,
+		PermissionOrganizationsDelete:       true,
+		PermissionOrganizationsAdmin:        true,
+		PermissionOrganizationsCreate:       true,
+		PermissionDeploymentsList:           true,
+		PermissionDeploymentsRead:           true,
+		PermissionDeploymentsWrite:          true,
+		PermissionDeploymentsDelete:         true,
+		PermissionDeploymentsAdmin:          true,
+		PermissionDeploymentsLogs:           true,
+		PermissionDeploymentTemplatesList:   true,
+		PermissionDeploymentTemplatesRead:   true,
+		PermissionDeploymentTemplatesWrite:  true,
+		PermissionDeploymentTemplatesDelete: true,
+		PermissionDeploymentTemplatesAdmin:  true,
+		PermissionProjectSettingsRead:       true,
+		PermissionProjectSettingsWrite:      true,
 	},
 }
 
@@ -240,6 +283,51 @@ var ProjectCascadeSecretPerms = CascadeTable{
 		PermissionSecretsWrite:  true,
 		PermissionSecretsDelete: true,
 		PermissionSecretsAdmin:  true,
+	},
+}
+
+// ProjectCascadeDeploymentPerms defines what deployment permissions each
+// project role grants via cascade.
+var ProjectCascadeDeploymentPerms = CascadeTable{
+	RoleViewer: {
+		PermissionDeploymentsList: true,
+		PermissionDeploymentsRead: true,
+		PermissionDeploymentsLogs: true,
+	},
+	RoleEditor: {
+		PermissionDeploymentsList:  true,
+		PermissionDeploymentsRead:  true,
+		PermissionDeploymentsWrite: true,
+		PermissionDeploymentsLogs:  true,
+	},
+	RoleOwner: {
+		PermissionDeploymentsList:   true,
+		PermissionDeploymentsRead:   true,
+		PermissionDeploymentsWrite:  true,
+		PermissionDeploymentsDelete: true,
+		PermissionDeploymentsAdmin:  true,
+		PermissionDeploymentsLogs:   true,
+	},
+}
+
+// ProjectCascadeTemplatePerms defines what deployment template permissions each
+// project role grants via cascade.
+var ProjectCascadeTemplatePerms = CascadeTable{
+	RoleViewer: {
+		PermissionDeploymentTemplatesList: true,
+		PermissionDeploymentTemplatesRead: true,
+	},
+	RoleEditor: {
+		PermissionDeploymentTemplatesList:  true,
+		PermissionDeploymentTemplatesRead:  true,
+		PermissionDeploymentTemplatesWrite: true,
+	},
+	RoleOwner: {
+		PermissionDeploymentTemplatesList:   true,
+		PermissionDeploymentTemplatesRead:   true,
+		PermissionDeploymentTemplatesWrite:  true,
+		PermissionDeploymentTemplatesDelete: true,
+		PermissionDeploymentTemplatesAdmin:  true,
 	},
 }
 
