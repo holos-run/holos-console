@@ -14,16 +14,25 @@ The project uses:
 ```
 proto/                          # Protobuf source files
   holos/console/v1/
-    version.proto               # Service and message definitions
+    version.proto               # VersionService
+    organizations.proto         # OrganizationService
+    projects.proto              # ProjectService
+    secrets.proto               # SecretsService
+    project_settings.proto      # ProjectSettingsService
+    deployment_templates.proto  # DeploymentTemplateService
+    deployments.proto           # DeploymentService
+    rbac.proto                  # Role definitions
 
 gen/                            # Generated Go code (do not edit)
   holos/console/v1/
-    version.pb.go               # Go structs for messages
+    *.pb.go                     # Go structs for messages
     consolev1connect/
-      version.connect.go        # ConnectRPC client and server bindings
+      *.connect.go              # ConnectRPC client and server bindings
 
-console/rpc/                    # Hand-written RPC handlers
+console/rpc/                    # Hand-written RPC handlers (thin wrappers)
   version.go                    # VersionService implementation
+  # Service handlers delegate to console/{organizations,projects,secrets,
+  # settings,templates,deployments}/ packages for business logic
 ```
 
 ## Configuration Files

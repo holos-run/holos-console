@@ -151,6 +151,11 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/projects/$projectName/secrets/-index.test.tsx` | Secrets list page: table, sorting, error/loading |
 | `src/routes/_authenticated/projects/$projectName/secrets/-$name.test.tsx` | Secret detail page: display, edit, delete |
 | `src/routes/_authenticated/projects/$projectName/settings/-settings.test.tsx` | Project settings page: display name, description, sharing, default secret sharing, delete |
+| `src/routes/_authenticated/projects/$projectName/settings/-settings-deployments.test.tsx` | Project settings — Features section: deployments toggle, RBAC (owner/editor/viewer) |
+| `src/routes/_authenticated/projects/$projectName/templates/-index.test.tsx` | Deployment templates list: template names, create/delete buttons, RBAC, empty/error state |
+| `src/routes/_authenticated/projects/$projectName/templates/-$templateName.test.tsx` | Deployment template detail: CUE editor, save/delete, RBAC, skeleton, error state |
+| `src/routes/_authenticated/projects/$projectName/deployments/-index.test.tsx` | Deployments list: names, image/tag, status badges, create/delete, RBAC, empty/error state |
+| `src/routes/_authenticated/projects/$projectName/deployments/-$deploymentName.test.tsx` | Deployment detail: image/tag, replicas, conditions, logs, re-deploy/delete, RBAC |
 | `src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` | Org settings page: display name, description, sharing, default sharing, delete |
 | `src/routes/_authenticated/projects/-$projectName.test.tsx` | ProjectLayout: sets selected project from URL param |
 | `src/routes/_authenticated/orgs/$orgName/projects/-index.test.tsx` | Org projects page: list, navigate to project |
