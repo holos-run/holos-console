@@ -22,10 +22,16 @@ vi.mock('@/queries/projects', () => ({
   useDeleteProject: vi.fn(),
 }))
 
+vi.mock('@/queries/project-settings', () => ({
+  useGetProjectSettings: vi.fn(),
+  useUpdateProjectSettings: vi.fn(),
+}))
+
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
+import { useGetProjectSettings, useUpdateProjectSettings } from '@/queries/project-settings'
 import { useAuth } from '@/lib/auth'
 import { ProjectSettingsPage } from './index'
 
@@ -66,6 +72,15 @@ function setupMocks(overrides: Partial<typeof mockProject> = {}) {
     isPending: false,
     error: null,
   })
+  ;(useGetProjectSettings as Mock).mockReturnValue({
+    data: { project: 'test-project', deploymentsEnabled: false },
+    isPending: false,
+    error: null,
+  })
+  ;(useUpdateProjectSettings as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
   ;(useAuth as Mock).mockReturnValue({
     isAuthenticated: true,
     isLoading: false,
@@ -97,6 +112,8 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+    ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
     render(<ProjectSettingsPage />)
@@ -110,6 +127,8 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
+    ;(useGetProjectSettings as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+    ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
     render(<ProjectSettingsPage />)

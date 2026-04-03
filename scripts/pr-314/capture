@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #314: project settings deployments toggle + deployment templates UI
+# This script is called by scripts/browser-capture-pr 314 with:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR set in environment
+
+set -euo pipefail
+
+# Capture project settings page showing the Features section with deployments toggle
+agent-browser open "${HOLOS_BACKEND_URL}/projects/default/settings/"
+agent-browser wait 3000
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/project-settings-features-toggle.png"
+
+# Capture project templates list page
+agent-browser open "${HOLOS_BACKEND_URL}/projects/default/templates/"
+agent-browser wait 3000
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/templates-list.png"

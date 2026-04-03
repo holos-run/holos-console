@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -20,6 +22,7 @@ import { Check, Pencil, X } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
+import { useGetProjectSettings, useUpdateProjectSettings } from '@/queries/project-settings'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/settings/')({
   component: ProjectSettingsRoute,
@@ -47,6 +50,8 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const updateProjectSharing = useUpdateProjectSharing()
   const updateProjectDefaultSharing = useUpdateProjectDefaultSharing()
   const deleteProject = useDeleteProject()
+  const { data: projectSettings } = useGetProjectSettings(projectName)
+  const updateProjectSettings = useUpdateProjectSettings(projectName)
 
   // Display Name inline edit
   const [editingDisplayName, setEditingDisplayName] = useState(false)
@@ -241,6 +246,32 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
                 </Button>
               </>
             )}
+          </div>
+        </div>
+
+        {/* Features section */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium">Features</h3>
+          <Separator />
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="deployments-toggle" className="text-sm font-medium">Deployments</Label>
+              <p className="text-sm text-muted-foreground">Enable application deployments in this project.</p>
+            </div>
+            <Switch
+              id="deployments-toggle"
+              aria-label="Deployments"
+              checked={projectSettings?.deploymentsEnabled ?? false}
+              disabled={!isOwner || updateProjectSettings.isPending}
+              onCheckedChange={async (checked) => {
+                try {
+                  await updateProjectSettings.mutateAsync({ deploymentsEnabled: checked })
+                  toast.success('Saved')
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : String(err))
+                }
+              }}
+            />
           </div>
         </div>
 
