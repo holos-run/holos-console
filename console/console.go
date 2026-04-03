@@ -270,7 +270,15 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Deployment service with project grant fallback
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
-		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, nil)
+		dynamicClient, err := deployments.NewDynamicClient()
+		if err != nil {
+			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
+		}
+		var deploymentsApplier deployments.ResourceApplier
+		if dynamicClient != nil {
+			deploymentsApplier = deployments.NewApplier(dynamicClient)
+		}
+		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -16,7 +17,12 @@ import (
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
-const auditResourceType = "deployment"
+const (
+	auditResourceType = "deployment"
+	// cueTemplateKey is the ConfigMap data key holding the CUE template source.
+	// Mirrors templates.CueTemplateKey to avoid a cross-package import cycle.
+	cueTemplateKey = "template.cue"
+)
 
 // dnsLabelRe validates deployment names as DNS labels.
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
@@ -31,9 +37,20 @@ type SettingsResolver interface {
 	GetSettings(ctx context.Context, project string) (*consolev1.ProjectSettings, error)
 }
 
-// TemplateResolver validates that a referenced template exists.
+// TemplateResolver validates that a referenced template exists and returns its CUE source.
 type TemplateResolver interface {
 	GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error)
+}
+
+// Renderer evaluates CUE templates with deployment parameters.
+type Renderer interface {
+	Render(ctx context.Context, cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error)
+}
+
+// ResourceApplier applies and cleans up K8s resources for a deployment.
+type ResourceApplier interface {
+	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
+	Cleanup(ctx context.Context, namespace, deploymentName string) error
 }
 
 // Handler implements the DeploymentService.
@@ -43,16 +60,19 @@ type Handler struct {
 	projectResolver  ProjectResolver
 	settingsResolver SettingsResolver
 	templateResolver TemplateResolver
+	renderer         Renderer
+	applier          ResourceApplier
 }
 
 // NewHandler creates a DeploymentService handler.
-// renderer is reserved for Phase 5 and may be nil.
-func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolver SettingsResolver, templateResolver TemplateResolver, _ interface{}) *Handler {
+func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolver SettingsResolver, templateResolver TemplateResolver, renderer Renderer, applier ResourceApplier) *Handler {
 	return &Handler{
 		k8s:              k8s,
 		projectResolver:  projectResolver,
 		settingsResolver: settingsResolver,
 		templateResolver: templateResolver,
+		renderer:         renderer,
+		applier:          applier,
 	}
 }
 
@@ -186,11 +206,14 @@ func (h *Handler) CreateDeployment(
 		}
 	}
 
-	// Validate that the referenced template exists.
+	// Validate that the referenced template exists and get its CUE source.
+	var cueSource string
 	if h.templateResolver != nil {
-		if _, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template); err != nil {
+		tmplCM, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template)
+		if err != nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", req.Msg.Template, project))
 		}
+		cueSource = tmplCM.Data[cueTemplateKey]
 	}
 
 	displayName := ""
@@ -205,6 +228,35 @@ func (h *Handler) CreateDeployment(
 	_, err := h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// Render and apply the deployment resources.
+	if h.renderer != nil && h.applier != nil {
+		ns := h.k8s.Resolver.ProjectNamespace(project)
+		input := DeploymentInput{
+			Name:      name,
+			Image:     req.Msg.Image,
+			Tag:       req.Msg.Tag,
+			Project:   project,
+			Namespace: ns,
+		}
+		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
+		if renderErr != nil {
+			slog.WarnContext(ctx, "render failed after creating deployment",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", renderErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
+		}
+		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
+			slog.WarnContext(ctx, "apply failed after creating deployment",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", applyErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+		}
 	}
 
 	slog.InfoContext(ctx, "deployment created",
@@ -244,9 +296,56 @@ func (h *Handler) UpdateDeployment(
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description)
+	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// Re-render and re-apply deployment resources with updated parameters.
+	if h.renderer != nil && h.applier != nil && updated != nil {
+		templateName := updated.Data[TemplateKey]
+		image := updated.Data[ImageKey]
+		tag := updated.Data[TagKey]
+
+		var cueSource string
+		if h.templateResolver != nil && templateName != "" {
+			tmplCM, tmplErr := h.templateResolver.GetTemplate(ctx, project, templateName)
+			if tmplErr != nil {
+				slog.WarnContext(ctx, "template not found during update re-render",
+					slog.String("project", project),
+					slog.String("template", templateName),
+					slog.Any("error", tmplErr),
+				)
+			} else {
+				cueSource = tmplCM.Data[cueTemplateKey]
+			}
+		}
+
+		ns := h.k8s.Resolver.ProjectNamespace(project)
+		input := DeploymentInput{
+			Name:      name,
+			Image:     image,
+			Tag:       tag,
+			Project:   project,
+			Namespace: ns,
+		}
+		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
+		if renderErr != nil {
+			slog.WarnContext(ctx, "render failed during deployment update",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", renderErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
+		}
+		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
+			slog.WarnContext(ctx, "apply failed during deployment update",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", applyErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+		}
 	}
 
 	slog.InfoContext(ctx, "deployment updated",
@@ -282,6 +381,19 @@ func (h *Handler) DeleteDeployment(
 
 	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsDelete); err != nil {
 		return nil, err
+	}
+
+	// Clean up all K8s resources owned by this deployment before removing the record.
+	if h.applier != nil {
+		ns := h.k8s.Resolver.ProjectNamespace(project)
+		if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+			slog.WarnContext(ctx, "cleanup failed during deployment delete",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", cleanupErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("cleaning up deployment resources: %w", cleanupErr))
+		}
 	}
 
 	if err := h.k8s.DeleteDeployment(ctx, project, name); err != nil {

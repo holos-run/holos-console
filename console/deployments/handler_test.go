@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/holos-run/holos-console/console/rpc"
@@ -72,12 +73,50 @@ func fakeTemplate(name string) *corev1.ConfigMap {
 			Name:      name,
 			Namespace: "prj-my-project",
 		},
+		Data: map[string]string{
+			"template.cue": `
+input: { name: string, image: string, tag: string, project: string, namespace: string }
+resources: []
+`,
+		},
 	}
+}
+
+// stubRenderer implements Renderer for tests.
+type stubRenderer struct {
+	resources []unstructured.Unstructured
+	err       error
+	called    bool
+	lastInput DeploymentInput
+}
+
+func (s *stubRenderer) Render(_ context.Context, _ string, input DeploymentInput) ([]unstructured.Unstructured, error) {
+	s.called = true
+	s.lastInput = input
+	return s.resources, s.err
+}
+
+// stubApplier implements Applier for tests.
+type stubApplier struct {
+	applyCalled   bool
+	cleanupCalled bool
+	applyErr      error
+	cleanupErr    error
+}
+
+func (s *stubApplier) Apply(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
+	s.applyCalled = true
+	return s.applyErr
+}
+
+func (s *stubApplier) Cleanup(_ context.Context, _, _ string) error {
+	s.cleanupCalled = true
+	return s.cleanupErr
 }
 
 func defaultHandler(fakeClient *fake.Clientset, pr *stubProjectResolver) *Handler {
 	k8s := NewK8sClient(fakeClient, testResolver())
-	return NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, nil)
+	return NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{})
 }
 
 // TestHandler_ListDeployments tests the ListDeployments RPC.
@@ -239,7 +278,7 @@ func TestHandler_CreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
 		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: disabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, nil)
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: disabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{})
 
 		ctx := authedCtx("alice@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
@@ -263,7 +302,7 @@ func TestHandler_CreateDeployment(t *testing.T) {
 		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
 		k8s := NewK8sClient(fakeClient, testResolver())
 		templateErr := connect.NewError(connect.CodeNotFound, nil)
-		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{err: templateErr}, nil)
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{err: templateErr}, &stubRenderer{}, &stubApplier{})
 
 		ctx := authedCtx("alice@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
@@ -433,6 +472,100 @@ func TestHandler_DeleteDeployment(t *testing.T) {
 		}
 		if connect.CodeOf(err) != connect.CodePermissionDenied {
 			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
+		}
+	})
+}
+
+// TestHandler_RenderAndApply tests that CreateDeployment and UpdateDeployment
+// trigger render+apply and DeleteDeployment triggers cleanup.
+func TestHandler_RenderAndApply(t *testing.T) {
+	t.Run("CreateDeployment calls renderer and applier", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !renderer.called {
+			t.Error("expected renderer to be called on CreateDeployment")
+		}
+		if !applier.applyCalled {
+			t.Error("expected applier.Apply to be called on CreateDeployment")
+		}
+		if renderer.lastInput.Name != "web-app" {
+			t.Errorf("expected input name 'web-app', got %q", renderer.lastInput.Name)
+		}
+		if renderer.lastInput.Image != "nginx" {
+			t.Errorf("expected input image 'nginx', got %q", renderer.lastInput.Image)
+		}
+		if renderer.lastInput.Tag != "1.25" {
+			t.Errorf("expected input tag '1.25', got %q", renderer.lastInput.Tag)
+		}
+	})
+
+	t.Run("UpdateDeployment calls renderer and applier", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		newTag := "1.26"
+		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
+			Project: "my-project",
+			Name:    "web-app",
+			Tag:     &newTag,
+		})
+		_, err := handler.UpdateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !renderer.called {
+			t.Error("expected renderer to be called on UpdateDeployment")
+		}
+		if !applier.applyCalled {
+			t.Error("expected applier.Apply to be called on UpdateDeployment")
+		}
+	})
+
+	t.Run("DeleteDeployment calls applier cleanup", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "", "")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "owner"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.DeleteDeploymentRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		_, err := handler.DeleteDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !applier.cleanupCalled {
+			t.Error("expected applier.Cleanup to be called on DeleteDeployment")
 		}
 	})
 }
