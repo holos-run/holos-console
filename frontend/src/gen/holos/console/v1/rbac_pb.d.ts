@@ -180,6 +180,77 @@ export enum Permission {
    * @generated from enum value: PERMISSION_ORGANIZATIONS_CREATE = 17;
    */
   ORGANIZATIONS_CREATE = 17,
+
+  /**
+   * Deployment permissions
+   *
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_LIST = 18;
+   */
+  DEPLOYMENTS_LIST = 18,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_READ = 19;
+   */
+  DEPLOYMENTS_READ = 19,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_WRITE = 20;
+   */
+  DEPLOYMENTS_WRITE = 20,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_DELETE = 21;
+   */
+  DEPLOYMENTS_DELETE = 21,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_ADMIN = 22;
+   */
+  DEPLOYMENTS_ADMIN = 22,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENTS_LOGS = 23;
+   */
+  DEPLOYMENTS_LOGS = 23,
+
+  /**
+   * Deployment template permissions
+   *
+   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_LIST = 24;
+   */
+  DEPLOYMENT_TEMPLATES_LIST = 24,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_READ = 25;
+   */
+  DEPLOYMENT_TEMPLATES_READ = 25,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_WRITE = 26;
+   */
+  DEPLOYMENT_TEMPLATES_WRITE = 26,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_DELETE = 27;
+   */
+  DEPLOYMENT_TEMPLATES_DELETE = 27,
+
+  /**
+   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_ADMIN = 28;
+   */
+  DEPLOYMENT_TEMPLATES_ADMIN = 28,
+
+  /**
+   * Project settings permissions
+   *
+   * @generated from enum value: PERMISSION_PROJECT_SETTINGS_READ = 29;
+   */
+  PROJECT_SETTINGS_READ = 29,
+
+  /**
+   * @generated from enum value: PERMISSION_PROJECT_SETTINGS_WRITE = 30;
+   */
+  PROJECT_SETTINGS_WRITE = 30,
 }
 
 /**

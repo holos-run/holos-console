@@ -1,0 +1,148 @@
+syntax = "proto3";
+package holos.console.v1;
+import "holos/console/v1/rbac.proto";
+import "google/protobuf/timestamp.proto";
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// DeploymentService manages application deployments.
+service DeploymentService {
+  rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse);
+  rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse);
+  rpc CreateDeployment(CreateDeploymentRequest) returns (CreateDeploymentResponse);
+  rpc UpdateDeployment(UpdateDeploymentRequest) returns (UpdateDeploymentResponse);
+  rpc DeleteDeployment(DeleteDeploymentRequest) returns (DeleteDeploymentResponse);
+  // GetDeploymentStatus returns the live status of deployed K8s resources.
+  rpc GetDeploymentStatus(GetDeploymentStatusRequest) returns (GetDeploymentStatusResponse);
+  // GetDeploymentLogs returns recent container logs.
+  rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+}
+
+// Deployment represents a deployed application instance.
+message Deployment {
+  string name = 1;
+  string project = 2;
+  string image = 3;
+  string tag = 4;
+  // template is the name of the DeploymentTemplate used.
+  string template = 5;
+  // display_name is a human-readable name.
+  string display_name = 6;
+  // description explains the deployment's purpose.
+  string description = 7;
+  // phase is the current deployment phase.
+  DeploymentPhase phase = 8;
+  // message is a human-readable status message.
+  string message = 9;
+}
+
+// DeploymentPhase represents the lifecycle phase of a deployment.
+enum DeploymentPhase {
+  DEPLOYMENT_PHASE_UNSPECIFIED = 0;
+  DEPLOYMENT_PHASE_PENDING = 1;
+  DEPLOYMENT_PHASE_RUNNING = 2;
+  DEPLOYMENT_PHASE_FAILED = 3;
+  DEPLOYMENT_PHASE_SUCCEEDED = 4;
+}
+
+message ListDeploymentsRequest {
+  string project = 1;
+}
+
+message ListDeploymentsResponse {
+  repeated Deployment deployments = 1;
+}
+
+message GetDeploymentRequest {
+  string name = 1;
+  string project = 2;
+}
+
+message GetDeploymentResponse {
+  Deployment deployment = 1;
+}
+
+message CreateDeploymentRequest {
+  string name = 1;
+  string project = 2;
+  string image = 3;
+  string tag = 4;
+  string template = 5;
+  optional string display_name = 6;
+  optional string description = 7;
+}
+
+message CreateDeploymentResponse {
+  string name = 1;
+}
+
+message UpdateDeploymentRequest {
+  string name = 1;
+  string project = 2;
+  // image and tag are the primary fields to update (re-deploy).
+  optional string image = 3;
+  optional string tag = 4;
+  optional string display_name = 5;
+  optional string description = 6;
+}
+
+message UpdateDeploymentResponse {}
+
+message DeleteDeploymentRequest {
+  string name = 1;
+  string project = 2;
+}
+
+message DeleteDeploymentResponse {}
+
+message GetDeploymentStatusRequest {
+  string name = 1;
+  string project = 2;
+}
+
+// DeploymentStatus contains live status from K8s resources.
+message DeploymentStatus {
+  // ready_replicas is the number of pods in Ready state.
+  int32 ready_replicas = 1;
+  // desired_replicas is the target replica count.
+  int32 desired_replicas = 2;
+  // available_replicas is the number available.
+  int32 available_replicas = 3;
+  // conditions are the K8s Deployment conditions.
+  repeated DeploymentCondition conditions = 4;
+  // pods contains per-pod status.
+  repeated PodStatus pods = 5;
+}
+
+message DeploymentCondition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+}
+
+message PodStatus {
+  string name = 1;
+  string phase = 2;
+  bool ready = 3;
+  int32 restart_count = 4;
+}
+
+message GetDeploymentStatusResponse {
+  DeploymentStatus status = 1;
+}
+
+message GetDeploymentLogsRequest {
+  string name = 1;
+  string project = 2;
+  // container is the container name (optional, defaults to first container).
+  string container = 3;
+  // tail_lines limits the number of lines returned from the end.
+  int32 tail_lines = 4;
+  // previous returns logs from the previous container instance if true.
+  bool previous = 5;
+}
+
+message GetDeploymentLogsResponse {
+  // logs is the raw log output.
+  string logs = 1;
+}
