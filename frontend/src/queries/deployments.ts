@@ -80,3 +80,49 @@ export function useDeleteDeployment(project: string) {
     },
   })
 }
+
+function deploymentStatusKey(project: string, name: string) {
+  return ['deployments', 'status', project, name] as const
+}
+
+function deploymentLogsKey(project: string, name: string, container?: string, tailLines?: number, previous?: boolean) {
+  return ['deployments', 'logs', project, name, container, tailLines, previous] as const
+}
+
+export function useGetDeploymentStatus(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentStatusKey(project, name),
+    queryFn: async () => {
+      const response = await client.getDeploymentStatus({ project, name })
+      return response.status
+    },
+    enabled: isAuthenticated && !!project && !!name,
+  })
+}
+
+export function useGetDeploymentLogs(
+  project: string,
+  name: string,
+  options?: { container?: string; tailLines?: number; previous?: boolean },
+) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentLogsKey(project, name, options?.container, options?.tailLines, options?.previous),
+    queryFn: async () => {
+      const response = await client.getDeploymentLogs({
+        project,
+        name,
+        container: options?.container ?? '',
+        tailLines: options?.tailLines ?? 0,
+        previous: options?.previous ?? false,
+      })
+      return response.logs
+    },
+    enabled: isAuthenticated && !!project && !!name,
+  })
+}

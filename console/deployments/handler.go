@@ -62,6 +62,7 @@ type Handler struct {
 	templateResolver TemplateResolver
 	renderer         Renderer
 	applier          ResourceApplier
+	logReader        LogReader
 }
 
 // NewHandler creates a DeploymentService handler.
