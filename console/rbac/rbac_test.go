@@ -381,6 +381,210 @@ func TestCheckCascadeAccess(t *testing.T) {
 
 }
 
+func TestHasPermission_DeploymentPermissions(t *testing.T) {
+	t.Run("viewer can list and read deployments and view logs", func(t *testing.T) {
+		if !HasPermission(RoleViewer, PermissionDeploymentsList) {
+			t.Error("viewer should have deployments:list")
+		}
+		if !HasPermission(RoleViewer, PermissionDeploymentsRead) {
+			t.Error("viewer should have deployments:read")
+		}
+		if !HasPermission(RoleViewer, PermissionDeploymentsLogs) {
+			t.Error("viewer should have deployments:logs")
+		}
+	})
+
+	t.Run("viewer cannot write or delete deployments", func(t *testing.T) {
+		if HasPermission(RoleViewer, PermissionDeploymentsWrite) {
+			t.Error("viewer should not have deployments:write")
+		}
+		if HasPermission(RoleViewer, PermissionDeploymentsDelete) {
+			t.Error("viewer should not have deployments:delete")
+		}
+		if HasPermission(RoleViewer, PermissionDeploymentsAdmin) {
+			t.Error("viewer should not have deployments:admin")
+		}
+	})
+
+	t.Run("editor can write deployments", func(t *testing.T) {
+		if !HasPermission(RoleEditor, PermissionDeploymentsWrite) {
+			t.Error("editor should have deployments:write")
+		}
+	})
+
+	t.Run("editor cannot delete or admin deployments", func(t *testing.T) {
+		if HasPermission(RoleEditor, PermissionDeploymentsDelete) {
+			t.Error("editor should not have deployments:delete")
+		}
+		if HasPermission(RoleEditor, PermissionDeploymentsAdmin) {
+			t.Error("editor should not have deployments:admin")
+		}
+	})
+
+	t.Run("owner has all deployment permissions", func(t *testing.T) {
+		for _, perm := range []Permission{
+			PermissionDeploymentsList,
+			PermissionDeploymentsRead,
+			PermissionDeploymentsWrite,
+			PermissionDeploymentsDelete,
+			PermissionDeploymentsAdmin,
+			PermissionDeploymentsLogs,
+		} {
+			if !HasPermission(RoleOwner, perm) {
+				t.Errorf("owner should have permission %v", perm)
+			}
+		}
+	})
+}
+
+func TestHasPermission_DeploymentTemplatePermissions(t *testing.T) {
+	t.Run("viewer can list and read templates", func(t *testing.T) {
+		if !HasPermission(RoleViewer, PermissionDeploymentTemplatesList) {
+			t.Error("viewer should have templates:list")
+		}
+		if !HasPermission(RoleViewer, PermissionDeploymentTemplatesRead) {
+			t.Error("viewer should have templates:read")
+		}
+	})
+
+	t.Run("viewer cannot write or delete templates", func(t *testing.T) {
+		if HasPermission(RoleViewer, PermissionDeploymentTemplatesWrite) {
+			t.Error("viewer should not have templates:write")
+		}
+		if HasPermission(RoleViewer, PermissionDeploymentTemplatesDelete) {
+			t.Error("viewer should not have templates:delete")
+		}
+	})
+
+	t.Run("editor can write templates", func(t *testing.T) {
+		if !HasPermission(RoleEditor, PermissionDeploymentTemplatesWrite) {
+			t.Error("editor should have templates:write")
+		}
+	})
+
+	t.Run("editor cannot delete or admin templates", func(t *testing.T) {
+		if HasPermission(RoleEditor, PermissionDeploymentTemplatesDelete) {
+			t.Error("editor should not have templates:delete")
+		}
+		if HasPermission(RoleEditor, PermissionDeploymentTemplatesAdmin) {
+			t.Error("editor should not have templates:admin")
+		}
+	})
+
+	t.Run("owner has all template permissions", func(t *testing.T) {
+		for _, perm := range []Permission{
+			PermissionDeploymentTemplatesList,
+			PermissionDeploymentTemplatesRead,
+			PermissionDeploymentTemplatesWrite,
+			PermissionDeploymentTemplatesDelete,
+			PermissionDeploymentTemplatesAdmin,
+		} {
+			if !HasPermission(RoleOwner, perm) {
+				t.Errorf("owner should have permission %v", perm)
+			}
+		}
+	})
+}
+
+func TestHasPermission_ProjectSettingsPermissions(t *testing.T) {
+	t.Run("viewer can read project settings", func(t *testing.T) {
+		if !HasPermission(RoleViewer, PermissionProjectSettingsRead) {
+			t.Error("viewer should have settings:read")
+		}
+	})
+
+	t.Run("viewer cannot write project settings", func(t *testing.T) {
+		if HasPermission(RoleViewer, PermissionProjectSettingsWrite) {
+			t.Error("viewer should not have settings:write")
+		}
+	})
+
+	t.Run("editor cannot write project settings", func(t *testing.T) {
+		if HasPermission(RoleEditor, PermissionProjectSettingsWrite) {
+			t.Error("editor should not have settings:write (owner-only)")
+		}
+	})
+
+	t.Run("owner can read and write project settings", func(t *testing.T) {
+		if !HasPermission(RoleOwner, PermissionProjectSettingsRead) {
+			t.Error("owner should have settings:read")
+		}
+		if !HasPermission(RoleOwner, PermissionProjectSettingsWrite) {
+			t.Error("owner should have settings:write")
+		}
+	})
+}
+
+func TestProjectCascadeDeploymentPerms(t *testing.T) {
+	t.Run("project viewer can list and read deployments and view logs", func(t *testing.T) {
+		if !HasCascadePermission(RoleViewer, PermissionDeploymentsList, ProjectCascadeDeploymentPerms) {
+			t.Error("project viewer should have deployments:list via cascade")
+		}
+		if !HasCascadePermission(RoleViewer, PermissionDeploymentsRead, ProjectCascadeDeploymentPerms) {
+			t.Error("project viewer should have deployments:read via cascade")
+		}
+		if !HasCascadePermission(RoleViewer, PermissionDeploymentsLogs, ProjectCascadeDeploymentPerms) {
+			t.Error("project viewer should have deployments:logs via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot write or delete deployments", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionDeploymentsWrite, ProjectCascadeDeploymentPerms) {
+			t.Error("project viewer should not have deployments:write via cascade")
+		}
+		if HasCascadePermission(RoleViewer, PermissionDeploymentsDelete, ProjectCascadeDeploymentPerms) {
+			t.Error("project viewer should not have deployments:delete via cascade")
+		}
+	})
+
+	t.Run("project editor can write deployments", func(t *testing.T) {
+		if !HasCascadePermission(RoleEditor, PermissionDeploymentsWrite, ProjectCascadeDeploymentPerms) {
+			t.Error("project editor should have deployments:write via cascade")
+		}
+	})
+
+	t.Run("project owner can delete and admin deployments", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionDeploymentsDelete, ProjectCascadeDeploymentPerms) {
+			t.Error("project owner should have deployments:delete via cascade")
+		}
+		if !HasCascadePermission(RoleOwner, PermissionDeploymentsAdmin, ProjectCascadeDeploymentPerms) {
+			t.Error("project owner should have deployments:admin via cascade")
+		}
+	})
+}
+
+func TestProjectCascadeTemplatePerms(t *testing.T) {
+	t.Run("project viewer can list and read templates", func(t *testing.T) {
+		if !HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesList, ProjectCascadeTemplatePerms) {
+			t.Error("project viewer should have templates:list via cascade")
+		}
+		if !HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesRead, ProjectCascadeTemplatePerms) {
+			t.Error("project viewer should have templates:read via cascade")
+		}
+	})
+
+	t.Run("project viewer cannot write templates", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesWrite, ProjectCascadeTemplatePerms) {
+			t.Error("project viewer should not have templates:write via cascade")
+		}
+	})
+
+	t.Run("project editor can write templates", func(t *testing.T) {
+		if !HasCascadePermission(RoleEditor, PermissionDeploymentTemplatesWrite, ProjectCascadeTemplatePerms) {
+			t.Error("project editor should have templates:write via cascade")
+		}
+	})
+
+	t.Run("project owner can delete and admin templates", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionDeploymentTemplatesDelete, ProjectCascadeTemplatePerms) {
+			t.Error("project owner should have templates:delete via cascade")
+		}
+		if !HasCascadePermission(RoleOwner, PermissionDeploymentTemplatesAdmin, ProjectCascadeTemplatePerms) {
+			t.Error("project owner should have templates:admin via cascade")
+		}
+	})
+}
+
 func TestCheckAccessGrants(t *testing.T) {
 	t.Run("user grant allows access", func(t *testing.T) {
 		err := CheckAccessGrants(

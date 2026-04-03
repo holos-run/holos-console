@@ -1,0 +1,73 @@
+syntax = "proto3";
+package holos.console.v1;
+import "holos/console/v1/rbac.proto";
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// DeploymentTemplateService manages CUE-based deployment templates.
+service DeploymentTemplateService {
+  rpc ListDeploymentTemplates(ListDeploymentTemplatesRequest) returns (ListDeploymentTemplatesResponse);
+  rpc GetDeploymentTemplate(GetDeploymentTemplateRequest) returns (GetDeploymentTemplateResponse);
+  rpc CreateDeploymentTemplate(CreateDeploymentTemplateRequest) returns (CreateDeploymentTemplateResponse);
+  rpc UpdateDeploymentTemplate(UpdateDeploymentTemplateRequest) returns (UpdateDeploymentTemplateResponse);
+  rpc DeleteDeploymentTemplate(DeleteDeploymentTemplateRequest) returns (DeleteDeploymentTemplateResponse);
+}
+
+// DeploymentTemplate is a CUE template that produces K8s resource manifests.
+message DeploymentTemplate {
+  // name is the unique identifier (DNS label slug) within the project.
+  string name = 1;
+  // project is the parent project name.
+  string project = 2;
+  // display_name is a human-readable name.
+  string display_name = 3;
+  // description explains what the template produces.
+  string description = 4;
+  // cue_template is the CUE source code.
+  string cue_template = 5;
+}
+
+message ListDeploymentTemplatesRequest {
+  string project = 1;
+}
+
+message ListDeploymentTemplatesResponse {
+  repeated DeploymentTemplate templates = 1;
+}
+
+message GetDeploymentTemplateRequest {
+  string name = 1;
+  string project = 2;
+}
+
+message GetDeploymentTemplateResponse {
+  DeploymentTemplate template = 1;
+}
+
+message CreateDeploymentTemplateRequest {
+  string name = 1;
+  string project = 2;
+  string display_name = 3;
+  string description = 4;
+  string cue_template = 5;
+}
+
+message CreateDeploymentTemplateResponse {
+  string name = 1;
+}
+
+message UpdateDeploymentTemplateRequest {
+  string name = 1;
+  string project = 2;
+  optional string display_name = 3;
+  optional string description = 4;
+  optional string cue_template = 5;
+}
+
+message UpdateDeploymentTemplateResponse {}
+
+message DeleteDeploymentTemplateRequest {
+  string name = 1;
+  string project = 2;
+}
+
+message DeleteDeploymentTemplateResponse {}

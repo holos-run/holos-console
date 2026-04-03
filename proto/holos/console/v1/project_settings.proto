@@ -1,0 +1,39 @@
+syntax = "proto3";
+package holos.console.v1;
+import "holos/console/v1/rbac.proto";
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// ProjectSettingsService manages per-project configuration.
+service ProjectSettingsService {
+  // GetProjectSettings returns the settings for a project.
+  // Returns default settings if no settings ConfigMap exists (deployments_enabled=true).
+  rpc GetProjectSettings(GetProjectSettingsRequest) returns (GetProjectSettingsResponse);
+
+  // UpdateProjectSettings updates the settings for a project.
+  // Requires PERMISSION_PROJECT_SETTINGS_WRITE on the project.
+  rpc UpdateProjectSettings(UpdateProjectSettingsRequest) returns (UpdateProjectSettingsResponse);
+}
+
+message ProjectSettings {
+  // project is the project name (slug).
+  string project = 1;
+  // deployments_enabled controls whether deployment features are available.
+  bool deployments_enabled = 2;
+}
+
+message GetProjectSettingsRequest {
+  string project = 1;
+}
+
+message GetProjectSettingsResponse {
+  ProjectSettings settings = 1;
+}
+
+message UpdateProjectSettingsRequest {
+  string project = 1;
+  ProjectSettings settings = 2;
+}
+
+message UpdateProjectSettingsResponse {
+  ProjectSettings settings = 1;
+}
