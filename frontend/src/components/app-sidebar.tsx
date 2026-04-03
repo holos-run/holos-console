@@ -6,6 +6,7 @@ import {
   KeyRound,
   FolderKanban,
   LayoutTemplate,
+  Layers,
   Plus,
   Settings,
   User,
@@ -101,6 +102,12 @@ export function AppSidebar() {
         },
         ...(deploymentsEnabled
           ? [
+              {
+                label: 'Deployments',
+                to: '/projects/$projectName/deployments' as const,
+                params: { projectName: selectedProject },
+                icon: Layers,
+              },
               {
                 label: 'Templates',
                 to: '/projects/$projectName/templates' as const,

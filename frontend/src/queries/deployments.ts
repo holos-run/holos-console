@@ -89,7 +89,7 @@ function deploymentLogsKey(project: string, name: string, container?: string, ta
   return ['deployments', 'logs', project, name, container, tailLines, previous] as const
 }
 
-export function useGetDeploymentStatus(project: string, name: string) {
+export function useGetDeploymentStatus(project: string, name: string, options?: { refetchInterval?: number }) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(DeploymentService, transport), [transport])
@@ -100,6 +100,7 @@ export function useGetDeploymentStatus(project: string, name: string) {
       return response.status
     },
     enabled: isAuthenticated && !!project && !!name,
+    refetchInterval: options?.refetchInterval,
   })
 }
 

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #315: Deployments UI
+# This script is called by scripts/browser-capture-pr 315 with:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR set in environment
+
+set -euo pipefail
+
+# Capture project settings page (showing deployments toggle for context)
+agent-browser open "${HOLOS_BACKEND_URL}/projects/default/settings/"
+agent-browser wait 3000
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/project-settings.png"
+
+# Capture deployments list page (empty state — no real K8s cluster)
+agent-browser open "${HOLOS_BACKEND_URL}/projects/default/deployments/"
+agent-browser wait 3000
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/deployments-list.png"
