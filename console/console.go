@@ -38,6 +38,7 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
+	"github.com/holos-run/holos-console/console/settings"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
@@ -252,6 +253,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
+
+		// Project settings service with project grant fallback
+		settingsK8s := settings.NewK8sClient(k8sClientset, nsResolver)
+		settingsHandler := settings.NewHandler(settingsK8s, projectResolver)
+		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
+		mux.Handle(settingsPath, settingsHTTPHandler)
 	} else {
 		slog.Info("no kubernetes config available, using dummy-secret only")
 		// Fallback: secrets handler without K8s (no resolvers)
@@ -270,6 +277,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.SecretsServiceName,
 		consolev1connect.ProjectServiceName,
 		consolev1connect.OrganizationServiceName,
+		consolev1connect.ProjectSettingsServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
