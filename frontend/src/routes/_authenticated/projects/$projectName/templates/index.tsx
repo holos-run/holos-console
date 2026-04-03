@@ -3,9 +3,6 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -26,20 +23,9 @@ import {
 } from '@/components/ui/table'
 import { Pencil, Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListDeploymentTemplates, useCreateDeploymentTemplate, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListDeploymentTemplates, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
-
-const DEFAULT_CUE_TEMPLATE = `// deployment.cue — default deployment template
-package holos
-
-// #Deployment defines the shape of a deployment.
-#Deployment: {
-  name:      string
-  namespace: string
-  image:     string
-  replicas?: int & >=1 | *1
-}
-`
+import { CreateTemplateModal } from '@/components/create-template-modal'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
   component: DeploymentTemplatesRoute,
@@ -62,15 +48,9 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
 
   const { data: templates = [], isLoading, error } = useListDeploymentTemplates(projectName)
   const { data: project } = useGetProject(projectName)
-  const createMutation = useCreateDeploymentTemplate(projectName)
   const deleteMutation = useDeleteDeploymentTemplate(projectName)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [createDisplayName, setCreateDisplayName] = useState('')
-  const [createName, setCreateName] = useState('')
-  const [createDescription, setCreateDescription] = useState('')
-  const [createCueTemplate, setCreateCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
-  const [createError, setCreateError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -78,43 +58,6 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
-
-  const handleCreateOpen = () => {
-    setCreateDisplayName('')
-    setCreateName('')
-    setCreateDescription('')
-    setCreateCueTemplate(DEFAULT_CUE_TEMPLATE)
-    setCreateError(null)
-    createMutation.reset()
-    setCreateOpen(true)
-  }
-
-  const slugify = (val: string) =>
-    val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-
-  const handleDisplayNameChange = (val: string) => {
-    setCreateDisplayName(val)
-    setCreateName(slugify(val))
-  }
-
-  const handleCreate = async () => {
-    if (!createName.trim()) {
-      setCreateError('Template name is required')
-      return
-    }
-    setCreateError(null)
-    try {
-      await createMutation.mutateAsync({
-        name: createName.trim(),
-        displayName: createDisplayName.trim(),
-        description: createDescription.trim(),
-        cueTemplate: createCueTemplate,
-      })
-      setCreateOpen(false)
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err))
-    }
-  }
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
@@ -161,7 +104,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>{projectName} / Templates</CardTitle>
           {canWrite && (
-            <Button size="sm" onClick={handleCreateOpen}>Create Template</Button>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>Create Template</Button>
           )}
         </CardHeader>
         <CardContent>
@@ -169,7 +112,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <p className="text-muted-foreground">No deployment templates yet. Create one to get started.</p>
               {canWrite && (
-                <Button size="sm" onClick={handleCreateOpen}>Create Template</Button>
+                <Button size="sm" onClick={() => setCreateOpen(true)}>Create Template</Button>
               )}
             </div>
           ) : (
@@ -234,67 +177,11 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create Deployment Template</DialogTitle>
-            <DialogDescription>Define a CUE-based deployment template for this project.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="create-display-name">Display Name</Label>
-              <Input
-                id="create-display-name"
-                aria-label="Display Name"
-                autoFocus
-                value={createDisplayName}
-                onChange={(e) => handleDisplayNameChange(e.target.value)}
-                placeholder="My Web App"
-              />
-            </div>
-            <div>
-              <Label>Name (slug)</Label>
-              <Input
-                aria-label="Name slug"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="my-web-app"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Auto-derived from display name. Lowercase alphanumeric and hyphens only.</p>
-            </div>
-            <div>
-              <Label htmlFor="create-description">Description</Label>
-              <Input
-                id="create-description"
-                aria-label="Description"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="What does this template produce?"
-              />
-            </div>
-            <div>
-              <Label htmlFor="create-cue-template">CUE Template</Label>
-              <Textarea
-                id="create-cue-template"
-                aria-label="CUE Template"
-                value={createCueTemplate}
-                onChange={(e) => setCreateCueTemplate(e.target.value)}
-                rows={10}
-                className="font-mono text-sm"
-              />
-            </div>
-            {createError && (
-              <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateTemplateModal
+        projectName={projectName}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
