@@ -1,6 +1,22 @@
 // package deployment is the required CUE package declaration.
 package deployment
 
+// #KeyRef identifies a key within a Kubernetes Secret or ConfigMap.
+#KeyRef: {
+	name: string
+	key:  string
+}
+
+// #EnvVar represents a container environment variable.
+// Exactly one of value, secretKeyRef, or configMapKeyRef should be set.
+#EnvVar: {
+	name: string
+	// Exactly one of value, secretKeyRef, or configMapKeyRef.
+	value?:           string
+	secretKeyRef?:    #KeyRef
+	configMapKeyRef?: #KeyRef
+}
+
 // #Input defines the fields the console fills in at render time.
 // Constraints here are enforced by CUE before any Kubernetes call is made.
 #Input: {
@@ -11,6 +27,7 @@ package deployment
 	namespace: string
 	command?: [...string]
 	args?: [...string]
+	env: [...#EnvVar] | *[]
 }
 
 input: #Input
@@ -22,6 +39,26 @@ _labels: {
 	"app.kubernetes.io/name":       input.name
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
+
+// _envSpec transforms the env input into Kubernetes container env format.
+_envSpec: [for e in input.env {
+	name: e.name
+	if e.value != _|_ {
+		value: e.value
+	}
+	if e.secretKeyRef != _|_ {
+		valueFrom: secretKeyRef: {
+			name: e.secretKeyRef.name
+			key:  e.secretKeyRef.key
+		}
+	}
+	if e.configMapKeyRef != _|_ {
+		valueFrom: configMapKeyRef: {
+			name: e.configMapKeyRef.name
+			key:  e.configMapKeyRef.key
+		}
+	}
+}]
 
 resources: [
 	// ServiceAccount provides a Kubernetes identity for the pods.
@@ -54,6 +91,9 @@ resources: [
 					containers: [{
 						name:  input.name
 						image: input.image + ":" + input.tag
+						if len(_envSpec) > 0 {
+							env: _envSpec
+						}
 						ports: [{containerPort: 8443, name: "https"}]
 						if input.command != _|_ {
 							command: input.command
