@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #339: env var form UI
+# Uses HOLOS_BACKEND_URL, HOLOS_BACKEND_PORT, PR_SCREENSHOT_DIR from agent-dev lifecycle
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:=https://localhost:8443}"
+: "${PR_SCREENSHOT_DIR:=docs/screenshots/pr-339}"
+
+# Navigate to the deployments page (create dialog shows EnvVarEditor)
+agent-browser navigate "${HOLOS_BACKEND_URL}/projects/example-project/deployments"
+sleep 1
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/deployments-list.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"
