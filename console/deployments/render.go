@@ -123,7 +123,7 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 		return nil, fmt.Errorf("extracting resources field: %w", err)
 	}
 
-	var rawResources []map[string]interface{}
+	var rawResources []map[string]any
 	if err := resourcesValue.Decode(&rawResources); err != nil {
 		return nil, fmt.Errorf("decoding resources: %w", err)
 	}
@@ -147,20 +147,20 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 			return nil, fmt.Errorf("iterating namespaced keys: %w", err)
 		}
 		for nsIter.Next() {
-			nsKey := nsIter.Label()
+			nsKey := nsIter.Selector().Unquoted()
 			kindIter, err := nsIter.Value().Fields()
 			if err != nil {
 				return nil, fmt.Errorf("iterating Kind keys under namespace %q: %w", nsKey, err)
 			}
 			for kindIter.Next() {
-				kindKey := kindIter.Label()
+				kindKey := kindIter.Selector().Unquoted()
 				nameIter, err := kindIter.Value().Fields()
 				if err != nil {
 					return nil, fmt.Errorf("iterating name keys under %q/%q: %w", nsKey, kindKey, err)
 				}
 				for nameIter.Next() {
-					nameKey := nameIter.Label()
-					var raw map[string]interface{}
+					nameKey := nameIter.Selector().Unquoted()
+					var raw map[string]any
 					if err := nameIter.Value().Decode(&raw); err != nil {
 						return nil, fmt.Errorf("decoding namespaced/%s/%s/%s: %w", nsKey, kindKey, nameKey, err)
 					}
@@ -187,7 +187,7 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 					}
 
 					// Run common resource validations.
-					if err := validateResource(u, expectedNamespace); err != nil {
+					if err := validateResource(u); err != nil {
 						return nil, err
 					}
 
@@ -205,14 +205,14 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 			return nil, fmt.Errorf("iterating cluster Kind keys: %w", err)
 		}
 		for kindIter.Next() {
-			kindKey := kindIter.Label()
+			kindKey := kindIter.Selector().Unquoted()
 			nameIter, err := kindIter.Value().Fields()
 			if err != nil {
 				return nil, fmt.Errorf("iterating name keys under cluster/%q: %w", kindKey, err)
 			}
 			for nameIter.Next() {
-				nameKey := nameIter.Label()
-				var raw map[string]interface{}
+				nameKey := nameIter.Selector().Unquoted()
+				var raw map[string]any
 				if err := nameIter.Value().Decode(&raw); err != nil {
 					return nil, fmt.Errorf("decoding cluster/%s/%s: %w", kindKey, nameKey, err)
 				}
@@ -242,7 +242,7 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 }
 
 // validateResource runs common safety checks on a single resource.
-func validateResource(u unstructured.Unstructured, expectedNamespace string) error {
+func validateResource(u unstructured.Unstructured) error {
 	if u.GetAPIVersion() == "" {
 		return fmt.Errorf("resource %s/%s: missing apiVersion", u.GetKind(), u.GetName())
 	}
@@ -270,7 +270,7 @@ func validateResource(u unstructured.Unstructured, expectedNamespace string) err
 }
 
 // validateResources validates each resource against safety constraints.
-func validateResources(rawResources []map[string]interface{}, expectedNamespace string) ([]unstructured.Unstructured, error) {
+func validateResources(rawResources []map[string]any, expectedNamespace string) ([]unstructured.Unstructured, error) {
 	result := make([]unstructured.Unstructured, 0, len(rawResources))
 	for i, raw := range rawResources {
 		u := unstructured.Unstructured{Object: raw}

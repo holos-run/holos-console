@@ -325,7 +325,7 @@ func TestCueRenderer_Render(t *testing.T) {
 		if len(containers) != 1 {
 			t.Fatalf("expected 1 container, got %d", len(containers))
 		}
-		c, ok := containers[0].(map[string]interface{})
+		c, ok := containers[0].(map[string]any)
 		if !ok {
 			t.Fatal("container is not a map")
 		}
@@ -445,15 +445,15 @@ func TestCueRenderer_Env(t *testing.T) {
 		if len(containers) == 0 {
 			t.Fatal("expected at least 1 container")
 		}
-		c, ok := containers[0].(map[string]interface{})
+		c, ok := containers[0].(map[string]any)
 		if !ok {
 			t.Fatal("container is not a map")
 		}
-		envList, _, _ := unstructured.NestedSlice(map[string]interface{}{"c": c}, "c", "env")
+		envList, _, _ := unstructured.NestedSlice(map[string]any{"c": c}, "c", "env")
 		if len(envList) != 1 {
 			t.Fatalf("expected 1 env var, got %d", len(envList))
 		}
-		envItem, ok := envList[0].(map[string]interface{})
+		envItem, ok := envList[0].(map[string]any)
 		if !ok {
 			t.Fatal("env item is not a map")
 		}
@@ -483,7 +483,7 @@ func TestCueRenderer_Env(t *testing.T) {
 		if len(containers) == 0 {
 			t.Fatal("expected at least 1 container")
 		}
-		c, ok := containers[0].(map[string]interface{})
+		c, ok := containers[0].(map[string]any)
 		if !ok {
 			t.Fatal("container is not a map")
 		}
@@ -517,15 +517,15 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 		if len(containers) == 0 {
 			t.Fatal("expected at least 1 container")
 		}
-		c, ok := containers[0].(map[string]interface{})
+		c, ok := containers[0].(map[string]any)
 		if !ok {
 			t.Fatal("container is not a map")
 		}
-		gotCommand, _, _ := unstructured.NestedStringSlice(map[string]interface{}{"c": c}, "c", "command")
+		gotCommand, _, _ := unstructured.NestedStringSlice(map[string]any{"c": c}, "c", "command")
 		if len(gotCommand) != 2 || gotCommand[0] != "/bin/sh" {
 			t.Errorf("expected command [/bin/sh -c], got %v", gotCommand)
 		}
-		gotArgs, _, _ := unstructured.NestedStringSlice(map[string]interface{}{"c": c}, "c", "args")
+		gotArgs, _, _ := unstructured.NestedStringSlice(map[string]any{"c": c}, "c", "args")
 		if len(gotArgs) != 1 || gotArgs[0] != "echo hello" {
 			t.Errorf("expected args [echo hello], got %v", gotArgs)
 		}
@@ -549,7 +549,7 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 		if len(containers) == 0 {
 			t.Fatal("expected at least 1 container")
 		}
-		c, ok := containers[0].(map[string]interface{})
+		c, ok := containers[0].(map[string]any)
 		if !ok {
 			t.Fatal("container is not a map")
 		}
