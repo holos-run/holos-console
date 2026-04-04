@@ -10,7 +10,7 @@ import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
  * Describes the file holos/console/v1/deployments.proto.
  */
 export const file_holos_console_v1_deployments = /*@__PURE__*/
-  fileDesc("CiJob2xvcy9jb25zb2xlL3YxL2RlcGxveW1lbnRzLnByb3RvEhBob2xvcy5jb25zb2xlLnYxIuYBCgpEZXBsb3ltZW50EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCRINCgVpbWFnZRgDIAEoCRILCgN0YWcYBCABKAkSEAoIdGVtcGxhdGUYBSABKAkSFAoMZGlzcGxheV9uYW1lGAYgASgJEhMKC2Rlc2NyaXB0aW9uGAcgASgJEjAKBXBoYXNlGAggASgOMiEuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50UGhhc2USDwoHbWVzc2FnZRgJIAEoCRIPCgdjb21tYW5kGAogAygJEgwKBGFyZ3MYCyADKAkiKQoWTGlzdERlcGxveW1lbnRzUmVxdWVzdBIPCgdwcm9qZWN0GAEgASgJIkwKF0xpc3REZXBsb3ltZW50c1Jlc3BvbnNlEjEKC2RlcGxveW1lbnRzGAEgAygLMhwuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50IjUKFEdldERlcGxveW1lbnRSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCSJJChVHZXREZXBsb3ltZW50UmVzcG9uc2USMAoKZGVwbG95bWVudBgBIAEoCzIcLmhvbG9zLmNvbnNvbGUudjEuRGVwbG95bWVudCLbAQoXQ3JlYXRlRGVwbG95bWVudFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJEg0KBWltYWdlGAMgASgJEgsKA3RhZxgEIAEoCRIQCgh0ZW1wbGF0ZRgFIAEoCRIZCgxkaXNwbGF5X25hbWUYBiABKAlIAIgBARIYCgtkZXNjcmlwdGlvbhgHIAEoCUgBiAEBEg8KB2NvbW1hbmQYCCADKAkSDAoEYXJncxgJIAMoCUIPCg1fZGlzcGxheV9uYW1lQg4KDF9kZXNjcmlwdGlvbiIoChhDcmVhdGVEZXBsb3ltZW50UmVzcG9uc2USDAoEbmFtZRgBIAEoCSLlAQoXVXBkYXRlRGVwbG95bWVudFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJEhIKBWltYWdlGAMgASgJSACIAQESEAoDdGFnGAQgASgJSAGIAQESGQoMZGlzcGxheV9uYW1lGAUgASgJSAKIAQESGAoLZGVzY3JpcHRpb24YBiABKAlIA4gBARIPCgdjb21tYW5kGAcgAygJEgwKBGFyZ3MYCCADKAlCCAoGX2ltYWdlQgYKBF90YWdCDwoNX2Rpc3BsYXlfbmFtZUIOCgxfZGVzY3JpcHRpb24iGgoYVXBkYXRlRGVwbG95bWVudFJlc3BvbnNlIjgKF0RlbGV0ZURlcGxveW1lbnRSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCSIaChhEZWxldGVEZXBsb3ltZW50UmVzcG9uc2UiOwoaR2V0RGVwbG95bWVudFN0YXR1c1JlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJIsYBChBEZXBsb3ltZW50U3RhdHVzEhYKDnJlYWR5X3JlcGxpY2FzGAEgASgFEhgKEGRlc2lyZWRfcmVwbGljYXMYAiABKAUSGgoSYXZhaWxhYmxlX3JlcGxpY2FzGAMgASgFEjkKCmNvbmRpdGlvbnMYBCADKAsyJS5ob2xvcy5jb25zb2xlLnYxLkRlcGxveW1lbnRDb25kaXRpb24SKQoEcG9kcxgFIAMoCzIbLmhvbG9zLmNvbnNvbGUudjEuUG9kU3RhdHVzIlQKE0RlcGxveW1lbnRDb25kaXRpb24SDAoEdHlwZRgBIAEoCRIOCgZzdGF0dXMYAiABKAkSDgoGcmVhc29uGAMgASgJEg8KB21lc3NhZ2UYBCABKAkiTgoJUG9kU3RhdHVzEgwKBG5hbWUYASABKAkSDQoFcGhhc2UYAiABKAkSDQoFcmVhZHkYAyABKAgSFQoNcmVzdGFydF9jb3VudBgEIAEoBSJRChtHZXREZXBsb3ltZW50U3RhdHVzUmVzcG9uc2USMgoGc3RhdHVzGAEgASgLMiIuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50U3RhdHVzInIKGEdldERlcGxveW1lbnRMb2dzUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB3Byb2plY3QYAiABKAkSEQoJY29udGFpbmVyGAMgASgJEhIKCnRhaWxfbGluZXMYBCABKAUSEAoIcHJldmlvdXMYBSABKAgiKQoZR2V0RGVwbG95bWVudExvZ3NSZXNwb25zZRIMCgRsb2dzGAEgASgJKqwBCg9EZXBsb3ltZW50UGhhc2USIAocREVQTE9ZTUVOVF9QSEFTRV9VTlNQRUNJRklFRBAAEhwKGERFUExPWU1FTlRfUEhBU0VfUEVORElORxABEhwKGERFUExPWU1FTlRfUEhBU0VfUlVOTklORxACEhsKF0RFUExPWU1FTlRfUEhBU0VfRkFJTEVEEAMSHgoaREVQTE9ZTUVOVF9QSEFTRV9TVUNDRUVERUQQBDKABgoRRGVwbG95bWVudFNlcnZpY2USZgoPTGlzdERlcGxveW1lbnRzEiguaG9sb3MuY29uc29sZS52MS5MaXN0RGVwbG95bWVudHNSZXF1ZXN0GikuaG9sb3MuY29uc29sZS52MS5MaXN0RGVwbG95bWVudHNSZXNwb25zZRJgCg1HZXREZXBsb3ltZW50EiYuaG9sb3MuY29uc29sZS52MS5HZXREZXBsb3ltZW50UmVxdWVzdBonLmhvbG9zLmNvbnNvbGUudjEuR2V0RGVwbG95bWVudFJlc3BvbnNlEmkKEENyZWF0ZURlcGxveW1lbnQSKS5ob2xvcy5jb25zb2xlLnYxLkNyZWF0ZURlcGxveW1lbnRSZXF1ZXN0GiouaG9sb3MuY29uc29sZS52MS5DcmVhdGVEZXBsb3ltZW50UmVzcG9uc2USaQoQVXBkYXRlRGVwbG95bWVudBIpLmhvbG9zLmNvbnNvbGUudjEuVXBkYXRlRGVwbG95bWVudFJlcXVlc3QaKi5ob2xvcy5jb25zb2xlLnYxLlVwZGF0ZURlcGxveW1lbnRSZXNwb25zZRJpChBEZWxldGVEZXBsb3ltZW50EikuaG9sb3MuY29uc29sZS52MS5EZWxldGVEZXBsb3ltZW50UmVxdWVzdBoqLmhvbG9zLmNvbnNvbGUudjEuRGVsZXRlRGVwbG95bWVudFJlc3BvbnNlEnIKE0dldERlcGxveW1lbnRTdGF0dXMSLC5ob2xvcy5jb25zb2xlLnYxLkdldERlcGxveW1lbnRTdGF0dXNSZXF1ZXN0Gi0uaG9sb3MuY29uc29sZS52MS5HZXREZXBsb3ltZW50U3RhdHVzUmVzcG9uc2USbAoRR2V0RGVwbG95bWVudExvZ3MSKi5ob2xvcy5jb25zb2xlLnYxLkdldERlcGxveW1lbnRMb2dzUmVxdWVzdBorLmhvbG9zLmNvbnNvbGUudjEuR2V0RGVwbG95bWVudExvZ3NSZXNwb25zZUJDWkFnaXRodWIuY29tL2hvbG9zLXJ1bi9ob2xvcy1jb25zb2xlL2dlbi9ob2xvcy9jb25zb2xlL3YxO2NvbnNvbGV2MWIGcHJvdG8z", [file_holos_console_v1_rbac, file_google_protobuf_timestamp]);
+  fileDesc("CiJob2xvcy9jb25zb2xlL3YxL2RlcGxveW1lbnRzLnByb3RvEhBob2xvcy5jb25zb2xlLnYxIo0CCgpEZXBsb3ltZW50EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCRINCgVpbWFnZRgDIAEoCRILCgN0YWcYBCABKAkSEAoIdGVtcGxhdGUYBSABKAkSFAoMZGlzcGxheV9uYW1lGAYgASgJEhMKC2Rlc2NyaXB0aW9uGAcgASgJEjAKBXBoYXNlGAggASgOMiEuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50UGhhc2USDwoHbWVzc2FnZRgJIAEoCRIPCgdjb21tYW5kGAogAygJEgwKBGFyZ3MYCyADKAkSJQoDZW52GAwgAygLMhguaG9sb3MuY29uc29sZS52MS5FbnZWYXIirAEKBkVudlZhchIMCgRuYW1lGAEgASgJEg8KBXZhbHVlGAIgASgJSAASOAoOc2VjcmV0X2tleV9yZWYYAyABKAsyHi5ob2xvcy5jb25zb2xlLnYxLlNlY3JldEtleVJlZkgAEj8KEmNvbmZpZ19tYXBfa2V5X3JlZhgEIAEoCzIhLmhvbG9zLmNvbnNvbGUudjEuQ29uZmlnTWFwS2V5UmVmSABCCAoGc291cmNlIikKDFNlY3JldEtleVJlZhIMCgRuYW1lGAEgASgJEgsKA2tleRgCIAEoCSIsCg9Db25maWdNYXBLZXlSZWYSDAoEbmFtZRgBIAEoCRILCgNrZXkYAiABKAkiKQoWTGlzdERlcGxveW1lbnRzUmVxdWVzdBIPCgdwcm9qZWN0GAEgASgJIkwKF0xpc3REZXBsb3ltZW50c1Jlc3BvbnNlEjEKC2RlcGxveW1lbnRzGAEgAygLMhwuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50IjUKFEdldERlcGxveW1lbnRSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCSJJChVHZXREZXBsb3ltZW50UmVzcG9uc2USMAoKZGVwbG95bWVudBgBIAEoCzIcLmhvbG9zLmNvbnNvbGUudjEuRGVwbG95bWVudCKCAgoXQ3JlYXRlRGVwbG95bWVudFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJEg0KBWltYWdlGAMgASgJEgsKA3RhZxgEIAEoCRIQCgh0ZW1wbGF0ZRgFIAEoCRIZCgxkaXNwbGF5X25hbWUYBiABKAlIAIgBARIYCgtkZXNjcmlwdGlvbhgHIAEoCUgBiAEBEg8KB2NvbW1hbmQYCCADKAkSDAoEYXJncxgJIAMoCRIlCgNlbnYYCiADKAsyGC5ob2xvcy5jb25zb2xlLnYxLkVudlZhckIPCg1fZGlzcGxheV9uYW1lQg4KDF9kZXNjcmlwdGlvbiIoChhDcmVhdGVEZXBsb3ltZW50UmVzcG9uc2USDAoEbmFtZRgBIAEoCSKMAgoXVXBkYXRlRGVwbG95bWVudFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJEhIKBWltYWdlGAMgASgJSACIAQESEAoDdGFnGAQgASgJSAGIAQESGQoMZGlzcGxheV9uYW1lGAUgASgJSAKIAQESGAoLZGVzY3JpcHRpb24YBiABKAlIA4gBARIPCgdjb21tYW5kGAcgAygJEgwKBGFyZ3MYCCADKAkSJQoDZW52GAkgAygLMhguaG9sb3MuY29uc29sZS52MS5FbnZWYXJCCAoGX2ltYWdlQgYKBF90YWdCDwoNX2Rpc3BsYXlfbmFtZUIOCgxfZGVzY3JpcHRpb24iGgoYVXBkYXRlRGVwbG95bWVudFJlc3BvbnNlIjgKF0RlbGV0ZURlcGxveW1lbnRSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHcHJvamVjdBgCIAEoCSIaChhEZWxldGVEZXBsb3ltZW50UmVzcG9uc2UiOwoaR2V0RGVwbG95bWVudFN0YXR1c1JlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgdwcm9qZWN0GAIgASgJIsYBChBEZXBsb3ltZW50U3RhdHVzEhYKDnJlYWR5X3JlcGxpY2FzGAEgASgFEhgKEGRlc2lyZWRfcmVwbGljYXMYAiABKAUSGgoSYXZhaWxhYmxlX3JlcGxpY2FzGAMgASgFEjkKCmNvbmRpdGlvbnMYBCADKAsyJS5ob2xvcy5jb25zb2xlLnYxLkRlcGxveW1lbnRDb25kaXRpb24SKQoEcG9kcxgFIAMoCzIbLmhvbG9zLmNvbnNvbGUudjEuUG9kU3RhdHVzIlQKE0RlcGxveW1lbnRDb25kaXRpb24SDAoEdHlwZRgBIAEoCRIOCgZzdGF0dXMYAiABKAkSDgoGcmVhc29uGAMgASgJEg8KB21lc3NhZ2UYBCABKAkiTgoJUG9kU3RhdHVzEgwKBG5hbWUYASABKAkSDQoFcGhhc2UYAiABKAkSDQoFcmVhZHkYAyABKAgSFQoNcmVzdGFydF9jb3VudBgEIAEoBSJRChtHZXREZXBsb3ltZW50U3RhdHVzUmVzcG9uc2USMgoGc3RhdHVzGAEgASgLMiIuaG9sb3MuY29uc29sZS52MS5EZXBsb3ltZW50U3RhdHVzInIKGEdldERlcGxveW1lbnRMb2dzUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB3Byb2plY3QYAiABKAkSEQoJY29udGFpbmVyGAMgASgJEhIKCnRhaWxfbGluZXMYBCABKAUSEAoIcHJldmlvdXMYBSABKAgiKQoZR2V0RGVwbG95bWVudExvZ3NSZXNwb25zZRIMCgRsb2dzGAEgASgJKqwBCg9EZXBsb3ltZW50UGhhc2USIAocREVQTE9ZTUVOVF9QSEFTRV9VTlNQRUNJRklFRBAAEhwKGERFUExPWU1FTlRfUEhBU0VfUEVORElORxABEhwKGERFUExPWU1FTlRfUEhBU0VfUlVOTklORxACEhsKF0RFUExPWU1FTlRfUEhBU0VfRkFJTEVEEAMSHgoaREVQTE9ZTUVOVF9QSEFTRV9TVUNDRUVERUQQBDKABgoRRGVwbG95bWVudFNlcnZpY2USZgoPTGlzdERlcGxveW1lbnRzEiguaG9sb3MuY29uc29sZS52MS5MaXN0RGVwbG95bWVudHNSZXF1ZXN0GikuaG9sb3MuY29uc29sZS52MS5MaXN0RGVwbG95bWVudHNSZXNwb25zZRJgCg1HZXREZXBsb3ltZW50EiYuaG9sb3MuY29uc29sZS52MS5HZXREZXBsb3ltZW50UmVxdWVzdBonLmhvbG9zLmNvbnNvbGUudjEuR2V0RGVwbG95bWVudFJlc3BvbnNlEmkKEENyZWF0ZURlcGxveW1lbnQSKS5ob2xvcy5jb25zb2xlLnYxLkNyZWF0ZURlcGxveW1lbnRSZXF1ZXN0GiouaG9sb3MuY29uc29sZS52MS5DcmVhdGVEZXBsb3ltZW50UmVzcG9uc2USaQoQVXBkYXRlRGVwbG95bWVudBIpLmhvbG9zLmNvbnNvbGUudjEuVXBkYXRlRGVwbG95bWVudFJlcXVlc3QaKi5ob2xvcy5jb25zb2xlLnYxLlVwZGF0ZURlcGxveW1lbnRSZXNwb25zZRJpChBEZWxldGVEZXBsb3ltZW50EikuaG9sb3MuY29uc29sZS52MS5EZWxldGVEZXBsb3ltZW50UmVxdWVzdBoqLmhvbG9zLmNvbnNvbGUudjEuRGVsZXRlRGVwbG95bWVudFJlc3BvbnNlEnIKE0dldERlcGxveW1lbnRTdGF0dXMSLC5ob2xvcy5jb25zb2xlLnYxLkdldERlcGxveW1lbnRTdGF0dXNSZXF1ZXN0Gi0uaG9sb3MuY29uc29sZS52MS5HZXREZXBsb3ltZW50U3RhdHVzUmVzcG9uc2USbAoRR2V0RGVwbG95bWVudExvZ3MSKi5ob2xvcy5jb25zb2xlLnYxLkdldERlcGxveW1lbnRMb2dzUmVxdWVzdBorLmhvbG9zLmNvbnNvbGUudjEuR2V0RGVwbG95bWVudExvZ3NSZXNwb25zZUJDWkFnaXRodWIuY29tL2hvbG9zLXJ1bi9ob2xvcy1jb25zb2xlL2dlbi9ob2xvcy9jb25zb2xlL3YxO2NvbnNvbGV2MWIGcHJvdG8z", [file_holos_console_v1_rbac, file_google_protobuf_timestamp]);
 
 /**
  * Describes the message holos.console.v1.Deployment.
@@ -20,123 +20,144 @@ export const DeploymentSchema = /*@__PURE__*/
   messageDesc(file_holos_console_v1_deployments, 0);
 
 /**
+ * Describes the message holos.console.v1.EnvVar.
+ * Use `create(EnvVarSchema)` to create a new message.
+ */
+export const EnvVarSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_deployments, 1);
+
+/**
+ * Describes the message holos.console.v1.SecretKeyRef.
+ * Use `create(SecretKeyRefSchema)` to create a new message.
+ */
+export const SecretKeyRefSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_deployments, 2);
+
+/**
+ * Describes the message holos.console.v1.ConfigMapKeyRef.
+ * Use `create(ConfigMapKeyRefSchema)` to create a new message.
+ */
+export const ConfigMapKeyRefSchema = /*@__PURE__*/
+  messageDesc(file_holos_console_v1_deployments, 3);
+
+/**
  * Describes the message holos.console.v1.ListDeploymentsRequest.
  * Use `create(ListDeploymentsRequestSchema)` to create a new message.
  */
 export const ListDeploymentsRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 1);
+  messageDesc(file_holos_console_v1_deployments, 4);
 
 /**
  * Describes the message holos.console.v1.ListDeploymentsResponse.
  * Use `create(ListDeploymentsResponseSchema)` to create a new message.
  */
 export const ListDeploymentsResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 2);
+  messageDesc(file_holos_console_v1_deployments, 5);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentRequest.
  * Use `create(GetDeploymentRequestSchema)` to create a new message.
  */
 export const GetDeploymentRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 3);
+  messageDesc(file_holos_console_v1_deployments, 6);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentResponse.
  * Use `create(GetDeploymentResponseSchema)` to create a new message.
  */
 export const GetDeploymentResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 4);
+  messageDesc(file_holos_console_v1_deployments, 7);
 
 /**
  * Describes the message holos.console.v1.CreateDeploymentRequest.
  * Use `create(CreateDeploymentRequestSchema)` to create a new message.
  */
 export const CreateDeploymentRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 5);
+  messageDesc(file_holos_console_v1_deployments, 8);
 
 /**
  * Describes the message holos.console.v1.CreateDeploymentResponse.
  * Use `create(CreateDeploymentResponseSchema)` to create a new message.
  */
 export const CreateDeploymentResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 6);
+  messageDesc(file_holos_console_v1_deployments, 9);
 
 /**
  * Describes the message holos.console.v1.UpdateDeploymentRequest.
  * Use `create(UpdateDeploymentRequestSchema)` to create a new message.
  */
 export const UpdateDeploymentRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 7);
+  messageDesc(file_holos_console_v1_deployments, 10);
 
 /**
  * Describes the message holos.console.v1.UpdateDeploymentResponse.
  * Use `create(UpdateDeploymentResponseSchema)` to create a new message.
  */
 export const UpdateDeploymentResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 8);
+  messageDesc(file_holos_console_v1_deployments, 11);
 
 /**
  * Describes the message holos.console.v1.DeleteDeploymentRequest.
  * Use `create(DeleteDeploymentRequestSchema)` to create a new message.
  */
 export const DeleteDeploymentRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 9);
+  messageDesc(file_holos_console_v1_deployments, 12);
 
 /**
  * Describes the message holos.console.v1.DeleteDeploymentResponse.
  * Use `create(DeleteDeploymentResponseSchema)` to create a new message.
  */
 export const DeleteDeploymentResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 10);
+  messageDesc(file_holos_console_v1_deployments, 13);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentStatusRequest.
  * Use `create(GetDeploymentStatusRequestSchema)` to create a new message.
  */
 export const GetDeploymentStatusRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 11);
+  messageDesc(file_holos_console_v1_deployments, 14);
 
 /**
  * Describes the message holos.console.v1.DeploymentStatus.
  * Use `create(DeploymentStatusSchema)` to create a new message.
  */
 export const DeploymentStatusSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 12);
+  messageDesc(file_holos_console_v1_deployments, 15);
 
 /**
  * Describes the message holos.console.v1.DeploymentCondition.
  * Use `create(DeploymentConditionSchema)` to create a new message.
  */
 export const DeploymentConditionSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 13);
+  messageDesc(file_holos_console_v1_deployments, 16);
 
 /**
  * Describes the message holos.console.v1.PodStatus.
  * Use `create(PodStatusSchema)` to create a new message.
  */
 export const PodStatusSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 14);
+  messageDesc(file_holos_console_v1_deployments, 17);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentStatusResponse.
  * Use `create(GetDeploymentStatusResponseSchema)` to create a new message.
  */
 export const GetDeploymentStatusResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 15);
+  messageDesc(file_holos_console_v1_deployments, 18);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentLogsRequest.
  * Use `create(GetDeploymentLogsRequestSchema)` to create a new message.
  */
 export const GetDeploymentLogsRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 16);
+  messageDesc(file_holos_console_v1_deployments, 19);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentLogsResponse.
  * Use `create(GetDeploymentLogsResponseSchema)` to create a new message.
  */
 export const GetDeploymentLogsResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_deployments, 17);
+  messageDesc(file_holos_console_v1_deployments, 20);
 
 /**
  * Describes the enum holos.console.v1.DeploymentPhase.
