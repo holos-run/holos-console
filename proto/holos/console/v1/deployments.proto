@@ -37,6 +37,8 @@ message Deployment {
   repeated string command = 10;
   // args overrides the container image CMD.
   repeated string args = 11;
+  // env sets container environment variables.
+  repeated EnvVar env = 12;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.
@@ -46,6 +48,37 @@ enum DeploymentPhase {
   DEPLOYMENT_PHASE_RUNNING = 2;
   DEPLOYMENT_PHASE_FAILED = 3;
   DEPLOYMENT_PHASE_SUCCEEDED = 4;
+}
+
+// EnvVar represents a container environment variable.
+message EnvVar {
+  // name is the environment variable name.
+  string name = 1;
+  // source determines where the value comes from.
+  oneof source {
+    // value is a literal string value.
+    string value = 2;
+    // secret_key_ref references a key in a Kubernetes Secret.
+    SecretKeyRef secret_key_ref = 3;
+    // config_map_key_ref references a key in a Kubernetes ConfigMap.
+    ConfigMapKeyRef config_map_key_ref = 4;
+  }
+}
+
+// SecretKeyRef selects a key from a Kubernetes Secret.
+message SecretKeyRef {
+  // name is the Secret name.
+  string name = 1;
+  // key is the key within the Secret.
+  string key = 2;
+}
+
+// ConfigMapKeyRef selects a key from a Kubernetes ConfigMap.
+message ConfigMapKeyRef {
+  // name is the ConfigMap name.
+  string name = 1;
+  // key is the key within the ConfigMap.
+  string key = 2;
 }
 
 message ListDeploymentsRequest {
@@ -77,6 +110,8 @@ message CreateDeploymentRequest {
   repeated string command = 8;
   // args overrides the container image CMD.
   repeated string args = 9;
+  // env sets container environment variables.
+  repeated EnvVar env = 10;
 }
 
 message CreateDeploymentResponse {
@@ -95,6 +130,8 @@ message UpdateDeploymentRequest {
   repeated string command = 7;
   // args overrides the container image CMD.
   repeated string args = 8;
+  // env sets container environment variables.
+  repeated EnvVar env = 9;
 }
 
 message UpdateDeploymentResponse {}

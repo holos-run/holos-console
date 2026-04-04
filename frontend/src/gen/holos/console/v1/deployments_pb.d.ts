@@ -84,6 +84,13 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: repeated string args = 11;
    */
   args: string[];
+
+  /**
+   * env sets container environment variables.
+   *
+   * @generated from field: repeated holos.console.v1.EnvVar env = 12;
+   */
+  env: EnvVar[];
 };
 
 /**
@@ -91,6 +98,111 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
  * Use `create(DeploymentSchema)` to create a new message.
  */
 export declare const DeploymentSchema: GenMessage<Deployment>;
+
+/**
+ * EnvVar represents a container environment variable.
+ *
+ * @generated from message holos.console.v1.EnvVar
+ */
+export declare type EnvVar = Message<"holos.console.v1.EnvVar"> & {
+  /**
+   * name is the environment variable name.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * source determines where the value comes from.
+   *
+   * @generated from oneof holos.console.v1.EnvVar.source
+   */
+  source: {
+    /**
+     * value is a literal string value.
+     *
+     * @generated from field: string value = 2;
+     */
+    value: string;
+    case: "value";
+  } | {
+    /**
+     * secret_key_ref references a key in a Kubernetes Secret.
+     *
+     * @generated from field: holos.console.v1.SecretKeyRef secret_key_ref = 3;
+     */
+    value: SecretKeyRef;
+    case: "secretKeyRef";
+  } | {
+    /**
+     * config_map_key_ref references a key in a Kubernetes ConfigMap.
+     *
+     * @generated from field: holos.console.v1.ConfigMapKeyRef config_map_key_ref = 4;
+     */
+    value: ConfigMapKeyRef;
+    case: "configMapKeyRef";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message holos.console.v1.EnvVar.
+ * Use `create(EnvVarSchema)` to create a new message.
+ */
+export declare const EnvVarSchema: GenMessage<EnvVar>;
+
+/**
+ * SecretKeyRef selects a key from a Kubernetes Secret.
+ *
+ * @generated from message holos.console.v1.SecretKeyRef
+ */
+export declare type SecretKeyRef = Message<"holos.console.v1.SecretKeyRef"> & {
+  /**
+   * name is the Secret name.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * key is the key within the Secret.
+   *
+   * @generated from field: string key = 2;
+   */
+  key: string;
+};
+
+/**
+ * Describes the message holos.console.v1.SecretKeyRef.
+ * Use `create(SecretKeyRefSchema)` to create a new message.
+ */
+export declare const SecretKeyRefSchema: GenMessage<SecretKeyRef>;
+
+/**
+ * ConfigMapKeyRef selects a key from a Kubernetes ConfigMap.
+ *
+ * @generated from message holos.console.v1.ConfigMapKeyRef
+ */
+export declare type ConfigMapKeyRef = Message<"holos.console.v1.ConfigMapKeyRef"> & {
+  /**
+   * name is the ConfigMap name.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * key is the key within the ConfigMap.
+   *
+   * @generated from field: string key = 2;
+   */
+  key: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ConfigMapKeyRef.
+ * Use `create(ConfigMapKeyRefSchema)` to create a new message.
+ */
+export declare const ConfigMapKeyRefSchema: GenMessage<ConfigMapKeyRef>;
 
 /**
  * @generated from message holos.console.v1.ListDeploymentsRequest
@@ -213,6 +325,13 @@ export declare type CreateDeploymentRequest = Message<"holos.console.v1.CreateDe
    * @generated from field: repeated string args = 9;
    */
   args: string[];
+
+  /**
+   * env sets container environment variables.
+   *
+   * @generated from field: repeated holos.console.v1.EnvVar env = 10;
+   */
+  env: EnvVar[];
 };
 
 /**
@@ -286,6 +405,13 @@ export declare type UpdateDeploymentRequest = Message<"holos.console.v1.UpdateDe
    * @generated from field: repeated string args = 8;
    */
   args: string[];
+
+  /**
+   * env sets container environment variables.
+   *
+   * @generated from field: repeated holos.console.v1.EnvVar env = 9;
+   */
+  env: EnvVar[];
 };
 
 /**
