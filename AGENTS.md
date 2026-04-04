@@ -149,7 +149,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as K8s ConfigMaps
   - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue`
-  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render, and apply
+  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), and listing project-namespace Secrets/ConfigMaps for env var references
   - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` - Protobuf source files
   - `holos/console/v1/organizations.proto` - OrganizationService
