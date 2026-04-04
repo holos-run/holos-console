@@ -20,6 +20,8 @@ vi.mock('@/queries/deployments', () => ({
   useListDeployments: vi.fn(),
   useCreateDeployment: vi.fn(),
   useDeleteDeployment: vi.fn(),
+  useListNamespaceSecrets: vi.fn(),
+  useListNamespaceConfigMaps: vi.fn(),
 }))
 
 vi.mock('@/queries/deployment-templates', () => ({
@@ -61,7 +63,7 @@ vi.mock('@/components/ui/select', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListDeployments, useCreateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useListDeployments, useCreateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps } from '@/queries/deployments'
 import { useListDeploymentTemplates, useCreateDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -87,6 +89,8 @@ function setupMocks(
   ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: templates, isLoading: false })
   ;(useCreateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+  ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
 }
 
 describe('DeploymentsPage', () => {
@@ -319,5 +323,64 @@ describe('DeploymentsPage', () => {
     // The template-select should now have 'new-template' as its value
     const select = screen.getByTestId('template-select')
     expect(select.getAttribute('data-value')).toBe('new-template')
+  })
+
+  it('create dialog has Environment Variables section', () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    expect(screen.getAllByText(/environment variables/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /add environment variable/i })).toBeInTheDocument()
+  })
+
+  it('create dialog passes env to mutateAsync with literal value', async () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
+    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    // Add an env var
+    fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
+    fireEvent.change(screen.getByLabelText(/env var name/i), { target: { value: 'MY_VAR' } })
+    fireEvent.change(screen.getByLabelText(/literal value/i), { target: { value: 'hello' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: [expect.objectContaining({ name: 'MY_VAR', source: { case: 'value', value: 'hello' } })],
+        }),
+      )
+    })
+  })
+
+  it('create dialog filters out incomplete env rows on submit', async () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
+    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    // Add an env var but leave name empty (incomplete row)
+    fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
+    // Don't fill in the name — leave it empty
+
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ env: [] }),
+      )
+    })
   })
 })
