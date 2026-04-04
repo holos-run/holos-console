@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #319
+# Shows the create-template affordance in the Create Deployment modal.
+#
+# Called by scripts/browser-capture-pr 319. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+#
+# Uses the existing 'test-deployments' project which has no templates.
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+AB="agent-browser --session-name holos-dev"
+PROJECT="test-deployments"
+
+# --- Screenshot 1: Create Deployment modal showing no-templates affordance ---
+DEPLOY_URL="$HOLOS_BACKEND_URL/projects/$PROJECT/deployments"
+echo "==> Navigating to $DEPLOY_URL"
+$AB open "$DEPLOY_URL"
+$AB wait --load networkidle
+$AB wait 3000
+
+# Click Create Deployment
+$AB eval "
+  const btns = [...document.querySelectorAll('button')];
+  const btn = btns.find(b => /create deployment/i.test(b.textContent));
+  if (btn) btn.click();
+"
+$AB wait 2000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/01-create-deployment-no-templates.png"
+echo "Saved 01-create-deployment-no-templates.png"
+
+# --- Screenshot 2: Click "Create one now" to open sub-modal ---
+$AB eval "
+  (function() {
+    const subBtns = [...document.querySelectorAll('button')];
+    const subBtn = subBtns.find(b => /create one now/i.test(b.textContent));
+    if (subBtn) subBtn.click();
+  })()
+"
+$AB wait 2000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/02-create-template-sub-modal.png"
+echo "Saved 02-create-template-sub-modal.png"
+
+echo "Done. Screenshots in $PR_SCREENSHOT_DIR/"

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { CreateTemplateModal } from '@/components/create-template-modal'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,6 +75,8 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+
+  const [templateSubModalOpen, setTemplateSubModalOpen] = useState(false)
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -286,6 +289,18 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                   ))}
                 </SelectContent>
               </Select>
+              {templates.length === 0 && canWrite && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  No templates yet.{' '}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setTemplateSubModalOpen(true)}
+                  >
+                    Create one now
+                  </button>
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="create-image">Image</Label>
@@ -339,6 +354,16 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CreateTemplateModal
+        projectName={projectName}
+        open={templateSubModalOpen}
+        onOpenChange={setTemplateSubModalOpen}
+        onCreated={(name) => {
+          setCreateTemplate(name)
+          setTemplateSubModalOpen(false)
+        }}
+      />
     </>
   )
 }

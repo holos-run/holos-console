@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import ReactDOM from 'react-dom'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -23,6 +24,21 @@ vi.mock('@/queries/deployments', () => ({
 
 vi.mock('@/queries/deployment-templates', () => ({
   useListDeploymentTemplates: vi.fn(),
+  useCreateDeploymentTemplate: vi.fn(),
+}))
+
+vi.mock('@/components/create-template-modal', () => ({
+  CreateTemplateModal: ({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated?: (name: string) => void }) => {
+    if (!open) return null
+    return ReactDOM.createPortal(
+      <div role="dialog" aria-label="create template dialog">
+        <span>Create Template Modal</span>
+        <button onClick={() => onCreated?.('new-template')}>Submit Template</button>
+        <button onClick={() => onOpenChange(false)}>Close Template Modal</button>
+      </div>,
+      document.body,
+    )
+  },
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -30,8 +46,8 @@ vi.mock('@/queries/projects', () => ({
 }))
 
 vi.mock('@/components/ui/select', () => ({
-  Select: ({ onValueChange, children }: { onValueChange?: (v: string) => void; children: React.ReactNode }) => (
-    <select data-testid="template-select" onChange={(e) => onValueChange?.(e.target.value)}>
+  Select: ({ value, onValueChange, children }: { value?: string; onValueChange?: (v: string) => void; children: React.ReactNode }) => (
+    <select data-testid="template-select" data-value={value} value={value} onChange={(e) => onValueChange?.(e.target.value)}>
       {children}
     </select>
   ),
@@ -46,7 +62,7 @@ vi.mock('@/components/ui/select', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useListDeployments, useCreateDeployment, useDeleteDeployment } from '@/queries/deployments'
-import { useListDeploymentTemplates } from '@/queries/deployment-templates'
+import { useListDeploymentTemplates, useCreateDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
@@ -69,6 +85,7 @@ function setupMocks(
   ;(useCreateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'api' }), isPending: false, reset: vi.fn() })
   ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: templates, isLoading: false })
+  ;(useCreateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
 }
 
@@ -207,5 +224,58 @@ describe('DeploymentsPage', () => {
         expect.objectContaining({ image: 'ghcr.io/org/api', tag: 'v1.0.0', template: 'web-app' }),
       )
     })
+  })
+
+  it('shows no-templates empty-state message when templates list is empty and user can write', () => {
+    setupMocks([], Role.OWNER, [])
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    expect(screen.getByText(/no templates yet/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create one now/i })).toBeInTheDocument()
+  })
+
+  it('does not show no-templates empty-state when templates exist', () => {
+    setupMocks([], Role.OWNER, [makeTemplate('web-app')])
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    expect(screen.queryByText(/no templates yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /create one now/i })).not.toBeInTheDocument()
+  })
+
+  it('does not show no-templates empty-state for viewers even when templates list is empty', () => {
+    setupMocks([], Role.VIEWER, [])
+    ;(useListDeployments as Mock).mockReturnValue({ data: [], isLoading: false, error: null })
+    render(<DeploymentsPage />)
+    // Viewers cannot open the create dialog, so no empty-state is shown in the modal
+    expect(screen.queryByText(/no templates yet/i)).not.toBeInTheDocument()
+  })
+
+  it('opens create-template sub-modal when "Create one now" is clicked', async () => {
+    setupMocks([], Role.OWNER, [])
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    fireEvent.click(screen.getByRole('button', { name: /create one now/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /create template dialog/i })).toBeInTheDocument()
+    })
+  })
+
+  it('auto-selects template after creation from sub-modal', async () => {
+    setupMocks([], Role.OWNER, [])
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    fireEvent.click(screen.getByRole('button', { name: /create one now/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /create template dialog/i })).toBeInTheDocument()
+    })
+    // Submitting the sub-modal triggers onCreated with 'new-template'
+    fireEvent.click(screen.getByRole('button', { name: /submit template/i }))
+    await waitFor(() => {
+      // The sub-modal should close
+      expect(screen.queryByRole('dialog', { name: /create template dialog/i })).not.toBeInTheDocument()
+    })
+    // The template-select should now have 'new-template' as its value
+    const select = screen.getByTestId('template-select')
+    expect(select.getAttribute('data-value')).toBe('new-template')
   })
 })

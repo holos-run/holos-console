@@ -1,0 +1,148 @@
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { useCreateDeploymentTemplate } from '@/queries/deployment-templates'
+
+const DEFAULT_CUE_TEMPLATE = `// deployment.cue — default deployment template
+package holos
+
+// #Deployment defines the shape of a deployment.
+#Deployment: {
+  name:      string
+  namespace: string
+  image:     string
+  replicas?: int & >=1 | *1
+}
+`
+
+export interface CreateTemplateModalProps {
+  projectName: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated?: (templateName: string) => void
+}
+
+export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated }: CreateTemplateModalProps) {
+  const createMutation = useCreateDeploymentTemplate(projectName)
+
+  const [displayName, setDisplayName] = useState('')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
+  const [error, setError] = useState<string | null>(null)
+
+  const slugify = (val: string) =>
+    val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+
+  const handleDisplayNameChange = (val: string) => {
+    setDisplayName(val)
+    setName(slugify(val))
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setDisplayName('')
+      setName('')
+      setDescription('')
+      setCueTemplate(DEFAULT_CUE_TEMPLATE)
+      setError(null)
+      createMutation.reset()
+    }
+    onOpenChange(nextOpen)
+  }
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      setError('Template name is required')
+      return
+    }
+    setError(null)
+    try {
+      await createMutation.mutateAsync({
+        name: name.trim(),
+        displayName: displayName.trim(),
+        description: description.trim(),
+        cueTemplate,
+      })
+      onCreated?.(name.trim())
+      handleOpenChange(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Create Deployment Template</DialogTitle>
+          <DialogDescription>Define a CUE-based deployment template for this project.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="template-display-name">Display Name</Label>
+            <Input
+              id="template-display-name"
+              aria-label="Display Name"
+              autoFocus
+              value={displayName}
+              onChange={(e) => handleDisplayNameChange(e.target.value)}
+              placeholder="My Web App"
+            />
+          </div>
+          <div>
+            <Label>Name (slug)</Label>
+            <Input
+              aria-label="Name slug"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="my-web-app"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Auto-derived from display name. Lowercase alphanumeric and hyphens only.</p>
+          </div>
+          <div>
+            <Label htmlFor="template-description">Description</Label>
+            <Input
+              id="template-description"
+              aria-label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What does this template produce?"
+            />
+          </div>
+          <div>
+            <Label htmlFor="template-cue-template">CUE Template</Label>
+            <Textarea
+              id="template-cue-template"
+              aria-label="CUE Template"
+              value={cueTemplate}
+              onChange={(e) => setCueTemplate(e.target.value)}
+              rows={10}
+              className="font-mono text-sm"
+            />
+          </div>
+          {error && (
+            <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => handleOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Creating...' : 'Create'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
