@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -226,7 +227,7 @@ func (h *Handler) CreateDeployment(
 		description = *req.Msg.Description
 	}
 
-	_, err := h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description)
+	_, err := h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -240,6 +241,8 @@ func (h *Handler) CreateDeployment(
 			Tag:       req.Msg.Tag,
 			Project:   project,
 			Namespace: ns,
+			Command:   req.Msg.Command,
+			Args:      req.Msg.Args,
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -297,7 +300,7 @@ func (h *Handler) UpdateDeployment(
 		return nil, err
 	}
 
-	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description)
+	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -329,6 +332,8 @@ func (h *Handler) UpdateDeployment(
 			Tag:       tag,
 			Project:   project,
 			Namespace: ns,
+			Command:   commandFromConfigMap(updated),
+			Args:      argsFromConfigMap(updated),
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -453,7 +458,32 @@ func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Depl
 		Template:    cm.Data[TemplateKey],
 		DisplayName: cm.Annotations[DisplayNameAnnotation],
 		Description: cm.Annotations[DescriptionAnnotation],
+		Command:     commandFromConfigMap(cm),
+		Args:        argsFromConfigMap(cm),
 	}
+}
+
+// commandFromConfigMap reads the JSON-encoded command slice from a ConfigMap.
+func commandFromConfigMap(cm *corev1.ConfigMap) []string {
+	return stringSliceFromConfigMap(cm, CommandKey)
+}
+
+// argsFromConfigMap reads the JSON-encoded args slice from a ConfigMap.
+func argsFromConfigMap(cm *corev1.ConfigMap) []string {
+	return stringSliceFromConfigMap(cm, ArgsKey)
+}
+
+// stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
+func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
+	raw, ok := cm.Data[key]
+	if !ok || raw == "" {
+		return nil
+	}
+	var result []string
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil
+	}
+	return result
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

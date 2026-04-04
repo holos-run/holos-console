@@ -33,6 +33,10 @@ message Deployment {
   DeploymentPhase phase = 8;
   // message is a human-readable status message.
   string message = 9;
+  // command overrides the container image ENTRYPOINT.
+  repeated string command = 10;
+  // args overrides the container image CMD.
+  repeated string args = 11;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.
@@ -69,6 +73,10 @@ message CreateDeploymentRequest {
   string template = 5;
   optional string display_name = 6;
   optional string description = 7;
+  // command overrides the container image ENTRYPOINT.
+  repeated string command = 8;
+  // args overrides the container image CMD.
+  repeated string args = 9;
 }
 
 message CreateDeploymentResponse {
@@ -83,6 +91,10 @@ message UpdateDeploymentRequest {
   optional string tag = 4;
   optional string display_name = 5;
   optional string description = 6;
+  // command overrides the container image ENTRYPOINT.
+  repeated string command = 7;
+  // args overrides the container image CMD.
+  repeated string args = 8;
 }
 
 message UpdateDeploymentResponse {}

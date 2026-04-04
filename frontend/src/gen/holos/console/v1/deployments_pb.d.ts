@@ -70,6 +70,20 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: string message = 9;
    */
   message: string;
+
+  /**
+   * command overrides the container image ENTRYPOINT.
+   *
+   * @generated from field: repeated string command = 10;
+   */
+  command: string[];
+
+  /**
+   * args overrides the container image CMD.
+   *
+   * @generated from field: repeated string args = 11;
+   */
+  args: string[];
 };
 
 /**
@@ -185,6 +199,20 @@ export declare type CreateDeploymentRequest = Message<"holos.console.v1.CreateDe
    * @generated from field: optional string description = 7;
    */
   description?: string;
+
+  /**
+   * command overrides the container image ENTRYPOINT.
+   *
+   * @generated from field: repeated string command = 8;
+   */
+  command: string[];
+
+  /**
+   * args overrides the container image CMD.
+   *
+   * @generated from field: repeated string args = 9;
+   */
+  args: string[];
 };
 
 /**
@@ -244,6 +272,20 @@ export declare type UpdateDeploymentRequest = Message<"holos.console.v1.UpdateDe
    * @generated from field: optional string description = 6;
    */
   description?: string;
+
+  /**
+   * command overrides the container image ENTRYPOINT.
+   *
+   * @generated from field: repeated string command = 7;
+   */
+  command: string[];
+
+  /**
+   * args overrides the container image CMD.
+   *
+   * @generated from field: repeated string args = 8;
+   */
+  args: string[];
 };
 
 /**

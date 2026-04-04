@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -23,6 +24,8 @@ const (
 	ImageKey    = "image"
 	TagKey      = "tag"
 	TemplateKey = "template"
+	CommandKey  = "command"
+	ArgsKey     = "args"
 )
 
 // K8sClient wraps Kubernetes client operations for deployments.
@@ -66,7 +69,7 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 }
 
 // CreateDeployment creates a new deployment ConfigMap.
-func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
 		slog.String("project", project),
@@ -92,12 +95,20 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 			TemplateKey: tmpl,
 		},
 	}
+	if len(command) > 0 {
+		b, _ := json.Marshal(command)
+		cm.Data[CommandKey] = string(b)
+	}
+	if len(args) > 0 {
+		b, _ := json.Marshal(args)
+		cm.Data[ArgsKey] = string(b)
+	}
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
 // UpdateDeployment updates an existing deployment ConfigMap.
-// Only non-nil fields are updated.
-func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string) (*corev1.ConfigMap, error) {
+// Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.
+func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment in kubernetes",
 		slog.String("project", project),
@@ -125,6 +136,14 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 	}
 	if description != nil {
 		cm.Annotations[DescriptionAnnotation] = *description
+	}
+	if len(command) > 0 {
+		b, _ := json.Marshal(command)
+		cm.Data[CommandKey] = string(b)
+	}
+	if len(args) > 0 {
+		b, _ := json.Marshal(args)
+		cm.Data[ArgsKey] = string(b)
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }

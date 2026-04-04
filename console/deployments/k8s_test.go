@@ -144,7 +144,7 @@ func TestCreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app")
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -174,6 +174,41 @@ func TestCreateDeployment(t *testing.T) {
 		}
 	})
 
+	t.Run("stores command and args as JSON", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cmd := []string{"myapp"}
+		args := []string{"--port", "8080"}
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", cmd, args)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if cm.Data[CommandKey] != `["myapp"]` {
+			t.Errorf("expected command JSON %q, got %q", `["myapp"]`, cm.Data[CommandKey])
+		}
+		if cm.Data[ArgsKey] != `["--port","8080"]` {
+			t.Errorf("expected args JSON %q, got %q", `["--port","8080"]`, cm.Data[ArgsKey])
+		}
+	})
+
+	t.Run("omits command and args keys when empty", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := cm.Data[CommandKey]; ok {
+			t.Error("expected command key to be absent when nil")
+		}
+		if _, ok := cm.Data[ArgsKey]; ok {
+			t.Error("expected args key to be absent when nil")
+		}
+	})
 }
 
 func TestUpdateDeployment(t *testing.T) {
@@ -185,7 +220,7 @@ func TestUpdateDeployment(t *testing.T) {
 
 		newTag := "1.26"
 		newDesc := "updated desc"
-		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc)
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -209,7 +244,7 @@ func TestUpdateDeployment(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTag := "1.26"
-		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil)
+		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for non-existent deployment")
 		}

@@ -9,6 +9,8 @@ package deployment
 	tag:       string
 	project:   string
 	namespace: string
+	command?: [...string]
+	args?: [...string]
 }
 
 input: #Input
@@ -53,6 +55,12 @@ resources: [
 						name:  input.name
 						image: input.image + ":" + input.tag
 						ports: [{containerPort: 8443, name: "https"}]
+						if input.command != _|_ {
+							command: input.command
+						}
+						if input.args != _|_ {
+							args: input.args
+						}
 					}]
 				}
 			}

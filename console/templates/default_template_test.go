@@ -72,6 +72,91 @@ func TestDefaultTemplate(t *testing.T) {
 	}
 }
 
+// TestDefaultTemplate_CommandArgs verifies that command and args are rendered
+// into the container spec when provided.
+func TestDefaultTemplate_CommandArgs(t *testing.T) {
+	renderer := &deployments.CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("command and args appear in container spec", func(t *testing.T) {
+		input := deployments.DeploymentInput{
+			Name:      "holos-console",
+			Image:     "ghcr.io/holos-run/holos-console",
+			Tag:       "latest",
+			Project:   "my-project",
+			Namespace: namespace,
+			Command:   []string{"myapp"},
+			Args:      []string{"--port", "8080"},
+		}
+
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		if err != nil {
+			t.Fatalf("default template render failed: %v", err)
+		}
+
+		for _, r := range resources {
+			if r.GetKind() != "Deployment" {
+				continue
+			}
+			containers, ok, _ := getNestedSlice(r.Object, "spec", "template", "spec", "containers")
+			if !ok || len(containers) == 0 {
+				t.Fatal("Deployment has no containers")
+			}
+			c, ok := containers[0].(map[string]any)
+			if !ok {
+				t.Fatal("container is not a map")
+			}
+			cmd, _ := c["command"].([]any)
+			if len(cmd) != 1 || cmd[0] != "myapp" {
+				t.Errorf("expected command [myapp], got %v", cmd)
+			}
+			args, _ := c["args"].([]any)
+			if len(args) != 2 || args[0] != "--port" || args[1] != "8080" {
+				t.Errorf("expected args [--port 8080], got %v", args)
+			}
+			return
+		}
+		t.Fatal("no Deployment resource found")
+	})
+
+	t.Run("command and args absent when not provided", func(t *testing.T) {
+		input := deployments.DeploymentInput{
+			Name:      "holos-console",
+			Image:     "ghcr.io/holos-run/holos-console",
+			Tag:       "latest",
+			Project:   "my-project",
+			Namespace: namespace,
+		}
+
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		if err != nil {
+			t.Fatalf("default template render failed: %v", err)
+		}
+
+		for _, r := range resources {
+			if r.GetKind() != "Deployment" {
+				continue
+			}
+			containers, ok, _ := getNestedSlice(r.Object, "spec", "template", "spec", "containers")
+			if !ok || len(containers) == 0 {
+				t.Fatal("Deployment has no containers")
+			}
+			c, ok := containers[0].(map[string]any)
+			if !ok {
+				t.Fatal("container is not a map")
+			}
+			if _, hasCmd := c["command"]; hasCmd {
+				t.Error("expected command to be absent when not provided")
+			}
+			if _, hasArgs := c["args"]; hasArgs {
+				t.Error("expected args to be absent when not provided")
+			}
+			return
+		}
+		t.Fatal("no Deployment resource found")
+	})
+}
+
 // getNestedSlice is a helper to avoid importing k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 // in a test that lives in the templates package.
 func getNestedSlice(obj map[string]any, fields ...string) ([]any, bool, error) {

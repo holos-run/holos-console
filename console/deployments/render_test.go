@@ -226,3 +226,116 @@ func TestCueRenderer_Render(t *testing.T) {
 		}
 	})
 }
+
+// commandArgsTemplate renders command and args into a container spec.
+const commandArgsTemplate = `
+input: {
+	name:      string
+	image:     string
+	tag:        string
+	project:   string
+	namespace: string
+	command:   [...string] | *[]
+	args:      [...string] | *[]
+}
+
+resources: [
+	{
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: {
+				"app.kubernetes.io/managed-by": "console.holos.run"
+				"app.kubernetes.io/name":       input.name
+			}
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: "app.kubernetes.io/name": input.name
+				spec: containers: [{
+					name:  input.name
+					image: input.image + ":" + input.tag
+					if len(input.command) > 0 {
+						command: input.command
+					}
+					if len(input.args) > 0 {
+						args: input.args
+					}
+				}]
+			}
+		}
+	},
+]
+`
+
+func TestCueRenderer_CommandArgs(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("command and args are passed to template", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), commandArgsTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+			Command:   []string{"/bin/sh", "-c"},
+			Args:      []string{"echo hello"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		containers, _, _ := unstructured.NestedSlice(resources[0].Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		gotCommand, _, _ := unstructured.NestedStringSlice(map[string]interface{}{"c": c}, "c", "command")
+		if len(gotCommand) != 2 || gotCommand[0] != "/bin/sh" {
+			t.Errorf("expected command [/bin/sh -c], got %v", gotCommand)
+		}
+		gotArgs, _, _ := unstructured.NestedStringSlice(map[string]interface{}{"c": c}, "c", "args")
+		if len(gotArgs) != 1 || gotArgs[0] != "echo hello" {
+			t.Errorf("expected args [echo hello], got %v", gotArgs)
+		}
+	})
+
+	t.Run("empty command and args are omitted", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), commandArgsTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		containers, _, _ := unstructured.NestedSlice(resources[0].Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		if _, exists := c["command"]; exists {
+			t.Error("expected command to be absent when empty")
+		}
+		if _, exists := c["args"]; exists {
+			t.Error("expected args to be absent when empty")
+		}
+	})
+}

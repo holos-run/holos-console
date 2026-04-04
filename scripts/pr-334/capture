@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #334
+# Shows command/args fields in the Create Deployment dialog.
+#
+# Called by scripts/browser-capture-pr 334. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+AB="agent-browser --session-name holos-dev"
+PROJECT="test-deployments"
+
+SETTINGS_URL="$HOLOS_BACKEND_URL/projects/$PROJECT/settings"
+DEPLOYMENTS_URL="$HOLOS_BACKEND_URL/projects/$PROJECT/deployments"
+
+# Enable deployments for the project via kubectl (create settings ConfigMap).
+if command -v kubectl &>/dev/null; then
+  echo "==> Enabling deployments via kubectl"
+  kubectl create configmap project-settings \
+    -n "holos-prj-$PROJECT" \
+    --from-literal=deployments_enabled=true \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+fi
+
+# Navigate to project settings to show the deployments toggle.
+echo "==> Opening project settings"
+$AB open "$SETTINGS_URL"
+$AB wait --load networkidle
+$AB wait 3000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/01-project-settings.png"
+echo "Saved 01-project-settings.png"
+
+# Navigate to deployments page.
+echo "==> Navigating to $DEPLOYMENTS_URL"
+$AB open "$DEPLOYMENTS_URL"
+$AB wait --load networkidle
+$AB wait 3000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/02-deployments-list.png"
+echo "Saved 02-deployments-list.png"
+
+# Open Create Deployment dialog via JavaScript click.
+echo "==> Opening Create Deployment dialog"
+$AB eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Create Deployment')?.click()"
+$AB wait 2000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/03-create-deployment-dialog-top.png"
+echo "Saved 03-create-deployment-dialog-top.png"
+
+# Scroll dialog down to show command/args fields.
+$AB eval "document.querySelector('[role=\"dialog\"] .space-y-3')?.scrollTo(0, 500)" || true
+$AB wait 800
+
+$AB screenshot "$PR_SCREENSHOT_DIR/04-create-dialog-command-args.png"
+echo "Saved 04-create-dialog-command-args.png"
+
+echo "Done. Screenshots in $PR_SCREENSHOT_DIR/"
