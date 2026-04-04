@@ -545,6 +545,67 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		}
 	})
 
+	t.Run("CreateDeployment passes command and args to renderer", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+			Command:  []string{"myapp"},
+			Args:     []string{"--port", "8080"},
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(renderer.lastInput.Command) != 1 || renderer.lastInput.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp], got %v", renderer.lastInput.Command)
+		}
+		if len(renderer.lastInput.Args) != 2 || renderer.lastInput.Args[0] != "--port" || renderer.lastInput.Args[1] != "8080" {
+			t.Errorf("expected args [--port 8080], got %v", renderer.lastInput.Args)
+		}
+	})
+
+	t.Run("UpdateDeployment passes stored command and args to renderer", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		cm.Data[CommandKey] = `["myapp"]`
+		cm.Data[ArgsKey] = `["--port","8080"]`
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		newTag := "1.26"
+		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
+			Project: "my-project",
+			Name:    "web-app",
+			Tag:     &newTag,
+		})
+		_, err := handler.UpdateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(renderer.lastInput.Command) != 1 || renderer.lastInput.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp] from stored data, got %v", renderer.lastInput.Command)
+		}
+		if len(renderer.lastInput.Args) != 2 || renderer.lastInput.Args[0] != "--port" {
+			t.Errorf("expected args [--port 8080] from stored data, got %v", renderer.lastInput.Args)
+		}
+	})
+
 	t.Run("DeleteDeployment calls applier cleanup", func(t *testing.T) {
 		ns := projectNS("my-project")
 		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "", "")
