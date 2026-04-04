@@ -54,6 +54,12 @@ const (
 	// DeploymentServiceGetDeploymentLogsProcedure is the fully-qualified name of the
 	// DeploymentService's GetDeploymentLogs RPC.
 	DeploymentServiceGetDeploymentLogsProcedure = "/holos.console.v1.DeploymentService/GetDeploymentLogs"
+	// DeploymentServiceListNamespaceSecretsProcedure is the fully-qualified name of the
+	// DeploymentService's ListNamespaceSecrets RPC.
+	DeploymentServiceListNamespaceSecretsProcedure = "/holos.console.v1.DeploymentService/ListNamespaceSecrets"
+	// DeploymentServiceListNamespaceConfigMapsProcedure is the fully-qualified name of the
+	// DeploymentService's ListNamespaceConfigMaps RPC.
+	DeploymentServiceListNamespaceConfigMapsProcedure = "/holos.console.v1.DeploymentService/ListNamespaceConfigMaps"
 )
 
 // DeploymentServiceClient is a client for the holos.console.v1.DeploymentService service.
@@ -67,6 +73,10 @@ type DeploymentServiceClient interface {
 	GetDeploymentStatus(context.Context, *connect.Request[v1.GetDeploymentStatusRequest]) (*connect.Response[v1.GetDeploymentStatusResponse], error)
 	// GetDeploymentLogs returns recent container logs.
 	GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error)
+	// ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
+	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
+	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
+	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
 }
 
 // NewDeploymentServiceClient constructs a client for the holos.console.v1.DeploymentService
@@ -122,18 +132,32 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentLogs")),
 			connect.WithClientOptions(opts...),
 		),
+		listNamespaceSecrets: connect.NewClient[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse](
+			httpClient,
+			baseURL+DeploymentServiceListNamespaceSecretsProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceSecrets")),
+			connect.WithClientOptions(opts...),
+		),
+		listNamespaceConfigMaps: connect.NewClient[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse](
+			httpClient,
+			baseURL+DeploymentServiceListNamespaceConfigMapsProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceConfigMaps")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // deploymentServiceClient implements DeploymentServiceClient.
 type deploymentServiceClient struct {
-	listDeployments     *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
-	getDeployment       *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
-	createDeployment    *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
-	updateDeployment    *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
-	deleteDeployment    *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
-	getDeploymentStatus *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
-	getDeploymentLogs   *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
+	listDeployments         *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
+	getDeployment           *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
+	createDeployment        *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
+	updateDeployment        *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
+	deleteDeployment        *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
+	getDeploymentStatus     *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
+	getDeploymentLogs       *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
+	listNamespaceSecrets    *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
+	listNamespaceConfigMaps *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
 }
 
 // ListDeployments calls holos.console.v1.DeploymentService.ListDeployments.
@@ -171,6 +195,16 @@ func (c *deploymentServiceClient) GetDeploymentLogs(ctx context.Context, req *co
 	return c.getDeploymentLogs.CallUnary(ctx, req)
 }
 
+// ListNamespaceSecrets calls holos.console.v1.DeploymentService.ListNamespaceSecrets.
+func (c *deploymentServiceClient) ListNamespaceSecrets(ctx context.Context, req *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error) {
+	return c.listNamespaceSecrets.CallUnary(ctx, req)
+}
+
+// ListNamespaceConfigMaps calls holos.console.v1.DeploymentService.ListNamespaceConfigMaps.
+func (c *deploymentServiceClient) ListNamespaceConfigMaps(ctx context.Context, req *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error) {
+	return c.listNamespaceConfigMaps.CallUnary(ctx, req)
+}
+
 // DeploymentServiceHandler is an implementation of the holos.console.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
 	ListDeployments(context.Context, *connect.Request[v1.ListDeploymentsRequest]) (*connect.Response[v1.ListDeploymentsResponse], error)
@@ -182,6 +216,10 @@ type DeploymentServiceHandler interface {
 	GetDeploymentStatus(context.Context, *connect.Request[v1.GetDeploymentStatusRequest]) (*connect.Response[v1.GetDeploymentStatusResponse], error)
 	// GetDeploymentLogs returns recent container logs.
 	GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error)
+	// ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
+	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
+	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
+	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
 }
 
 // NewDeploymentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -233,6 +271,18 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentLogs")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServiceListNamespaceSecretsHandler := connect.NewUnaryHandler(
+		DeploymentServiceListNamespaceSecretsProcedure,
+		svc.ListNamespaceSecrets,
+		connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceSecrets")),
+		connect.WithHandlerOptions(opts...),
+	)
+	deploymentServiceListNamespaceConfigMapsHandler := connect.NewUnaryHandler(
+		DeploymentServiceListNamespaceConfigMapsProcedure,
+		svc.ListNamespaceConfigMaps,
+		connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceConfigMaps")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentServiceListDeploymentsProcedure:
@@ -249,6 +299,10 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceGetDeploymentStatusHandler.ServeHTTP(w, r)
 		case DeploymentServiceGetDeploymentLogsProcedure:
 			deploymentServiceGetDeploymentLogsHandler.ServeHTTP(w, r)
+		case DeploymentServiceListNamespaceSecretsProcedure:
+			deploymentServiceListNamespaceSecretsHandler.ServeHTTP(w, r)
+		case DeploymentServiceListNamespaceConfigMapsProcedure:
+			deploymentServiceListNamespaceConfigMapsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -284,4 +338,12 @@ func (UnimplementedDeploymentServiceHandler) GetDeploymentStatus(context.Context
 
 func (UnimplementedDeploymentServiceHandler) GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentLogs is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.ListNamespaceSecrets is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.ListNamespaceConfigMaps is not implemented"))
 }

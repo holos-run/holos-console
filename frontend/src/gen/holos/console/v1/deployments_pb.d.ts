@@ -673,6 +673,93 @@ export declare type GetDeploymentLogsResponse = Message<"holos.console.v1.GetDep
 export declare const GetDeploymentLogsResponseSchema: GenMessage<GetDeploymentLogsResponse>;
 
 /**
+ * NamespaceResource represents a Kubernetes resource with its available data keys.
+ *
+ * @generated from message holos.console.v1.NamespaceResource
+ */
+export declare type NamespaceResource = Message<"holos.console.v1.NamespaceResource"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: repeated string keys = 2;
+   */
+  keys: string[];
+};
+
+/**
+ * Describes the message holos.console.v1.NamespaceResource.
+ * Use `create(NamespaceResourceSchema)` to create a new message.
+ */
+export declare const NamespaceResourceSchema: GenMessage<NamespaceResource>;
+
+/**
+ * @generated from message holos.console.v1.ListNamespaceSecretsRequest
+ */
+export declare type ListNamespaceSecretsRequest = Message<"holos.console.v1.ListNamespaceSecretsRequest"> & {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListNamespaceSecretsRequest.
+ * Use `create(ListNamespaceSecretsRequestSchema)` to create a new message.
+ */
+export declare const ListNamespaceSecretsRequestSchema: GenMessage<ListNamespaceSecretsRequest>;
+
+/**
+ * @generated from message holos.console.v1.ListNamespaceSecretsResponse
+ */
+export declare type ListNamespaceSecretsResponse = Message<"holos.console.v1.ListNamespaceSecretsResponse"> & {
+  /**
+   * @generated from field: repeated holos.console.v1.NamespaceResource secrets = 1;
+   */
+  secrets: NamespaceResource[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListNamespaceSecretsResponse.
+ * Use `create(ListNamespaceSecretsResponseSchema)` to create a new message.
+ */
+export declare const ListNamespaceSecretsResponseSchema: GenMessage<ListNamespaceSecretsResponse>;
+
+/**
+ * @generated from message holos.console.v1.ListNamespaceConfigMapsRequest
+ */
+export declare type ListNamespaceConfigMapsRequest = Message<"holos.console.v1.ListNamespaceConfigMapsRequest"> & {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListNamespaceConfigMapsRequest.
+ * Use `create(ListNamespaceConfigMapsRequestSchema)` to create a new message.
+ */
+export declare const ListNamespaceConfigMapsRequestSchema: GenMessage<ListNamespaceConfigMapsRequest>;
+
+/**
+ * @generated from message holos.console.v1.ListNamespaceConfigMapsResponse
+ */
+export declare type ListNamespaceConfigMapsResponse = Message<"holos.console.v1.ListNamespaceConfigMapsResponse"> & {
+  /**
+   * @generated from field: repeated holos.console.v1.NamespaceResource config_maps = 1;
+   */
+  configMaps: NamespaceResource[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListNamespaceConfigMapsResponse.
+ * Use `create(ListNamespaceConfigMapsResponseSchema)` to create a new message.
+ */
+export declare const ListNamespaceConfigMapsResponseSchema: GenMessage<ListNamespaceConfigMapsResponse>;
+
+/**
  * DeploymentPhase represents the lifecycle phase of a deployment.
  *
  * @generated from enum holos.console.v1.DeploymentPhase
@@ -774,6 +861,26 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof GetDeploymentLogsRequestSchema;
     output: typeof GetDeploymentLogsResponseSchema;
+  },
+  /**
+   * ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.ListNamespaceSecrets
+   */
+  listNamespaceSecrets: {
+    methodKind: "unary";
+    input: typeof ListNamespaceSecretsRequestSchema;
+    output: typeof ListNamespaceSecretsResponseSchema;
+  },
+  /**
+   * ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.ListNamespaceConfigMaps
+   */
+  listNamespaceConfigMaps: {
+    methodKind: "unary";
+    input: typeof ListNamespaceConfigMapsRequestSchema;
+    output: typeof ListNamespaceConfigMapsResponseSchema;
   },
 }>;
 

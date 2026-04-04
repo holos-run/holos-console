@@ -476,6 +476,168 @@ func TestHandler_DeleteDeployment(t *testing.T) {
 	})
 }
 
+// TestHandler_ListNamespaceSecrets tests the ListNamespaceSecrets RPC.
+func TestHandler_ListNamespaceSecrets(t *testing.T) {
+	t.Run("editor can list namespace secrets", func(t *testing.T) {
+		ns := projectNS("my-project")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string][]byte{
+				"password": []byte("s3cr3t"),
+			},
+		}
+		fakeClient := fake.NewClientset(ns, secret)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceSecretsRequest{Project: "my-project"})
+		resp, err := handler.ListNamespaceSecrets(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Secrets) != 1 {
+			t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+		}
+		if resp.Msg.Secrets[0].Name != "my-secret" {
+			t.Errorf("expected name 'my-secret', got %q", resp.Msg.Secrets[0].Name)
+		}
+		if len(resp.Msg.Secrets[0].Keys) != 1 || resp.Msg.Secrets[0].Keys[0] != "password" {
+			t.Errorf("expected keys [password], got %v", resp.Msg.Secrets[0].Keys)
+		}
+	})
+
+	t.Run("viewer cannot list namespace secrets", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceSecretsRequest{Project: "my-project"})
+		_, err := handler.ListNamespaceSecrets(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for viewer listing namespace secrets")
+		}
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects unauthenticated request", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		handler := defaultHandler(fakeClient, &stubProjectResolver{})
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.ListNamespaceSecretsRequest{Project: "my-project"})
+		_, err := handler.ListNamespaceSecrets(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for unauthenticated request")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects empty project", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		handler := defaultHandler(fakeClient, &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceSecretsRequest{Project: ""})
+		_, err := handler.ListNamespaceSecrets(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for empty project")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+}
+
+// TestHandler_ListNamespaceConfigMaps tests the ListNamespaceConfigMaps RPC.
+func TestHandler_ListNamespaceConfigMaps(t *testing.T) {
+	t.Run("editor can list namespace configmaps", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-config",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string]string{
+				"key": "value",
+			},
+		}
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceConfigMapsRequest{Project: "my-project"})
+		resp, err := handler.ListNamespaceConfigMaps(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.ConfigMaps) != 1 {
+			t.Fatalf("expected 1 configmap, got %d", len(resp.Msg.ConfigMaps))
+		}
+		if resp.Msg.ConfigMaps[0].Name != "my-config" {
+			t.Errorf("expected name 'my-config', got %q", resp.Msg.ConfigMaps[0].Name)
+		}
+		if len(resp.Msg.ConfigMaps[0].Keys) != 1 || resp.Msg.ConfigMaps[0].Keys[0] != "key" {
+			t.Errorf("expected keys [key], got %v", resp.Msg.ConfigMaps[0].Keys)
+		}
+	})
+
+	t.Run("viewer cannot list namespace configmaps", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceConfigMapsRequest{Project: "my-project"})
+		_, err := handler.ListNamespaceConfigMaps(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for viewer listing namespace configmaps")
+		}
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects unauthenticated request", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		handler := defaultHandler(fakeClient, &stubProjectResolver{})
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.ListNamespaceConfigMapsRequest{Project: "my-project"})
+		_, err := handler.ListNamespaceConfigMaps(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for unauthenticated request")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects empty project", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		handler := defaultHandler(fakeClient, &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListNamespaceConfigMapsRequest{Project: ""})
+		_, err := handler.ListNamespaceConfigMaps(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for empty project")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+}
+
 // TestHandler_EnvVarValidation tests env var name validation.
 func TestHandler_EnvVarValidation(t *testing.T) {
 	t.Run("rejects empty env var name", func(t *testing.T) {

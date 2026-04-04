@@ -168,3 +168,61 @@ func (k *K8sClient) DeleteDeployment(ctx context.Context, project, name string) 
 	)
 	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
 }
+
+// NamespaceResourceItem holds a resource name and its sorted data keys.
+type NamespaceResourceItem struct {
+	Name string
+	Keys []string
+}
+
+// ListNamespaceSecrets lists all Secrets in the project namespace, excluding
+// service-account-token type secrets which are not user data.
+func (k *K8sClient) ListNamespaceSecrets(ctx context.Context, project string) ([]NamespaceResourceItem, error) {
+	ns := k.Resolver.ProjectNamespace(project)
+	slog.DebugContext(ctx, "listing secrets from kubernetes",
+		slog.String("project", project),
+		slog.String("namespace", ns),
+	)
+	list, err := k.client.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing secrets: %w", err)
+	}
+	result := make([]NamespaceResourceItem, 0, len(list.Items))
+	for _, s := range list.Items {
+		if s.Type == corev1.SecretTypeServiceAccountToken {
+			continue
+		}
+		keys := make([]string, 0, len(s.Data))
+		for k := range s.Data {
+			keys = append(keys, k)
+		}
+		result = append(result, NamespaceResourceItem{Name: s.Name, Keys: keys})
+	}
+	return result, nil
+}
+
+// ListNamespaceConfigMaps lists all ConfigMaps in the project namespace,
+// excluding console-managed ones (those with the console.holos.run/resource-type label).
+func (k *K8sClient) ListNamespaceConfigMaps(ctx context.Context, project string) ([]NamespaceResourceItem, error) {
+	ns := k.Resolver.ProjectNamespace(project)
+	slog.DebugContext(ctx, "listing configmaps from kubernetes",
+		slog.String("project", project),
+		slog.String("namespace", ns),
+	)
+	list, err := k.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing configmaps: %w", err)
+	}
+	result := make([]NamespaceResourceItem, 0, len(list.Items))
+	for _, cm := range list.Items {
+		if _, isConsoleManagedResource := cm.Labels[ResourceTypeLabel]; isConsoleManagedResource {
+			continue
+		}
+		keys := make([]string, 0, len(cm.Data))
+		for k := range cm.Data {
+			keys = append(keys, k)
+		}
+		result = append(result, NamespaceResourceItem{Name: cm.Name, Keys: keys})
+	}
+	return result, nil
+}

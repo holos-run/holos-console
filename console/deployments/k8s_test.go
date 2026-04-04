@@ -362,3 +362,161 @@ func TestDeleteDeployment(t *testing.T) {
 		}
 	})
 }
+
+func TestListNamespaceSecrets(t *testing.T) {
+	t.Run("returns secrets with keys", func(t *testing.T) {
+		ns := projectNS("my-project")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-secret",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string][]byte{
+				"password": []byte("s3cr3t"),
+				"username": []byte("admin"),
+			},
+		}
+		fakeClient := fake.NewClientset(ns, secret)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		secrets, err := k8s.ListNamespaceSecrets(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(secrets) != 1 {
+			t.Fatalf("expected 1 secret, got %d", len(secrets))
+		}
+		if secrets[0].Name != "my-secret" {
+			t.Errorf("expected name 'my-secret', got %q", secrets[0].Name)
+		}
+		if len(secrets[0].Keys) != 2 {
+			t.Errorf("expected 2 keys, got %d: %v", len(secrets[0].Keys), secrets[0].Keys)
+		}
+	})
+
+	t.Run("excludes service-account-token secrets", func(t *testing.T) {
+		ns := projectNS("my-project")
+		saToken := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sa-token",
+				Namespace: "prj-my-project",
+			},
+			Type: corev1.SecretTypeServiceAccountToken,
+			Data: map[string][]byte{"token": []byte("tok")},
+		}
+		userSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "user-secret",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string][]byte{"key": []byte("val")},
+		}
+		fakeClient := fake.NewClientset(ns, saToken, userSecret)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		secrets, err := k8s.ListNamespaceSecrets(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(secrets) != 1 {
+			t.Fatalf("expected 1 secret (sa-token excluded), got %d", len(secrets))
+		}
+		if secrets[0].Name != "user-secret" {
+			t.Errorf("expected name 'user-secret', got %q", secrets[0].Name)
+		}
+	})
+
+	t.Run("returns empty list when no secrets exist", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		secrets, err := k8s.ListNamespaceSecrets(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(secrets) != 0 {
+			t.Errorf("expected 0 secrets, got %d", len(secrets))
+		}
+	})
+}
+
+func TestListNamespaceConfigMaps(t *testing.T) {
+	t.Run("returns configmaps with keys", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-config",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string]string{
+				"app.conf": "port=8080",
+				"debug":    "false",
+			},
+		}
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cms, err := k8s.ListNamespaceConfigMaps(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(cms) != 1 {
+			t.Fatalf("expected 1 configmap, got %d", len(cms))
+		}
+		if cms[0].Name != "my-config" {
+			t.Errorf("expected name 'my-config', got %q", cms[0].Name)
+		}
+		if len(cms[0].Keys) != 2 {
+			t.Errorf("expected 2 keys, got %d: %v", len(cms[0].Keys), cms[0].Keys)
+		}
+	})
+
+	t.Run("excludes console-managed configmaps", func(t *testing.T) {
+		ns := projectNS("my-project")
+		consoleCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "console-deployment",
+				Namespace: "prj-my-project",
+				Labels: map[string]string{
+					ResourceTypeLabel: "deployment",
+				},
+			},
+			Data: map[string]string{"image": "nginx"},
+		}
+		userCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "user-config",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string]string{"key": "val"},
+		}
+		fakeClient := fake.NewClientset(ns, consoleCM, userCM)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cms, err := k8s.ListNamespaceConfigMaps(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(cms) != 1 {
+			t.Fatalf("expected 1 configmap (console-managed excluded), got %d", len(cms))
+		}
+		if cms[0].Name != "user-config" {
+			t.Errorf("expected name 'user-config', got %q", cms[0].Name)
+		}
+	})
+
+	t.Run("returns empty list when no configmaps exist", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cms, err := k8s.ListNamespaceConfigMaps(context.Background(), "my-project")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(cms) != 0 {
+			t.Errorf("expected 0 configmaps, got %d", len(cms))
+		}
+	})
+}
