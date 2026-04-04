@@ -148,8 +148,8 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{project-prefix}{name}` for projects)
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as K8s ConfigMaps
-  - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue`
-  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply, container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), and listing project-namespace Secrets/ConfigMaps for env var references
+  - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue`. Templates use the structured `namespaced`/`cluster` output format (see `docs/cue-template-guide.md`)
+  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `namespaced`/`cluster` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), and listing project-namespace Secrets/ConfigMaps for env var references
   - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` - Protobuf source files
   - `holos/console/v1/organizations.proto` - OrganizationService
@@ -269,7 +269,7 @@ gh workflow run container.yaml --ref main -f git_ref=refs/tags/v1.2.3
 
 Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
 
-CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`.
+CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`. See `docs/cue-template-guide.md` for the full template interface, including the structured `namespaced`/`cluster` output format (ADR 012).
 
 ## Planning and Execution
 
