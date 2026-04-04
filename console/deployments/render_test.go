@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// structuredTemplate uses the new namespaced/cluster output format.
+// structuredTemplate uses the namespaced/cluster structured output format.
 const structuredTemplate = `
 package deployment
 
@@ -627,7 +627,7 @@ namespaced: (input.namespace): {
 cluster: {}
 `
 
-// TestCueRenderer_StructuredOutput tests the new namespaced/cluster output format.
+// TestCueRenderer_StructuredOutput tests the namespaced/cluster structured output format.
 func TestCueRenderer_StructuredOutput(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
