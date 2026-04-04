@@ -83,6 +83,8 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, input Deploy
 }
 
 // evaluate performs synchronous CUE template evaluation.
+// It supports both the structured namespaced/cluster format (preferred) and
+// the legacy flat resources list format.
 func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -108,19 +110,163 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 		return nil, fmt.Errorf("unifying template with input: %w", err)
 	}
 
-	// Extract the resources field.
+	// Check which output format the template uses.
+	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	if namespacedValue.Err() == nil && namespacedValue.Exists() {
+		// New structured format: walk namespaced and cluster fields.
+		return evaluateStructured(unified, input.Namespace)
+	}
+
+	// Legacy flat list format.
 	resourcesValue := unified.LookupPath(cue.ParsePath("resources"))
 	if err := resourcesValue.Err(); err != nil {
 		return nil, fmt.Errorf("extracting resources field: %w", err)
 	}
 
-	// Decode the resources list.
 	var rawResources []map[string]interface{}
 	if err := resourcesValue.Decode(&rawResources); err != nil {
 		return nil, fmt.Errorf("decoding resources: %w", err)
 	}
 
 	return validateResources(rawResources, input.Namespace)
+}
+
+// evaluateStructured walks the namespaced and cluster structured output fields
+// and returns validated Kubernetes resources.
+//
+// namespaced structure: namespaced.<namespace>.<Kind>.<name>
+// cluster structure:    cluster.<Kind>.<name>
+func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstructured.Unstructured, error) {
+	var result []unstructured.Unstructured
+
+	// Walk namespaced resources: namespaced.<namespace>.<Kind>.<name>
+	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	if namespacedValue.Err() == nil && namespacedValue.Exists() {
+		nsIter, err := namespacedValue.Fields()
+		if err != nil {
+			return nil, fmt.Errorf("iterating namespaced keys: %w", err)
+		}
+		for nsIter.Next() {
+			nsKey := nsIter.Label()
+			kindIter, err := nsIter.Value().Fields()
+			if err != nil {
+				return nil, fmt.Errorf("iterating Kind keys under namespace %q: %w", nsKey, err)
+			}
+			for kindIter.Next() {
+				kindKey := kindIter.Label()
+				nameIter, err := kindIter.Value().Fields()
+				if err != nil {
+					return nil, fmt.Errorf("iterating name keys under %q/%q: %w", nsKey, kindKey, err)
+				}
+				for nameIter.Next() {
+					nameKey := nameIter.Label()
+					var raw map[string]interface{}
+					if err := nameIter.Value().Decode(&raw); err != nil {
+						return nil, fmt.Errorf("decoding namespaced/%s/%s/%s: %w", nsKey, kindKey, nameKey, err)
+					}
+					u := unstructured.Unstructured{Object: raw}
+
+					// Enforce struct-key / metadata consistency.
+					if u.GetNamespace() != nsKey {
+						return nil, fmt.Errorf("namespaced/%s/%s/%s: metadata.namespace %q does not match struct key %q",
+							nsKey, kindKey, nameKey, u.GetNamespace(), nsKey)
+					}
+					if u.GetKind() != kindKey {
+						return nil, fmt.Errorf("namespaced/%s/%s/%s: kind %q does not match struct key %q",
+							nsKey, kindKey, nameKey, u.GetKind(), kindKey)
+					}
+					if u.GetName() != nameKey {
+						return nil, fmt.Errorf("namespaced/%s/%s/%s: metadata.name %q does not match struct key %q",
+							nsKey, kindKey, nameKey, u.GetName(), nameKey)
+					}
+
+					// Enforce project namespace constraint.
+					if u.GetNamespace() != expectedNamespace {
+						return nil, fmt.Errorf("namespaced resource %s/%s: namespace %q does not match project namespace %q",
+							u.GetKind(), u.GetName(), u.GetNamespace(), expectedNamespace)
+					}
+
+					// Run common resource validations.
+					if err := validateResource(u, expectedNamespace); err != nil {
+						return nil, err
+					}
+
+					result = append(result, u)
+				}
+			}
+		}
+	}
+
+	// Walk cluster-scoped resources: cluster.<Kind>.<name>
+	clusterValue := unified.LookupPath(cue.ParsePath("cluster"))
+	if clusterValue.Err() == nil && clusterValue.Exists() {
+		kindIter, err := clusterValue.Fields()
+		if err != nil {
+			return nil, fmt.Errorf("iterating cluster Kind keys: %w", err)
+		}
+		for kindIter.Next() {
+			kindKey := kindIter.Label()
+			nameIter, err := kindIter.Value().Fields()
+			if err != nil {
+				return nil, fmt.Errorf("iterating name keys under cluster/%q: %w", kindKey, err)
+			}
+			for nameIter.Next() {
+				nameKey := nameIter.Label()
+				var raw map[string]interface{}
+				if err := nameIter.Value().Decode(&raw); err != nil {
+					return nil, fmt.Errorf("decoding cluster/%s/%s: %w", kindKey, nameKey, err)
+				}
+				u := unstructured.Unstructured{Object: raw}
+
+				// Enforce struct-key / metadata consistency.
+				if u.GetKind() != kindKey {
+					return nil, fmt.Errorf("cluster/%s/%s: kind %q does not match struct key %q",
+						kindKey, nameKey, u.GetKind(), kindKey)
+				}
+				if u.GetName() != nameKey {
+					return nil, fmt.Errorf("cluster/%s/%s: metadata.name %q does not match struct key %q",
+						kindKey, nameKey, u.GetName(), nameKey)
+				}
+
+				// Cluster-scoped resources must NOT have a namespace.
+				if u.GetNamespace() != "" {
+					return nil, fmt.Errorf("cluster resource %s/%s: must not have metadata.namespace", kindKey, nameKey)
+				}
+
+				result = append(result, u)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// validateResource runs common safety checks on a single resource.
+func validateResource(u unstructured.Unstructured, expectedNamespace string) error {
+	if u.GetAPIVersion() == "" {
+		return fmt.Errorf("resource %s/%s: missing apiVersion", u.GetKind(), u.GetName())
+	}
+	if u.GetKind() == "" {
+		return fmt.Errorf("resource missing kind")
+	}
+	if u.GetName() == "" {
+		return fmt.Errorf("resource %s: missing metadata.name", u.GetKind())
+	}
+
+	// Enforce kind allowlist.
+	if !allowedKindSet[u.GetKind()] {
+		return fmt.Errorf("resource %s/%s: kind %q is not allowed; permitted kinds: Deployment, Service, ServiceAccount, Role, RoleBinding, HTTPRoute, ConfigMap, Secret",
+			u.GetKind(), u.GetName(), u.GetKind())
+	}
+
+	// Enforce managed-by label.
+	labels := u.GetLabels()
+	if labels["app.kubernetes.io/managed-by"] != "console.holos.run" {
+		return fmt.Errorf("resource %s/%s: missing required label app.kubernetes.io/managed-by=console.holos.run",
+			u.GetKind(), u.GetName())
+	}
+
+	return nil
 }
 
 // validateResources validates each resource against safety constraints.
