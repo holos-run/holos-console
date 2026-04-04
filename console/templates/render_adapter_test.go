@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// adapterStructuredTemplate uses the structured namespaced/cluster output format.
+// adapterStructuredTemplate uses the namespaced/cluster structured output format.
 const adapterStructuredTemplate = `
 package deployment
 
