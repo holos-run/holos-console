@@ -1,7 +1,10 @@
+// package deployment is the required CUE package declaration.
 package deployment
 
+// #Input defines the fields the console fills in at render time.
+// Constraints here are enforced by CUE before any Kubernetes call is made.
 #Input: {
-	name:      string & =~"^[a-z][a-z0-9-]*$"
+	name:      string & =~"^[a-z][a-z0-9-]*$" // DNS label
 	image:     string
 	tag:       string
 	project:   string
@@ -10,37 +13,64 @@ package deployment
 
 input: #Input
 
+// _labels are the standard labels required on every resource.
+// app.kubernetes.io/managed-by MUST equal "console.holos.run" or the
+// render will be rejected.
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
 resources: [
-	// ServiceAccount
-	{apiVersion: "v1", kind: "ServiceAccount", metadata: {name: input.name, namespace: input.namespace}},
-	// Deployment
-	{apiVersion: "apps/v1", kind: "Deployment", metadata: {name: input.name, namespace: input.namespace}, spec: {
-		replicas: 1,
-		selector: matchLabels: {"app.kubernetes.io/name": input.name},
-		template: {
-			metadata: labels: {"app.kubernetes.io/name": input.name},
-			spec: {
-				serviceAccountName: input.name,
-				containers: [{
-					name:  input.name,
-					image: "\(input.image):\(input.tag)",
-					ports: [{containerPort: 8080, name: "http"}],
-				}],
-			},
-		},
-	}},
-	// Service
-	{apiVersion: "v1", kind: "Service", metadata: {name: input.name, namespace: input.namespace}, spec: {
-		selector: {"app.kubernetes.io/name": input.name},
-		ports: [{port: 80, targetPort: "http", name: "http"}],
-	}},
-	// HTTPRoute
-	{apiVersion: "gateway.networking.k8s.io/v1", kind: "HTTPRoute", metadata: {name: input.name, namespace: input.namespace}, spec: {
-		parentRefs: [{name: "default", namespace: "istio-ingress"}],
-		hostnames: ["\(input.name).\(input.project).holos.localhost"],
-		rules: [{
-			matches: [{path: {type: "PathPrefix", value: "/"}}],
-			backendRefs: [{name: input.name, port: 80}],
-		}],
-	}},
+	// ServiceAccount provides a Kubernetes identity for the pods.
+	{
+		apiVersion: "v1"
+		kind:       "ServiceAccount"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+	},
+
+	// Deployment runs holos-console on port 8443 (HTTPS).
+	{
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+		spec: {
+			replicas: 1
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: _labels
+				spec: {
+					serviceAccountName: input.name
+					containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+						ports: [{containerPort: 8443, name: "https"}]
+					}]
+				}
+			}
+		}
+	},
+
+	// Service exposes port 443 → container port 8443.
+	{
+		apiVersion: "v1"
+		kind:       "Service"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+		spec: {
+			selector: "app.kubernetes.io/name": input.name
+			ports: [{port: 443, targetPort: "https", name: "https"}]
+		}
+	},
 ]

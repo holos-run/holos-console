@@ -261,6 +261,77 @@ export declare type DeleteDeploymentTemplateResponse = Message<"holos.console.v1
 export declare const DeleteDeploymentTemplateResponseSchema: GenMessage<DeleteDeploymentTemplateResponse>;
 
 /**
+ * RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
+ * and returns the rendered Kubernetes resource manifests as multi-document YAML.
+ * The cue_template field is rendered directly (supports unsaved/draft templates).
+ *
+ * @generated from message holos.console.v1.RenderDeploymentTemplateRequest
+ */
+export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.RenderDeploymentTemplateRequest"> & {
+  /**
+   * owning project (used to resolve namespace)
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * CUE source to evaluate
+   *
+   * @generated from field: string cue_template = 2;
+   */
+  cueTemplate: string;
+
+  /**
+   * example deployment name (e.g. "holos-console")
+   *
+   * @generated from field: string example_name = 3;
+   */
+  exampleName: string;
+
+  /**
+   * example image (e.g. "ghcr.io/holos-run/holos-console")
+   *
+   * @generated from field: string example_image = 4;
+   */
+  exampleImage: string;
+
+  /**
+   * example tag (e.g. "latest")
+   *
+   * @generated from field: string example_tag = 5;
+   */
+  exampleTag: string;
+};
+
+/**
+ * Describes the message holos.console.v1.RenderDeploymentTemplateRequest.
+ * Use `create(RenderDeploymentTemplateRequestSchema)` to create a new message.
+ */
+export declare const RenderDeploymentTemplateRequestSchema: GenMessage<RenderDeploymentTemplateRequest>;
+
+/**
+ * RenderDeploymentTemplateResponse contains the rendered YAML output.
+ *
+ * @generated from message holos.console.v1.RenderDeploymentTemplateResponse
+ */
+export declare type RenderDeploymentTemplateResponse = Message<"holos.console.v1.RenderDeploymentTemplateResponse"> & {
+  /**
+   * rendered_yaml is the concatenated multi-document YAML of all rendered
+   * resources, separated by "---\n".
+   *
+   * @generated from field: string rendered_yaml = 1;
+   */
+  renderedYaml: string;
+};
+
+/**
+ * Describes the message holos.console.v1.RenderDeploymentTemplateResponse.
+ * Use `create(RenderDeploymentTemplateResponseSchema)` to create a new message.
+ */
+export declare const RenderDeploymentTemplateResponseSchema: GenMessage<RenderDeploymentTemplateResponse>;
+
+/**
  * DeploymentTemplateService manages CUE-based deployment templates.
  *
  * @generated from service holos.console.v1.DeploymentTemplateService
@@ -305,6 +376,14 @@ export declare const DeploymentTemplateService: GenService<{
     methodKind: "unary";
     input: typeof DeleteDeploymentTemplateRequestSchema;
     output: typeof DeleteDeploymentTemplateResponseSchema;
+  },
+  /**
+   * @generated from rpc holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate
+   */
+  renderDeploymentTemplate: {
+    methodKind: "unary";
+    input: typeof RenderDeploymentTemplateRequestSchema;
+    output: typeof RenderDeploymentTemplateResponseSchema;
   },
 }>;
 

@@ -80,3 +80,30 @@ export function useDeleteDeploymentTemplate(project: string) {
     },
   })
 }
+
+export function useRenderDeploymentTemplate(
+  project: string,
+  cueTemplate: string,
+  exampleName = 'holos-console',
+  exampleImage = 'ghcr.io/holos-run/holos-console',
+  exampleTag = 'latest',
+) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
+  return useQuery({
+    queryKey: ['deployment-templates', 'render', project, cueTemplate, exampleName, exampleImage, exampleTag] as const,
+    queryFn: async () => {
+      const response = await client.renderDeploymentTemplate({
+        project,
+        cueTemplate,
+        exampleName,
+        exampleImage,
+        exampleTag,
+      })
+      return response.renderedYaml
+    },
+    enabled: isAuthenticated && !!project && !!cueTemplate,
+    retry: false,
+  })
+}

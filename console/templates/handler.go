@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 
 	"connectrpc.com/connect"
 	"cuelang.org/go/cue/parser"
@@ -27,16 +28,33 @@ type ProjectResolver interface {
 	GetProjectGrants(ctx context.Context, project string) (shareUsers, shareRoles map[string]string, err error)
 }
 
+// RenderInput mirrors deployments.DeploymentInput (injected to avoid circular import).
+type RenderInput struct {
+	Name, Image, Tag, Project, Namespace string
+}
+
+// RenderResource is a single rendered resource with its YAML representation.
+type RenderResource struct {
+	YAML string
+}
+
+// Renderer evaluates a CUE template with deployment inputs and returns
+// a list of rendered Kubernetes manifests as YAML strings.
+type Renderer interface {
+	Render(ctx context.Context, cueSource string, input RenderInput) ([]RenderResource, error)
+}
+
 // Handler implements the DeploymentTemplateService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentTemplateServiceHandler
 	k8s             *K8sClient
 	projectResolver ProjectResolver
+	renderer        Renderer
 }
 
 // NewHandler creates a DeploymentTemplateService handler.
-func NewHandler(k8s *K8sClient, projectResolver ProjectResolver) *Handler {
-	return &Handler{k8s: k8s, projectResolver: projectResolver}
+func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, renderer Renderer) *Handler {
+	return &Handler{k8s: k8s, projectResolver: projectResolver, renderer: renderer}
 }
 
 // ListDeploymentTemplates returns all templates in a project.
@@ -251,6 +269,55 @@ func (h *Handler) DeleteDeploymentTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.DeleteDeploymentTemplateResponse{}), nil
+}
+
+// RenderDeploymentTemplate evaluates a CUE template with example inputs and returns
+// the rendered Kubernetes resource manifests as multi-document YAML.
+func (h *Handler) RenderDeploymentTemplate(
+	ctx context.Context,
+	req *connect.Request[consolev1.RenderDeploymentTemplateRequest],
+) (*connect.Response[consolev1.RenderDeploymentTemplateResponse], error) {
+	project := req.Msg.Project
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if req.Msg.CueTemplate == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cue_template is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	namespace := h.k8s.Resolver.ProjectNamespace(project)
+
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, RenderInput{
+		Name:      req.Msg.ExampleName,
+		Image:     req.Msg.ExampleImage,
+		Tag:       req.Msg.ExampleTag,
+		Project:   project,
+		Namespace: namespace,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+	}
+
+	var buf strings.Builder
+	for i, r := range resources {
+		if i > 0 {
+			buf.WriteString("---\n")
+		}
+		buf.WriteString(r.YAML)
+	}
+
+	return connect.NewResponse(&consolev1.RenderDeploymentTemplateResponse{
+		RenderedYaml: buf.String(),
+	}), nil
 }
 
 // checkProjectAccess verifies that the user has the given permission via project cascade grants.

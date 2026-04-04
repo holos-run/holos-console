@@ -2,6 +2,8 @@ package templates
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -21,6 +23,16 @@ type stubProjectResolver struct {
 
 func (s *stubProjectResolver) GetProjectGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
 	return s.users, s.roles, s.err
+}
+
+// stubRenderer implements Renderer for tests.
+type stubRenderer struct {
+	resources []RenderResource
+	err       error
+}
+
+func (r *stubRenderer) Render(_ context.Context, _ string, _ RenderInput) ([]RenderResource, error) {
+	return r.resources, r.err
 }
 
 func authedCtx(email string, roles []string) context.Context {
@@ -45,7 +57,7 @@ func TestHandler_ListDeploymentTemplates(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("alice@example.com", nil)
 		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
@@ -64,7 +76,7 @@ func TestHandler_ListDeploymentTemplates(t *testing.T) {
 	t.Run("rejects unauthenticated request", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{})
+		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
 
 		ctx := context.Background()
 		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
@@ -81,7 +93,7 @@ func TestHandler_ListDeploymentTemplates(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{} // no grants
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("nobody@example.com", nil)
 		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
@@ -97,7 +109,7 @@ func TestHandler_ListDeploymentTemplates(t *testing.T) {
 	t.Run("rejects empty project", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
 		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{})
+		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
 
 		ctx := authedCtx("alice@example.com", nil)
 		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: ""})
@@ -118,7 +130,7 @@ func TestHandler_GetDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("alice@example.com", nil)
 		req := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
@@ -140,7 +152,7 @@ func TestHandler_GetDeploymentTemplate(t *testing.T) {
 	t.Run("rejects unauthorized user", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{})
+		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
 
 		ctx := authedCtx("nobody@example.com", nil)
 		req := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
@@ -160,7 +172,7 @@ func TestHandler_CreateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("editor@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
@@ -190,7 +202,7 @@ func TestHandler_CreateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
@@ -213,7 +225,7 @@ func TestHandler_CreateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("editor@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
@@ -236,7 +248,7 @@ func TestHandler_CreateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("editor@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
@@ -258,7 +270,7 @@ func TestHandler_CreateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("editor@example.com", nil)
 		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
@@ -283,7 +295,7 @@ func TestHandler_UpdateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		newDesc := "Updated description"
 		ctx := authedCtx("editor@example.com", nil)
@@ -304,7 +316,7 @@ func TestHandler_UpdateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		newDesc := "Updated description"
 		ctx := authedCtx("viewer@example.com", nil)
@@ -328,7 +340,7 @@ func TestHandler_UpdateDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		badCue := "this is not valid {{ cue"
 		ctx := authedCtx("editor@example.com", nil)
@@ -354,7 +366,7 @@ func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"owner@example.com": "owner"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("owner@example.com", nil)
 		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
@@ -370,7 +382,7 @@ func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("editor@example.com", nil)
 		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
@@ -389,7 +401,7 @@ func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr)
+		handler := NewHandler(k8s, pr, nil)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
@@ -399,6 +411,144 @@ func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
 		}
 		if connect.CodeOf(err) != connect.CodePermissionDenied {
 			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
+		}
+	})
+}
+
+func TestHandler_RenderDeploymentTemplate(t *testing.T) {
+	const validCueSrc = `package deployment
+#Input: { name: string }
+`
+
+	t.Run("unauthenticated request returns CodeUnauthenticated", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
+
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: validCueSrc,
+		})
+		_, err := handler.RenderDeploymentTemplate(context.Background(), req)
+		if err == nil {
+			t.Fatal("expected error for unauthenticated request")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("viewer with no project access returns CodePermissionDenied", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
+
+		ctx := authedCtx("nobody@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: validCueSrc,
+		})
+		_, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for unauthorized user")
+		}
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("missing project returns CodeInvalidArgument", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "",
+			CueTemplate: validCueSrc,
+		})
+		_, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for missing project")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("missing cue_template returns CodeInvalidArgument", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		handler := NewHandler(k8s, pr, &stubRenderer{})
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: "",
+		})
+		_, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for missing cue_template")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("valid request calls renderer with correct inputs and returns YAML", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		stub := &stubRenderer{
+			resources: []RenderResource{
+				{YAML: "apiVersion: v1\nkind: ServiceAccount\n"},
+				{YAML: "apiVersion: apps/v1\nkind: Deployment\n"},
+			},
+		}
+		handler := NewHandler(k8s, pr, stub)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:      "my-project",
+			CueTemplate:  validCueSrc,
+			ExampleName:  "holos-console",
+			ExampleImage: "ghcr.io/holos-run/holos-console",
+			ExampleTag:   "latest",
+		})
+		resp, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.RenderedYaml == "" {
+			t.Error("expected non-empty rendered_yaml")
+		}
+		if !strings.Contains(resp.Msg.RenderedYaml, "ServiceAccount") {
+			t.Error("expected YAML to contain ServiceAccount")
+		}
+		if !strings.Contains(resp.Msg.RenderedYaml, "---\n") {
+			t.Error("expected YAML to contain document separator")
+		}
+	})
+
+	t.Run("renderer error is propagated as CodeInvalidArgument", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		stub := &stubRenderer{err: fmt.Errorf("syntax error in CUE")}
+		handler := NewHandler(k8s, pr, stub)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: validCueSrc,
+		})
+		_, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error from renderer")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
 		}
 	})
 }

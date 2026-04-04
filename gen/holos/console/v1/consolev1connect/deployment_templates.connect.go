@@ -49,6 +49,9 @@ const (
 	// DeploymentTemplateServiceDeleteDeploymentTemplateProcedure is the fully-qualified name of the
 	// DeploymentTemplateService's DeleteDeploymentTemplate RPC.
 	DeploymentTemplateServiceDeleteDeploymentTemplateProcedure = "/holos.console.v1.DeploymentTemplateService/DeleteDeploymentTemplate"
+	// DeploymentTemplateServiceRenderDeploymentTemplateProcedure is the fully-qualified name of the
+	// DeploymentTemplateService's RenderDeploymentTemplate RPC.
+	DeploymentTemplateServiceRenderDeploymentTemplateProcedure = "/holos.console.v1.DeploymentTemplateService/RenderDeploymentTemplate"
 )
 
 // DeploymentTemplateServiceClient is a client for the holos.console.v1.DeploymentTemplateService
@@ -59,6 +62,7 @@ type DeploymentTemplateServiceClient interface {
 	CreateDeploymentTemplate(context.Context, *connect.Request[v1.CreateDeploymentTemplateRequest]) (*connect.Response[v1.CreateDeploymentTemplateResponse], error)
 	UpdateDeploymentTemplate(context.Context, *connect.Request[v1.UpdateDeploymentTemplateRequest]) (*connect.Response[v1.UpdateDeploymentTemplateResponse], error)
 	DeleteDeploymentTemplate(context.Context, *connect.Request[v1.DeleteDeploymentTemplateRequest]) (*connect.Response[v1.DeleteDeploymentTemplateResponse], error)
+	RenderDeploymentTemplate(context.Context, *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error)
 }
 
 // NewDeploymentTemplateServiceClient constructs a client for the
@@ -102,6 +106,12 @@ func NewDeploymentTemplateServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(deploymentTemplateServiceMethods.ByName("DeleteDeploymentTemplate")),
 			connect.WithClientOptions(opts...),
 		),
+		renderDeploymentTemplate: connect.NewClient[v1.RenderDeploymentTemplateRequest, v1.RenderDeploymentTemplateResponse](
+			httpClient,
+			baseURL+DeploymentTemplateServiceRenderDeploymentTemplateProcedure,
+			connect.WithSchema(deploymentTemplateServiceMethods.ByName("RenderDeploymentTemplate")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -112,6 +122,7 @@ type deploymentTemplateServiceClient struct {
 	createDeploymentTemplate *connect.Client[v1.CreateDeploymentTemplateRequest, v1.CreateDeploymentTemplateResponse]
 	updateDeploymentTemplate *connect.Client[v1.UpdateDeploymentTemplateRequest, v1.UpdateDeploymentTemplateResponse]
 	deleteDeploymentTemplate *connect.Client[v1.DeleteDeploymentTemplateRequest, v1.DeleteDeploymentTemplateResponse]
+	renderDeploymentTemplate *connect.Client[v1.RenderDeploymentTemplateRequest, v1.RenderDeploymentTemplateResponse]
 }
 
 // ListDeploymentTemplates calls holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates.
@@ -142,6 +153,12 @@ func (c *deploymentTemplateServiceClient) DeleteDeploymentTemplate(ctx context.C
 	return c.deleteDeploymentTemplate.CallUnary(ctx, req)
 }
 
+// RenderDeploymentTemplate calls
+// holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate.
+func (c *deploymentTemplateServiceClient) RenderDeploymentTemplate(ctx context.Context, req *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error) {
+	return c.renderDeploymentTemplate.CallUnary(ctx, req)
+}
+
 // DeploymentTemplateServiceHandler is an implementation of the
 // holos.console.v1.DeploymentTemplateService service.
 type DeploymentTemplateServiceHandler interface {
@@ -150,6 +167,7 @@ type DeploymentTemplateServiceHandler interface {
 	CreateDeploymentTemplate(context.Context, *connect.Request[v1.CreateDeploymentTemplateRequest]) (*connect.Response[v1.CreateDeploymentTemplateResponse], error)
 	UpdateDeploymentTemplate(context.Context, *connect.Request[v1.UpdateDeploymentTemplateRequest]) (*connect.Response[v1.UpdateDeploymentTemplateResponse], error)
 	DeleteDeploymentTemplate(context.Context, *connect.Request[v1.DeleteDeploymentTemplateRequest]) (*connect.Response[v1.DeleteDeploymentTemplateResponse], error)
+	RenderDeploymentTemplate(context.Context, *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error)
 }
 
 // NewDeploymentTemplateServiceHandler builds an HTTP handler from the service implementation. It
@@ -189,6 +207,12 @@ func NewDeploymentTemplateServiceHandler(svc DeploymentTemplateServiceHandler, o
 		connect.WithSchema(deploymentTemplateServiceMethods.ByName("DeleteDeploymentTemplate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentTemplateServiceRenderDeploymentTemplateHandler := connect.NewUnaryHandler(
+		DeploymentTemplateServiceRenderDeploymentTemplateProcedure,
+		svc.RenderDeploymentTemplate,
+		connect.WithSchema(deploymentTemplateServiceMethods.ByName("RenderDeploymentTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentTemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentTemplateServiceListDeploymentTemplatesProcedure:
@@ -201,6 +225,8 @@ func NewDeploymentTemplateServiceHandler(svc DeploymentTemplateServiceHandler, o
 			deploymentTemplateServiceUpdateDeploymentTemplateHandler.ServeHTTP(w, r)
 		case DeploymentTemplateServiceDeleteDeploymentTemplateProcedure:
 			deploymentTemplateServiceDeleteDeploymentTemplateHandler.ServeHTTP(w, r)
+		case DeploymentTemplateServiceRenderDeploymentTemplateProcedure:
+			deploymentTemplateServiceRenderDeploymentTemplateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -228,4 +254,8 @@ func (UnimplementedDeploymentTemplateServiceHandler) UpdateDeploymentTemplate(co
 
 func (UnimplementedDeploymentTemplateServiceHandler) DeleteDeploymentTemplate(context.Context, *connect.Request[v1.DeleteDeploymentTemplateRequest]) (*connect.Response[v1.DeleteDeploymentTemplateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate is not implemented"))
+}
+
+func (UnimplementedDeploymentTemplateServiceHandler) RenderDeploymentTemplate(context.Context, *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate is not implemented"))
 }

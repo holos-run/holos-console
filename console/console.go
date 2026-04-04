@@ -264,7 +264,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Deployment template service with project grant fallback
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
-		templatesHandler := templates.NewHandler(templatesK8s, projectResolver)
+		templatesHandler := templates.NewHandler(templatesK8s, projectResolver, templates.NewCueRendererAdapter())
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 

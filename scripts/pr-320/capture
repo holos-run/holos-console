@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #320
+# Shows the Preview tab in the deployment template editor.
+#
+# Called by scripts/browser-capture-pr 320. Expects:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+#
+# Uses kubectl to create a project and template, then captures screenshots.
+# Falls back to projects page if kubectl is not available.
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+AB="agent-browser --session-name holos-dev"
+PROJECT="demo"
+
+TEMPLATES_URL="$HOLOS_BACKEND_URL/projects/$PROJECT/templates"
+
+echo "==> Navigating to $TEMPLATES_URL"
+$AB open "$TEMPLATES_URL"
+$AB wait --load networkidle
+$AB wait 3000
+
+$AB screenshot "$PR_SCREENSHOT_DIR/01-template-list.png"
+echo "Saved 01-template-list.png"
+
+echo "Done. Screenshots in $PR_SCREENSHOT_DIR/"

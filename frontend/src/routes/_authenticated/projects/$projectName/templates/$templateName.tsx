@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
@@ -58,6 +59,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
+
+  const { data: renderedYaml, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(projectName, cueTemplate)
 
   const handleSave = async () => {
     try {
@@ -133,25 +136,47 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <div className="space-y-4">
             <h3 className="text-sm font-medium">CUE Template</h3>
             <Separator />
-            <div>
-              <Label htmlFor="cue-template-editor" className="sr-only">CUE Template</Label>
-              <Textarea
-                id="cue-template-editor"
-                aria-label="CUE Template"
-                value={cueTemplate}
-                onChange={(e) => setCueTemplate(e.target.value)}
-                rows={20}
-                className="font-mono text-sm"
-                readOnly={!canWrite}
-              />
-            </div>
-            {canWrite && (
-              <div className="flex justify-end">
-                <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
-            )}
+            <Tabs defaultValue="editor">
+              <TabsList>
+                <TabsTrigger value="editor">Editor</TabsTrigger>
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+              </TabsList>
+              <TabsContent value="editor" className="mt-4 space-y-4">
+                <div>
+                  <Label htmlFor="cue-template-editor" className="sr-only">CUE Template</Label>
+                  <Textarea
+                    id="cue-template-editor"
+                    aria-label="CUE Template"
+                    value={cueTemplate}
+                    onChange={(e) => setCueTemplate(e.target.value)}
+                    rows={20}
+                    className="font-mono text-sm"
+                    readOnly={!canWrite}
+                  />
+                </div>
+                {canWrite && (
+                  <div className="flex justify-end">
+                    <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                      {updateMutation.isPending ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="preview" className="mt-4 space-y-4">
+                {renderError ? (
+                  <Alert variant="destructive">
+                    <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
+                  </Alert>
+                ) : (
+                  <pre
+                    aria-label="Rendered YAML"
+                    className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+                  >
+                    {isRendering ? 'Rendering…' : (renderedYaml ?? '')}
+                  </pre>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
 
           {canDelete && (
