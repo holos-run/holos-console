@@ -7,6 +7,115 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// structuredTemplate uses the new namespaced/cluster output format.
+const structuredTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+namespaced: (input.namespace): {
+	ServiceAccount: (input.name): {
+		apiVersion: "v1"
+		kind:       "ServiceAccount"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+	}
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: _labels
+				spec: {
+					serviceAccountName: input.name
+					containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+}
+
+cluster: {}
+`
+
+// structuredCrossNamespaceTemplate tries to set metadata.namespace to a different value than the struct key.
+const structuredCrossNamespaceTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: "other-namespace"
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+		spec: {}
+	}
+}
+
+cluster: {}
+`
+
+// structuredMissingManagedByTemplate is missing the required managed-by label.
+const structuredMissingManagedByTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+		}
+		spec: {}
+	}
+}
+
+cluster: {}
+`
+
 // validTemplate produces a single Deployment resource.
 const validTemplate = `
 input: {
@@ -449,6 +558,125 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 		}
 		if _, exists := c["args"]; exists {
 			t.Error("expected args to be absent when empty")
+		}
+	})
+}
+
+// structuredDuplicateTemplate tries to define the same Kind/name twice.
+// CUE struct semantics naturally enforce uniqueness — setting the same path
+// twice merges values or produces a conflict error if they are incompatible.
+const structuredDuplicateTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+		spec: replicas: 1
+	}
+	// Duplicate: same Kind/name with an incompatible replicas value.
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+		spec: replicas: 2
+	}
+}
+
+cluster: {}
+`
+
+// TestCueRenderer_StructuredOutput tests the new namespaced/cluster output format.
+func TestCueRenderer_StructuredOutput(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("structured template produces expected resources", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), structuredTemplate, DeploymentInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (ServiceAccount, Deployment), got %d", len(resources))
+		}
+
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+			if r.GetNamespace() != namespace {
+				t.Errorf("resource %s/%s: expected namespace %q, got %q", r.GetKind(), r.GetName(), namespace, r.GetNamespace())
+			}
+			labels := r.GetLabels()
+			if labels["app.kubernetes.io/managed-by"] != "console.holos.run" {
+				t.Errorf("resource %s/%s: missing managed-by label", r.GetKind(), r.GetName())
+			}
+		}
+		for _, kind := range []string{"ServiceAccount", "Deployment"} {
+			if !kindSet[kind] {
+				t.Errorf("expected resource of kind %q", kind)
+			}
+		}
+	})
+
+	t.Run("structured template rejects cross-namespace resources", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), structuredCrossNamespaceTemplate, DeploymentInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err == nil {
+			t.Fatal("expected error for cross-namespace resource")
+		}
+	})
+
+	t.Run("structured template rejects missing managed-by label", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), structuredMissingManagedByTemplate, DeploymentInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err == nil {
+			t.Fatal("expected error for missing managed-by label")
+		}
+	})
+
+	t.Run("duplicate Kind/name with incompatible values causes CUE conflict", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), structuredDuplicateTemplate, DeploymentInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err == nil {
+			t.Fatal("expected error for duplicate Kind/name with conflicting values")
 		}
 	})
 }

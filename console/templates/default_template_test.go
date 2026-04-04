@@ -337,6 +337,57 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 }
 
+// TestDefaultTemplate_StructuredOutput verifies the default template uses the
+// namespaced/cluster structured output format defined in ADR 012.
+func TestDefaultTemplate_StructuredOutput(t *testing.T) {
+	renderer := &deployments.CueRenderer{}
+	namespace := "prj-my-project"
+	input := deployments.DeploymentInput{
+		Name:      "holos-console",
+		Image:     "ghcr.io/holos-run/holos-console",
+		Tag:       "latest",
+		Project:   "my-project",
+		Namespace: namespace,
+	}
+
+	resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+	if err != nil {
+		t.Fatalf("default template render failed: %v", err)
+	}
+
+	// Default template produces 3 namespaced resources: ServiceAccount, Deployment, Service.
+	if len(resources) != 3 {
+		t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d", len(resources))
+	}
+
+	kindSet := make(map[string]bool)
+	for _, r := range resources {
+		kindSet[r.GetKind()] = true
+
+		// Every resource must have the managed-by label.
+		labels := r.GetLabels()
+		if labels["app.kubernetes.io/managed-by"] != "console.holos.run" {
+			t.Errorf("resource %s/%s: missing required label app.kubernetes.io/managed-by=console.holos.run", r.GetKind(), r.GetName())
+		}
+
+		// Every resource must be in the expected namespace.
+		if r.GetNamespace() != namespace {
+			t.Errorf("resource %s/%s: expected namespace %q, got %q", r.GetKind(), r.GetName(), namespace, r.GetNamespace())
+		}
+
+		// Every resource must have the expected name.
+		if r.GetName() != input.Name {
+			t.Errorf("resource %s: expected name %q, got %q", r.GetKind(), input.Name, r.GetName())
+		}
+	}
+
+	for _, kind := range []string{"ServiceAccount", "Deployment", "Service"} {
+		if !kindSet[kind] {
+			t.Errorf("expected resource of kind %q", kind)
+		}
+	}
+}
+
 // mustGetContainer finds the first container in the Deployment resource.
 func mustGetContainer(t *testing.T, resources []unstructured.Unstructured) map[string]any {
 	t.Helper()
