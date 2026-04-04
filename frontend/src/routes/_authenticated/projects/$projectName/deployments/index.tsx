@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { CreateTemplateModal } from '@/components/create-template-modal'
 import { StringListInput } from '@/components/string-list-input'
+import { EnvVarEditor } from '@/components/env-var-editor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,9 +37,22 @@ import {
 import { Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
+import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useListDeployments, useCreateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { useListDeploymentTemplates } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
+
+// filterEnvVars removes incomplete rows before submit.
+// A row is valid if the name is non-empty and the source is complete.
+function filterEnvVars(envVars: EnvVar[]): EnvVar[] {
+  return envVars.filter((ev) => {
+    if (!ev.name.trim()) return false
+    if (ev.source.case === 'value') return true
+    if (ev.source.case === 'secretKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    if (ev.source.case === 'configMapKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    return false
+  })
+}
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/')({
   component: DeploymentsRoute,
@@ -74,6 +88,7 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
   const [createTag, setCreateTag] = useState('')
   const [createCommand, setCreateCommand] = useState<string[]>([])
   const [createArgs, setCreateArgs] = useState<string[]>([])
+  const [createEnv, setCreateEnv] = useState<EnvVar[]>([])
   const [createError, setCreateError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -102,6 +117,7 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
     setCreateTag('')
     setCreateCommand([])
     setCreateArgs([])
+    setCreateEnv([])
     setCreateError(null)
     createMutation.reset()
     setCreateOpen(true)
@@ -135,6 +151,7 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
         tag: createTag.trim(),
         command: createCommand,
         args: createArgs,
+        env: filterEnvVars(createEnv),
       })
       setCreateOpen(false)
     } catch (err) {
@@ -347,6 +364,15 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                 onChange={setCreateArgs}
                 placeholder="args entry"
                 addLabel="Add args"
+              />
+            </div>
+            <div>
+              <Label>Environment Variables</Label>
+              <p className="text-xs text-muted-foreground mb-1">Set container environment variables (optional)</p>
+              <EnvVarEditor
+                project={projectName}
+                value={createEnv}
+                onChange={setCreateEnv}
               />
             </div>
             {createError && (

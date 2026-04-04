@@ -23,6 +23,8 @@ vi.mock('@/queries/deployments', () => ({
   useGetDeploymentLogs: vi.fn(),
   useUpdateDeployment: vi.fn(),
   useDeleteDeployment: vi.fn(),
+  useListNamespaceSecrets: vi.fn(),
+  useListNamespaceConfigMaps: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -31,7 +33,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
@@ -49,6 +51,7 @@ const mockDeployment = {
   message: '',
   command: [] as string[],
   args: [] as string[],
+  env: [] as unknown[],
 }
 
 const mockStatus = {
@@ -73,6 +76,8 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
   ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+  ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
 }
 
 describe('DeploymentDetailPage', () => {
@@ -244,7 +249,7 @@ describe('DeploymentDetailPage', () => {
 
   it('re-deploy dialog pre-populates command from deployment', () => {
     ;(useGetDeployment as Mock).mockReturnValue({
-      data: { ...mockDeployment, command: ['myapp'], args: ['--port', '8080'] },
+      data: { ...mockDeployment, command: ['myapp'], args: ['--port', '8080'], env: [] },
       isPending: false,
       error: null,
     })
@@ -276,5 +281,89 @@ describe('DeploymentDetailPage', () => {
         expect.objectContaining({ command: ['myapp'] }),
       )
     })
+  })
+
+  it('re-deploy dialog has Environment Variables section', () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    expect(screen.getAllByText(/environment variables/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /add environment variable/i })).toBeInTheDocument()
+  })
+
+  it('re-deploy passes env to mutateAsync', async () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+
+    // Add an env var
+    fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
+    fireEvent.change(screen.getByLabelText(/env var name/i), { target: { value: 'DB_URL' } })
+    fireEvent.change(screen.getByLabelText(/literal value/i), { target: { value: 'postgres://localhost' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^deploy$/i }))
+    const mutateAsync = (useUpdateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: [expect.objectContaining({ name: 'DB_URL', source: { case: 'value', value: 'postgres://localhost' } })],
+        }),
+      )
+    })
+  })
+
+  it('does not render env vars table when deployment has no env vars', () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    expect(screen.queryByRole('columnheader', { name: /name/i })).not.toBeInTheDocument()
+  })
+
+  it('renders env vars table when deployment has env vars', () => {
+    ;(useGetDeployment as Mock).mockReturnValue({
+      data: {
+        ...mockDeployment,
+        env: [
+          { name: 'DATABASE_URL', source: { case: 'value', value: 'postgres://localhost' } },
+          { name: 'API_KEY', source: { case: 'secretKeyRef', value: { name: 'my-secret', key: 'token' } } },
+        ],
+      },
+      isPending: false,
+      error: null,
+    })
+    ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
+    ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+    ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+    ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+    ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+    ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+    render(<DeploymentDetailPage />)
+    expect(screen.getByText('DATABASE_URL')).toBeInTheDocument()
+    expect(screen.getByText('postgres://localhost')).toBeInTheDocument()
+    expect(screen.getByText('API_KEY')).toBeInTheDocument()
+    expect(screen.getByText('my-secret → token')).toBeInTheDocument()
+    expect(screen.getByText('Secret')).toBeInTheDocument()
+  })
+
+  it('re-deploy dialog pre-populates env from deployment', () => {
+    ;(useGetDeployment as Mock).mockReturnValue({
+      data: {
+        ...mockDeployment,
+        env: [{ name: 'DB_URL', source: { case: 'value', value: 'postgres://localhost' } }],
+      },
+      isPending: false,
+      error: null,
+    })
+    ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
+    ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+    ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+    ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+    ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+    ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    // The env var name input should be pre-populated
+    expect(screen.getByDisplayValue('DB_URL')).toBeInTheDocument()
   })
 })

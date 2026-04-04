@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { StringListInput } from '@/components/string-list-input'
+import { EnvVarEditor } from '@/components/env-var-editor'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,10 +26,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
+
+// filterEnvVars removes incomplete rows before submit.
+function filterEnvVars(envVars: EnvVar[]): EnvVar[] {
+  return envVars.filter((ev) => {
+    if (!ev.name.trim()) return false
+    if (ev.source.case === 'value') return true
+    if (ev.source.case === 'secretKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    if (ev.source.case === 'configMapKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    return false
+  })
+}
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/$deploymentName')({
   component: DeploymentDetailRoute,
@@ -70,6 +91,7 @@ export function DeploymentDetailPage({
   const [redeployTag, setRedeployTag] = useState('')
   const [redeployCommand, setRedeployCommand] = useState<string[]>([])
   const [redeployArgs, setRedeployArgs] = useState<string[]>([])
+  const [redeployEnv, setRedeployEnv] = useState<EnvVar[]>([])
   const [redeployError, setRedeployError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -80,8 +102,9 @@ export function DeploymentDetailPage({
       setRedeployTag(deployment.tag)
       setRedeployCommand(deployment.command ?? [])
       setRedeployArgs(deployment.args ?? [])
+      setRedeployEnv(deployment.env ?? [])
     }
-  }, [deployment?.image, deployment?.tag, deployment?.command, deployment?.args])
+  }, [deployment?.image, deployment?.tag, deployment?.command, deployment?.args, deployment?.env])
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -92,6 +115,7 @@ export function DeploymentDetailPage({
     setRedeployTag(deployment?.tag ?? '')
     setRedeployCommand(deployment?.command ?? [])
     setRedeployArgs(deployment?.args ?? [])
+    setRedeployEnv(deployment?.env ?? [])
     setRedeployError(null)
     updateMutation.reset()
     setRedeployOpen(true)
@@ -108,7 +132,7 @@ export function DeploymentDetailPage({
     }
     setRedeployError(null)
     try {
-      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim(), command: redeployCommand, args: redeployArgs })
+      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim(), command: redeployCommand, args: redeployArgs, env: filterEnvVars(redeployEnv) })
       setRedeployOpen(false)
       toast.success('Deployment updated')
     } catch (err) {
@@ -240,6 +264,39 @@ export function DeploymentDetailPage({
             )}
           </div>
 
+          {deployment && deployment.env && deployment.env.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium">Environment Variables</h3>
+              <Separator />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Value / Reference</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {deployment.env.map((ev, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-mono text-sm">{ev.name}</TableCell>
+                      <TableCell>
+                        {ev.source.case === 'value' && 'Value'}
+                        {ev.source.case === 'secretKeyRef' && 'Secret'}
+                        {ev.source.case === 'configMapKeyRef' && 'ConfigMap'}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">
+                        {ev.source.case === 'value' && ev.source.value}
+                        {ev.source.case === 'secretKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
+                        {ev.source.case === 'configMapKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Logs</h3>
@@ -317,6 +374,15 @@ export function DeploymentDetailPage({
                 onChange={setRedeployArgs}
                 placeholder="args entry"
                 addLabel="Add args"
+              />
+            </div>
+            <div>
+              <Label>Environment Variables</Label>
+              <p className="text-xs text-muted-foreground mb-1">Set container environment variables (optional)</p>
+              <EnvVarEditor
+                project={projectName}
+                value={redeployEnv}
+                onChange={setRedeployEnv}
               />
             </div>
             {redeployError && (
