@@ -409,7 +409,8 @@ Workflow:
 5. **Reference in PR** using the **commit SHA** in raw GitHub URLs so images remain accessible after the branch is deleted on merge:
    ```bash
    SHA=$(git rev-parse HEAD)
-   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/holos-run/holos-console/${SHA}/docs/screenshots/pr-<N>/filename.png)"
+   REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/${REPO}/${SHA}/docs/screenshots/pr-<N>/filename.png)"
    ```
    Using the commit SHA (not the branch name) is the conventional approach — the SHA is immutable and resolves correctly both before and after merge. **Important**: PRs with screenshot references must be merged using a **merge commit** (not squash), so the referenced commit SHA survives in the target branch history.
 6. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
