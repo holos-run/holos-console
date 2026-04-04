@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -18,6 +19,7 @@ vi.mock('@/queries/deployment-templates', () => ({
   useGetDeploymentTemplate: vi.fn(),
   useUpdateDeploymentTemplate: vi.fn(),
   useDeleteDeploymentTemplate: vi.fn(),
+  useRenderDeploymentTemplate: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -26,7 +28,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplateDetailPage } from './$templateName'
@@ -39,12 +41,13 @@ const mockTemplate = {
   cueTemplate: '// cue template content',
 }
 
-function setupMocks(userRole = Role.OWNER, templateOverrides?: Partial<typeof mockTemplate>) {
+function setupMocks(userRole = Role.OWNER, templateOverrides?: Partial<typeof mockTemplate>, renderYaml = '') {
   const template = { ...mockTemplate, ...templateOverrides }
   ;(useGetDeploymentTemplate as Mock).mockReturnValue({ data: template, isPending: false, error: null })
   ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
   ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: renderYaml, error: null, isFetching: false })
 }
 
 describe('DeploymentTemplateDetailPage', () => {
@@ -145,6 +148,7 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
     ;(useGetProject as Mock).mockReturnValue({ data: undefined, isLoading: true })
+    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: '', error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
     expect(skeletons.length).toBeGreaterThan(0)
@@ -155,7 +159,36 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: '', error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     expect(screen.getByText('not found')).toBeInTheDocument()
+  })
+
+  it('Preview tab trigger is present in the template editor', () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\nkind: ServiceAccount\n')
+    render(<DeploymentTemplateDetailPage />)
+    expect(screen.getByRole('tab', { name: /preview/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /editor/i })).toBeInTheDocument()
+  })
+
+  it('Preview tab renders YAML on success', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\nkind: ServiceAccount\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const pre = screen.getByLabelText('Rendered YAML')
+    expect(pre).toBeInTheDocument()
+    expect(pre.textContent).toContain('ServiceAccount')
+  })
+
+  it('Preview tab shows error when render fails', async () => {
+    setupMocks()
+    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: undefined, error: new Error('CUE syntax error'), isFetching: false })
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const errEl = screen.getByLabelText('Preview error')
+    expect(errEl).toBeInTheDocument()
+    expect(errEl.textContent).toContain('CUE syntax error')
   })
 })
