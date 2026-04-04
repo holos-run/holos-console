@@ -15,6 +15,10 @@ service DeploymentService {
   rpc GetDeploymentStatus(GetDeploymentStatusRequest) returns (GetDeploymentStatusResponse);
   // GetDeploymentLogs returns recent container logs.
   rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+  // ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
+  rpc ListNamespaceSecrets(ListNamespaceSecretsRequest) returns (ListNamespaceSecretsResponse);
+  // ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
+  rpc ListNamespaceConfigMaps(ListNamespaceConfigMapsRequest) returns (ListNamespaceConfigMapsResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -194,4 +198,26 @@ message GetDeploymentLogsRequest {
 message GetDeploymentLogsResponse {
   // logs is the raw log output.
   string logs = 1;
+}
+
+// NamespaceResource represents a Kubernetes resource with its available data keys.
+message NamespaceResource {
+  string name = 1;
+  repeated string keys = 2;
+}
+
+message ListNamespaceSecretsRequest {
+  string project = 1;
+}
+
+message ListNamespaceSecretsResponse {
+  repeated NamespaceResource secrets = 1;
+}
+
+message ListNamespaceConfigMapsRequest {
+  string project = 1;
+}
+
+message ListNamespaceConfigMapsResponse {
+  repeated NamespaceResource config_maps = 1;
 }

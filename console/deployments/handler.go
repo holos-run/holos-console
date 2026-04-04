@@ -430,6 +430,94 @@ func (h *Handler) DeleteDeployment(
 	return connect.NewResponse(&consolev1.DeleteDeploymentResponse{}), nil
 }
 
+// ListNamespaceSecrets lists Kubernetes Secrets in the project namespace available for env var references.
+func (h *Handler) ListNamespaceSecrets(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListNamespaceSecretsRequest],
+) (*connect.Response[consolev1.ListNamespaceSecretsResponse], error) {
+	project := req.Msg.Project
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
+		return nil, err
+	}
+
+	items, err := h.k8s.ListNamespaceSecrets(ctx, project)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	secrets := make([]*consolev1.NamespaceResource, 0, len(items))
+	for _, item := range items {
+		secrets = append(secrets, &consolev1.NamespaceResource{
+			Name: item.Name,
+			Keys: item.Keys,
+		})
+	}
+
+	slog.InfoContext(ctx, "namespace secrets listed",
+		slog.String("action", "namespace_secrets_list"),
+		slog.String("project", project),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(secrets)),
+	)
+
+	return connect.NewResponse(&consolev1.ListNamespaceSecretsResponse{
+		Secrets: secrets,
+	}), nil
+}
+
+// ListNamespaceConfigMaps lists Kubernetes ConfigMaps in the project namespace available for env var references.
+func (h *Handler) ListNamespaceConfigMaps(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListNamespaceConfigMapsRequest],
+) (*connect.Response[consolev1.ListNamespaceConfigMapsResponse], error) {
+	project := req.Msg.Project
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
+		return nil, err
+	}
+
+	items, err := h.k8s.ListNamespaceConfigMaps(ctx, project)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	configMaps := make([]*consolev1.NamespaceResource, 0, len(items))
+	for _, item := range items {
+		configMaps = append(configMaps, &consolev1.NamespaceResource{
+			Name: item.Name,
+			Keys: item.Keys,
+		})
+	}
+
+	slog.InfoContext(ctx, "namespace configmaps listed",
+		slog.String("action", "namespace_configmaps_list"),
+		slog.String("project", project),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(configMaps)),
+	)
+
+	return connect.NewResponse(&consolev1.ListNamespaceConfigMapsResponse{
+		ConfigMaps: configMaps,
+	}), nil
+}
+
 // checkProjectAccess verifies that the user has the given permission via project cascade grants.
 func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, permission rbac.Permission) error {
 	if h.projectResolver == nil {
