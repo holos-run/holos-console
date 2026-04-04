@@ -83,8 +83,7 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, input Deploy
 }
 
 // evaluate performs synchronous CUE template evaluation.
-// It supports both the structured namespaced/cluster format (preferred) and
-// the legacy flat resources list format.
+// Templates must use the structured namespaced/cluster output format.
 func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -110,25 +109,13 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 		return nil, fmt.Errorf("unifying template with input: %w", err)
 	}
 
-	// Check which output format the template uses.
+	// Require the structured namespaced/cluster output format.
 	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
-	if namespacedValue.Err() == nil && namespacedValue.Exists() {
-		// New structured format: walk namespaced and cluster fields.
-		return evaluateStructured(unified, input.Namespace)
+	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
+		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
 	}
 
-	// Legacy flat list format.
-	resourcesValue := unified.LookupPath(cue.ParsePath("resources"))
-	if err := resourcesValue.Err(); err != nil {
-		return nil, fmt.Errorf("extracting resources field: %w", err)
-	}
-
-	var rawResources []map[string]any
-	if err := resourcesValue.Decode(&rawResources); err != nil {
-		return nil, fmt.Errorf("decoding resources: %w", err)
-	}
-
-	return validateResources(rawResources, input.Namespace)
+	return evaluateStructured(unified, input.Namespace)
 }
 
 // evaluateStructured walks the namespaced and cluster structured output fields
@@ -269,45 +256,3 @@ func validateResource(u unstructured.Unstructured) error {
 	return nil
 }
 
-// validateResources validates each resource against safety constraints.
-func validateResources(rawResources []map[string]any, expectedNamespace string) ([]unstructured.Unstructured, error) {
-	result := make([]unstructured.Unstructured, 0, len(rawResources))
-	for i, raw := range rawResources {
-		u := unstructured.Unstructured{Object: raw}
-
-		// Require apiVersion and kind.
-		if u.GetAPIVersion() == "" {
-			return nil, fmt.Errorf("resource[%d]: missing apiVersion", i)
-		}
-		kind := u.GetKind()
-		if kind == "" {
-			return nil, fmt.Errorf("resource[%d]: missing kind", i)
-		}
-		if u.GetName() == "" {
-			return nil, fmt.Errorf("resource[%d]: missing metadata.name", i)
-		}
-
-		// Enforce kind allowlist.
-		if !allowedKindSet[kind] {
-			return nil, fmt.Errorf("resource[%d] kind %q is not allowed; permitted kinds: Deployment, Service, ServiceAccount, Role, RoleBinding, HTTPRoute, ConfigMap, Secret", i, kind)
-		}
-
-		// Enforce namespace constraint.
-		ns := u.GetNamespace()
-		if ns == "" {
-			return nil, fmt.Errorf("resource[%d] %s/%s: missing metadata.namespace", i, kind, u.GetName())
-		}
-		if ns != expectedNamespace {
-			return nil, fmt.Errorf("resource[%d] %s/%s: namespace %q does not match project namespace %q", i, kind, u.GetName(), ns, expectedNamespace)
-		}
-
-		// Enforce managed-by label.
-		labels := u.GetLabels()
-		if labels["app.kubernetes.io/managed-by"] != "console.holos.run" {
-			return nil, fmt.Errorf("resource[%d] %s/%s: missing required label app.kubernetes.io/managed-by=console.holos.run", i, kind, u.GetName())
-		}
-
-		result = append(result, u)
-	}
-	return result, nil
-}
