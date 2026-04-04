@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { StringListInput } from '@/components/string-list-input'
-import { EnvVarEditor } from '@/components/env-var-editor'
+import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,17 +39,6 @@ import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
-
-// filterEnvVars removes incomplete rows before submit.
-function filterEnvVars(envVars: EnvVar[]): EnvVar[] {
-  return envVars.filter((ev) => {
-    if (!ev.name.trim()) return false
-    if (ev.source.case === 'value') return true
-    if (ev.source.case === 'secretKeyRef') return !!(ev.source.value.name && ev.source.value.key)
-    if (ev.source.case === 'configMapKeyRef') return !!(ev.source.value.name && ev.source.value.key)
-    return false
-  })
-}
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/$deploymentName')({
   component: DeploymentDetailRoute,

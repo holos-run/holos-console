@@ -20,7 +20,7 @@ proto/                          # Protobuf source files
     secrets.proto               # SecretsService
     project_settings.proto      # ProjectSettingsService
     deployment_templates.proto  # DeploymentTemplateService
-    deployments.proto           # DeploymentService
+    deployments.proto           # DeploymentService (CRUD, status, logs, env vars, K8s resource listing)
     rbac.proto                  # Role definitions
 
 gen/                            # Generated Go code (do not edit)

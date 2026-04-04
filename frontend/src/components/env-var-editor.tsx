@@ -19,6 +19,18 @@ interface EnvVarEditorProps {
   onChange: (value: EnvVar[]) => void
 }
 
+// filterEnvVars removes incomplete rows before submitting to the API.
+// A row is valid if the name is non-empty and the source is fully specified.
+export function filterEnvVars(envVars: EnvVar[]): EnvVar[] {
+  return envVars.filter((ev) => {
+    if (!ev.name.trim()) return false
+    if (ev.source.case === 'value') return true
+    if (ev.source.case === 'secretKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    if (ev.source.case === 'configMapKeyRef') return !!(ev.source.value.name && ev.source.value.key)
+    return false
+  })
+}
+
 // EnvVarEditor renders a dynamic list of environment variable rows.
 // Each row has a name, a source type selector (Value / Secret / ConfigMap),
 // and source-specific fields.
