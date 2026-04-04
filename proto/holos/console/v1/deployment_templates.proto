@@ -10,6 +10,7 @@ service DeploymentTemplateService {
   rpc CreateDeploymentTemplate(CreateDeploymentTemplateRequest) returns (CreateDeploymentTemplateResponse);
   rpc UpdateDeploymentTemplate(UpdateDeploymentTemplateRequest) returns (UpdateDeploymentTemplateResponse);
   rpc DeleteDeploymentTemplate(DeleteDeploymentTemplateRequest) returns (DeleteDeploymentTemplateResponse);
+  rpc RenderDeploymentTemplate(RenderDeploymentTemplateRequest) returns (RenderDeploymentTemplateResponse);
 }
 
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.
@@ -71,3 +72,21 @@ message DeleteDeploymentTemplateRequest {
 }
 
 message DeleteDeploymentTemplateResponse {}
+
+// RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
+// and returns the rendered Kubernetes resource manifests as multi-document YAML.
+// The cue_template field is rendered directly (supports unsaved/draft templates).
+message RenderDeploymentTemplateRequest {
+  string project      = 1; // owning project (used to resolve namespace)
+  string cue_template = 2; // CUE source to evaluate
+  string example_name  = 3; // example deployment name (e.g. "holos-console")
+  string example_image = 4; // example image (e.g. "ghcr.io/holos-run/holos-console")
+  string example_tag   = 5; // example tag (e.g. "latest")
+}
+
+// RenderDeploymentTemplateResponse contains the rendered YAML output.
+message RenderDeploymentTemplateResponse {
+  // rendered_yaml is the concatenated multi-document YAML of all rendered
+  // resources, separated by "---\n".
+  string rendered_yaml = 1;
+}
