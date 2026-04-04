@@ -46,7 +46,7 @@ export function useCreateDeployment(project: string) {
   const client = useMemo(() => createClient(DeploymentService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; image: string; tag: string; template: string; displayName?: string; description?: string }) =>
+    mutationFn: (params: { name: string; image: string; tag: string; template: string; displayName?: string; description?: string; command?: string[]; args?: string[] }) =>
       client.createDeployment({ project, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deploymentListKey(project) })
@@ -59,7 +59,7 @@ export function useUpdateDeployment(project: string, name: string) {
   const client = useMemo(() => createClient(DeploymentService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { image?: string; tag?: string; displayName?: string; description?: string }) =>
+    mutationFn: (params: { image?: string; tag?: string; displayName?: string; description?: string; command?: string[]; args?: string[] }) =>
       client.updateDeployment({ project, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deploymentListKey(project) })

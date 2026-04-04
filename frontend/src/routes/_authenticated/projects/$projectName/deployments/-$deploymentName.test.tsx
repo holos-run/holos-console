@@ -47,6 +47,8 @@ const mockDeployment = {
   description: '',
   phase: DeploymentPhase.RUNNING,
   message: '',
+  command: [] as string[],
+  args: [] as string[],
 }
 
 const mockStatus = {
@@ -230,5 +232,49 @@ describe('DeploymentDetailPage', () => {
     setupMocks()
     render(<DeploymentDetailPage />)
     expect(screen.getByRole('link', { name: /back to deployments/i })).toBeInTheDocument()
+  })
+
+  it('re-deploy dialog shows command and args inputs', () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    expect(screen.getByText(/^command$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^args$/i)).toBeInTheDocument()
+  })
+
+  it('re-deploy dialog pre-populates command from deployment', () => {
+    ;(useGetDeployment as Mock).mockReturnValue({
+      data: { ...mockDeployment, command: ['myapp'], args: ['--port', '8080'] },
+      isPending: false,
+      error: null,
+    })
+    ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
+    ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+    ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+    ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    expect(screen.getByText('myapp')).toBeInTheDocument()
+    expect(screen.getByText('--port')).toBeInTheDocument()
+    expect(screen.getByText('8080')).toBeInTheDocument()
+  })
+
+  it('re-deploy passes command and args to mutateAsync', async () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+
+    // Add a command
+    fireEvent.change(screen.getByLabelText(/command entry/i), { target: { value: 'myapp' } })
+    fireEvent.click(screen.getByRole('button', { name: /add command/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^deploy$/i }))
+    const mutateAsync = (useUpdateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ command: ['myapp'] }),
+      )
+    })
   })
 })

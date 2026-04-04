@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { StringListInput } from '@/components/string-list-input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,6 +68,8 @@ export function DeploymentDetailPage({
   const [redeployOpen, setRedeployOpen] = useState(false)
   const [redeployImage, setRedeployImage] = useState('')
   const [redeployTag, setRedeployTag] = useState('')
+  const [redeployCommand, setRedeployCommand] = useState<string[]>([])
+  const [redeployArgs, setRedeployArgs] = useState<string[]>([])
   const [redeployError, setRedeployError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -75,8 +78,10 @@ export function DeploymentDetailPage({
     if (deployment) {
       setRedeployImage(deployment.image)
       setRedeployTag(deployment.tag)
+      setRedeployCommand(deployment.command ?? [])
+      setRedeployArgs(deployment.args ?? [])
     }
-  }, [deployment?.image, deployment?.tag])
+  }, [deployment?.image, deployment?.tag, deployment?.command, deployment?.args])
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -85,6 +90,8 @@ export function DeploymentDetailPage({
   const handleRedeployOpen = () => {
     setRedeployImage(deployment?.image ?? '')
     setRedeployTag(deployment?.tag ?? '')
+    setRedeployCommand(deployment?.command ?? [])
+    setRedeployArgs(deployment?.args ?? [])
     setRedeployError(null)
     updateMutation.reset()
     setRedeployOpen(true)
@@ -101,7 +108,7 @@ export function DeploymentDetailPage({
     }
     setRedeployError(null)
     try {
-      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim() })
+      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim(), command: redeployCommand, args: redeployArgs })
       setRedeployOpen(false)
       toast.success('Deployment updated')
     } catch (err) {
@@ -290,6 +297,26 @@ export function DeploymentDetailPage({
                 value={redeployTag}
                 onChange={(e) => setRedeployTag(e.target.value)}
                 placeholder="v1.0.0"
+              />
+            </div>
+            <div>
+              <Label>Command</Label>
+              <p className="text-xs text-muted-foreground mb-1">Override container ENTRYPOINT (optional)</p>
+              <StringListInput
+                value={redeployCommand}
+                onChange={setRedeployCommand}
+                placeholder="command entry"
+                addLabel="Add command"
+              />
+            </div>
+            <div>
+              <Label>Args</Label>
+              <p className="text-xs text-muted-foreground mb-1">Override container CMD (optional)</p>
+              <StringListInput
+                value={redeployArgs}
+                onChange={setRedeployArgs}
+                placeholder="args entry"
+                addLabel="Add args"
               />
             </div>
             {redeployError && (

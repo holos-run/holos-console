@@ -260,6 +260,48 @@ describe('DeploymentsPage', () => {
     })
   })
 
+  it('create dialog has Command section', () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    expect(screen.getByText(/^command$/i)).toBeInTheDocument()
+  })
+
+  it('create dialog has Args section', () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+    expect(screen.getByText(/^args$/i)).toBeInTheDocument()
+  })
+
+  it('create dialog passes command and args to mutateAsync', async () => {
+    setupMocks([], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
+    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    // Add a command entry
+    fireEvent.change(screen.getByLabelText(/command entry/i), { target: { value: 'myapp' } })
+    fireEvent.click(screen.getByRole('button', { name: /add command/i }))
+
+    // Add an args entry
+    fireEvent.change(screen.getByLabelText(/args entry/i), { target: { value: '--port' } })
+    fireEvent.click(screen.getByRole('button', { name: /add args/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ command: ['myapp'], args: ['--port'] }),
+      )
+    })
+  })
+
   it('auto-selects template after creation from sub-modal', async () => {
     setupMocks([], Role.OWNER, [])
     render(<DeploymentsPage />)

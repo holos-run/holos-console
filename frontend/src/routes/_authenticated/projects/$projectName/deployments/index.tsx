@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { CreateTemplateModal } from '@/components/create-template-modal'
+import { StringListInput } from '@/components/string-list-input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -71,6 +72,8 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
   const [createTemplate, setCreateTemplate] = useState('')
   const [createImage, setCreateImage] = useState('')
   const [createTag, setCreateTag] = useState('')
+  const [createCommand, setCreateCommand] = useState<string[]>([])
+  const [createArgs, setCreateArgs] = useState<string[]>([])
   const [createError, setCreateError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -97,6 +100,8 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
     setCreateTemplate('')
     setCreateImage('')
     setCreateTag('')
+    setCreateCommand([])
+    setCreateArgs([])
     setCreateError(null)
     createMutation.reset()
     setCreateOpen(true)
@@ -128,6 +133,8 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
         template: createTemplate,
         image: createImage.trim(),
         tag: createTag.trim(),
+        command: createCommand,
+        args: createArgs,
       })
       setCreateOpen(false)
     } catch (err) {
@@ -320,6 +327,26 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                 value={createTag}
                 onChange={(e) => setCreateTag(e.target.value)}
                 placeholder="v1.0.0"
+              />
+            </div>
+            <div>
+              <Label>Command</Label>
+              <p className="text-xs text-muted-foreground mb-1">Override container ENTRYPOINT (optional)</p>
+              <StringListInput
+                value={createCommand}
+                onChange={setCreateCommand}
+                placeholder="command entry"
+                addLabel="Add command"
+              />
+            </div>
+            <div>
+              <Label>Args</Label>
+              <p className="text-xs text-muted-foreground mb-1">Override container CMD (optional)</p>
+              <StringListInput
+                value={createArgs}
+                onChange={setCreateArgs}
+                placeholder="args entry"
+                addLabel="Add args"
               />
             </div>
             {createError && (
