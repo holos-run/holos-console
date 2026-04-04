@@ -11,9 +11,12 @@ When a user creates or updates a deployment, the console:
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
 2. Builds a `DeploymentInput` from the API request fields.
 3. Evaluates the CUE template by unifying the input with the `input` field.
-4. Reads the `resources` field from the evaluated CUE value.
+4. Reads the `namespaced` and `cluster` output fields from the evaluated CUE value.
 5. Validates each resource against safety constraints.
 6. Applies the validated resources to Kubernetes via server-side apply.
+
+The architectural decision to use structured output is recorded in
+[ADR 012](adrs/012-structured-resource-output.md).
 
 ## Template Input
 
@@ -68,29 +71,66 @@ Each environment variable has exactly one value source:
 
 ## Template Output
 
-The console reads a single field from the evaluated CUE template:
+The console reads two structured fields from the evaluated CUE template:
 
-### `resources` Field
+### `namespaced` Field
 
 ```cue
-resources: [...{...}]
+// Structure: namespaced.<namespace>.<Kind>.<name>
+namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name:      Name
+        namespace: Namespace
+        ...
+    }
+    ...
+}
 ```
 
-The `resources` field must be a list of Kubernetes resource manifests. Each
-element is a struct with standard Kubernetes fields (`apiVersion`, `kind`,
-`metadata`, `spec`, etc.).
+The `namespaced` field organizes resources that live within a Kubernetes
+namespace. Resources are indexed by namespace, then by Kind, then by name. This
+three-level nesting enforces uniqueness per Kind/name within a namespace at the
+CUE level — duplicates cause a CUE evaluation error before any Kubernetes call.
 
-The console iterates this list, validates each resource, then applies them to
-the cluster. **This is the only output field the console reads.** All other
-top-level fields (helper definitions, intermediate values) are ignored.
+### `cluster` Field
+
+```cue
+// Structure: cluster.<Kind>.<name>
+cluster: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name: Name
+        ...
+    }
+    ...
+}
+```
+
+The `cluster` field organizes cluster-scoped resources (resources without a
+namespace, such as `Namespace`, `ClusterRole`, or `ClusterRoleBinding`). The
+initial implementation keeps the cluster allowlist empty; it will be extended
+incrementally as cluster resource support is added.
+
+### Struct Key Consistency
+
+CUE constraints enforce that the struct path keys match the resource metadata:
+
+- `namespaced.<namespace>` must match `metadata.namespace`
+- `namespaced.<namespace>.<Kind>` must match `kind`
+- `namespaced.<namespace>.<Kind>.<name>` must match `metadata.name`
+- `cluster.<Kind>` must match `kind`
+- `cluster.<Kind>.<name>` must match `metadata.name`
+
+A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 
 ### Example Output Structure
 
-The default template produces three resources:
+The default template produces three namespaced resources:
 
 ```cue
-resources: [
-    {
+namespaced: (input.namespace): {
+    ServiceAccount: (input.name): {
         apiVersion: "v1"
         kind:       "ServiceAccount"
         metadata: {
@@ -98,27 +138,29 @@ resources: [
             namespace: input.namespace
             labels:    _labels
         }
-    },
-    {
+    }
+    Deployment: (input.name): {
         apiVersion: "apps/v1"
         kind:       "Deployment"
         metadata: { ... }
         spec: { ... }
-    },
-    {
+    }
+    Service: (input.name): {
         apiVersion: "v1"
         kind:       "Service"
         metadata: { ... }
         spec: { ... }
-    },
-]
+    }
+}
+
+cluster: {}
 ```
 
 ## Validation Constraints
 
-Every resource in the `resources` list must satisfy these constraints or the
-render is rejected. These are enforced in Go after CUE evaluation, not in CUE
-itself.
+Every resource collected from `namespaced` and `cluster` must satisfy these
+constraints or the render is rejected. These are enforced in Go after CUE
+evaluation, not in CUE itself.
 
 ### Required Fields
 
@@ -126,11 +168,16 @@ Each resource must have:
 - `apiVersion` — non-empty
 - `kind` — non-empty and in the allowed set
 - `metadata.name` — non-empty
-- `metadata.namespace` — must exactly match `input.namespace`
+
+Namespaced resources additionally require:
+- `metadata.namespace` — must exactly match the struct key and the project namespace
+
+Cluster resources additionally require:
+- `metadata.namespace` — must be absent (cluster-scoped resources have no namespace)
 
 ### Allowed Resource Kinds
 
-Templates may only produce resources of these kinds:
+Templates may only produce namespaced resources of these kinds:
 
 | Kind             | API Group                     |
 |------------------|-------------------------------|
@@ -142,6 +189,9 @@ Templates may only produce resources of these kinds:
 | `HTTPRoute`      | `gateway.networking.k8s.io/v1`|
 | `ConfigMap`      | `v1`                          |
 | `Secret`         | `v1`                          |
+
+The cluster allowlist is initially empty. Cluster-scoped kind support will be
+added incrementally.
 
 ### Required Labels
 
@@ -201,37 +251,64 @@ _labels: {
     "app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-resources: [
-    {
-        apiVersion: "apps/v1"
-        kind:       "Deployment"
-        metadata: {
-            name:      input.name
-            namespace: input.namespace
-            labels:    _labels
-        }
-        spec: {
-            replicas: 1
-            selector: matchLabels: "app.kubernetes.io/name": input.name
-            template: {
-                metadata: labels: _labels
-                spec: containers: [{
-                    name:  input.name
-                    image: input.image + ":" + input.tag
-                }]
+// #Namespaced constrains struct keys to match resource metadata.
+#Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name:      Name
+        namespace: Namespace
+        ...
+    }
+    ...
+}
+
+// #Cluster constrains cluster-scoped struct keys to match resource metadata.
+#Cluster: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name: Name
+        ...
+    }
+    ...
+}
+
+namespaced: #Namespaced & {
+    (input.namespace): {
+        Deployment: (input.name): {
+            apiVersion: "apps/v1"
+            kind:       "Deployment"
+            metadata: {
+                name:      input.name
+                namespace: input.namespace
+                labels:    _labels
+            }
+            spec: {
+                replicas: 1
+                selector: matchLabels: "app.kubernetes.io/name": input.name
+                template: {
+                    metadata: labels: _labels
+                    spec: containers: [{
+                        name:  input.name
+                        image: input.image + ":" + input.tag
+                    }]
+                }
             }
         }
-    },
-]
+    }
+}
+
+cluster: #Cluster & {}
 ```
 
 ### Guidelines
 
 1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
 2. **Always declare `input: #Input`** — this is the unification point where the console injects deployment parameters.
-3. **Always include the managed-by label** on every resource or validation will reject the render.
-4. **Set `metadata.namespace` to `input.namespace`** on every resource — cross-namespace resources are rejected.
-5. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
+3. **Always declare `namespaced` and `cluster` output fields** — the console requires the structured output format.
+4. **Always include the managed-by label** on every resource or validation will reject the render.
+5. **Set `metadata.namespace` to `input.namespace`** on every namespaced resource — cross-namespace resources are rejected.
+6. **Match struct keys to metadata** — `namespaced.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
+7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 
 ### Previewing Templates
 
@@ -258,13 +335,12 @@ platform: #PlatformInput   // platform-mandated configuration (planned)
 Template authors will be able to reference `platform` fields to apply
 organization-level policy without requiring users to specify them per deployment.
 
-### Structured Resource Output
+### Cluster Resource Support
 
-The current `resources` field is a flat list. A planned refactoring will
-organize output resources into a structured format with separate categories for
-namespaced and cluster-scoped resources. See
-[ADR 012](adrs/012-structured-resource-output.md) for the architectural
-decision.
+The `cluster` output field is defined but the allowlist of permitted cluster-scoped
+Kind values is initially empty. Cluster-scoped kinds (e.g., `Namespace`,
+`ClusterRole`, `ClusterRoleBinding`) will be added incrementally as the
+authorization model for cluster-level operations is established.
 
 ## Appendix: Source Code Reference
 
@@ -275,7 +351,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 | File | Purpose |
 |------|---------|
-| `console/templates/default_template.cue` | Default CUE template with `#Input` schema, env var transformation, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
+| `console/templates/default_template.cue` | Default CUE template with `#Input` schema, env var transformation, `#Namespaced`/`#Cluster` constraints, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
 
 ### Go Rendering Pipeline
