@@ -271,6 +271,119 @@ resources: [
 ]
 `
 
+// envTemplate renders env vars into a container spec.
+const envTemplate = `
+input: {
+	name:      string
+	image:     string
+	tag:        string
+	project:   string
+	namespace: string
+	env: [...{name: string, value?: string, secretKeyRef?: {name: string, key: string}, configMapKeyRef?: {name: string, key: string}}] | *[]
+}
+
+resources: [
+	{
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: {
+				"app.kubernetes.io/managed-by": "console.holos.run"
+				"app.kubernetes.io/name":       input.name
+			}
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: "app.kubernetes.io/name": input.name
+				spec: containers: [{
+					name:  input.name
+					image: input.image + ":" + input.tag
+					if len(input.env) > 0 {
+						env: input.env
+					}
+				}]
+			}
+		}
+	},
+]
+`
+
+func TestCueRenderer_Env(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("literal env var is passed to template", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), envTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+			Env: []EnvVarInput{
+				{Name: "FOO", Value: "bar"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		containers, _, _ := unstructured.NestedSlice(resources[0].Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		envList, _, _ := unstructured.NestedSlice(map[string]interface{}{"c": c}, "c", "env")
+		if len(envList) != 1 {
+			t.Fatalf("expected 1 env var, got %d", len(envList))
+		}
+		envItem, ok := envList[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("env item is not a map")
+		}
+		if envItem["name"] != "FOO" {
+			t.Errorf("expected env name 'FOO', got %v", envItem["name"])
+		}
+		if envItem["value"] != "bar" {
+			t.Errorf("expected env value 'bar', got %v", envItem["value"])
+		}
+	})
+
+	t.Run("empty env is omitted from template", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), envTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		containers, _, _ := unstructured.NestedSlice(resources[0].Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		if _, exists := c["env"]; exists {
+			t.Error("expected env to be absent when empty")
+		}
+	})
+}
+
 func TestCueRenderer_CommandArgs(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"

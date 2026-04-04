@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -144,7 +145,7 @@ func TestCreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app", nil, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app", nil, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -181,7 +182,7 @@ func TestCreateDeployment(t *testing.T) {
 
 		cmd := []string{"myapp"}
 		args := []string{"--port", "8080"}
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", cmd, args)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", cmd, args, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -198,7 +199,7 @@ func TestCreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -220,7 +221,7 @@ func TestUpdateDeployment(t *testing.T) {
 
 		newTag := "1.26"
 		newDesc := "updated desc"
-		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc, nil, nil)
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -244,9 +245,89 @@ func TestUpdateDeployment(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTag := "1.26"
-		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil, nil, nil)
+		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil, nil, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for non-existent deployment")
+		}
+	})
+}
+
+func TestCreateDeployment_Env(t *testing.T) {
+	t.Run("stores env vars as JSON", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		env := []EnvVarInput{
+			{Name: "FOO", Value: "bar"},
+			{Name: "FROM_SECRET", SecretKeyRef: &KeyRefInput{Name: "mysecret", Key: "mykey"}},
+			{Name: "FROM_CM", ConfigMapKeyRef: &KeyRefInput{Name: "mycm", Key: "mykey"}},
+		}
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, env)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		raw, ok := cm.Data[EnvKey]
+		if !ok {
+			t.Fatal("expected env key to be present")
+		}
+		var got []EnvVarInput
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("expected valid JSON in env key, got error: %v", err)
+		}
+		if len(got) != 3 {
+			t.Fatalf("expected 3 env vars, got %d", len(got))
+		}
+		if got[0].Name != "FOO" || got[0].Value != "bar" {
+			t.Errorf("unexpected first env var: %+v", got[0])
+		}
+		if got[1].Name != "FROM_SECRET" || got[1].SecretKeyRef == nil || got[1].SecretKeyRef.Name != "mysecret" {
+			t.Errorf("unexpected second env var: %+v", got[1])
+		}
+		if got[2].Name != "FROM_CM" || got[2].ConfigMapKeyRef == nil || got[2].ConfigMapKeyRef.Name != "mycm" {
+			t.Errorf("unexpected third env var: %+v", got[2])
+		}
+	})
+
+	t.Run("omits env key when empty", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := cm.Data[EnvKey]; ok {
+			t.Error("expected env key to be absent when nil")
+		}
+	})
+}
+
+func TestUpdateDeployment_Env(t *testing.T) {
+	t.Run("stores env vars as JSON on update", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		env := []EnvVarInput{
+			{Name: "PORT", Value: "8080"},
+		}
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, env)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		raw, ok := updated.Data[EnvKey]
+		if !ok {
+			t.Fatal("expected env key to be present after update")
+		}
+		var got []EnvVarInput
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("unexpected JSON error: %v", err)
+		}
+		if len(got) != 1 || got[0].Name != "PORT" || got[0].Value != "8080" {
+			t.Errorf("unexpected env vars: %+v", got)
 		}
 	})
 }
