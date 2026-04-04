@@ -1,0 +1,247 @@
+package templates
+
+import (
+	"context"
+	"strings"
+	"testing"
+)
+
+// adapterStructuredTemplate uses the structured namespaced/cluster output format.
+const adapterStructuredTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+namespaced: (input.namespace): {
+	ServiceAccount: (input.name): {
+		apiVersion: "v1"
+		kind:       "ServiceAccount"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+	}
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels:    _labels
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: _labels
+				spec: {
+					serviceAccountName: input.name
+					containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+}
+
+cluster: {}
+`
+
+// adapterInvalidTemplate contains invalid CUE syntax.
+const adapterInvalidTemplate = `this is { not valid cue !!!`
+
+// adapterCrossNamespaceTemplate tries to place a resource in a different namespace.
+const adapterCrossNamespaceTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+}
+
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: "other-namespace"
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+		spec: {}
+	}
+}
+
+cluster: {}
+`
+
+func TestCueRendererAdapter_Render(t *testing.T) {
+	adapter := NewCueRendererAdapter()
+	namespace := "prj-my-project"
+
+	t.Run("structured template produces YAML resources", func(t *testing.T) {
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (ServiceAccount, Deployment), got %d", len(resources))
+		}
+
+		// Each resource must have non-empty YAML.
+		for i, r := range resources {
+			if r.YAML == "" {
+				t.Errorf("resource %d: expected non-empty YAML", i)
+			}
+		}
+
+		// Collect YAML to verify resource types are present.
+		allYAML := resources[0].YAML + resources[1].YAML
+		if !strings.Contains(allYAML, "ServiceAccount") {
+			t.Error("expected YAML to contain ServiceAccount")
+		}
+		if !strings.Contains(allYAML, "Deployment") {
+			t.Error("expected YAML to contain Deployment")
+		}
+	})
+
+	t.Run("input values are reflected in rendered YAML", func(t *testing.T) {
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v2.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources, got %d", len(resources))
+		}
+
+		allYAML := resources[0].YAML + resources[1].YAML
+		if !strings.Contains(allYAML, "my-app") {
+			t.Error("expected YAML to contain resource name 'my-app'")
+		}
+		if !strings.Contains(allYAML, "myrepo/myapp:v2.0.0") {
+			t.Error("expected YAML to contain image 'myrepo/myapp:v2.0.0'")
+		}
+		if !strings.Contains(allYAML, namespace) {
+			t.Errorf("expected YAML to contain namespace %q", namespace)
+		}
+	})
+
+	t.Run("invalid CUE syntax returns error", func(t *testing.T) {
+		_, err := adapter.Render(context.Background(), adapterInvalidTemplate, RenderInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid CUE syntax")
+		}
+	})
+
+	t.Run("cross-namespace resource rejected", func(t *testing.T) {
+		_, err := adapter.Render(context.Background(), adapterCrossNamespaceTemplate, RenderInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err == nil {
+			t.Fatal("expected error for cross-namespace resource")
+		}
+	})
+
+	t.Run("each resource YAML is valid YAML document", func(t *testing.T) {
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		for i, r := range resources {
+			if !strings.Contains(r.YAML, "apiVersion:") {
+				t.Errorf("resource %d: YAML missing apiVersion field", i)
+			}
+			if !strings.Contains(r.YAML, "kind:") {
+				t.Errorf("resource %d: YAML missing kind field", i)
+			}
+			if !strings.Contains(r.YAML, "metadata:") {
+				t.Errorf("resource %d: YAML missing metadata field", i)
+			}
+		}
+	})
+}
+
+// TestCueRendererAdapter_WithDefaultTemplate verifies the adapter works end-to-end
+// with the embedded default CUE template.
+func TestCueRendererAdapter_WithDefaultTemplate(t *testing.T) {
+	adapter := NewCueRendererAdapter()
+	namespace := "prj-my-project"
+
+	resources, err := adapter.Render(context.Background(), DefaultTemplate, RenderInput{
+		Name:      "holos-console",
+		Image:     "ghcr.io/holos-run/holos-console",
+		Tag:       "latest",
+		Project:   "my-project",
+		Namespace: namespace,
+	})
+	if err != nil {
+		t.Fatalf("expected no error rendering default template, got %v", err)
+	}
+
+	if len(resources) != 3 {
+		t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d", len(resources))
+	}
+
+	allYAML := ""
+	for _, r := range resources {
+		if r.YAML == "" {
+			t.Error("expected non-empty YAML for each resource")
+		}
+		allYAML += r.YAML
+	}
+
+	for _, kind := range []string{"ServiceAccount", "Deployment", "Service"} {
+		if !strings.Contains(allYAML, kind) {
+			t.Errorf("expected YAML to contain resource of kind %q", kind)
+		}
+	}
+
+	if !strings.Contains(allYAML, namespace) {
+		t.Errorf("expected YAML to contain namespace %q", namespace)
+	}
+}
