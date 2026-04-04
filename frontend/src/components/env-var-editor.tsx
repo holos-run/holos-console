@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useListNamespaceSecrets, useListNamespaceConfigMaps } from '@/queries/deployments'
-import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
+import type { EnvVar, SecretKeyRef, ConfigMapKeyRef } from '@/gen/holos/console/v1/deployments_pb'
 
 type SourceType = 'value' | 'secret' | 'configmap'
 
@@ -43,9 +43,9 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
     if (sourceType === 'value') {
       source = { case: 'value', value: '' }
     } else if (sourceType === 'secret') {
-      source = { case: 'secretKeyRef', value: { name: '', key: '' } }
+      source = { case: 'secretKeyRef', value: { name: '', key: '' } as unknown as SecretKeyRef }
     } else {
-      source = { case: 'configMapKeyRef', value: { name: '', key: '' } }
+      source = { case: 'configMapKeyRef', value: { name: '', key: '' } as unknown as ConfigMapKeyRef }
     }
     onChange(value.map((ev, i) => (i === idx ? ({ ...ev, source } as unknown as EnvVar) : ev)))
   }
@@ -62,7 +62,7 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
     onChange(
       value.map((ev, i) =>
         i === idx
-          ? ({ ...ev, source: { case: 'secretKeyRef', value: { name, key: '' } } } as unknown as EnvVar)
+          ? ({ ...ev, source: { case: 'secretKeyRef', value: { name, key: '' } as unknown as SecretKeyRef } } as unknown as EnvVar)
           : ev,
       ),
     )
@@ -71,11 +71,11 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
   const updateSecretKey = (idx: number, key: string) => {
     const ev = value[idx]
     if (ev.source.case !== 'secretKeyRef') return
-    const secretName = ev.source.value.name
+    const secretName = (ev.source.value as unknown as { name: string }).name
     onChange(
       value.map((e, i) =>
         i === idx
-          ? ({ ...e, source: { case: 'secretKeyRef', value: { name: secretName, key } } } as unknown as EnvVar)
+          ? ({ ...e, source: { case: 'secretKeyRef', value: { name: secretName, key } as unknown as SecretKeyRef } } as unknown as EnvVar)
           : e,
       ),
     )
@@ -85,7 +85,7 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
     onChange(
       value.map((ev, i) =>
         i === idx
-          ? ({ ...ev, source: { case: 'configMapKeyRef', value: { name, key: '' } } } as unknown as EnvVar)
+          ? ({ ...ev, source: { case: 'configMapKeyRef', value: { name, key: '' } as unknown as ConfigMapKeyRef } } as unknown as EnvVar)
           : ev,
       ),
     )
@@ -94,11 +94,11 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
   const updateConfigMapKey = (idx: number, key: string) => {
     const ev = value[idx]
     if (ev.source.case !== 'configMapKeyRef') return
-    const cmName = ev.source.value.name
+    const cmName = (ev.source.value as unknown as { name: string }).name
     onChange(
       value.map((e, i) =>
         i === idx
-          ? ({ ...e, source: { case: 'configMapKeyRef', value: { name: cmName, key } } } as unknown as EnvVar)
+          ? ({ ...e, source: { case: 'configMapKeyRef', value: { name: cmName, key } as unknown as ConfigMapKeyRef } } as unknown as EnvVar)
           : e,
       ),
     )
@@ -179,10 +179,12 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
                     <SelectValue placeholder="Select key..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {ev.source.case === 'secretKeyRef' &&
-                      (secrets.find((s) => s.name === ev.source.value.name)?.keys ?? []).map((k) => (
-                        <SelectItem key={k} value={k}>{k}</SelectItem>
-                      ))}
+                    {ev.source.case === 'secretKeyRef' && (() => {
+                        const selectedSecretName = (ev.source.value as unknown as { name: string }).name
+                        return (secrets.find((s) => s.name === selectedSecretName)?.keys ?? []).map((k) => (
+                          <SelectItem key={k} value={k}>{k}</SelectItem>
+                        ))
+                      })()}
                   </SelectContent>
                 </Select>
               </div>
@@ -211,10 +213,12 @@ export function EnvVarEditor({ project, value, onChange }: EnvVarEditorProps) {
                     <SelectValue placeholder="Select key..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {ev.source.case === 'configMapKeyRef' &&
-                      (configMaps.find((cm) => cm.name === ev.source.value.name)?.keys ?? []).map((k) => (
-                        <SelectItem key={k} value={k}>{k}</SelectItem>
-                      ))}
+                    {ev.source.case === 'configMapKeyRef' && (() => {
+                        const selectedCmName = (ev.source.value as unknown as { name: string }).name
+                        return (configMaps.find((cm) => cm.name === selectedCmName)?.keys ?? []).map((k) => (
+                          <SelectItem key={k} value={k}>{k}</SelectItem>
+                        ))
+                      })()}
                   </SelectContent>
                 </Select>
               </div>
