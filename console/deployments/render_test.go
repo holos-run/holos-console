@@ -116,18 +116,20 @@ namespaced: (input.namespace): {
 cluster: {}
 `
 
-// validTemplate produces a single Deployment resource.
+// validTemplate produces a single Deployment resource using structured output.
 const validTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
 		metadata: {
@@ -148,22 +150,26 @@ resources: [
 				}]
 			}
 		}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
-// crossNamespaceTemplate tries to write into a different namespace.
+// crossNamespaceTemplate tries to write into a different namespace using structured output.
 const crossNamespaceTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
 		metadata: {
@@ -172,22 +178,26 @@ resources: [
 			labels: "app.kubernetes.io/managed-by": "console.holos.run"
 		}
 		spec: {}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
-// disallowedKindTemplate uses a kind not in the allowlist.
+// disallowedKindTemplate uses a kind not in the allowlist (structured output).
 const disallowedKindTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Job: (input.name): {
 		apiVersion: "batch/v1"
 		kind:       "Job"
 		metadata: {
@@ -196,22 +206,26 @@ resources: [
 			labels: "app.kubernetes.io/managed-by": "console.holos.run"
 		}
 		spec: {}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
-// missingManagedByTemplate is missing the required managed-by label.
+// missingManagedByTemplate is missing the required managed-by label (structured output).
 const missingManagedByTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
 		metadata: {
@@ -219,8 +233,10 @@ resources: [
 			namespace: input.namespace
 		}
 		spec: {}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
 // invalidCUETemplate contains invalid CUE syntax.
@@ -336,20 +352,22 @@ func TestCueRenderer_Render(t *testing.T) {
 	})
 }
 
-// commandArgsTemplate renders command and args into a container spec.
+// commandArgsTemplate renders command and args into a container spec (structured output).
 const commandArgsTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 	command:   [...string] | *[]
 	args:      [...string] | *[]
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
 		metadata: {
@@ -376,23 +394,27 @@ resources: [
 				}]
 			}
 		}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
-// envTemplate renders env vars into a container spec.
+// envTemplate renders env vars into a container spec (structured output).
 const envTemplate = `
+package deployment
+
 input: {
 	name:      string
 	image:     string
-	tag:        string
+	tag:       string
 	project:   string
 	namespace: string
 	env: [...{name: string, value?: string, secretKeyRef?: {name: string, key: string}, configMapKeyRef?: {name: string, key: string}}] | *[]
 }
 
-resources: [
-	{
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
 		metadata: {
@@ -416,8 +438,10 @@ resources: [
 				}]
 			}
 		}
-	},
-]
+	}
+}
+
+cluster: {}
 `
 
 func TestCueRenderer_Env(t *testing.T) {
