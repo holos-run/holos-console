@@ -476,6 +476,121 @@ func TestHandler_DeleteDeployment(t *testing.T) {
 	})
 }
 
+// TestHandler_EnvVarValidation tests env var name validation.
+func TestHandler_EnvVarValidation(t *testing.T) {
+	t.Run("rejects empty env var name", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+			Env: []*consolev1.EnvVar{
+				{Name: "", Source: &consolev1.EnvVar_Value{Value: "bar"}},
+			},
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for empty env var name")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("accepts valid env var name", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+			Env: []*consolev1.EnvVar{
+				{Name: "MY_VAR", Source: &consolev1.EnvVar_Value{Value: "hello"}},
+			},
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error for valid env var name, got %v", err)
+		}
+	})
+}
+
+// TestHandler_EnvVarRoundTrip tests that env vars pass through create/update to the renderer.
+func TestHandler_EnvVarRoundTrip(t *testing.T) {
+	t.Run("CreateDeployment passes env vars to renderer", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+			Env: []*consolev1.EnvVar{
+				{Name: "FOO", Source: &consolev1.EnvVar_Value{Value: "bar"}},
+				{Name: "FROM_SECRET", Source: &consolev1.EnvVar_SecretKeyRef{SecretKeyRef: &consolev1.SecretKeyRef{Name: "mysecret", Key: "mykey"}}},
+			},
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(renderer.lastInput.Env) != 2 {
+			t.Fatalf("expected 2 env vars in renderer input, got %d", len(renderer.lastInput.Env))
+		}
+		if renderer.lastInput.Env[0].Name != "FOO" || renderer.lastInput.Env[0].Value != "bar" {
+			t.Errorf("unexpected first env var: %+v", renderer.lastInput.Env[0])
+		}
+		if renderer.lastInput.Env[1].Name != "FROM_SECRET" || renderer.lastInput.Env[1].SecretKeyRef == nil {
+			t.Errorf("unexpected second env var: %+v", renderer.lastInput.Env[1])
+		}
+	})
+
+	t.Run("UpdateDeployment passes stored env vars to renderer", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		cm.Data[EnvKey] = `[{"name":"PORT","value":"8080"}]`
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		newTag := "1.26"
+		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
+			Project: "my-project",
+			Name:    "web-app",
+			Tag:     &newTag,
+		})
+		_, err := handler.UpdateDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(renderer.lastInput.Env) != 1 || renderer.lastInput.Env[0].Name != "PORT" {
+			t.Errorf("expected env [PORT=8080] from stored data, got %v", renderer.lastInput.Env)
+		}
+	})
+}
+
 // TestHandler_RenderAndApply tests that CreateDeployment and UpdateDeployment
 // trigger render+apply and DeleteDeployment triggers cleanup.
 func TestHandler_RenderAndApply(t *testing.T) {

@@ -26,6 +26,7 @@ const (
 	TemplateKey = "template"
 	CommandKey  = "command"
 	ArgsKey     = "args"
+	EnvKey      = "env"
 )
 
 // K8sClient wraps Kubernetes client operations for deployments.
@@ -69,7 +70,7 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 }
 
 // CreateDeployment creates a new deployment ConfigMap.
-func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []EnvVarInput) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
 		slog.String("project", project),
@@ -103,12 +104,17 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 		b, _ := json.Marshal(args)
 		cm.Data[ArgsKey] = string(b)
 	}
+	if len(env) > 0 {
+		b, _ := json.Marshal(env)
+		cm.Data[EnvKey] = string(b)
+	}
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
 // UpdateDeployment updates an existing deployment ConfigMap.
 // Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.
-func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string) (*corev1.ConfigMap, error) {
+// A non-nil env slice (even if empty) replaces the stored env vars.
+func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []EnvVarInput) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment in kubernetes",
 		slog.String("project", project),
@@ -144,6 +150,10 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 	if len(args) > 0 {
 		b, _ := json.Marshal(args)
 		cm.Data[ArgsKey] = string(b)
+	}
+	if env != nil {
+		b, _ := json.Marshal(env)
+		cm.Data[EnvKey] = string(b)
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }

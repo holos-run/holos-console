@@ -26,15 +26,31 @@ var allowedKindSet = map[string]bool{
 // renderTimeout is the maximum time allowed for CUE template evaluation.
 const renderTimeout = 5 * time.Second
 
+// KeyRefInput identifies a key within a Kubernetes Secret or ConfigMap.
+type KeyRefInput struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+// EnvVarInput represents a container environment variable passed to CUE templates.
+// Exactly one of Value, SecretKeyRef, or ConfigMapKeyRef should be set.
+type EnvVarInput struct {
+	Name            string       `json:"name"`
+	Value           string       `json:"value,omitempty"`
+	SecretKeyRef    *KeyRefInput `json:"secretKeyRef,omitempty"`
+	ConfigMapKeyRef *KeyRefInput `json:"configMapKeyRef,omitempty"`
+}
+
 // DeploymentInput is the standard input passed to CUE templates.
 type DeploymentInput struct {
-	Name      string   `json:"name"`
-	Image     string   `json:"image"`
-	Tag       string   `json:"tag"`
-	Project   string   `json:"project"`
-	Namespace string   `json:"namespace"`
-	Command   []string `json:"command,omitempty"`
-	Args      []string `json:"args,omitempty"`
+	Name      string        `json:"name"`
+	Image     string        `json:"image"`
+	Tag       string        `json:"tag"`
+	Project   string        `json:"project"`
+	Namespace string        `json:"namespace"`
+	Command   []string      `json:"command,omitempty"`
+	Args      []string      `json:"args,omitempty"`
+	Env       []EnvVarInput `json:"env,omitempty"`
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.

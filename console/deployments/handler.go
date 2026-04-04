@@ -218,6 +218,11 @@ func (h *Handler) CreateDeployment(
 		cueSource = tmplCM.Data[cueTemplateKey]
 	}
 
+	envInputs, err := validateEnvVars(req.Msg.Env)
+	if err != nil {
+		return nil, err
+	}
+
 	displayName := ""
 	if req.Msg.DisplayName != nil {
 		displayName = *req.Msg.DisplayName
@@ -227,7 +232,7 @@ func (h *Handler) CreateDeployment(
 		description = *req.Msg.Description
 	}
 
-	_, err := h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args)
+	_, err = h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -243,6 +248,7 @@ func (h *Handler) CreateDeployment(
 			Namespace: ns,
 			Command:   req.Msg.Command,
 			Args:      req.Msg.Args,
+			Env:       envInputs,
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -300,7 +306,12 @@ func (h *Handler) UpdateDeployment(
 		return nil, err
 	}
 
-	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args)
+	envInputs, err := validateEnvVars(req.Msg.Env)
+	if err != nil {
+		return nil, err
+	}
+
+	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -334,6 +345,7 @@ func (h *Handler) UpdateDeployment(
 			Namespace: ns,
 			Command:   commandFromConfigMap(updated),
 			Args:      argsFromConfigMap(updated),
+			Env:       envFromConfigMapAsInputs(updated),
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -460,6 +472,7 @@ func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Depl
 		Description: cm.Annotations[DescriptionAnnotation],
 		Command:     commandFromConfigMap(cm),
 		Args:        argsFromConfigMap(cm),
+		Env:         envFromConfigMap(cm),
 	}
 }
 
@@ -471,6 +484,88 @@ func commandFromConfigMap(cm *corev1.ConfigMap) []string {
 // argsFromConfigMap reads the JSON-encoded args slice from a ConfigMap.
 func argsFromConfigMap(cm *corev1.ConfigMap) []string {
 	return stringSliceFromConfigMap(cm, ArgsKey)
+}
+
+// envFromConfigMapAsInputs reads the JSON-encoded env vars from a ConfigMap as EnvVarInput slice.
+func envFromConfigMapAsInputs(cm *corev1.ConfigMap) []EnvVarInput {
+	raw, ok := cm.Data[EnvKey]
+	if !ok || raw == "" {
+		return nil
+	}
+	var inputs []EnvVarInput
+	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
+		return nil
+	}
+	return inputs
+}
+
+// envFromConfigMap reads the JSON-encoded env vars from a ConfigMap and converts them to proto messages.
+func envFromConfigMap(cm *corev1.ConfigMap) []*consolev1.EnvVar {
+	raw, ok := cm.Data[EnvKey]
+	if !ok || raw == "" {
+		return nil
+	}
+	var inputs []EnvVarInput
+	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
+		return nil
+	}
+	result := make([]*consolev1.EnvVar, 0, len(inputs))
+	for _, e := range inputs {
+		result = append(result, envVarInputToProto(e))
+	}
+	return result
+}
+
+// envVarInputToProto converts an EnvVarInput to a proto EnvVar message.
+func envVarInputToProto(e EnvVarInput) *consolev1.EnvVar {
+	ev := &consolev1.EnvVar{Name: e.Name}
+	switch {
+	case e.SecretKeyRef != nil:
+		ev.Source = &consolev1.EnvVar_SecretKeyRef{
+			SecretKeyRef: &consolev1.SecretKeyRef{Name: e.SecretKeyRef.Name, Key: e.SecretKeyRef.Key},
+		}
+	case e.ConfigMapKeyRef != nil:
+		ev.Source = &consolev1.EnvVar_ConfigMapKeyRef{
+			ConfigMapKeyRef: &consolev1.ConfigMapKeyRef{Name: e.ConfigMapKeyRef.Name, Key: e.ConfigMapKeyRef.Key},
+		}
+	default:
+		ev.Source = &consolev1.EnvVar_Value{Value: e.Value}
+	}
+	return ev
+}
+
+// protoToEnvVarInput converts a proto EnvVar message to an EnvVarInput.
+func protoToEnvVarInput(e *consolev1.EnvVar) EnvVarInput {
+	input := EnvVarInput{Name: e.GetName()}
+	switch src := e.GetSource().(type) {
+	case *consolev1.EnvVar_SecretKeyRef:
+		if src.SecretKeyRef != nil {
+			input.SecretKeyRef = &KeyRefInput{Name: src.SecretKeyRef.GetName(), Key: src.SecretKeyRef.GetKey()}
+		}
+	case *consolev1.EnvVar_ConfigMapKeyRef:
+		if src.ConfigMapKeyRef != nil {
+			input.ConfigMapKeyRef = &KeyRefInput{Name: src.ConfigMapKeyRef.GetName(), Key: src.ConfigMapKeyRef.GetKey()}
+		}
+	case *consolev1.EnvVar_Value:
+		input.Value = src.Value
+	}
+	return input
+}
+
+// validateEnvVars validates a list of proto EnvVar messages and converts them to EnvVarInput.
+// Returns an error if any env var has an empty name.
+func validateEnvVars(envVars []*consolev1.EnvVar) ([]EnvVarInput, error) {
+	if len(envVars) == 0 {
+		return nil, nil
+	}
+	result := make([]EnvVarInput, 0, len(envVars))
+	for _, e := range envVars {
+		if e.GetName() == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("env var name must not be empty"))
+		}
+		result = append(result, protoToEnvVarInput(e))
+	}
+	return result, nil
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
