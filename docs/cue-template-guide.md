@@ -282,9 +282,9 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — compiles CUE source, marshals `DeploymentInput` to JSON, unifies via `FillPath("input")`, extracts `resources` field, validates. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — compiles CUE source, marshals `DeploymentInput` to JSON, unifies via `FillPath("input")`, walks structured `namespaced`/`cluster` output fields, validates. |
 | `console/deployments/render.go:44-54` | `DeploymentInput` struct — the Go representation of `#Input`, serialized to JSON for CUE unification. |
-| `console/deployments/render.go:127-167` | `validateResources()` — enforces kind allowlist, namespace match, and managed-by label. |
+| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` adds namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
 

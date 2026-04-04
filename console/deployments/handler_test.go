@@ -74,9 +74,14 @@ func fakeTemplate(name string) *corev1.ConfigMap {
 			Namespace: "prj-my-project",
 		},
 		Data: map[string]string{
+			// Stub template content — not evaluated by the real renderer in handler tests
+			// because tests use stubRenderer. Matches the structured output format for
+			// consistency with the production template.
 			"template.cue": `
+package deployment
 input: { name: string, image: string, tag: string, project: string, namespace: string }
-resources: []
+namespaced: {}
+cluster: {}
 `,
 		},
 	}
