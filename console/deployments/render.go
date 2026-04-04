@@ -28,11 +28,13 @@ const renderTimeout = 5 * time.Second
 
 // DeploymentInput is the standard input passed to CUE templates.
 type DeploymentInput struct {
-	Name      string `json:"name"`
-	Image     string `json:"image"`
-	Tag       string `json:"tag"`
-	Project   string `json:"project"`
-	Namespace string `json:"namespace"`
+	Name      string   `json:"name"`
+	Image     string   `json:"image"`
+	Tag       string   `json:"tag"`
+	Project   string   `json:"project"`
+	Namespace string   `json:"namespace"`
+	Command   []string `json:"command,omitempty"`
+	Args      []string `json:"args,omitempty"`
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.

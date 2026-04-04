@@ -94,7 +94,11 @@ type Deployment struct {
 	// phase is the current deployment phase.
 	Phase DeploymentPhase `protobuf:"varint,8,opt,name=phase,proto3,enum=holos.console.v1.DeploymentPhase" json:"phase,omitempty"`
 	// message is a human-readable status message.
-	Message       string `protobuf:"bytes,9,opt,name=message,proto3" json:"message,omitempty"`
+	Message string `protobuf:"bytes,9,opt,name=message,proto3" json:"message,omitempty"`
+	// command overrides the container image ENTRYPOINT.
+	Command []string `protobuf:"bytes,10,rep,name=command,proto3" json:"command,omitempty"`
+	// args overrides the container image CMD.
+	Args          []string `protobuf:"bytes,11,rep,name=args,proto3" json:"args,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -190,6 +194,20 @@ func (x *Deployment) GetMessage() string {
 		return x.Message
 	}
 	return ""
+}
+
+func (x *Deployment) GetCommand() []string {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *Deployment) GetArgs() []string {
+	if x != nil {
+		return x.Args
+	}
+	return nil
 }
 
 type ListDeploymentsRequest struct {
@@ -377,14 +395,18 @@ func (x *GetDeploymentResponse) GetDeployment() *Deployment {
 }
 
 type CreateDeploymentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Project       string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
-	Image         string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
-	Tag           string                 `protobuf:"bytes,4,opt,name=tag,proto3" json:"tag,omitempty"`
-	Template      string                 `protobuf:"bytes,5,opt,name=template,proto3" json:"template,omitempty"`
-	DisplayName   *string                `protobuf:"bytes,6,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
-	Description   *string                `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Project     string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
+	Image       string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
+	Tag         string                 `protobuf:"bytes,4,opt,name=tag,proto3" json:"tag,omitempty"`
+	Template    string                 `protobuf:"bytes,5,opt,name=template,proto3" json:"template,omitempty"`
+	DisplayName *string                `protobuf:"bytes,6,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
+	Description *string                `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// command overrides the container image ENTRYPOINT.
+	Command []string `protobuf:"bytes,8,rep,name=command,proto3" json:"command,omitempty"`
+	// args overrides the container image CMD.
+	Args          []string `protobuf:"bytes,9,rep,name=args,proto3" json:"args,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -468,6 +490,20 @@ func (x *CreateDeploymentRequest) GetDescription() string {
 	return ""
 }
 
+func (x *CreateDeploymentRequest) GetCommand() []string {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *CreateDeploymentRequest) GetArgs() []string {
+	if x != nil {
+		return x.Args
+	}
+	return nil
+}
+
 type CreateDeploymentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -517,10 +553,14 @@ type UpdateDeploymentRequest struct {
 	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Project string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
 	// image and tag are the primary fields to update (re-deploy).
-	Image         *string `protobuf:"bytes,3,opt,name=image,proto3,oneof" json:"image,omitempty"`
-	Tag           *string `protobuf:"bytes,4,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
-	DisplayName   *string `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
-	Description   *string `protobuf:"bytes,6,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	Image       *string `protobuf:"bytes,3,opt,name=image,proto3,oneof" json:"image,omitempty"`
+	Tag         *string `protobuf:"bytes,4,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
+	DisplayName *string `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
+	Description *string `protobuf:"bytes,6,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// command overrides the container image ENTRYPOINT.
+	Command []string `protobuf:"bytes,7,rep,name=command,proto3" json:"command,omitempty"`
+	// args overrides the container image CMD.
+	Args          []string `protobuf:"bytes,8,rep,name=args,proto3" json:"args,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -595,6 +635,20 @@ func (x *UpdateDeploymentRequest) GetDescription() string {
 		return *x.Description
 	}
 	return ""
+}
+
+func (x *UpdateDeploymentRequest) GetCommand() []string {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *UpdateDeploymentRequest) GetArgs() []string {
+	if x != nil {
+		return x.Args
+	}
+	return nil
 }
 
 type UpdateDeploymentResponse struct {
@@ -1163,7 +1217,7 @@ var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
-	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x96\x02\n" +
+	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc4\x02\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -1174,7 +1228,10 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x06 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\a \x01(\tR\vdescription\x127\n" +
 	"\x05phase\x18\b \x01(\x0e2!.holos.console.v1.DeploymentPhaseR\x05phase\x12\x18\n" +
-	"\amessage\x18\t \x01(\tR\amessage\"2\n" +
+	"\amessage\x18\t \x01(\tR\amessage\x12\x18\n" +
+	"\acommand\x18\n" +
+	" \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\v \x03(\tR\x04args\"2\n" +
 	"\x16ListDeploymentsRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\"Y\n" +
 	"\x17ListDeploymentsResponse\x12>\n" +
@@ -1185,7 +1242,7 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x15GetDeploymentResponse\x12<\n" +
 	"\n" +
 	"deployment\x18\x01 \x01(\v2\x1c.holos.console.v1.DeploymentR\n" +
-	"deployment\"\xfb\x01\n" +
+	"deployment\"\xa9\x02\n" +
 	"\x17CreateDeploymentRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x14\n" +
@@ -1193,18 +1250,22 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x03tag\x18\x04 \x01(\tR\x03tag\x12\x1a\n" +
 	"\btemplate\x18\x05 \x01(\tR\btemplate\x12&\n" +
 	"\fdisplay_name\x18\x06 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\a \x01(\tH\x01R\vdescription\x88\x01\x01B\x0f\n" +
+	"\vdescription\x18\a \x01(\tH\x01R\vdescription\x88\x01\x01\x12\x18\n" +
+	"\acommand\x18\b \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\t \x03(\tR\x04argsB\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_description\".\n" +
 	"\x18CreateDeploymentResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xfb\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa9\x02\n" +
 	"\x17UpdateDeploymentRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x19\n" +
 	"\x05image\x18\x03 \x01(\tH\x00R\x05image\x88\x01\x01\x12\x15\n" +
 	"\x03tag\x18\x04 \x01(\tH\x01R\x03tag\x88\x01\x01\x12&\n" +
 	"\fdisplay_name\x18\x05 \x01(\tH\x02R\vdisplayName\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x06 \x01(\tH\x03R\vdescription\x88\x01\x01B\b\n" +
+	"\vdescription\x18\x06 \x01(\tH\x03R\vdescription\x88\x01\x01\x12\x18\n" +
+	"\acommand\x18\a \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\b \x03(\tR\x04argsB\b\n" +
 	"\x06_imageB\x06\n" +
 	"\x04_tagB\x0f\n" +
 	"\r_display_nameB\x0e\n" +
