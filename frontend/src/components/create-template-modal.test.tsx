@@ -5,6 +5,7 @@ import React from 'react'
 
 vi.mock('@/queries/deployment-templates', () => ({
   useCreateDeploymentTemplate: vi.fn(),
+  useRenderDeploymentTemplate: vi.fn(),
 }))
 
 vi.mock('@/components/ui/dialog', () => ({
@@ -50,15 +51,20 @@ vi.mock('@/components/ui/alert', () => ({
   AlertDescription: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
-import { useCreateDeploymentTemplate } from '@/queries/deployment-templates'
+import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { CreateTemplateModal } from './create-template-modal'
 
-function setupMocks() {
+function setupMocks({
+  renderResult = { data: undefined, isLoading: false, isError: false, error: null },
+}: {
+  renderResult?: { data?: { renderedYaml: string; renderedJson: string }; isLoading?: boolean; isError?: boolean; error?: Error | null }
+} = {}) {
   ;(useCreateDeploymentTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
     reset: vi.fn(),
   })
+  ;(useRenderDeploymentTemplate as Mock).mockReturnValue(renderResult)
 }
 
 describe('CreateTemplateModal', () => {
@@ -140,6 +146,70 @@ describe('CreateTemplateModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /create/i }))
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+  })
+
+  it('shows Preview button in the modal', () => {
+    setupMocks()
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /preview/i })).toBeInTheDocument()
+  })
+
+  it('shows rendered JSON when preview data is available', async () => {
+    const jsonOutput = '[\n  { "kind": "Deployment" }\n]'
+    setupMocks({ renderResult: { data: { renderedYaml: '', renderedJson: jsonOutput }, isLoading: false, isError: false, error: null } })
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^preview$/i }))
+    await waitFor(() => {
+      // The rendered JSON is displayed in a <pre> element
+      const pre = document.querySelector('pre')
+      expect(pre).toBeInTheDocument()
+      expect(pre?.textContent).toContain('"kind": "Deployment"')
+    })
+  })
+
+  it('shows loading state while rendering', async () => {
+    setupMocks({ renderResult: { data: undefined, isLoading: true, isError: false, error: null } })
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/rendering/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows error alert when render fails', async () => {
+    setupMocks({
+      renderResult: { data: undefined, isLoading: false, isError: true, error: new Error('CUE render error') },
+    })
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText(/CUE render error/i)).toBeInTheDocument()
     })
   })
 })

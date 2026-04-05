@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useCreateDeploymentTemplate } from '@/queries/deployment-templates'
+import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 
 const DEFAULT_CUE_TEMPLATE = `// deployment.cue — default deployment template
 package holos
@@ -25,6 +25,10 @@ package holos
   replicas?: int & >=1 | *1
 }
 `
+
+const HTTPBIN_EXAMPLE_NAME = 'go-httpbin'
+const HTTPBIN_EXAMPLE_IMAGE = 'ghcr.io/mccutchen/go-httpbin'
+const HTTPBIN_EXAMPLE_TAG = '2.21'
 
 export interface CreateTemplateModalProps {
   projectName: string
@@ -41,6 +45,15 @@ export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated
   const [description, setDescription] = useState('')
   const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
   const [error, setError] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  const renderQuery = useRenderDeploymentTemplate(
+    projectName,
+    cueTemplate,
+    HTTPBIN_EXAMPLE_NAME,
+    HTTPBIN_EXAMPLE_IMAGE,
+    HTTPBIN_EXAMPLE_TAG,
+  )
 
   const slugify = (val: string) =>
     val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -57,6 +70,7 @@ export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated
       setDescription('')
       setCueTemplate(DEFAULT_CUE_TEMPLATE)
       setError(null)
+      setPreviewOpen(false)
       createMutation.reset()
     }
     onOpenChange(nextOpen)
@@ -131,6 +145,30 @@ export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated
               rows={10}
               className="font-mono text-sm field-sizing-normal max-h-96 overflow-y-auto"
             />
+          </div>
+          <div>
+            <Button variant="outline" type="button" onClick={() => setPreviewOpen((v) => !v)}>
+              {previewOpen ? 'Hide Preview' : 'Preview'}
+            </Button>
+            {previewOpen && (
+              <div className="mt-2">
+                {renderQuery.isLoading && (
+                  <p className="text-sm text-muted-foreground">Rendering...</p>
+                )}
+                {renderQuery.isError && renderQuery.error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      {renderQuery.error instanceof Error ? renderQuery.error.message : String(renderQuery.error)}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {renderQuery.data?.renderedJson && (
+                  <pre className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all">
+                    {renderQuery.data.renderedJson}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
           {error && (
             <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>

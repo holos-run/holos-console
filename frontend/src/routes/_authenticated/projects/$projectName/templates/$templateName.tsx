@@ -60,7 +60,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
 
-  const { data: renderedYaml, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(projectName, cueTemplate)
+  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(projectName, cueTemplate)
+  const renderedYaml = renderData?.renderedYaml
 
   const handleSave = async () => {
     try {

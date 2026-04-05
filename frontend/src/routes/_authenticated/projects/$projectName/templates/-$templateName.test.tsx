@@ -47,7 +47,7 @@ function setupMocks(userRole = Role.OWNER, templateOverrides?: Partial<typeof mo
   ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
   ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
-  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: renderYaml, error: null, isFetching: false })
+  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: { renderedYaml: renderYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
 describe('DeploymentTemplateDetailPage', () => {
@@ -148,7 +148,7 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
     ;(useGetProject as Mock).mockReturnValue({ data: undefined, isLoading: true })
-    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: '', error: null, isFetching: false })
+    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
     expect(skeletons.length).toBeGreaterThan(0)
@@ -159,7 +159,7 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useUpdateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
-    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: '', error: null, isFetching: false })
+    ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     expect(screen.getByText('not found')).toBeInTheDocument()
   })

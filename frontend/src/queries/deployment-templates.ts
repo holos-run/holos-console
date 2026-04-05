@@ -101,7 +101,7 @@ export function useRenderDeploymentTemplate(
         exampleImage,
         exampleTag,
       })
-      return response.renderedYaml
+      return { renderedYaml: response.renderedYaml, renderedJson: response.renderedJson }
     },
     enabled: isAuthenticated && !!project && !!cueTemplate,
     retry: false,
