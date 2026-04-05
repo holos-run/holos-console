@@ -256,9 +256,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
 
-		// Project settings service with project grant fallback
+		// Project settings service with org-level RBAC for deployments toggle
 		settingsK8s := settings.NewK8sClient(k8sClientset, nsResolver)
-		settingsHandler := settings.NewHandler(settingsK8s, projectResolver)
+		settingsHandler := settings.NewHandler(settingsK8s, projectResolver, orgGrantResolver, projectResolver)
 		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
 		mux.Handle(settingsPath, settingsHTTPHandler)
 

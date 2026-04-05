@@ -257,7 +257,7 @@ This produces:
 3. Implement handler method in `console/rpc/` (embed `Unimplemented*Handler` for forward compatibility)
 4. Handler is auto-wired when service is registered in `console/console.go`
 
-See `docs/rpc-service-definitions.md` for detailed examples.
+See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissions-guide.md` for permission design guidelines including narrow scoping, multi-level grantability, and the cascade table pattern.
 
 ### Testing Patterns
 

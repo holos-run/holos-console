@@ -59,6 +59,8 @@ const (
 
 	PermissionProjectSettingsRead  = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_READ
 	PermissionProjectSettingsWrite = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_WRITE
+
+	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
 )
 
 // rolePermissions defines which permissions each role has.
@@ -328,6 +330,14 @@ var ProjectCascadeTemplatePerms = CascadeTable{
 		PermissionDeploymentTemplatesWrite:  true,
 		PermissionDeploymentTemplatesDelete: true,
 		PermissionDeploymentTemplatesAdmin:  true,
+	},
+}
+
+// OrgCascadeProjectSettingsPerms defines what project settings permissions
+// each org role grants via cascade. Only org-level OWNERs can toggle deployments.
+var OrgCascadeProjectSettingsPerms = CascadeTable{
+	RoleOwner: {
+		PermissionProjectDeploymentsEnable: true,
 	},
 }
 
