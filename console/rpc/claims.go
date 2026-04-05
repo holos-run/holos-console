@@ -4,8 +4,17 @@ import "context"
 
 // Claims represents the claims extracted from an OIDC ID token.
 type Claims struct {
+	// Iss is the issuer identifier (iss claim).
+	Iss string `json:"iss"`
+
 	// Sub is the subject identifier (unique user ID).
 	Sub string `json:"sub"`
+
+	// Exp is the expiry time as a Unix timestamp (exp claim).
+	Exp int64 `json:"exp"`
+
+	// Iat is the issued-at time as a Unix timestamp (iat claim).
+	Iat int64 `json:"iat"`
 
 	// Email is the user's email address.
 	Email string `json:"email"`
