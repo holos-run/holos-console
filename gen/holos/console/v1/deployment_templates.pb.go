@@ -21,6 +21,91 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DeploymentDefaults carries optional default values that a template provides
+// for deployment form fields. All fields are optional — an empty message means
+// "no defaults." Field types match the corresponding fields in
+// CreateDeploymentRequest so defaults map 1:1 to form fields.
+type DeploymentDefaults struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// image is the default container image (e.g. "ghcr.io/holos-run/holos-console").
+	Image string `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// tag is the default image tag (e.g. "latest").
+	Tag string `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	// command overrides the container image ENTRYPOINT.
+	Command []string `protobuf:"bytes,3,rep,name=command,proto3" json:"command,omitempty"`
+	// args overrides the container image CMD.
+	Args []string `protobuf:"bytes,4,rep,name=args,proto3" json:"args,omitempty"`
+	// env sets default container environment variables.
+	Env           []*EnvVar `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeploymentDefaults) Reset() {
+	*x = DeploymentDefaults{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentDefaults) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentDefaults) ProtoMessage() {}
+
+func (x *DeploymentDefaults) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentDefaults.ProtoReflect.Descriptor instead.
+func (*DeploymentDefaults) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DeploymentDefaults) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *DeploymentDefaults) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *DeploymentDefaults) GetCommand() []string {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *DeploymentDefaults) GetArgs() []string {
+	if x != nil {
+		return x.Args
+	}
+	return nil
+}
+
+func (x *DeploymentDefaults) GetEnv() []*EnvVar {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.
 type DeploymentTemplate struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -33,14 +118,16 @@ type DeploymentTemplate struct {
 	// description explains what the template produces.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// cue_template is the CUE source code.
-	CueTemplate   string `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
+	CueTemplate string `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
+	// defaults provides optional default values for deployment form fields.
+	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DeploymentTemplate) Reset() {
 	*x = DeploymentTemplate{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[0]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52,7 +139,7 @@ func (x *DeploymentTemplate) String() string {
 func (*DeploymentTemplate) ProtoMessage() {}
 
 func (x *DeploymentTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[0]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -65,7 +152,7 @@ func (x *DeploymentTemplate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentTemplate.ProtoReflect.Descriptor instead.
 func (*DeploymentTemplate) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{0}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *DeploymentTemplate) GetName() string {
@@ -103,6 +190,13 @@ func (x *DeploymentTemplate) GetCueTemplate() string {
 	return ""
 }
 
+func (x *DeploymentTemplate) GetDefaults() *DeploymentDefaults {
+	if x != nil {
+		return x.Defaults
+	}
+	return nil
+}
+
 type ListDeploymentTemplatesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Project       string                 `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
@@ -112,7 +206,7 @@ type ListDeploymentTemplatesRequest struct {
 
 func (x *ListDeploymentTemplatesRequest) Reset() {
 	*x = ListDeploymentTemplatesRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[1]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -124,7 +218,7 @@ func (x *ListDeploymentTemplatesRequest) String() string {
 func (*ListDeploymentTemplatesRequest) ProtoMessage() {}
 
 func (x *ListDeploymentTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[1]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -137,7 +231,7 @@ func (x *ListDeploymentTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeploymentTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListDeploymentTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{1}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListDeploymentTemplatesRequest) GetProject() string {
@@ -156,7 +250,7 @@ type ListDeploymentTemplatesResponse struct {
 
 func (x *ListDeploymentTemplatesResponse) Reset() {
 	*x = ListDeploymentTemplatesResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[2]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +262,7 @@ func (x *ListDeploymentTemplatesResponse) String() string {
 func (*ListDeploymentTemplatesResponse) ProtoMessage() {}
 
 func (x *ListDeploymentTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[2]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +275,7 @@ func (x *ListDeploymentTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeploymentTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListDeploymentTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{2}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListDeploymentTemplatesResponse) GetTemplates() []*DeploymentTemplate {
@@ -201,7 +295,7 @@ type GetDeploymentTemplateRequest struct {
 
 func (x *GetDeploymentTemplateRequest) Reset() {
 	*x = GetDeploymentTemplateRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[3]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -213,7 +307,7 @@ func (x *GetDeploymentTemplateRequest) String() string {
 func (*GetDeploymentTemplateRequest) ProtoMessage() {}
 
 func (x *GetDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[3]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -226,7 +320,7 @@ func (x *GetDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{3}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetDeploymentTemplateRequest) GetName() string {
@@ -252,7 +346,7 @@ type GetDeploymentTemplateResponse struct {
 
 func (x *GetDeploymentTemplateResponse) Reset() {
 	*x = GetDeploymentTemplateResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[4]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -264,7 +358,7 @@ func (x *GetDeploymentTemplateResponse) String() string {
 func (*GetDeploymentTemplateResponse) ProtoMessage() {}
 
 func (x *GetDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[4]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -277,7 +371,7 @@ func (x *GetDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{4}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetDeploymentTemplateResponse) GetTemplate() *DeploymentTemplate {
@@ -288,19 +382,21 @@ func (x *GetDeploymentTemplateResponse) GetTemplate() *DeploymentTemplate {
 }
 
 type CreateDeploymentTemplateRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Project       string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
-	DisplayName   string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	CueTemplate   string                 `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Project     string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
+	DisplayName string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Description string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	CueTemplate string                 `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
+	// defaults provides optional default values for deployment form fields.
+	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateDeploymentTemplateRequest) Reset() {
 	*x = CreateDeploymentTemplateRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[5]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -312,7 +408,7 @@ func (x *CreateDeploymentTemplateRequest) String() string {
 func (*CreateDeploymentTemplateRequest) ProtoMessage() {}
 
 func (x *CreateDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[5]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -325,7 +421,7 @@ func (x *CreateDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CreateDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{5}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CreateDeploymentTemplateRequest) GetName() string {
@@ -363,6 +459,13 @@ func (x *CreateDeploymentTemplateRequest) GetCueTemplate() string {
 	return ""
 }
 
+func (x *CreateDeploymentTemplateRequest) GetDefaults() *DeploymentDefaults {
+	if x != nil {
+		return x.Defaults
+	}
+	return nil
+}
+
 type CreateDeploymentTemplateResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -372,7 +475,7 @@ type CreateDeploymentTemplateResponse struct {
 
 func (x *CreateDeploymentTemplateResponse) Reset() {
 	*x = CreateDeploymentTemplateResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[6]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +487,7 @@ func (x *CreateDeploymentTemplateResponse) String() string {
 func (*CreateDeploymentTemplateResponse) ProtoMessage() {}
 
 func (x *CreateDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[6]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +500,7 @@ func (x *CreateDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
 func (*CreateDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{6}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateDeploymentTemplateResponse) GetName() string {
@@ -408,19 +511,21 @@ func (x *CreateDeploymentTemplateResponse) GetName() string {
 }
 
 type UpdateDeploymentTemplateRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Project       string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
-	DisplayName   *string                `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
-	Description   *string                `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
-	CueTemplate   *string                `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3,oneof" json:"cue_template,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Project     string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
+	DisplayName *string                `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
+	Description *string                `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	CueTemplate *string                `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3,oneof" json:"cue_template,omitempty"`
+	// defaults provides optional default values for deployment form fields.
+	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3,oneof" json:"defaults,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateDeploymentTemplateRequest) Reset() {
 	*x = UpdateDeploymentTemplateRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[7]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -432,7 +537,7 @@ func (x *UpdateDeploymentTemplateRequest) String() string {
 func (*UpdateDeploymentTemplateRequest) ProtoMessage() {}
 
 func (x *UpdateDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[7]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -445,7 +550,7 @@ func (x *UpdateDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{7}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateDeploymentTemplateRequest) GetName() string {
@@ -483,6 +588,13 @@ func (x *UpdateDeploymentTemplateRequest) GetCueTemplate() string {
 	return ""
 }
 
+func (x *UpdateDeploymentTemplateRequest) GetDefaults() *DeploymentDefaults {
+	if x != nil {
+		return x.Defaults
+	}
+	return nil
+}
+
 type UpdateDeploymentTemplateResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -491,7 +603,7 @@ type UpdateDeploymentTemplateResponse struct {
 
 func (x *UpdateDeploymentTemplateResponse) Reset() {
 	*x = UpdateDeploymentTemplateResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[8]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -503,7 +615,7 @@ func (x *UpdateDeploymentTemplateResponse) String() string {
 func (*UpdateDeploymentTemplateResponse) ProtoMessage() {}
 
 func (x *UpdateDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[8]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -516,7 +628,7 @@ func (x *UpdateDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
 func (*UpdateDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{8}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{9}
 }
 
 type DeleteDeploymentTemplateRequest struct {
@@ -529,7 +641,7 @@ type DeleteDeploymentTemplateRequest struct {
 
 func (x *DeleteDeploymentTemplateRequest) Reset() {
 	*x = DeleteDeploymentTemplateRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[9]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +653,7 @@ func (x *DeleteDeploymentTemplateRequest) String() string {
 func (*DeleteDeploymentTemplateRequest) ProtoMessage() {}
 
 func (x *DeleteDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[9]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +666,7 @@ func (x *DeleteDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{9}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteDeploymentTemplateRequest) GetName() string {
@@ -579,7 +691,7 @@ type DeleteDeploymentTemplateResponse struct {
 
 func (x *DeleteDeploymentTemplateResponse) Reset() {
 	*x = DeleteDeploymentTemplateResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[10]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -591,7 +703,7 @@ func (x *DeleteDeploymentTemplateResponse) String() string {
 func (*DeleteDeploymentTemplateResponse) ProtoMessage() {}
 
 func (x *DeleteDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[10]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -604,7 +716,7 @@ func (x *DeleteDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{10}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{11}
 }
 
 // RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
@@ -623,7 +735,7 @@ type RenderDeploymentTemplateRequest struct {
 
 func (x *RenderDeploymentTemplateRequest) Reset() {
 	*x = RenderDeploymentTemplateRequest{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -635,7 +747,7 @@ func (x *RenderDeploymentTemplateRequest) String() string {
 func (*RenderDeploymentTemplateRequest) ProtoMessage() {}
 
 func (x *RenderDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -648,7 +760,7 @@ func (x *RenderDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
 func (*RenderDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{11}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RenderDeploymentTemplateRequest) GetProject() string {
@@ -701,7 +813,7 @@ type RenderDeploymentTemplateResponse struct {
 
 func (x *RenderDeploymentTemplateResponse) Reset() {
 	*x = RenderDeploymentTemplateResponse{}
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +825,7 @@ func (x *RenderDeploymentTemplateResponse) String() string {
 func (*RenderDeploymentTemplateResponse) ProtoMessage() {}
 
 func (x *RenderDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +838,7 @@ func (x *RenderDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
 func (*RenderDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{12}
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RenderDeploymentTemplateResponse) GetRenderedYaml() string {
@@ -747,13 +859,20 @@ var File_holos_console_v1_deployment_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\n" +
-	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\"\xaa\x01\n" +
+	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\"holos/console/v1/deployments.proto\x1a\x1bholos/console/v1/rbac.proto\"\x96\x01\n" +
+	"\x12DeploymentDefaults\x12\x14\n" +
+	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
+	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x18\n" +
+	"\acommand\x18\x03 \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\x04 \x03(\tR\x04args\x12*\n" +
+	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\"\xec\x01\n" +
 	"\x12DeploymentTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
-	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\":\n" +
+	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12@\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\":\n" +
 	"\x1eListDeploymentTemplatesRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\"e\n" +
 	"\x1fListDeploymentTemplatesResponse\x12B\n" +
@@ -762,24 +881,27 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"a\n" +
 	"\x1dGetDeploymentTemplateResponse\x12@\n" +
-	"\btemplate\x18\x01 \x01(\v2$.holos.console.v1.DeploymentTemplateR\btemplate\"\xb7\x01\n" +
+	"\btemplate\x18\x01 \x01(\v2$.holos.console.v1.DeploymentTemplateR\btemplate\"\xf9\x01\n" +
 	"\x1fCreateDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
-	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\"6\n" +
+	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12@\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\"6\n" +
 	" CreateDeploymentTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xf8\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xcc\x02\n" +
 	"\x1fUpdateDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12&\n" +
 	"\fdisplay_name\x18\x03 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
 	"\vdescription\x18\x04 \x01(\tH\x01R\vdescription\x88\x01\x01\x12&\n" +
-	"\fcue_template\x18\x05 \x01(\tH\x02R\vcueTemplate\x88\x01\x01B\x0f\n" +
+	"\fcue_template\x18\x05 \x01(\tH\x02R\vcueTemplate\x88\x01\x01\x12E\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsH\x03R\bdefaults\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_descriptionB\x0f\n" +
-	"\r_cue_template\"\"\n" +
+	"\r_cue_templateB\v\n" +
+	"\t_defaults\"\"\n" +
 	" UpdateDeploymentTemplateResponse\"O\n" +
 	"\x1fDeleteDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -815,42 +937,48 @@ func file_holos_console_v1_deployment_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_deployment_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_holos_console_v1_deployment_templates_proto_goTypes = []any{
-	(*DeploymentTemplate)(nil),               // 0: holos.console.v1.DeploymentTemplate
-	(*ListDeploymentTemplatesRequest)(nil),   // 1: holos.console.v1.ListDeploymentTemplatesRequest
-	(*ListDeploymentTemplatesResponse)(nil),  // 2: holos.console.v1.ListDeploymentTemplatesResponse
-	(*GetDeploymentTemplateRequest)(nil),     // 3: holos.console.v1.GetDeploymentTemplateRequest
-	(*GetDeploymentTemplateResponse)(nil),    // 4: holos.console.v1.GetDeploymentTemplateResponse
-	(*CreateDeploymentTemplateRequest)(nil),  // 5: holos.console.v1.CreateDeploymentTemplateRequest
-	(*CreateDeploymentTemplateResponse)(nil), // 6: holos.console.v1.CreateDeploymentTemplateResponse
-	(*UpdateDeploymentTemplateRequest)(nil),  // 7: holos.console.v1.UpdateDeploymentTemplateRequest
-	(*UpdateDeploymentTemplateResponse)(nil), // 8: holos.console.v1.UpdateDeploymentTemplateResponse
-	(*DeleteDeploymentTemplateRequest)(nil),  // 9: holos.console.v1.DeleteDeploymentTemplateRequest
-	(*DeleteDeploymentTemplateResponse)(nil), // 10: holos.console.v1.DeleteDeploymentTemplateResponse
-	(*RenderDeploymentTemplateRequest)(nil),  // 11: holos.console.v1.RenderDeploymentTemplateRequest
-	(*RenderDeploymentTemplateResponse)(nil), // 12: holos.console.v1.RenderDeploymentTemplateResponse
+	(*DeploymentDefaults)(nil),               // 0: holos.console.v1.DeploymentDefaults
+	(*DeploymentTemplate)(nil),               // 1: holos.console.v1.DeploymentTemplate
+	(*ListDeploymentTemplatesRequest)(nil),   // 2: holos.console.v1.ListDeploymentTemplatesRequest
+	(*ListDeploymentTemplatesResponse)(nil),  // 3: holos.console.v1.ListDeploymentTemplatesResponse
+	(*GetDeploymentTemplateRequest)(nil),     // 4: holos.console.v1.GetDeploymentTemplateRequest
+	(*GetDeploymentTemplateResponse)(nil),    // 5: holos.console.v1.GetDeploymentTemplateResponse
+	(*CreateDeploymentTemplateRequest)(nil),  // 6: holos.console.v1.CreateDeploymentTemplateRequest
+	(*CreateDeploymentTemplateResponse)(nil), // 7: holos.console.v1.CreateDeploymentTemplateResponse
+	(*UpdateDeploymentTemplateRequest)(nil),  // 8: holos.console.v1.UpdateDeploymentTemplateRequest
+	(*UpdateDeploymentTemplateResponse)(nil), // 9: holos.console.v1.UpdateDeploymentTemplateResponse
+	(*DeleteDeploymentTemplateRequest)(nil),  // 10: holos.console.v1.DeleteDeploymentTemplateRequest
+	(*DeleteDeploymentTemplateResponse)(nil), // 11: holos.console.v1.DeleteDeploymentTemplateResponse
+	(*RenderDeploymentTemplateRequest)(nil),  // 12: holos.console.v1.RenderDeploymentTemplateRequest
+	(*RenderDeploymentTemplateResponse)(nil), // 13: holos.console.v1.RenderDeploymentTemplateResponse
+	(*EnvVar)(nil),                           // 14: holos.console.v1.EnvVar
 }
 var file_holos_console_v1_deployment_templates_proto_depIdxs = []int32{
-	0,  // 0: holos.console.v1.ListDeploymentTemplatesResponse.templates:type_name -> holos.console.v1.DeploymentTemplate
-	0,  // 1: holos.console.v1.GetDeploymentTemplateResponse.template:type_name -> holos.console.v1.DeploymentTemplate
-	1,  // 2: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:input_type -> holos.console.v1.ListDeploymentTemplatesRequest
-	3,  // 3: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:input_type -> holos.console.v1.GetDeploymentTemplateRequest
-	5,  // 4: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:input_type -> holos.console.v1.CreateDeploymentTemplateRequest
-	7,  // 5: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:input_type -> holos.console.v1.UpdateDeploymentTemplateRequest
-	9,  // 6: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:input_type -> holos.console.v1.DeleteDeploymentTemplateRequest
-	11, // 7: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:input_type -> holos.console.v1.RenderDeploymentTemplateRequest
-	2,  // 8: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
-	4,  // 9: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
-	6,  // 10: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
-	8,  // 11: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
-	10, // 12: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
-	12, // 13: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	14, // 0: holos.console.v1.DeploymentDefaults.env:type_name -> holos.console.v1.EnvVar
+	0,  // 1: holos.console.v1.DeploymentTemplate.defaults:type_name -> holos.console.v1.DeploymentDefaults
+	1,  // 2: holos.console.v1.ListDeploymentTemplatesResponse.templates:type_name -> holos.console.v1.DeploymentTemplate
+	1,  // 3: holos.console.v1.GetDeploymentTemplateResponse.template:type_name -> holos.console.v1.DeploymentTemplate
+	0,  // 4: holos.console.v1.CreateDeploymentTemplateRequest.defaults:type_name -> holos.console.v1.DeploymentDefaults
+	0,  // 5: holos.console.v1.UpdateDeploymentTemplateRequest.defaults:type_name -> holos.console.v1.DeploymentDefaults
+	2,  // 6: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:input_type -> holos.console.v1.ListDeploymentTemplatesRequest
+	4,  // 7: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:input_type -> holos.console.v1.GetDeploymentTemplateRequest
+	6,  // 8: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:input_type -> holos.console.v1.CreateDeploymentTemplateRequest
+	8,  // 9: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:input_type -> holos.console.v1.UpdateDeploymentTemplateRequest
+	10, // 10: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:input_type -> holos.console.v1.DeleteDeploymentTemplateRequest
+	12, // 11: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:input_type -> holos.console.v1.RenderDeploymentTemplateRequest
+	3,  // 12: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
+	5,  // 13: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
+	7,  // 14: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
+	9,  // 15: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
+	11, // 16: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
+	13, // 17: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_deployment_templates_proto_init() }
@@ -858,15 +986,16 @@ func file_holos_console_v1_deployment_templates_proto_init() {
 	if File_holos_console_v1_deployment_templates_proto != nil {
 		return
 	}
+	file_holos_console_v1_deployments_proto_init()
 	file_holos_console_v1_rbac_proto_init()
-	file_holos_console_v1_deployment_templates_proto_msgTypes[7].OneofWrappers = []any{}
+	file_holos_console_v1_deployment_templates_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_deployment_templates_proto_rawDesc), len(file_holos_console_v1_deployment_templates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
