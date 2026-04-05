@@ -314,7 +314,9 @@ cluster: #Cluster & {}
 
 Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
 deployment. This accepts raw CUE source and example inputs, returning the
-rendered YAML. Useful for validating templates during authoring.
+rendered resources as multi-document YAML (`rendered_yaml`) and as a
+pretty-printed JSON array (`rendered_json`). Useful for validating templates
+during authoring.
 
 ## Planned Extensions
 
@@ -370,7 +372,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 |------|---------|
 | `console/templates/handler.go` | `DeploymentTemplateService` handler — CRUD for templates stored as ConfigMaps. |
 | `console/templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `deployment-template` resource-type label. |
-| `console/templates/render_adapter.go` | `CueRendererAdapter` — wraps `deployments.CueRenderer` to produce YAML strings for the template preview RPC. |
+| `console/templates/render_adapter.go` | `CueRendererAdapter` — wraps `deployments.CueRenderer` to produce YAML and structured object data for the template preview RPC. |
 
 ### Deployment Service
 

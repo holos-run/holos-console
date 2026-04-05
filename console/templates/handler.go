@@ -42,7 +42,7 @@ type RenderResource struct {
 }
 
 // Renderer evaluates a CUE template with deployment inputs and returns
-// a list of rendered Kubernetes manifests as YAML strings.
+// a list of rendered Kubernetes manifests with both YAML and structured object data.
 type Renderer interface {
 	Render(ctx context.Context, cueSource string, input RenderInput) ([]RenderResource, error)
 }
