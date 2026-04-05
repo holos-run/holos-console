@@ -124,12 +124,24 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const previewCueInput = `input: {
-\tname:      "go-httpbin"
-\timage:     "ghcr.io/mccutchen/go-httpbin"
-\ttag:       "2.21"
+  const previewCueSystemInput = `system: {
 \tproject:   "${projectName}"
 \tnamespace: "holos-prj-${projectName}"
+\tclaims: {
+\t\tiss:            "https://login.example.com"
+\t\tsub:            "user-abc123"
+\t\tiat:            1743868800
+\t\texp:            1743872400
+\t\temail:          "developer@example.com"
+\t\temail_verified: true
+\t}
+}`
+
+  const previewCueInput = `input: {
+\tname:  "go-httpbin"
+\timage: "ghcr.io/mccutchen/go-httpbin"
+\ttag:   "2.21"
+\tport:  8080
 }`
 
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
@@ -137,6 +149,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     debouncedCueTemplate,
     previewCueInput,
     previewOpen,
+    previewCueSystemInput,
   )
 
   const slugify = (val: string) =>

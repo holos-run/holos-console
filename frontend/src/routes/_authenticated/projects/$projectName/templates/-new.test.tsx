@@ -181,4 +181,26 @@ describe('CreateTemplatePage', () => {
     const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
     expect(cueEditor.value).toContain('package deployment')
   })
+
+  it('useRenderDeploymentTemplate is called with system input including claims', () => {
+    render(<CreateTemplatePage projectName="test-project" />)
+    const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    // 4th arg is cueSystemInput
+    const systemInput = calls[0][3]
+    expect(systemInput).toContain('system:')
+    expect(systemInput).toContain('claims')
+    expect(systemInput).toContain('email')
+  })
+
+  it('useRenderDeploymentTemplate is called with user input (not project/namespace)', () => {
+    render(<CreateTemplatePage projectName="test-project" />)
+    const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    // 2nd arg is cueInput (user input)
+    const userInput = calls[0][1]
+    expect(userInput).toContain('input:')
+    expect(userInput).not.toContain('project:')
+    expect(userInput).not.toContain('namespace:')
+  })
 })

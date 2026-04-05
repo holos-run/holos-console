@@ -216,6 +216,7 @@ describe('DeploymentTemplateDetailPage', () => {
       expect.any(String),
       expect.any(String),
       false,
+      expect.any(String),
     )
   })
 
@@ -228,38 +229,74 @@ describe('DeploymentTemplateDetailPage', () => {
       expect.any(String),
       expect.any(String),
       true,
+      expect.any(String),
     )
   })
 
-  it('CUE input editor is rendered in the preview tab', async () => {
+  it('System Input textarea is rendered in the preview tab', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    expect(screen.getByRole('textbox', { name: /cue input/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /system input/i })).toBeInTheDocument()
   })
 
-  it('CUE input editor is pre-populated with default values including projectName', async () => {
+  it('User Input textarea is rendered in the preview tab', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    expect(screen.getByRole('textbox', { name: /user input/i })).toBeInTheDocument()
+  })
+
+  it('System Input textarea contains project, namespace, and claims with email', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
-    expect((inputEditor as HTMLTextAreaElement).value).toContain('test-project')
+    const systemInput = screen.getByRole('textbox', { name: /system input/i }) as HTMLTextAreaElement
+    expect(systemInput.value).toContain('test-project')
+    expect(systemInput.value).toContain('claims')
+    expect(systemInput.value).toContain('email')
   })
 
-  it('modifying CUE input calls useRenderDeploymentTemplate with updated value', async () => {
+  it('User Input textarea contains name, image, tag, and port', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const userInput = screen.getByRole('textbox', { name: /user input/i }) as HTMLTextAreaElement
+    expect(userInput.value).toContain('name')
+    expect(userInput.value).toContain('image')
+    expect(userInput.value).toContain('tag')
+    expect(userInput.value).toContain('port')
+  })
+
+  it('useRenderDeploymentTemplate receives separate system and user inputs', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+    // The 4th arg is the system input string
+    const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall[1]).toContain('input:')
+    expect(lastCall[3]).toContain('system:')
+  })
+
+  it('modifying User Input calls useRenderDeploymentTemplate with updated value', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const inputEditor = screen.getByRole('textbox', { name: /user input/i })
     fireEvent.change(inputEditor, { target: { value: 'input: { name: "custom" }' } })
     // With the identity mock for useDebouncedValue, debounced value equals raw value immediately
     expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
       expect.any(String),
       'input: { name: "custom" }',
       true,
+      expect.any(String),
     )
   })
 
@@ -306,8 +343,8 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('tab', { name: /preview/i }))
-      // Change the input — raw state will differ from debounced value
-      const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+      // Change the user input — raw state will differ from debounced value
+      const inputEditor = screen.getByRole('textbox', { name: /user input/i })
       await act(async () => {
         fireEvent.change(inputEditor, { target: { value: 'new-value' } })
       })
@@ -320,7 +357,7 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('tab', { name: /preview/i }))
-      const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+      const inputEditor = screen.getByRole('textbox', { name: /user input/i })
       await act(async () => {
         fireEvent.change(inputEditor, { target: { value: 'new-value' } })
       })
