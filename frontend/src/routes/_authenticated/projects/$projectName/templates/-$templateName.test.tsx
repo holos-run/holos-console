@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -28,8 +28,15 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+// Mock the debounce hook so tests don't have to manage timers by default.
+// Individual tests that need to test stale behavior can override this mock.
+vi.mock('@/hooks/use-debounced-value', () => ({
+  useDebouncedValue: vi.fn((value: unknown) => value),
+}))
+
 import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplateDetailPage } from './$templateName'
 
@@ -248,10 +255,78 @@ describe('DeploymentTemplateDetailPage', () => {
     await user.click(screen.getByRole('tab', { name: /preview/i }))
     const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
     fireEvent.change(inputEditor, { target: { value: 'input: { name: "custom" }' } })
+    // With the identity mock for useDebouncedValue, debounced value equals raw value immediately
     expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
       expect.any(String),
       'input: { name: "custom" }',
       true,
     )
+  })
+
+  describe('render status indicator', () => {
+    it('shows fresh indicator when not stale, not rendering, and no error', async () => {
+      setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+      // useDebouncedValue returns the same value as input (identity) → not stale
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByLabelText('Render status: fresh')).toBeInTheDocument()
+    })
+
+    it('shows rendering indicator when isFetching is true', async () => {
+      setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+      ;(useRenderDeploymentTemplate as Mock).mockReturnValue({
+        data: { renderedYaml: 'apiVersion: v1\n', renderedJson: '' },
+        error: null,
+        isFetching: true,
+      })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByLabelText('Render status: rendering')).toBeInTheDocument()
+    })
+
+    it('shows error indicator when render fails', async () => {
+      setupMocks(Role.OWNER)
+      ;(useRenderDeploymentTemplate as Mock).mockReturnValue({
+        data: undefined,
+        error: new Error('CUE syntax error'),
+        isFetching: false,
+      })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByLabelText('Render status: error')).toBeInTheDocument()
+    })
+
+    it('shows stale indicator when input changed but debounce timer is still running', async () => {
+      setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+      // Make useDebouncedValue return a value that differs from current state to simulate stale
+      ;(useDebouncedValue as Mock).mockReturnValue('old-value')
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      // Change the input — raw state will differ from debounced value
+      const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+      await act(async () => {
+        fireEvent.change(inputEditor, { target: { value: 'new-value' } })
+      })
+      expect(screen.getByLabelText('Render status: stale')).toBeInTheDocument()
+    })
+
+    it('previously rendered YAML stays visible while stale (no blank flash)', async () => {
+      setupMocks(Role.OWNER, undefined, 'apiVersion: v1\nkind: ServiceAccount\n')
+      ;(useDebouncedValue as Mock).mockReturnValue('old-value')
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+      await act(async () => {
+        fireEvent.change(inputEditor, { target: { value: 'new-value' } })
+      })
+      // Stale YAML should still be visible
+      const pre = screen.getByLabelText('Rendered YAML')
+      expect(pre.textContent).toContain('ServiceAccount')
+    })
   })
 })
