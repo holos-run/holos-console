@@ -181,6 +181,21 @@ Key files:
 - `frontend/src/lib/transport.ts` - ConnectRPC transport setup with Bearer token injection
 - `frontend/src/routes/` - File-based route definitions
 
+### UI Styling Conventions
+
+The application uses a dark-only theme (ADR 011). All new UI elements must follow the conventions in `docs/ui-styling-guide.md`, which covers:
+
+- Color palette usage — always use semantic CSS token classes (e.g., `bg-background`, `text-foreground`, `border-border`); never hardcode colors
+- Scrollbar styling — global CSS in `frontend/src/app.css` handles scrollbars; new scrollable elements need only `overflow-auto` or `overflow-y-auto`
+- Component selection — prefer shadcn/ui components in `frontend/src/components/ui/`
+- Typography — `font-mono` for code/CUE content, default sans-serif for UI text
+- Spacing — Tailwind default scale; `gap-*` for flex/grid layouts
+- Form patterns — Display Name + slug, `Label` + `Input`/`Textarea` pairs
+- Dialog/modal patterns — shadcn `Dialog`, `max-w-2xl` for forms, `DialogHeader` + `DialogFooter`
+- Toast notifications — `sonner` with `theme="dark"` (already configured at root)
+
+The guide also includes a "Before adding new UI elements" checklist. Consult it before writing any new component.
+
 ### Authentication
 
 OIDC PKCE flow: Requires `--enable-insecure-dex` flag for embedded Dex at `/dex/`, or an external OIDC provider configured with `--issuer`. Tokens stored in session storage, sent as `Authorization: Bearer` headers. Default credentials: `admin` / `verysecret` (override with `HOLOS_DEX_INITIAL_ADMIN_USERNAME`/`PASSWORD` env vars).
