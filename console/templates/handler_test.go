@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -50,6 +51,149 @@ const validCue = `package deployment
 	name: string
 }
 `
+
+// templateConfigMapWithDefaults builds a ConfigMap that includes a defaults.json key.
+func templateConfigMapWithDefaults(project, name, displayName, description, cueTemplate string, defaultsJSON string) *corev1.ConfigMap {
+	cm := templateConfigMap(project, name, displayName, description, cueTemplate)
+	if defaultsJSON != "" {
+		cm.Data[DefaultsKey] = defaultsJSON
+	}
+	return cm
+}
+
+func TestHandler_DefaultsRoundTrip(t *testing.T) {
+	t.Run("create with defaults then get returns defaults", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		createReq := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
+			Project:     "my-project",
+			Name:        "web-app",
+			DisplayName: "Web App",
+			CueTemplate: validCue,
+			Defaults: &consolev1.DeploymentDefaults{
+				Image: "ghcr.io/mccutchen/go-httpbin",
+				Tag:   "2.21",
+			},
+		})
+		_, err := handler.CreateDeploymentTemplate(ctx, createReq)
+		if err != nil {
+			t.Fatalf("create: expected no error, got %v", err)
+		}
+
+		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
+		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
+		if err != nil {
+			t.Fatalf("get: expected no error, got %v", err)
+		}
+		tmpl := getResp.Msg.Template
+		if tmpl.Defaults == nil {
+			t.Fatal("expected non-nil defaults after create with defaults")
+		}
+		if tmpl.Defaults.Image != "ghcr.io/mccutchen/go-httpbin" {
+			t.Errorf("expected image 'ghcr.io/mccutchen/go-httpbin', got %q", tmpl.Defaults.Image)
+		}
+		if tmpl.Defaults.Tag != "2.21" {
+			t.Errorf("expected tag '2.21', got %q", tmpl.Defaults.Tag)
+		}
+	})
+
+	t.Run("create without defaults then get returns nil defaults", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		createReq := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
+			Project:     "my-project",
+			Name:        "web-app",
+			DisplayName: "Web App",
+			CueTemplate: validCue,
+		})
+		_, err := handler.CreateDeploymentTemplate(ctx, createReq)
+		if err != nil {
+			t.Fatalf("create: expected no error, got %v", err)
+		}
+
+		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
+		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
+		if err != nil {
+			t.Fatalf("get: expected no error, got %v", err)
+		}
+		if getResp.Msg.Template.Defaults != nil {
+			t.Error("expected nil defaults when template created without defaults")
+		}
+	})
+
+	t.Run("update to add defaults then get returns defaults", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		updateReq := connect.NewRequest(&consolev1.UpdateDeploymentTemplateRequest{
+			Project: "my-project",
+			Name:    "web-app",
+			Defaults: &consolev1.DeploymentDefaults{
+				Image: "ghcr.io/example/app",
+				Tag:   "v2.0",
+			},
+		})
+		_, err := handler.UpdateDeploymentTemplate(ctx, updateReq)
+		if err != nil {
+			t.Fatalf("update: expected no error, got %v", err)
+		}
+
+		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
+		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
+		if err != nil {
+			t.Fatalf("get: expected no error, got %v", err)
+		}
+		tmpl := getResp.Msg.Template
+		if tmpl.Defaults == nil {
+			t.Fatal("expected non-nil defaults after update with defaults")
+		}
+		if tmpl.Defaults.Image != "ghcr.io/example/app" {
+			t.Errorf("expected image 'ghcr.io/example/app', got %q", tmpl.Defaults.Image)
+		}
+	})
+
+	t.Run("list returns defaults on each template", func(t *testing.T) {
+		ns := projectNS("my-project")
+		defaultsJSON := `{"image":"ghcr.io/example/app","tag":"v1.0"}`
+		cm := templateConfigMapWithDefaults("my-project", "web-app", "Web App", "A web app", validCue, defaultsJSON)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		listReq := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
+		listResp, err := handler.ListDeploymentTemplates(ctx, listReq)
+		if err != nil {
+			t.Fatalf("list: expected no error, got %v", err)
+		}
+		if len(listResp.Msg.Templates) != 1 {
+			t.Fatalf("expected 1 template, got %d", len(listResp.Msg.Templates))
+		}
+		tmpl := listResp.Msg.Templates[0]
+		if tmpl.Defaults == nil {
+			t.Fatal("expected non-nil defaults in list response")
+		}
+		if tmpl.Defaults.Image != "ghcr.io/example/app" {
+			t.Errorf("expected image 'ghcr.io/example/app', got %q", tmpl.Defaults.Image)
+		}
+	})
+}
 
 func TestHandler_ListDeploymentTemplates(t *testing.T) {
 	t.Run("viewer can list templates", func(t *testing.T) {

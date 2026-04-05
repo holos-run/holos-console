@@ -2,10 +2,12 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/holos-run/holos-console/console/resolver"
+	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -19,6 +21,8 @@ const (
 	DisplayNameAnnotation = "console.holos.run/display-name"
 	DescriptionAnnotation = "console.holos.run/description"
 	CueTemplateKey        = "template.cue"
+	// DefaultsKey is the ConfigMap data key that stores DeploymentDefaults as JSON.
+	DefaultsKey = "defaults.json"
 )
 
 // K8sClient wraps Kubernetes client operations for deployment templates.
@@ -62,13 +66,24 @@ func (k *K8sClient) GetTemplate(ctx context.Context, project, name string) (*cor
 }
 
 // CreateTemplate creates a new deployment template ConfigMap.
-func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string) (*corev1.ConfigMap, error) {
+// If defaults is non-nil, it is serialized to JSON and stored under DefaultsKey.
+func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.DeploymentDefaults) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment template in kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
+	data := map[string]string{
+		CueTemplateKey: cueTemplate,
+	}
+	if defaults != nil {
+		b, err := json.Marshal(defaults)
+		if err != nil {
+			return nil, fmt.Errorf("serializing deployment defaults: %w", err)
+		}
+		data[DefaultsKey] = string(b)
+	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -82,16 +97,16 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 				DescriptionAnnotation: description,
 			},
 		},
-		Data: map[string]string{
-			CueTemplateKey: cueTemplate,
-		},
+		Data: data,
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
 // UpdateTemplate updates an existing deployment template ConfigMap.
-// Only non-nil fields are updated.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string) (*corev1.ConfigMap, error) {
+// Only non-nil fields are updated. If defaults is non-nil, it is serialized to
+// JSON and stored under DefaultsKey. If clearDefaults is true, the DefaultsKey
+// is removed from the ConfigMap data regardless of the defaults parameter.
+func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.DeploymentDefaults, clearDefaults bool) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment template in kubernetes",
 		slog.String("project", project),
@@ -111,11 +126,20 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, di
 	if description != nil {
 		cm.Annotations[DescriptionAnnotation] = *description
 	}
+	if cm.Data == nil {
+		cm.Data = make(map[string]string)
+	}
 	if cueTemplate != nil {
-		if cm.Data == nil {
-			cm.Data = make(map[string]string)
-		}
 		cm.Data[CueTemplateKey] = *cueTemplate
+	}
+	if clearDefaults {
+		delete(cm.Data, DefaultsKey)
+	} else if defaults != nil {
+		b, err := json.Marshal(defaults)
+		if err != nil {
+			return nil, fmt.Errorf("serializing deployment defaults: %w", err)
+		}
+		cm.Data[DefaultsKey] = string(b)
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
