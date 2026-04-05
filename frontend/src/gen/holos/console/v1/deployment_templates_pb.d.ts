@@ -4,11 +4,63 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { EnvVar } from "./deployments_pb";
 
 /**
  * Describes the file holos/console/v1/deployment_templates.proto.
  */
 export declare const file_holos_console_v1_deployment_templates: GenFile;
+
+/**
+ * DeploymentDefaults carries optional default values that a template provides
+ * for deployment form fields. All fields are optional — an empty message means
+ * "no defaults." Field types match the corresponding fields in
+ * CreateDeploymentRequest so defaults map 1:1 to form fields.
+ *
+ * @generated from message holos.console.v1.DeploymentDefaults
+ */
+export declare type DeploymentDefaults = Message<"holos.console.v1.DeploymentDefaults"> & {
+  /**
+   * image is the default container image (e.g. "ghcr.io/holos-run/holos-console").
+   *
+   * @generated from field: string image = 1;
+   */
+  image: string;
+
+  /**
+   * tag is the default image tag (e.g. "latest").
+   *
+   * @generated from field: string tag = 2;
+   */
+  tag: string;
+
+  /**
+   * command overrides the container image ENTRYPOINT.
+   *
+   * @generated from field: repeated string command = 3;
+   */
+  command: string[];
+
+  /**
+   * args overrides the container image CMD.
+   *
+   * @generated from field: repeated string args = 4;
+   */
+  args: string[];
+
+  /**
+   * env sets default container environment variables.
+   *
+   * @generated from field: repeated holos.console.v1.EnvVar env = 5;
+   */
+  env: EnvVar[];
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentDefaults.
+ * Use `create(DeploymentDefaultsSchema)` to create a new message.
+ */
+export declare const DeploymentDefaultsSchema: GenMessage<DeploymentDefaults>;
 
 /**
  * DeploymentTemplate is a CUE template that produces K8s resource manifests.
@@ -50,6 +102,13 @@ export declare type DeploymentTemplate = Message<"holos.console.v1.DeploymentTem
    * @generated from field: string cue_template = 5;
    */
   cueTemplate: string;
+
+  /**
+   * defaults provides optional default values for deployment form fields.
+   *
+   * @generated from field: holos.console.v1.DeploymentDefaults defaults = 6;
+   */
+  defaults?: DeploymentDefaults;
 };
 
 /**
@@ -155,6 +214,13 @@ export declare type CreateDeploymentTemplateRequest = Message<"holos.console.v1.
    * @generated from field: string cue_template = 5;
    */
   cueTemplate: string;
+
+  /**
+   * defaults provides optional default values for deployment form fields.
+   *
+   * @generated from field: holos.console.v1.DeploymentDefaults defaults = 6;
+   */
+  defaults?: DeploymentDefaults;
 };
 
 /**
@@ -207,6 +273,13 @@ export declare type UpdateDeploymentTemplateRequest = Message<"holos.console.v1.
    * @generated from field: optional string cue_template = 5;
    */
   cueTemplate?: string;
+
+  /**
+   * defaults provides optional default values for deployment form fields.
+   *
+   * @generated from field: optional holos.console.v1.DeploymentDefaults defaults = 6;
+   */
+  defaults?: DeploymentDefaults;
 };
 
 /**

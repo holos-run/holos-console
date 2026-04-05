@@ -1,5 +1,6 @@
 syntax = "proto3";
 package holos.console.v1;
+import "holos/console/v1/deployments.proto";
 import "holos/console/v1/rbac.proto";
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
 
@@ -11,6 +12,23 @@ service DeploymentTemplateService {
   rpc UpdateDeploymentTemplate(UpdateDeploymentTemplateRequest) returns (UpdateDeploymentTemplateResponse);
   rpc DeleteDeploymentTemplate(DeleteDeploymentTemplateRequest) returns (DeleteDeploymentTemplateResponse);
   rpc RenderDeploymentTemplate(RenderDeploymentTemplateRequest) returns (RenderDeploymentTemplateResponse);
+}
+
+// DeploymentDefaults carries optional default values that a template provides
+// for deployment form fields. All fields are optional — an empty message means
+// "no defaults." Field types match the corresponding fields in
+// CreateDeploymentRequest so defaults map 1:1 to form fields.
+message DeploymentDefaults {
+  // image is the default container image (e.g. "ghcr.io/holos-run/holos-console").
+  string image = 1;
+  // tag is the default image tag (e.g. "latest").
+  string tag = 2;
+  // command overrides the container image ENTRYPOINT.
+  repeated string command = 3;
+  // args overrides the container image CMD.
+  repeated string args = 4;
+  // env sets default container environment variables.
+  repeated EnvVar env = 5;
 }
 
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.
@@ -25,6 +43,8 @@ message DeploymentTemplate {
   string description = 4;
   // cue_template is the CUE source code.
   string cue_template = 5;
+  // defaults provides optional default values for deployment form fields.
+  DeploymentDefaults defaults = 6;
 }
 
 message ListDeploymentTemplatesRequest {
@@ -50,6 +70,8 @@ message CreateDeploymentTemplateRequest {
   string display_name = 3;
   string description = 4;
   string cue_template = 5;
+  // defaults provides optional default values for deployment form fields.
+  DeploymentDefaults defaults = 6;
 }
 
 message CreateDeploymentTemplateResponse {
@@ -62,6 +84,8 @@ message UpdateDeploymentTemplateRequest {
   optional string display_name = 3;
   optional string description = 4;
   optional string cue_template = 5;
+  // defaults provides optional default values for deployment form fields.
+  optional DeploymentDefaults defaults = 6;
 }
 
 message UpdateDeploymentTemplateResponse {}
