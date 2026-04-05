@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #427: Create Deployment dedicated page.
+#
+# Captures:
+#   1. deployments list page (shows "Create Deployment" link)
+#   2. Create Deployment page (full form with all fields)
+#   3. Create Deployment page with no-templates state
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+# Use a unique project name for the screenshots
+ORG_NAME="e2e-pr427-org"
+PROJECT_NAME="e2e-pr427-prj"
+TEMPLATE_NAME="e2e-pr427-tmpl"
+
+# Get the OIDC token from the browser session
+get_token() {
+  agent-browser --url "${HOLOS_BACKEND_URL}/profile" --js "
+    const key = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'));
+    if (!key) throw new Error('No OIDC session found');
+    const data = JSON.parse(sessionStorage.getItem(key));
+    return data.access_token;
+  " 2>/dev/null
+}
+
+# Create org via API
+create_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/CreateOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\"}" > /dev/null
+}
+
+# Create project via API
+create_project() {
+  local name="$1" org="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/CreateProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\",\"organization\":\"${org}\"}" > /dev/null
+}
+
+# Create template via API
+create_template() {
+  local project="$1" name="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.DeploymentTemplateService/CreateDeploymentTemplate" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"project\":\"${project}\",\"name\":\"${name}\",\"displayName\":\"${name}\",\"description\":\"\",\"cueTemplate\":\"\"}" > /dev/null
+}
+
+# Delete org via API
+delete_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/DeleteOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+# Delete project via API
+delete_project() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/DeleteProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+# Cleanup on exit
+cleanup() {
+  delete_project "$PROJECT_NAME" 2>/dev/null || true
+  delete_org "$ORG_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Setup: create org and project
+create_org "$ORG_NAME"
+create_project "$PROJECT_NAME" "$ORG_NAME"
+
+# Screenshot 1: Deployments list page (empty, shows Create Deployment link)
+agent-browser \
+  --url "${HOLOS_BACKEND_URL}/projects/${PROJECT_NAME}/deployments" \
+  --screenshot "${PR_SCREENSHOT_DIR}/deployments-list.png"
+
+# Screenshot 2: Create Deployment page with no templates (shows no-templates affordance)
+agent-browser \
+  --url "${HOLOS_BACKEND_URL}/projects/${PROJECT_NAME}/deployments/new" \
+  --screenshot "${PR_SCREENSHOT_DIR}/create-deployment-no-templates.png"
+
+# Create a template so we can see the full form
+create_template "$PROJECT_NAME" "$TEMPLATE_NAME"
+
+# Screenshot 3: Create Deployment page with templates (shows full form)
+agent-browser \
+  --url "${HOLOS_BACKEND_URL}/projects/${PROJECT_NAME}/deployments/new" \
+  --screenshot "${PR_SCREENSHOT_DIR}/create-deployment-with-template.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"
