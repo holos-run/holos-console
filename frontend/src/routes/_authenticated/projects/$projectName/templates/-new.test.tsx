@@ -24,6 +24,10 @@ vi.mock('@/queries/deployment-templates', () => ({
   useRenderDeploymentTemplate: vi.fn(),
 }))
 
+vi.mock('@/hooks/use-debounced-value', () => ({
+  useDebouncedValue: vi.fn((value: unknown) => value),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'

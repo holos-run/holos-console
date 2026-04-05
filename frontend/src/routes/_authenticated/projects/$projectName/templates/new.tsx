@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 const DEFAULT_CUE_TEMPLATE = `// package deployment is the required CUE package declaration.
 package deployment
@@ -131,8 +132,9 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 \tnamespace: "holos-prj-${projectName}"
 }`
 
+  const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
   const renderQuery = useRenderDeploymentTemplate(
-    cueTemplate,
+    debouncedCueTemplate,
     previewCueInput,
     previewOpen,
   )
