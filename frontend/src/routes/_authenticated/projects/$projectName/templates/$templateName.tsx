@@ -49,6 +49,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('editor')
+  const [cueInput, setCueInput] = useState(
+    `input: {\n  name:      "example"\n  image:     "nginx"\n  tag:       "latest"\n  project:   "${projectName}"\n  namespace: "holos-prj-${projectName}"\n}`
+  )
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -60,7 +64,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
 
-  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(cueTemplate)
+  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(cueTemplate, cueInput, activeTab === 'preview')
   const renderedYaml = renderData?.renderedYaml
 
   const handleSave = async () => {
@@ -137,7 +141,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <div className="space-y-4">
             <h3 className="text-sm font-medium">CUE Template</h3>
             <Separator />
-            <Tabs defaultValue="editor">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList>
                 <TabsTrigger value="editor">Editor</TabsTrigger>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
@@ -164,18 +168,32 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                 )}
               </TabsContent>
               <TabsContent value="preview" className="mt-4 space-y-4">
-                {renderError ? (
-                  <Alert variant="destructive">
-                    <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
-                  </Alert>
-                ) : (
-                  <pre
-                    aria-label="Rendered YAML"
-                    className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
-                  >
-                    {isRendering ? 'Rendering…' : (renderedYaml ?? '')}
-                  </pre>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="cue-input-editor">CUE Input</Label>
+                  <Textarea
+                    id="cue-input-editor"
+                    aria-label="CUE Input"
+                    value={cueInput}
+                    onChange={(e) => setCueInput(e.target.value)}
+                    rows={8}
+                    className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Rendered YAML</Label>
+                  {renderError ? (
+                    <Alert variant="destructive">
+                      <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
+                    </Alert>
+                  ) : (
+                    <pre
+                      aria-label="Rendered YAML"
+                      className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+                    >
+                      {isRendering ? 'Rendering…' : (renderedYaml ?? '')}
+                    </pre>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </div>

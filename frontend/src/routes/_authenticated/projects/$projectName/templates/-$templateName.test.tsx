@@ -200,4 +200,58 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(editor.className).toContain('max-h-96')
     expect(editor.className).toContain('overflow-y-auto')
   })
+
+  it('useRenderDeploymentTemplate is called with enabled: false when editor tab is active', () => {
+    setupMocks()
+    render(<DeploymentTemplateDetailPage />)
+    // editor tab is active by default
+    expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      false,
+    )
+  })
+
+  it('useRenderDeploymentTemplate is called with enabled: true when preview tab is active', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      true,
+    )
+  })
+
+  it('CUE input editor is rendered in the preview tab', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    expect(screen.getByRole('textbox', { name: /cue input/i })).toBeInTheDocument()
+  })
+
+  it('CUE input editor is pre-populated with default values including projectName', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+    expect((inputEditor as HTMLTextAreaElement).value).toContain('test-project')
+  })
+
+  it('modifying CUE input calls useRenderDeploymentTemplate with updated value', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const inputEditor = screen.getByRole('textbox', { name: /cue input/i })
+    fireEvent.change(inputEditor, { target: { value: 'input: { name: "custom" }' } })
+    expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
+      expect.any(String),
+      'input: { name: "custom" }',
+      true,
+    )
+  })
 })
