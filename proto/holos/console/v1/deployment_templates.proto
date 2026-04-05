@@ -89,4 +89,7 @@ message RenderDeploymentTemplateResponse {
   // rendered_yaml is the concatenated multi-document YAML of all rendered
   // resources, separated by "---\n".
   string rendered_yaml = 1;
+  // rendered_json is the pretty-printed JSON representation of all rendered
+  // resources as a JSON array.
+  string rendered_json = 2;
 }
