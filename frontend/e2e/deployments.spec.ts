@@ -9,11 +9,11 @@ import {
 import type { Page } from '@playwright/test'
 
 /**
- * E2E tests for the Create Deployment modal's no-templates affordance (issue #317).
+ * E2E tests for the Create Deployment page (issue #396).
  *
- * Asserts that when no deployment templates exist in a project, the Create Deployment
- * modal shows "No templates yet. Create one now." and a button to open the
- * CreateTemplateModal sub-modal.
+ * Asserts that clicking "Create Deployment" navigates to the dedicated
+ * /projects/$projectName/deployments/new page, and that the page shows
+ * the appropriate state when no templates exist.
  *
  * Run with: make test-e2e
  */
@@ -47,8 +47,8 @@ async function apiCreateDeploymentTemplate(
   )
 }
 
-test.describe('Create Deployment modal — no-templates affordance', () => {
-  test('shows "No templates yet. Create one now." when no templates exist', async ({ page }) => {
+test.describe('Create Deployment page — no-templates affordance', () => {
+  test('shows "No templates available. Create a template first." when no templates exist', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const orgName = `e2e-deploy-tmpl-org-${Date.now()}`
@@ -57,20 +57,14 @@ test.describe('Create Deployment modal — no-templates affordance', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateProject(page, projectName, orgName)
 
-    // Navigate to the deployments page for the new project (no templates)
-    await page.goto(`/projects/${projectName}/deployments`)
+    // Navigate directly to the Create Deployment page (no templates exist)
+    await page.goto(`/projects/${projectName}/deployments/new`)
     await page.waitForLoadState('networkidle')
 
-    // Open the Create Deployment modal
-    await page.getByRole('button', { name: /create deployment/i }).first().click()
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
-
-    // Assert the no-templates empty-state affordance is visible
-    await expect(page.getByText(/no templates yet/i)).toBeVisible({ timeout: 5000 })
-    await expect(page.getByRole('button', { name: /create one now/i })).toBeVisible()
-
-    // Close the modal
-    await page.getByRole('button', { name: /cancel/i }).click()
+    // Assert the no-templates affordance is visible
+    await expect(page.getByText(/no templates available/i)).toBeVisible({ timeout: 5000 })
+    // The link to create a template should be present
+    await expect(page.getByRole('link', { name: /create a template/i })).toBeVisible()
 
     // Cleanup
     await apiDeleteProject(page, projectName)
@@ -88,28 +82,25 @@ test.describe('Create Deployment modal — no-templates affordance', () => {
     await apiCreateProject(page, projectName, orgName)
     await apiCreateDeploymentTemplate(page, projectName, templateName)
 
-    await page.goto(`/projects/${projectName}/deployments`)
+    // Navigate to the Create Deployment page
+    await page.goto(`/projects/${projectName}/deployments/new`)
     await page.waitForLoadState('networkidle')
 
-    await page.getByRole('button', { name: /create deployment/i }).first().click()
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
-
     // Affordance should NOT be present when templates exist
-    await expect(page.getByText(/no templates yet/i)).not.toBeVisible()
-    await expect(page.getByRole('button', { name: /create one now/i })).not.toBeVisible()
-
-    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/no templates available/i)).not.toBeVisible()
+    // Template select should be present
+    await expect(page.getByText(/create deployment/i)).toBeVisible()
 
     // Cleanup
     await apiDeleteProject(page, projectName)
     await apiDeleteOrg(page, orgName)
   })
 
-  test('clicking "Create one now" opens template creation sub-modal', async ({ page }) => {
+  test('clicking "Create Deployment" button on list page navigates to new page', async ({ page }) => {
     await loginViaProfilePage(page)
 
-    const orgName = `e2e-deploy-submodal-org-${Date.now()}`
-    const projectName = `e2e-deploy-submodal-prj-${Date.now()}`
+    const orgName = `e2e-deploy-nav-org-${Date.now()}`
+    const projectName = `e2e-deploy-nav-prj-${Date.now()}`
 
     await apiCreateOrg(page, orgName)
     await apiCreateProject(page, projectName, orgName)
@@ -117,17 +108,14 @@ test.describe('Create Deployment modal — no-templates affordance', () => {
     await page.goto(`/projects/${projectName}/deployments`)
     await page.waitForLoadState('networkidle')
 
-    await page.getByRole('button', { name: /create deployment/i }).first().click()
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
+    // Click Create Deployment — should navigate to new page, not open a modal
+    await page.getByRole('link', { name: /create deployment/i }).first().click()
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/deployments/new`))
 
-    // Click "Create one now" to open the sub-modal
-    await page.getByRole('button', { name: /create one now/i }).click()
-
-    // The CreateTemplateModal should open (has its own dialog title)
-    await expect(page.getByText(/create deployment template/i)).toBeVisible({ timeout: 5000 })
-
-    // Cancel the sub-modal
-    await page.getByRole('button', { name: /cancel/i }).click()
+    // The Create Deployment form should be visible
+    await expect(page.getByText('Create Deployment')).toBeVisible({ timeout: 5000 })
+    // No dialog element (old modal behavior)
+    await expect(page.getByRole('dialog')).not.toBeVisible()
 
     // Cleanup
     await apiDeleteProject(page, projectName)
