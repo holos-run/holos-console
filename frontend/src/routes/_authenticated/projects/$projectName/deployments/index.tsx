@@ -291,7 +291,16 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
             </div>
             <div>
               <Label>Template</Label>
-              <Select value={createTemplate} onValueChange={setCreateTemplate}>
+              <Select value={createTemplate} onValueChange={(templateName: string) => {
+                setCreateTemplate(templateName)
+                const selected = templates.find((t) => t.name === templateName)
+                const defaults = selected?.defaults
+                setCreateImage(defaults?.image ?? '')
+                setCreateTag(defaults?.tag ?? '')
+                setCreateCommand(defaults?.command ?? [])
+                setCreateArgs(defaults?.args ?? [])
+                setCreateEnv(defaults?.env ?? [])
+              }}>
                 <SelectTrigger aria-label="Template">
                   <SelectValue placeholder="Select a template..." />
                 </SelectTrigger>

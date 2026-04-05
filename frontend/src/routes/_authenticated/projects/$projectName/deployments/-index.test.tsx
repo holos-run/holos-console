@@ -74,8 +74,8 @@ function makeDeployment(name: string, image = 'ghcr.io/org/app', tag = 'v1.0.0',
   return { name, project: 'test-project', image, tag, template: 'web-app', displayName: '', description: '', phase, message: '' }
 }
 
-function makeTemplate(name: string) {
-  return { name, project: 'test-project', displayName: '', description: '', cueTemplate: '' }
+function makeTemplate(name: string, defaults?: { image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[] }) {
+  return { name, project: 'test-project', displayName: '', description: '', cueTemplate: '', defaults }
 }
 
 function setupMocks(
@@ -215,10 +215,11 @@ describe('DeploymentsPage', () => {
     render(<DeploymentsPage />)
     fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
 
+    // Select template first, then fill in name and override image/tag
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
     fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
     fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
 
     fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
 
@@ -283,10 +284,11 @@ describe('DeploymentsPage', () => {
     render(<DeploymentsPage />)
     fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
 
+    // Select template first, then fill in name and override image/tag
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
     fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
     fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
 
     // Add a command entry
     fireEvent.change(screen.getByLabelText(/command entry/i), { target: { value: 'myapp' } })
@@ -338,10 +340,11 @@ describe('DeploymentsPage', () => {
     render(<DeploymentsPage />)
     fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
 
+    // Select template first, then fill in name and override image/tag
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
     fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
     fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
 
     // Add an env var
     fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
@@ -365,10 +368,11 @@ describe('DeploymentsPage', () => {
     render(<DeploymentsPage />)
     fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
 
+    // Select template first, then fill in name and override image/tag
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
     fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
     fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
 
     // Add an env var but leave name empty (incomplete row)
     fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
@@ -381,6 +385,85 @@ describe('DeploymentsPage', () => {
       expect(mutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({ env: [] }),
       )
+    })
+  })
+
+  it('selecting a template with defaults pre-fills image and tag', async () => {
+    const templates = [makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' })]
+    setupMocks([], Role.OWNER, templates)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    // Before selecting template, fields are empty
+    expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
+    expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
+
+    // Select the template with defaults
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v2.0.0')
+    })
+  })
+
+  it('selecting a template without defaults leaves image and tag empty', async () => {
+    const templates = [makeTemplate('web-app')]
+    setupMocks([], Role.OWNER, templates)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
+    })
+  })
+
+  it('changing template updates pre-filled values', async () => {
+    const templates = [
+      makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' }),
+      makeTemplate('worker-tmpl', { image: 'ghcr.io/org/worker', tag: 'v3.0.0' }),
+    ]
+    setupMocks([], Role.OWNER, templates)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    // Select first template
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
+    })
+
+    // Switch to second template — values should update
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'worker-tmpl' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/worker')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v3.0.0')
+    })
+  })
+
+  it('selecting a template with no defaults clears previously set pre-fill values', async () => {
+    const templates = [
+      makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' }),
+      makeTemplate('bare-tmpl'),
+    ]
+    setupMocks([], Role.OWNER, templates)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
+
+    // Select template with defaults
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
+    })
+
+    // Switch to template without defaults — fields should clear
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'bare-tmpl' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
     })
   })
 })
