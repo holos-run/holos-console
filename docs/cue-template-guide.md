@@ -35,6 +35,7 @@ declare `input: #Input` and define `#Input` with at least the following fields.
     command?: [...string]                        // container ENTRYPOINT override
     args?:    [...string]                        // container CMD override
     env:      [...#EnvVar] | *[]                 // environment variables
+    port:     int & >0 & <=65535 | *8080         // container port (default 8080)
 }
 ```
 
@@ -50,6 +51,7 @@ declare `input: #Input` and define `#Input` with at least the following fields.
 | `command`   | `[...string]` | No   | Overrides the container `ENTRYPOINT`. Omitted when not set. |
 | `args`      | `[...string]` | No   | Overrides the container `CMD`. Omitted when not set. |
 | `env`       | `[...#EnvVar]` | No  | Container environment variables. Defaults to `[]`. |
+| `port`      | `int`      | No       | Container port the application listens on. Must be between 1 and 65535. Defaults to `8080`. The default template names this port `"http"` and creates a Service that maps port 80 to this target. |
 
 ### `#EnvVar` Schema
 
@@ -241,7 +243,8 @@ package deployment
     namespace: string
     command?: [...string]
     args?: [...string]
-    env: [...#EnvVar] | *[]
+    env:  [...#EnvVar] | *[]
+    port: int & >0 & <=65535 | *8080
 }
 
 input: #Input
