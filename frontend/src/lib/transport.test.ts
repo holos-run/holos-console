@@ -1,7 +1,27 @@
-import { tokenRef, readStoredToken } from './transport'
+import { ConnectError, Code } from '@connectrpc/connect'
+import type { UnaryRequest, UnaryResponse } from '@connectrpc/connect'
+import { tokenRef, readStoredToken, createAuthInterceptor } from './transport'
 
-// We can't easily test the interceptor as it's not exported, but we can
-// test the tokenRef which is the shared mutable state for auth tokens.
+// Mock getUserManager so tests don't need a real OIDC provider.
+vi.mock('@/lib/auth/userManager', () => ({
+  getUserManager: vi.fn(),
+}))
+
+import { getUserManager } from '@/lib/auth/userManager'
+
+// Minimal stub types for ConnectRPC interceptor testing.
+type MockRequest = UnaryRequest & { header: Headers }
+type MockResponse = UnaryResponse
+
+function makeMockRequest(headers?: Record<string, string>): MockRequest {
+  const h = new Headers(headers)
+  return { header: h } as unknown as MockRequest
+}
+
+function makeMockResponse(token?: string): MockResponse {
+  return {} as unknown as MockResponse
+}
+
 describe('tokenRef', () => {
   afterEach(() => {
     tokenRef.current = null
@@ -61,5 +81,158 @@ describe('readStoredToken', () => {
   it('returns null when the stored JSON is malformed', () => {
     sessionStorage.setItem('oidc.user:https://localhost:8443/dex:holos-console', 'not-json')
     expect(readStoredToken()).toBeNull()
+  })
+})
+
+describe('createAuthInterceptor', () => {
+  beforeEach(() => {
+    tokenRef.current = null
+    vi.resetAllMocks()
+  })
+
+  afterEach(() => {
+    tokenRef.current = null
+  })
+
+  it('sets Authorization header when tokenRef has a token', async () => {
+    tokenRef.current = 'initial-token'
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+    const next = vi.fn().mockResolvedValue(makeMockResponse())
+
+    await interceptor(next)(req)
+
+    expect(req.header.get('Authorization')).toBe('Bearer initial-token')
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not set Authorization header when tokenRef is null', async () => {
+    tokenRef.current = null
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+    const next = vi.fn().mockResolvedValue(makeMockResponse())
+
+    await interceptor(next)(req)
+
+    expect(req.header.get('Authorization')).toBeNull()
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries request after successful signinSilent on 401', async () => {
+    tokenRef.current = 'old-token'
+    const freshToken = 'fresh-token'
+    const mockSigninSilent = vi.fn().mockResolvedValue({ access_token: freshToken })
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+    const response = makeMockResponse()
+
+    // First call throws 401, second call succeeds.
+    const next = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectError('unauthenticated', Code.Unauthenticated))
+      .mockResolvedValueOnce(response)
+
+    const result = await interceptor(next)(req)
+
+    expect(mockSigninSilent).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledTimes(2)
+    expect(result).toBe(response)
+    // tokenRef must be updated with the fresh token.
+    expect(tokenRef.current).toBe(freshToken)
+    // The retried request must carry the fresh token.
+    expect(req.header.get('Authorization')).toBe(`Bearer ${freshToken}`)
+  })
+
+  it('propagates renewal error when signinSilent fails', async () => {
+    tokenRef.current = 'old-token'
+    const renewalError = new Error('renewal failed')
+    const mockSigninSilent = vi.fn().mockRejectedValue(renewalError)
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+
+    const next = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectError('unauthenticated', Code.Unauthenticated))
+
+    await expect(interceptor(next)(req)).rejects.toBe(renewalError)
+    expect(mockSigninSilent).toHaveBeenCalledTimes(1)
+    // Should not retry after failed renewal.
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a second 401 (prevents retry loops)', async () => {
+    tokenRef.current = 'old-token'
+    const freshToken = 'fresh-token'
+    const mockSigninSilent = vi.fn().mockResolvedValue({ access_token: freshToken })
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+
+    // Both calls throw 401 — the retry itself returns 401.
+    const next = vi
+      .fn()
+      .mockRejectedValue(new ConnectError('unauthenticated', Code.Unauthenticated))
+
+    await expect(interceptor(next)(req)).rejects.toBeInstanceOf(ConnectError)
+    // signinSilent called once, next called twice (original + one retry), then gives up.
+    expect(mockSigninSilent).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledTimes(2)
+  })
+
+  it('passes through non-401 errors without attempting renewal', async () => {
+    tokenRef.current = 'some-token'
+    const mockSigninSilent = vi.fn()
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+    const permissionError = new ConnectError('permission denied', Code.PermissionDenied)
+
+    const next = vi.fn().mockRejectedValue(permissionError)
+
+    await expect(interceptor(next)(req)).rejects.toBe(permissionError)
+    expect(mockSigninSilent).not.toHaveBeenCalled()
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces concurrent 401s into a single signinSilent call', async () => {
+    tokenRef.current = 'old-token'
+    const freshToken = 'fresh-token'
+
+    // signinSilent returns a promise that resolves after a tick so concurrent
+    // calls overlap.
+    const mockSigninSilent = vi.fn().mockImplementation(
+      () => new Promise<{ access_token: string }>((resolve) => setTimeout(() => resolve({ access_token: freshToken }), 0))
+    )
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req1 = makeMockRequest()
+    const req2 = makeMockRequest()
+    const response1 = makeMockResponse()
+    const response2 = makeMockResponse()
+
+    // Both requests fail with 401 on first call, succeed on second.
+    const next1 = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectError('unauthenticated', Code.Unauthenticated))
+      .mockResolvedValueOnce(response1)
+    const next2 = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectError('unauthenticated', Code.Unauthenticated))
+      .mockResolvedValueOnce(response2)
+
+    // Fire both requests concurrently.
+    const [r1, r2] = await Promise.all([interceptor(next1)(req1), interceptor(next2)(req2)])
+
+    expect(r1).toBe(response1)
+    expect(r2).toBe(response2)
+    // Despite two concurrent 401s, signinSilent must only be called once.
+    expect(mockSigninSilent).toHaveBeenCalledTimes(1)
   })
 })

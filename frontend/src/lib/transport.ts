@@ -1,5 +1,6 @@
 import { createConnectTransport } from '@connectrpc/connect-web'
-import type { Interceptor } from '@connectrpc/connect'
+import { ConnectError, Code, type Interceptor } from '@connectrpc/connect'
+import { getUserManager } from '@/lib/auth/userManager'
 
 // readStoredToken reads the access token from sessionStorage synchronously at
 // module load time. oidc-client-ts stores the user object under a key matching
@@ -29,14 +30,69 @@ export function readStoredToken(): string | null {
 // login/logout/token refresh via a useEffect.
 export const tokenRef: { current: string | null } = { current: readStoredToken() }
 
-const authInterceptor: Interceptor = (next) => async (req) => {
-  if (tokenRef.current) {
-    req.header.set('Authorization', `Bearer ${tokenRef.current}`)
+// Shared promise for in-flight silent token renewal. When multiple concurrent
+// requests all receive a 401, they coalesce onto this single promise so only
+// one signinSilent() OIDC flow is initiated.
+let renewalPromise: Promise<string> | null = null
+
+// renewToken performs a single serialized silent token renewal via
+// oidc-client-ts. Concurrent callers all share the same promise, ensuring only
+// one OIDC silent-renew flow runs at a time.
+async function renewToken(): Promise<string> {
+  if (renewalPromise) return renewalPromise
+  renewalPromise = (async () => {
+    const userManager = getUserManager()
+    const user = await userManager.signinSilent()
+    if (!user?.access_token) {
+      throw new Error('signinSilent returned no access token')
+    }
+    tokenRef.current = user.access_token
+    return user.access_token
+  })()
+  try {
+    return await renewalPromise
+  } finally {
+    renewalPromise = null
   }
-  return next(req)
+}
+
+// createAuthInterceptor returns a ConnectRPC interceptor that:
+//   1. Attaches the current Bearer token to every outgoing request.
+//   2. On a 401/Unauthenticated response, performs a single serialized silent
+//      token renewal via oidc-client-ts and retries the request once.
+//   3. Coalesces concurrent 401s so only one signinSilent() call is made.
+//   4. Does not retry a second 401 to prevent infinite loops.
+export function createAuthInterceptor(): Interceptor {
+  return (next) => async (req) => {
+    // Attach current token.
+    if (tokenRef.current) {
+      req.header.set('Authorization', `Bearer ${tokenRef.current}`)
+    }
+
+    let isRetry = false
+
+    try {
+      return await next(req)
+    } catch (err) {
+      // Only handle Unauthenticated errors on first attempt.
+      if (
+        !isRetry &&
+        err instanceof ConnectError &&
+        err.code === Code.Unauthenticated
+      ) {
+        isRetry = true
+        // Renew token (coalesced with other concurrent 401s).
+        const freshToken = await renewToken()
+        // Update the request header with the fresh token for the retry.
+        req.header.set('Authorization', `Bearer ${freshToken}`)
+        return await next(req)
+      }
+      throw err
+    }
+  }
 }
 
 export const transport = createConnectTransport({
   baseUrl: '/',
-  interceptors: [authInterceptor],
+  interceptors: [createAuthInterceptor()],
 })
