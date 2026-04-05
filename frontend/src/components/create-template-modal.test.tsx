@@ -212,4 +212,55 @@ describe('CreateTemplateModal', () => {
       expect(screen.getByText(/CUE render error/i)).toBeInTheDocument()
     })
   })
+
+  it('does not call useRenderDeploymentTemplate with enabled=true when modal is closed', () => {
+    setupMocks()
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={false}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    // The hook is always called (rules of hooks), but enabled should be false
+    const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    // enabled argument should be false (open=false)
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall[5]).toBe(false)
+  })
+
+  it('does not pass enabled=true when modal is open but preview is closed', () => {
+    setupMocks()
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    // Preview is not open by default, so enabled should be false
+    const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall[5]).toBe(false)
+  })
+
+  it('passes enabled=true when modal is open and preview is open', async () => {
+    setupMocks()
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+    await waitFor(() => {
+      const calls = (useRenderDeploymentTemplate as Mock).mock.calls
+      // Find the last call where enabled is true
+      const enabledCall = calls.find((c) => c[5] === true)
+      expect(enabledCall).toBeDefined()
+    })
+  })
 })
