@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #456
+# Shows the split system/user input areas in the template editor preview tab.
+set -euo pipefail
+
+# Environment variables set by scripts/browser-capture-pr:
+# HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+
+# Navigate to the template detail page for the existing go-httpbin-v1 template
+agent-browser navigate "${HOLOS_BACKEND_URL}/projects/garage/templates/go-httpbin-v1"
+sleep 4
+
+# Take screenshot of the Editor tab (default view)
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/01-template-editor-tab.png"
+
+# Click the Preview tab using focus+click via IIFE (dispatchEvent doesn't trigger React)
+agent-browser eval "(() => { const tabs = Array.from(document.querySelectorAll('[role=tab]')); const previewTab = tabs.find(t => t.textContent.trim() === 'Preview'); if (previewTab) { previewTab.focus(); previewTab.click(); return 'clicked'; } return 'not found'; })()"
+sleep 2
+
+# Take screenshot of the top of the Preview tab showing System Input textarea
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/02-template-preview-system-input.png"
+
+# Scroll down to see the User Input textarea
+agent-browser scroll down 400
+sleep 1
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/03-template-preview-user-input.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"

@@ -109,8 +109,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('editor')
+  const [cueSystemInput, setCueSystemInput] = useState(
+    `system: {\n  project:   "${projectName}"\n  namespace: "holos-prj-${projectName}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  )
   const [cueInput, setCueInput] = useState(
-    `input: {\n  name:      "example"\n  image:     "nginx"\n  tag:       "latest"\n  project:   "${projectName}"\n  namespace: "holos-prj-${projectName}"\n}`
+    `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
   )
 
   useEffect(() => {
@@ -124,9 +127,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canDelete = userRole === Role.OWNER
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
+  const debouncedCueSystemInput = useDebouncedValue(cueSystemInput, 500)
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
-  const isStale = cueInput !== debouncedCueInput || cueTemplate !== debouncedCueTemplate
-  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(debouncedCueTemplate, debouncedCueInput, activeTab === 'preview')
+  const isStale = cueInput !== debouncedCueInput || cueSystemInput !== debouncedCueSystemInput || cueTemplate !== debouncedCueTemplate
+  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(debouncedCueTemplate, debouncedCueInput, activeTab === 'preview', debouncedCueSystemInput)
   const renderedYaml = renderData?.renderedYaml
 
   const handleSave = async () => {
@@ -231,14 +235,28 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               </TabsContent>
               <TabsContent value="preview" className="mt-4 space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="cue-input-editor">CUE Input</Label>
+                  <Label htmlFor="cue-system-input-editor">System Input (provided by the platform)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
+                  </p>
+                  <Textarea
+                    id="cue-system-input-editor"
+                    aria-label="System Input"
+                    value={cueSystemInput}
+                    onChange={(e) => setCueSystemInput(e.target.value)}
+                    rows={10}
+                    className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cue-input-editor">User Input (deployment parameters)</Label>
                   <Textarea
                     id="cue-input-editor"
-                    aria-label="CUE Input"
+                    aria-label="User Input"
                     value={cueInput}
                     onChange={(e) => setCueInput(e.target.value)}
-                    rows={8}
-                    className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
+                    rows={6}
+                    className="font-mono text-sm field-sizing-normal max-h-48 overflow-y-auto"
                   />
                 </div>
                 <div className="space-y-2">

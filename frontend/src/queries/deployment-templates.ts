@@ -85,16 +85,18 @@ export function useRenderDeploymentTemplate(
   cueTemplate: string,
   cueInput = '',
   enabled = true,
+  cueSystemInput = '',
 ) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
   return useQuery({
-    queryKey: ['deployment-templates', 'render', cueTemplate, cueInput] as const,
+    queryKey: ['deployment-templates', 'render', cueTemplate, cueInput, cueSystemInput] as const,
     queryFn: async () => {
       const response = await client.renderDeploymentTemplate({
         cueTemplate,
         cueInput,
+        cueSystemInput,
       })
       return { renderedYaml: response.renderedYaml, renderedJson: response.renderedJson }
     },
