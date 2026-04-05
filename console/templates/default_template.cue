@@ -31,17 +31,18 @@ package deployment
 
 // #Claims carries the OIDC ID token claims of the authenticated user.
 // These values are set by the console backend from the verified JWT and are
-// never supplied directly by the user.
+// never supplied directly by the user.  Standard claims are required; additional
+// provider-specific claims are allowed via the open struct (...).
 #Claims: {
-	iss?:            string
-	sub:             string
-	aud?:            string
-	exp?:            int
-	iat?:            int
-	email:           string
-	email_verified?: bool
-	name?:           string
+	iss:            string
+	sub:            string
+	exp:            int
+	iat:            int
+	email:          string
+	email_verified: bool
+	name?:          string
 	groups?: [...string]
+	... // allow provider-specific claims
 }
 
 // #System defines the trusted system-provided fields set by the console backend.
@@ -62,6 +63,13 @@ system: #System
 _labels: {
 	"app.kubernetes.io/name":       input.name
 	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+// _annotations are standard annotations applied to every resource.
+// console.holos.run/deployer-email records the identity of the user
+// who last rendered and applied this resource.
+_annotations: {
+	"console.holos.run/deployer-email": system.claims.email
 }
 
 // _envSpec transforms the env input into Kubernetes container env format.
@@ -118,9 +126,10 @@ namespaced: #Namespaced & {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
-				name:      input.name
-				namespace: system.namespace
-				labels:    _labels
+				name:        input.name
+				namespace:   system.namespace
+				labels:      _labels
+				annotations: _annotations
 			}
 		}
 
@@ -129,9 +138,10 @@ namespaced: #Namespaced & {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
-				name:      input.name
-				namespace: system.namespace
-				labels:    _labels
+				name:        input.name
+				namespace:   system.namespace
+				labels:      _labels
+				annotations: _annotations
 			}
 			spec: {
 				replicas: 1
@@ -164,9 +174,10 @@ namespaced: #Namespaced & {
 			apiVersion: "v1"
 			kind:       "Service"
 			metadata: {
-				name:      input.name
-				namespace: system.namespace
-				labels:    _labels
+				name:        input.name
+				namespace:   system.namespace
+				labels:      _labels
+				annotations: _annotations
 			}
 			spec: {
 				selector: "app.kubernetes.io/name": input.name

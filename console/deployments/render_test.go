@@ -263,6 +263,65 @@ cluster: {}
 // invalidCUETemplate contains invalid CUE syntax.
 const invalidCUETemplate = `this is { not valid cue !!!`
 
+// claimsAnnotationTemplate is a template that uses system.claims.email in an annotation,
+// verifying that claims are propagated from SystemInput into the CUE evaluation.
+const claimsAnnotationTemplate = `
+package deployment
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+system: {
+	project:   string
+	namespace: string
+	claims: {
+		iss:            string
+		sub:            string
+		exp:            int
+		iat:            int
+		email:          string
+		email_verified: bool
+	}
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+_annotations: {
+	"console.holos.run/deployer-email": system.claims.email
+}
+
+namespaced: (system.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:        input.name
+			namespace:   system.namespace
+			labels:      _labels
+			annotations: _annotations
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: _labels
+				spec: containers: [{
+					name:  input.name
+					image: input.image + ":" + input.tag
+				}]
+			}
+		}
+	}
+}
+
+cluster: {}
+`
+
 func defaultSystem(namespace string) SystemInput {
 	return SystemInput{
 		Project:   "my-project",
@@ -849,6 +908,63 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 		)
 		if err == nil {
 			t.Fatal("expected error for duplicate Kind/name with conflicting values")
+		}
+	})
+}
+
+// TestCueRenderer_ClaimsPropagation verifies that OIDC claims from SystemInput
+// are available inside the CUE template and that system.claims.email appears
+// in rendered resource annotations.
+func TestCueRenderer_ClaimsPropagation(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+	const deployerEmail = "alice@example.com"
+
+	system := SystemInput{
+		Project:   "my-project",
+		Namespace: namespace,
+		Claims: ClaimsInput{
+			Iss:           "https://dex.example.com",
+			Sub:           "alice-sub",
+			Exp:           9999999999,
+			Iat:           1700000000,
+			Email:         deployerEmail,
+			EmailVerified: true,
+		},
+	}
+	user := UserInput{
+		Name:  "web-app",
+		Image: "nginx",
+		Tag:   "1.25",
+	}
+
+	t.Run("system.claims.email appears in resource annotation", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		annotations := resources[0].GetAnnotations()
+		got := annotations["console.holos.run/deployer-email"]
+		if got != deployerEmail {
+			t.Errorf("expected deployer-email annotation=%q, got %q", deployerEmail, got)
+		}
+	})
+
+	t.Run("system.namespace is used for namespace constraint not input.namespace", func(t *testing.T) {
+		// The claimsAnnotationTemplate uses system.namespace (not input.namespace)
+		// for the namespaced struct key, confirming the split input architecture.
+		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		if resources[0].GetNamespace() != namespace {
+			t.Errorf("expected namespace %q, got %q", namespace, resources[0].GetNamespace())
 		}
 	})
 }

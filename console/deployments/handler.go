@@ -245,7 +245,10 @@ func (h *Handler) CreateDeployment(
 			Project:   project,
 			Namespace: ns,
 			Claims: ClaimsInput{
+				Iss:           claims.Iss,
 				Sub:           claims.Sub,
+				Exp:           claims.Exp,
+				Iat:           claims.Iat,
 				Email:         claims.Email,
 				EmailVerified: claims.EmailVerified,
 				Name:          claims.Name,
@@ -352,7 +355,10 @@ func (h *Handler) UpdateDeployment(
 			Project:   project,
 			Namespace: ns,
 			Claims: ClaimsInput{
+				Iss:           claims.Iss,
 				Sub:           claims.Sub,
+				Exp:           claims.Exp,
+				Iat:           claims.Iat,
 				Email:         claims.Email,
 				EmailVerified: claims.EmailVerified,
 				Name:          claims.Name,

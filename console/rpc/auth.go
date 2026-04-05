@@ -133,5 +133,10 @@ func extractAndVerifyToken(ctx context.Context, req connect.AnyRequest, verifier
 		claims.Sub = idToken.Subject
 	}
 
+	// Populate standard IDToken fields not directly available via json claims tags.
+	claims.Iss = idToken.Issuer
+	claims.Exp = idToken.Expiry.Unix()
+	claims.Iat = idToken.IssuedAt.Unix()
+
 	return &claims, nil
 }

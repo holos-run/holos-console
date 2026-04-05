@@ -36,10 +36,12 @@ type RenderResource struct {
 	Object map[string]any
 }
 
-// Renderer evaluates a CUE template unified with a CUE input string and returns
-// a list of rendered Kubernetes manifests with both YAML and structured object data.
+// Renderer evaluates a CUE template unified with system and user CUE input strings
+// and returns a list of rendered Kubernetes manifests with both YAML and structured
+// object data.  cueSystemInput carries trusted backend values (project, namespace,
+// claims); cueInput carries user-provided deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueTemplate string, cueInput string) ([]RenderResource, error)
+	Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error)
 }
 
 // Handler implements the DeploymentTemplateService.
@@ -293,7 +295,7 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CueInput)
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CueSystemInput, req.Msg.CueInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}

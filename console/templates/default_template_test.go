@@ -9,12 +9,29 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// defaultSystemInput returns a SystemInput with all required fields populated,
+// including claims, for use in default template tests.
+func defaultSystemInput(namespace string) deployments.SystemInput {
+	return deployments.SystemInput{
+		Project:   "my-project",
+		Namespace: namespace,
+		Claims: deployments.ClaimsInput{
+			Iss:           "https://dex.example.com",
+			Sub:           "test-user-sub",
+			Exp:           9999999999,
+			Iat:           1700000000,
+			Email:         "deployer@example.com",
+			EmailVerified: true,
+		},
+	}
+}
+
 // TestDefaultTemplate verifies that DefaultTemplate renders correctly through
 // the full CUE render pipeline including managed-by label validation.
 func TestDefaultTemplate(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	system := defaultSystemInput(namespace)
 	user := deployments.UserInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
@@ -77,7 +94,7 @@ func TestDefaultTemplate(t *testing.T) {
 func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	system := defaultSystemInput(namespace)
 
 	t.Run("command and args appear in container spec", func(t *testing.T) {
 		user := deployments.UserInput{
@@ -159,7 +176,7 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 func TestDefaultTemplate_EnvVars(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	system := defaultSystemInput(namespace)
 
 	t.Run("no env vars renders without env field", func(t *testing.T) {
 		user := deployments.UserInput{
@@ -323,7 +340,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	system := defaultSystemInput(namespace)
 	user := deployments.UserInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
@@ -365,6 +382,90 @@ func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 		if !kindSet[kind] {
 			t.Errorf("expected resource of kind %q", kind)
 		}
+	}
+}
+
+// TestDefaultTemplate_DeployerEmailAnnotation verifies that the deployer-email
+// annotation is set on all resources from system.claims.email.
+func TestDefaultTemplate_DeployerEmailAnnotation(t *testing.T) {
+	renderer := &deployments.CueRenderer{}
+	namespace := "prj-my-project"
+	const deployerEmail = "deployer@example.com"
+	system := deployments.SystemInput{
+		Project:   "my-project",
+		Namespace: namespace,
+		Claims: deployments.ClaimsInput{
+			Iss:           "https://dex.example.com",
+			Sub:           "test-user-sub",
+			Exp:           9999999999,
+			Iat:           1700000000,
+			Email:         deployerEmail,
+			EmailVerified: true,
+		},
+	}
+	user := deployments.UserInput{
+		Name:  "holos-console",
+		Image: "ghcr.io/holos-run/holos-console",
+		Tag:   "latest",
+	}
+
+	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+	if err != nil {
+		t.Fatalf("default template render failed: %v", err)
+	}
+	if len(resources) == 0 {
+		t.Fatal("expected at least one resource")
+	}
+
+	for _, r := range resources {
+		annotations := r.GetAnnotations()
+		got := annotations["console.holos.run/deployer-email"]
+		if got != deployerEmail {
+			t.Errorf("resource %s/%s: expected annotation console.holos.run/deployer-email=%q, got %q",
+				r.GetKind(), r.GetName(), deployerEmail, got)
+		}
+	}
+}
+
+// TestDefaultTemplate_ClaimsEmailInAnnotation verifies that the deployer-email
+// annotation carries the email from system.claims, verifying claims propagation.
+func TestDefaultTemplate_ClaimsEmailInAnnotation(t *testing.T) {
+	renderer := &deployments.CueRenderer{}
+	namespace := "prj-my-project"
+
+	emails := []string{"alice@example.com", "bob@corp.io", "svc-account@domain.org"}
+	for _, email := range emails {
+		t.Run(email, func(t *testing.T) {
+			system := deployments.SystemInput{
+				Project:   "my-project",
+				Namespace: namespace,
+				Claims: deployments.ClaimsInput{
+					Iss:           "https://dex.example.com",
+					Sub:           "test-sub",
+					Exp:           9999999999,
+					Iat:           1700000000,
+					Email:         email,
+					EmailVerified: true,
+				},
+			}
+			user := deployments.UserInput{
+				Name:  "holos-console",
+				Image: "ghcr.io/holos-run/holos-console",
+				Tag:   "latest",
+			}
+			resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+			if err != nil {
+				t.Fatalf("render failed: %v", err)
+			}
+			for _, r := range resources {
+				annotations := r.GetAnnotations()
+				got := annotations["console.holos.run/deployer-email"]
+				if got != email {
+					t.Errorf("resource %s/%s: expected deployer-email=%q, got %q",
+						r.GetKind(), r.GetName(), email, got)
+				}
+			}
+		})
 	}
 }
 

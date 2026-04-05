@@ -33,7 +33,7 @@ type stubRenderer struct {
 	err       error
 }
 
-func (r *stubRenderer) Render(_ context.Context, _ string, _ string) ([]RenderResource, error) {
+func (r *stubRenderer) Render(_ context.Context, _ string, _ string, _ string) ([]RenderResource, error) {
 	return r.resources, r.err
 }
 
