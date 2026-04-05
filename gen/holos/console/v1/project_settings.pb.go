@@ -259,6 +259,94 @@ func (x *UpdateProjectSettingsResponse) GetSettings() *ProjectSettings {
 	return nil
 }
 
+type GetProjectSettingsRawRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Project       string                 `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProjectSettingsRawRequest) Reset() {
+	*x = GetProjectSettingsRawRequest{}
+	mi := &file_holos_console_v1_project_settings_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectSettingsRawRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectSettingsRawRequest) ProtoMessage() {}
+
+func (x *GetProjectSettingsRawRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_project_settings_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectSettingsRawRequest.ProtoReflect.Descriptor instead.
+func (*GetProjectSettingsRawRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_project_settings_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetProjectSettingsRawRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+type GetProjectSettingsRawResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Raw           string                 `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProjectSettingsRawResponse) Reset() {
+	*x = GetProjectSettingsRawResponse{}
+	mi := &file_holos_console_v1_project_settings_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectSettingsRawResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectSettingsRawResponse) ProtoMessage() {}
+
+func (x *GetProjectSettingsRawResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_project_settings_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectSettingsRawResponse.ProtoReflect.Descriptor instead.
+func (*GetProjectSettingsRawResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_project_settings_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetProjectSettingsRawResponse) GetRaw() string {
+	if x != nil {
+		return x.Raw
+	}
+	return ""
+}
+
 var File_holos_console_v1_project_settings_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_project_settings_proto_rawDesc = "" +
@@ -275,10 +363,15 @@ const file_holos_console_v1_project_settings_proto_rawDesc = "" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12=\n" +
 	"\bsettings\x18\x02 \x01(\v2!.holos.console.v1.ProjectSettingsR\bsettings\"^\n" +
 	"\x1dUpdateProjectSettingsResponse\x12=\n" +
-	"\bsettings\x18\x01 \x01(\v2!.holos.console.v1.ProjectSettingsR\bsettings2\x83\x02\n" +
+	"\bsettings\x18\x01 \x01(\v2!.holos.console.v1.ProjectSettingsR\bsettings\"8\n" +
+	"\x1cGetProjectSettingsRawRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\"1\n" +
+	"\x1dGetProjectSettingsRawResponse\x12\x10\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw2\xfd\x02\n" +
 	"\x16ProjectSettingsService\x12o\n" +
 	"\x12GetProjectSettings\x12+.holos.console.v1.GetProjectSettingsRequest\x1a,.holos.console.v1.GetProjectSettingsResponse\x12x\n" +
-	"\x15UpdateProjectSettings\x12..holos.console.v1.UpdateProjectSettingsRequest\x1a/.holos.console.v1.UpdateProjectSettingsResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x15UpdateProjectSettings\x12..holos.console.v1.UpdateProjectSettingsRequest\x1a/.holos.console.v1.UpdateProjectSettingsResponse\x12x\n" +
+	"\x15GetProjectSettingsRaw\x12..holos.console.v1.GetProjectSettingsRawRequest\x1a/.holos.console.v1.GetProjectSettingsRawResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_project_settings_proto_rawDescOnce sync.Once
@@ -292,13 +385,15 @@ func file_holos_console_v1_project_settings_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_project_settings_proto_rawDescData
 }
 
-var file_holos_console_v1_project_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_holos_console_v1_project_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_holos_console_v1_project_settings_proto_goTypes = []any{
 	(*ProjectSettings)(nil),               // 0: holos.console.v1.ProjectSettings
 	(*GetProjectSettingsRequest)(nil),     // 1: holos.console.v1.GetProjectSettingsRequest
 	(*GetProjectSettingsResponse)(nil),    // 2: holos.console.v1.GetProjectSettingsResponse
 	(*UpdateProjectSettingsRequest)(nil),  // 3: holos.console.v1.UpdateProjectSettingsRequest
 	(*UpdateProjectSettingsResponse)(nil), // 4: holos.console.v1.UpdateProjectSettingsResponse
+	(*GetProjectSettingsRawRequest)(nil),  // 5: holos.console.v1.GetProjectSettingsRawRequest
+	(*GetProjectSettingsRawResponse)(nil), // 6: holos.console.v1.GetProjectSettingsRawResponse
 }
 var file_holos_console_v1_project_settings_proto_depIdxs = []int32{
 	0, // 0: holos.console.v1.GetProjectSettingsResponse.settings:type_name -> holos.console.v1.ProjectSettings
@@ -306,10 +401,12 @@ var file_holos_console_v1_project_settings_proto_depIdxs = []int32{
 	0, // 2: holos.console.v1.UpdateProjectSettingsResponse.settings:type_name -> holos.console.v1.ProjectSettings
 	1, // 3: holos.console.v1.ProjectSettingsService.GetProjectSettings:input_type -> holos.console.v1.GetProjectSettingsRequest
 	3, // 4: holos.console.v1.ProjectSettingsService.UpdateProjectSettings:input_type -> holos.console.v1.UpdateProjectSettingsRequest
-	2, // 5: holos.console.v1.ProjectSettingsService.GetProjectSettings:output_type -> holos.console.v1.GetProjectSettingsResponse
-	4, // 6: holos.console.v1.ProjectSettingsService.UpdateProjectSettings:output_type -> holos.console.v1.UpdateProjectSettingsResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
+	5, // 5: holos.console.v1.ProjectSettingsService.GetProjectSettingsRaw:input_type -> holos.console.v1.GetProjectSettingsRawRequest
+	2, // 6: holos.console.v1.ProjectSettingsService.GetProjectSettings:output_type -> holos.console.v1.GetProjectSettingsResponse
+	4, // 7: holos.console.v1.ProjectSettingsService.UpdateProjectSettings:output_type -> holos.console.v1.UpdateProjectSettingsResponse
+	6, // 8: holos.console.v1.ProjectSettingsService.GetProjectSettingsRaw:output_type -> holos.console.v1.GetProjectSettingsRawResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name
@@ -327,7 +424,7 @@ func file_holos_console_v1_project_settings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_project_settings_proto_rawDesc), len(file_holos_console_v1_project_settings_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

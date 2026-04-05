@@ -39,16 +39,22 @@ const (
 	// ProjectSettingsServiceUpdateProjectSettingsProcedure is the fully-qualified name of the
 	// ProjectSettingsService's UpdateProjectSettings RPC.
 	ProjectSettingsServiceUpdateProjectSettingsProcedure = "/holos.console.v1.ProjectSettingsService/UpdateProjectSettings"
+	// ProjectSettingsServiceGetProjectSettingsRawProcedure is the fully-qualified name of the
+	// ProjectSettingsService's GetProjectSettingsRaw RPC.
+	ProjectSettingsServiceGetProjectSettingsRawProcedure = "/holos.console.v1.ProjectSettingsService/GetProjectSettingsRaw"
 )
 
 // ProjectSettingsServiceClient is a client for the holos.console.v1.ProjectSettingsService service.
 type ProjectSettingsServiceClient interface {
 	// GetProjectSettings returns the settings for a project.
-	// Returns default settings if no settings ConfigMap exists (deployments_enabled=true).
+	// Returns default settings if no annotation exists (deployments_enabled=false).
 	GetProjectSettings(context.Context, *connect.Request[v1.GetProjectSettingsRequest]) (*connect.Response[v1.GetProjectSettingsResponse], error)
 	// UpdateProjectSettings updates the settings for a project.
-	// Requires PERMISSION_PROJECT_SETTINGS_WRITE on the project.
+	// Requires PERMISSION_PROJECT_DEPLOYMENTS_ENABLE (granted to org-level OWNERs).
 	UpdateProjectSettings(context.Context, *connect.Request[v1.UpdateProjectSettingsRequest]) (*connect.Response[v1.UpdateProjectSettingsResponse], error)
+	// GetProjectSettingsRaw retrieves the full Kubernetes Namespace object backing
+	// the project as verbatim JSON. Requires PERMISSION_PROJECT_SETTINGS_READ.
+	GetProjectSettingsRaw(context.Context, *connect.Request[v1.GetProjectSettingsRawRequest]) (*connect.Response[v1.GetProjectSettingsRawResponse], error)
 }
 
 // NewProjectSettingsServiceClient constructs a client for the
@@ -74,6 +80,12 @@ func NewProjectSettingsServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(projectSettingsServiceMethods.ByName("UpdateProjectSettings")),
 			connect.WithClientOptions(opts...),
 		),
+		getProjectSettingsRaw: connect.NewClient[v1.GetProjectSettingsRawRequest, v1.GetProjectSettingsRawResponse](
+			httpClient,
+			baseURL+ProjectSettingsServiceGetProjectSettingsRawProcedure,
+			connect.WithSchema(projectSettingsServiceMethods.ByName("GetProjectSettingsRaw")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -81,6 +93,7 @@ func NewProjectSettingsServiceClient(httpClient connect.HTTPClient, baseURL stri
 type projectSettingsServiceClient struct {
 	getProjectSettings    *connect.Client[v1.GetProjectSettingsRequest, v1.GetProjectSettingsResponse]
 	updateProjectSettings *connect.Client[v1.UpdateProjectSettingsRequest, v1.UpdateProjectSettingsResponse]
+	getProjectSettingsRaw *connect.Client[v1.GetProjectSettingsRawRequest, v1.GetProjectSettingsRawResponse]
 }
 
 // GetProjectSettings calls holos.console.v1.ProjectSettingsService.GetProjectSettings.
@@ -93,15 +106,23 @@ func (c *projectSettingsServiceClient) UpdateProjectSettings(ctx context.Context
 	return c.updateProjectSettings.CallUnary(ctx, req)
 }
 
+// GetProjectSettingsRaw calls holos.console.v1.ProjectSettingsService.GetProjectSettingsRaw.
+func (c *projectSettingsServiceClient) GetProjectSettingsRaw(ctx context.Context, req *connect.Request[v1.GetProjectSettingsRawRequest]) (*connect.Response[v1.GetProjectSettingsRawResponse], error) {
+	return c.getProjectSettingsRaw.CallUnary(ctx, req)
+}
+
 // ProjectSettingsServiceHandler is an implementation of the holos.console.v1.ProjectSettingsService
 // service.
 type ProjectSettingsServiceHandler interface {
 	// GetProjectSettings returns the settings for a project.
-	// Returns default settings if no settings ConfigMap exists (deployments_enabled=true).
+	// Returns default settings if no annotation exists (deployments_enabled=false).
 	GetProjectSettings(context.Context, *connect.Request[v1.GetProjectSettingsRequest]) (*connect.Response[v1.GetProjectSettingsResponse], error)
 	// UpdateProjectSettings updates the settings for a project.
-	// Requires PERMISSION_PROJECT_SETTINGS_WRITE on the project.
+	// Requires PERMISSION_PROJECT_DEPLOYMENTS_ENABLE (granted to org-level OWNERs).
 	UpdateProjectSettings(context.Context, *connect.Request[v1.UpdateProjectSettingsRequest]) (*connect.Response[v1.UpdateProjectSettingsResponse], error)
+	// GetProjectSettingsRaw retrieves the full Kubernetes Namespace object backing
+	// the project as verbatim JSON. Requires PERMISSION_PROJECT_SETTINGS_READ.
+	GetProjectSettingsRaw(context.Context, *connect.Request[v1.GetProjectSettingsRawRequest]) (*connect.Response[v1.GetProjectSettingsRawResponse], error)
 }
 
 // NewProjectSettingsServiceHandler builds an HTTP handler from the service implementation. It
@@ -123,12 +144,20 @@ func NewProjectSettingsServiceHandler(svc ProjectSettingsServiceHandler, opts ..
 		connect.WithSchema(projectSettingsServiceMethods.ByName("UpdateProjectSettings")),
 		connect.WithHandlerOptions(opts...),
 	)
+	projectSettingsServiceGetProjectSettingsRawHandler := connect.NewUnaryHandler(
+		ProjectSettingsServiceGetProjectSettingsRawProcedure,
+		svc.GetProjectSettingsRaw,
+		connect.WithSchema(projectSettingsServiceMethods.ByName("GetProjectSettingsRaw")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.ProjectSettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ProjectSettingsServiceGetProjectSettingsProcedure:
 			projectSettingsServiceGetProjectSettingsHandler.ServeHTTP(w, r)
 		case ProjectSettingsServiceUpdateProjectSettingsProcedure:
 			projectSettingsServiceUpdateProjectSettingsHandler.ServeHTTP(w, r)
+		case ProjectSettingsServiceGetProjectSettingsRawProcedure:
+			projectSettingsServiceGetProjectSettingsRawHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -144,4 +173,8 @@ func (UnimplementedProjectSettingsServiceHandler) GetProjectSettings(context.Con
 
 func (UnimplementedProjectSettingsServiceHandler) UpdateProjectSettings(context.Context, *connect.Request[v1.UpdateProjectSettingsRequest]) (*connect.Response[v1.UpdateProjectSettingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectSettingsService.UpdateProjectSettings is not implemented"))
+}
+
+func (UnimplementedProjectSettingsServiceHandler) GetProjectSettingsRaw(context.Context, *connect.Request[v1.GetProjectSettingsRawRequest]) (*connect.Response[v1.GetProjectSettingsRawResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectSettingsService.GetProjectSettingsRaw is not implemented"))
 }

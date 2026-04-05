@@ -33,6 +33,16 @@ func (r *ProjectGrantResolver) GetProjectGrants(ctx context.Context, project str
 	return activeUsers, activeRoles, nil
 }
 
+// GetProjectOrganization returns the organization name for a project by reading
+// the organization label from the project namespace.
+func (r *ProjectGrantResolver) GetProjectOrganization(ctx context.Context, project string) (string, error) {
+	ns, err := r.k8s.GetProject(ctx, project)
+	if err != nil {
+		return "", err
+	}
+	return GetOrganization(ns), nil
+}
+
 // GetDefaultGrants returns the default sharing grants for a project.
 // These are applied to new secrets created in the project.
 // Implements secrets.DefaultShareResolver.

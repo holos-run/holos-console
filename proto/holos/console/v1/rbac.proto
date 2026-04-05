@@ -73,4 +73,8 @@ enum Permission {
   // Project settings permissions
   PERMISSION_PROJECT_SETTINGS_READ = 29;
   PERMISSION_PROJECT_SETTINGS_WRITE = 30;
+
+  // Narrowly-scoped permission for enabling/disabling deployments on a project.
+  // Granted to org-level OWNERs via cascade; designed for future project-level grants.
+  PERMISSION_PROJECT_DEPLOYMENTS_ENABLE = 31;
 }

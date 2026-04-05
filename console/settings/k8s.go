@@ -8,19 +8,14 @@ import (
 
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 const (
-	SettingsConfigMapName = "project-settings"
-	ManagedByLabel        = "app.kubernetes.io/managed-by"
-	ManagedByValue        = "console.holos.run"
-	ResourceTypeLabel     = "console.holos.run/resource-type"
-	ResourceTypeValue     = "project-settings"
-	SettingsDataKey       = "settings.json"
+	// SettingsAnnotation is the annotation key on the project Namespace that
+	// stores the JSON-serialized ProjectSettings.
+	SettingsAnnotation = "console.holos.run/project-settings"
 )
 
 // K8sClient wraps Kubernetes client operations for project settings.
@@ -34,37 +29,46 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 	return &K8sClient{client: client, Resolver: r}
 }
 
-// DefaultSettings returns settings with deployments_enabled=true.
+// DefaultSettings returns settings with deployments_enabled=false.
 func DefaultSettings(project string) *consolev1.ProjectSettings {
 	return &consolev1.ProjectSettings{
 		Project:            project,
-		DeploymentsEnabled: true,
+		DeploymentsEnabled: false,
 	}
 }
 
-// GetSettings returns the settings ConfigMap, or DefaultSettings if not found.
+// GetSettings reads the settings annotation from the project Namespace.
+// Returns DefaultSettings if no annotation is present.
 func (k *K8sClient) GetSettings(ctx context.Context, project string) (*consolev1.ProjectSettings, error) {
 	ns := k.Resolver.ProjectNamespace(project)
-	slog.DebugContext(ctx, "getting project settings from kubernetes",
+	slog.DebugContext(ctx, "getting project settings from namespace annotation",
 		slog.String("project", project),
 		slog.String("namespace", ns),
 	)
 
-	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, SettingsConfigMapName, metav1.GetOptions{})
+	nsObj, err := k.client.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return DefaultSettings(project), nil
-		}
-		return nil, fmt.Errorf("getting settings configmap: %w", err)
+		return nil, fmt.Errorf("getting project namespace: %w", err)
 	}
 
-	return parseSettings(cm, project)
+	raw, ok := nsObj.Annotations[SettingsAnnotation]
+	if !ok || raw == "" {
+		return DefaultSettings(project), nil
+	}
+
+	settings := &consolev1.ProjectSettings{}
+	if err := json.Unmarshal([]byte(raw), settings); err != nil {
+		return nil, fmt.Errorf("parsing settings annotation JSON: %w", err)
+	}
+	// Always set project from the request context, not from stored data
+	settings.Project = project
+	return settings, nil
 }
 
-// UpdateSettings creates or updates the settings ConfigMap.
+// UpdateSettings writes the settings as an annotation on the project Namespace.
 func (k *K8sClient) UpdateSettings(ctx context.Context, settings *consolev1.ProjectSettings) (*consolev1.ProjectSettings, error) {
 	ns := k.Resolver.ProjectNamespace(settings.Project)
-	slog.DebugContext(ctx, "updating project settings in kubernetes",
+	slog.DebugContext(ctx, "updating project settings on namespace annotation",
 		slog.String("project", settings.Project),
 		slog.String("namespace", ns),
 	)
@@ -74,53 +78,37 @@ func (k *K8sClient) UpdateSettings(ctx context.Context, settings *consolev1.Proj
 		return nil, fmt.Errorf("marshaling settings: %w", err)
 	}
 
-	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, SettingsConfigMapName, metav1.GetOptions{})
+	nsObj, err := k.client.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, fmt.Errorf("getting settings configmap: %w", err)
-		}
-		// Create new ConfigMap
-		cm = &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      SettingsConfigMapName,
-				Namespace: ns,
-				Labels: map[string]string{
-					ManagedByLabel:    ManagedByValue,
-					ResourceTypeLabel: ResourceTypeValue,
-				},
-			},
-			Data: map[string]string{
-				SettingsDataKey: string(data),
-			},
-		}
-		if _, err := k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
-			return nil, fmt.Errorf("creating settings configmap: %w", err)
-		}
-		return settings, nil
+		return nil, fmt.Errorf("getting project namespace: %w", err)
 	}
 
-	// Update existing ConfigMap
-	if cm.Data == nil {
-		cm.Data = make(map[string]string)
+	if nsObj.Annotations == nil {
+		nsObj.Annotations = make(map[string]string)
 	}
-	cm.Data[SettingsDataKey] = string(data)
-	if _, err := k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
-		return nil, fmt.Errorf("updating settings configmap: %w", err)
+	nsObj.Annotations[SettingsAnnotation] = string(data)
+
+	if _, err := k.client.CoreV1().Namespaces().Update(ctx, nsObj, metav1.UpdateOptions{}); err != nil {
+		return nil, fmt.Errorf("updating project namespace: %w", err)
 	}
 	return settings, nil
 }
 
-// parseSettings reads ProjectSettings from a ConfigMap's data.
-func parseSettings(cm *corev1.ConfigMap, project string) (*consolev1.ProjectSettings, error) {
-	raw, ok := cm.Data[SettingsDataKey]
-	if !ok {
-		return DefaultSettings(project), nil
+// GetProjectNamespaceRaw returns the raw JSON of the project Namespace with
+// apiVersion and kind set.
+func (k *K8sClient) GetProjectNamespaceRaw(ctx context.Context, project string) (string, error) {
+	ns := k.Resolver.ProjectNamespace(project)
+	nsObj, err := k.client.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("getting project namespace: %w", err)
 	}
-	settings := &consolev1.ProjectSettings{}
-	if err := json.Unmarshal([]byte(raw), settings); err != nil {
-		return nil, fmt.Errorf("parsing settings JSON: %w", err)
+
+	nsObj.APIVersion = "v1"
+	nsObj.Kind = "Namespace"
+
+	raw, err := json.Marshal(nsObj)
+	if err != nil {
+		return "", fmt.Errorf("marshaling namespace to JSON: %w", err)
 	}
-	// Always set project from the request context, not from stored data
-	settings.Project = project
-	return settings, nil
+	return string(raw), nil
 }

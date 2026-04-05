@@ -6,12 +6,16 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // ProjectSettingsService manages per-project configuration.
 service ProjectSettingsService {
   // GetProjectSettings returns the settings for a project.
-  // Returns default settings if no settings ConfigMap exists (deployments_enabled=true).
+  // Returns default settings if no annotation exists (deployments_enabled=false).
   rpc GetProjectSettings(GetProjectSettingsRequest) returns (GetProjectSettingsResponse);
 
   // UpdateProjectSettings updates the settings for a project.
-  // Requires PERMISSION_PROJECT_SETTINGS_WRITE on the project.
+  // Requires PERMISSION_PROJECT_DEPLOYMENTS_ENABLE (granted to org-level OWNERs).
   rpc UpdateProjectSettings(UpdateProjectSettingsRequest) returns (UpdateProjectSettingsResponse);
+
+  // GetProjectSettingsRaw retrieves the full Kubernetes Namespace object backing
+  // the project as verbatim JSON. Requires PERMISSION_PROJECT_SETTINGS_READ.
+  rpc GetProjectSettingsRaw(GetProjectSettingsRawRequest) returns (GetProjectSettingsRawResponse);
 }
 
 message ProjectSettings {
@@ -36,4 +40,12 @@ message UpdateProjectSettingsRequest {
 
 message UpdateProjectSettingsResponse {
   ProjectSettings settings = 1;
+}
+
+message GetProjectSettingsRawRequest {
+  string project = 1;
+}
+
+message GetProjectSettingsRawResponse {
+  string raw = 1;
 }
