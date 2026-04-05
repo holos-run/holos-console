@@ -276,12 +276,12 @@ func (h *Handler) DeleteDeploymentTemplate(
 // multi-document YAML and a pretty-printed JSON array.
 //
 // Authentication is required. The request requires a non-empty cue_template;
-// cue_input is optional (an empty string is valid for templates that have no
-// required inputs).
+// cue_input and cue_system_input are optional (empty strings are valid for
+// templates that have no required inputs or for callers that do not need
+// system context during preview).
 //
-// Access is checked against the project embedded in cue_input when it can be
-// extracted, but this RPC intentionally does not require a top-level project
-// field — the project is carried inside cue_input instead.
+// Access is not checked against a specific project — this RPC is intentionally
+// open to any authenticated user for template authoring and preview purposes.
 func (h *Handler) RenderDeploymentTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.RenderDeploymentTemplateRequest],

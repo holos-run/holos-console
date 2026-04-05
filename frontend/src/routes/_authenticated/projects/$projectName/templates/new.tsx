@@ -26,24 +26,49 @@ package deployment
   configMapKeyRef?:   #KeyRef
 }
 
-// #Input defines the fields the console fills in at render time.
+// #Input defines the user-provided fields the console fills in at render time.
 #Input: {
-  name:      string & =~"^[a-z][a-z0-9-]*$"
-  image:     string
-  tag:       string
-  project:   string
-  namespace: string
+  name:    string & =~"^[a-z][a-z0-9-]*$"
+  image:   string
+  tag:     string
   command?: [...string]
   args?: [...string]
-  env: [...#EnvVar] | *[]
+  env:  [...#EnvVar] | *[]
+  port: int & >0 & <=65535 | *8080
 }
 
-input: #Input
+// #Claims carries the OIDC ID token claims of the authenticated user.
+#Claims: {
+  iss:            string
+  sub:            string
+  exp:            int
+  iat:            int
+  email:          string
+  email_verified: bool
+  name?:          string
+  groups?: [...string]
+  ... // allow provider-specific claims
+}
+
+// #System defines the trusted system-provided fields set by the console backend.
+#System: {
+  project:   string
+  namespace: string
+  claims:    #Claims
+}
+
+input:  #Input
+system: #System
 
 // _labels are the standard labels required on every resource.
 _labels: {
   "app.kubernetes.io/name":       input.name
   "app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+// _annotations are standard annotations applied to every resource.
+_annotations: {
+  "console.holos.run/deployer-email": system.claims.email
 }
 
 // #Namespaced constrains namespaced resource struct keys to match resource metadata.
@@ -68,14 +93,15 @@ _labels: {
 }
 
 namespaced: #Namespaced & {
-  (input.namespace): {
+  (system.namespace): {
     Deployment: (input.name): {
       apiVersion: "apps/v1"
       kind:       "Deployment"
       metadata: {
-        name:      input.name
-        namespace: input.namespace
-        labels:    _labels
+        name:        input.name
+        namespace:   system.namespace
+        labels:      _labels
+        annotations: _annotations
       }
       spec: {
         replicas: 1
@@ -85,6 +111,7 @@ namespaced: #Namespaced & {
           spec: containers: [{
             name:  input.name
             image: input.image + ":" + input.tag
+            ports: [{containerPort: input.port, name: "http"}]
           }]
         }
       }
