@@ -9,8 +9,8 @@ the console reads, and the validation constraints enforced at render time.
 When a user creates or updates a deployment, the console:
 
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
-2. Builds a `DeploymentInput` from the API request fields.
-3. Evaluates the CUE template by unifying the input with the `input` field.
+2. Builds a `SystemInput` (project, namespace, claims) from authenticated server context and a `UserInput` (name, image, tag, etc.) from the API request fields.
+3. Evaluates the CUE template by unifying `UserInput` at the `input` path and `SystemInput` at the `system` path.
 4. Reads the `namespaced` and `cluster` output fields from the evaluated CUE value.
 5. Validates each resource against safety constraints.
 6. Applies the validated resources to Kubernetes via server-side apply.
@@ -20,38 +20,70 @@ The architectural decision to use structured output is recorded in
 
 ## Template Input
 
-The console fills the `input` field at render time. Every CUE template must
-declare `input: #Input` and define `#Input` with at least the following fields.
+The console fills two separate CUE fields at render time:
+
+- **`input`** — user-provided deployment parameters (name, image, tag, etc.)
+- **`system`** — trusted values set by the console backend from authenticated context (project, namespace, OIDC claims)
+
+This separation enforces a trust boundary: templates can reference `system.namespace` for the project namespace and `system.claims` for the authenticated user's identity without risk of user-supplied values overriding them.
 
 ### `#Input` Schema
 
 ```cue
 #Input: {
-    name:      string & =~"^[a-z][a-z0-9-]*$"  // DNS label, max 63 chars
-    image:     string                            // container image (no tag)
-    tag:       string                            // image tag
-    project:   string                            // project name
-    namespace: string                            // resolved K8s namespace
-    command?: [...string]                        // container ENTRYPOINT override
-    args?:    [...string]                        // container CMD override
-    env:      [...#EnvVar] | *[]                 // environment variables
-    port:     int & >0 & <=65535 | *8080         // container port (default 8080)
+    name:    string & =~"^[a-z][a-z0-9-]*$"  // DNS label, max 63 chars
+    image:   string                            // container image (no tag)
+    tag:     string                            // image tag
+    command?: [...string]                      // container ENTRYPOINT override
+    args?:   [...string]                       // container CMD override
+    env:     [...#EnvVar] | *[]                // environment variables
+    port:    int & >0 & <=65535 | *8080        // container port (default 8080)
 }
 ```
 
-### Field Descriptions
+### `#System` Schema
+
+```cue
+#Claims: {
+    iss?:            string
+    sub:             string
+    aud?:            string
+    exp?:            int
+    iat?:            int
+    email:           string
+    email_verified?: bool
+    name?:           string
+    groups?: [...string]
+}
+
+#System: {
+    project:   string    // parent project name
+    namespace: string    // resolved K8s namespace (from Resolver.ProjectNamespace())
+    claims:    #Claims   // OIDC ID token claims of the authenticated user
+}
+```
+
+### `#Input` Field Descriptions
 
 | Field       | Type       | Required | Description |
 |-------------|------------|----------|-------------|
 | `name`      | `string`   | Yes      | Deployment name. Must be a valid DNS label (`^[a-z][a-z0-9-]*$`). |
 | `image`     | `string`   | Yes      | Container image repository (e.g. `ghcr.io/holos-run/holos-console`). |
 | `tag`       | `string`   | Yes      | Image tag (e.g. `v1.2.3`, `latest`). |
-| `project`   | `string`   | Yes      | Parent project name. |
-| `namespace` | `string`   | Yes      | Kubernetes namespace resolved from the project name. Not user-supplied; computed by the server using `Resolver.ProjectNamespace()`. |
 | `command`   | `[...string]` | No   | Overrides the container `ENTRYPOINT`. Omitted when not set. |
 | `args`      | `[...string]` | No   | Overrides the container `CMD`. Omitted when not set. |
 | `env`       | `[...#EnvVar]` | No  | Container environment variables. Defaults to `[]`. |
 | `port`      | `int`      | No       | Container port the application listens on. Must be between 1 and 65535. Defaults to `8080`. The default template names this port `"http"` and creates a Service that maps port 80 to this target. |
+
+### `#System` Field Descriptions
+
+| Field             | Type       | Description |
+|-------------------|------------|-------------|
+| `project`         | `string`   | Parent project name. |
+| `namespace`       | `string`   | Kubernetes namespace resolved from the project name. Computed by the server using `Resolver.ProjectNamespace()`. |
+| `claims.sub`      | `string`   | OIDC subject (unique user ID). |
+| `claims.email`    | `string`   | Authenticated user's email address. |
+| `claims.groups`   | `[...string]` | User's role memberships from the configured OIDC claim. |
 
 ### `#EnvVar` Schema
 
@@ -131,13 +163,13 @@ A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 The default template produces three namespaced resources:
 
 ```cue
-namespaced: (input.namespace): {
+namespaced: (system.namespace): {
     ServiceAccount: (input.name): {
         apiVersion: "v1"
         kind:       "ServiceAccount"
         metadata: {
             name:      input.name
-            namespace: input.namespace
+            namespace: system.namespace
             labels:    _labels
         }
     }
@@ -172,7 +204,7 @@ Each resource must have:
 - `metadata.name` — non-empty
 
 Namespaced resources additionally require:
-- `metadata.namespace` — must exactly match the struct key and the project namespace
+- `metadata.namespace` — must exactly match the struct key and `system.namespace`
 
 Cluster resources additionally require:
 - `metadata.namespace` — must be absent (cluster-scoped resources have no namespace)
@@ -236,18 +268,35 @@ package deployment
 }
 
 #Input: {
-    name:      string & =~"^[a-z][a-z0-9-]*$"
-    image:     string
-    tag:       string
-    project:   string
-    namespace: string
+    name:    string & =~"^[a-z][a-z0-9-]*$"
+    image:   string
+    tag:     string
     command?: [...string]
     args?: [...string]
     env:  [...#EnvVar] | *[]
     port: int & >0 & <=65535 | *8080
 }
 
-input: #Input
+#Claims: {
+    iss?:            string
+    sub:             string
+    aud?:            string
+    exp?:            int
+    iat?:            int
+    email:           string
+    email_verified?: bool
+    name?:           string
+    groups?: [...string]
+}
+
+#System: {
+    project:   string
+    namespace: string
+    claims:    #Claims
+}
+
+input:  #Input
+system: #System
 
 _labels: {
     "app.kubernetes.io/name":       input.name
@@ -276,13 +325,13 @@ _labels: {
 }
 
 namespaced: #Namespaced & {
-    (input.namespace): {
+    (system.namespace): {
         Deployment: (input.name): {
             apiVersion: "apps/v1"
             kind:       "Deployment"
             metadata: {
                 name:      input.name
-                namespace: input.namespace
+                namespace: system.namespace
                 labels:    _labels
             }
             spec: {
@@ -306,12 +355,13 @@ cluster: #Cluster & {}
 ### Guidelines
 
 1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
-2. **Always declare `input: #Input`** — this is the unification point where the console injects deployment parameters.
+2. **Always declare `input: #Input` and `system: #System`** — these are the unification points where the console injects user and system parameters respectively.
 3. **Always declare `namespaced` and `cluster` output fields** — the console requires the structured output format.
 4. **Always include the managed-by label** on every resource or validation will reject the render.
-5. **Set `metadata.namespace` to `input.namespace`** on every namespaced resource — cross-namespace resources are rejected.
+5. **Set `metadata.namespace` to `system.namespace`** on every namespaced resource — cross-namespace resources are rejected.
 6. **Match struct keys to metadata** — `namespaced.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
 7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
+8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
 
 ### Previewing Templates
 
@@ -322,36 +372,30 @@ returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
 a pretty-printed JSON array (`rendered_json`). Useful for validating templates
 during authoring.
 
+The `cue_input` must provide both `input` (user parameters) and `system`
+(trusted backend values). In the RPC, the backend fills `system` from
+authenticated context when `cue_system_input` is provided; for preview purposes
+the caller may supply a `cue_input` that includes both.
+
 Example `cue_input`:
 
 ```cue
 input: {
-    name:      "my-app"
-    image:     "ghcr.io/example/my-app"
-    tag:       "v1.0.0"
+    name:  "my-app"
+    image: "ghcr.io/example/my-app"
+    tag:   "v1.0.0"
+}
+system: {
     project:   "my-project"
     namespace: "holos-prj-my-project"
+    claims: {
+        sub:   "user-123"
+        email: "user@example.com"
+    }
 }
 ```
 
 ## Planned Extensions
-
-### Platform Input
-
-A second input field for platform-mandated configuration is planned. This will
-allow platform teams to inject organization-wide policy (e.g., security
-contexts, resource limits, network policies, sidecar containers) separately from
-user-controlled deployment parameters.
-
-The planned interface:
-
-```cue
-input:    #Input           // user-controlled deployment parameters (existing)
-platform: #PlatformInput   // platform-mandated configuration (planned)
-```
-
-Template authors will be able to reference `platform` fields to apply
-organization-level policy without requiring users to specify them per deployment.
 
 ### Cluster Resource Support
 
@@ -378,9 +422,9 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `DeploymentInput` to JSON, unifies via `FillPath("input")`, walks structured `namespaced`/`cluster` output fields, validates. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: compiles CUE source, unifies with a raw CUE input string at the top level, extracts `input.namespace` from the unified value. |
-| `console/deployments/render.go:44-54` | `DeploymentInput` struct — the Go representation of `#Input` used by the deployment service, serialized to JSON for CUE unification. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `UserInput` to JSON and fills `"input"`, marshals `SystemInput` and fills `"system"`, walks structured `namespaced`/`cluster` output fields, validates. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: compiles CUE source, unifies with a raw CUE input string at the top level, extracts `system.namespace` from the unified value. |
+| `console/deployments/render.go` | `ClaimsInput`, `SystemInput`, `UserInput` structs — split Go representation of template inputs. `SystemInput` (project, namespace, claims) is trusted backend context; `UserInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` adds namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
@@ -397,7 +441,7 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go:240-269` | Create flow — builds `DeploymentInput`, calls `Render()`, then `Apply()`. |
+| `console/deployments/handler.go` | Create/Update flow — builds `SystemInput` from authenticated context and `UserInput` from API request fields, calls `Render()`, then `Apply()`. |
 | `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
