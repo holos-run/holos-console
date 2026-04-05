@@ -69,18 +69,13 @@ export function createAuthInterceptor(): Interceptor {
       req.header.set('Authorization', `Bearer ${tokenRef.current}`)
     }
 
-    let isRetry = false
-
     try {
       return await next(req)
     } catch (err) {
-      // Only handle Unauthenticated errors on first attempt.
-      if (
-        !isRetry &&
-        err instanceof ConnectError &&
-        err.code === Code.Unauthenticated
-      ) {
-        isRetry = true
+      // On Unauthenticated, renew the token and retry once.
+      // The retry is outside the try-catch so a second 401 propagates
+      // directly without looping back here.
+      if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
         // Renew token (coalesced with other concurrent 401s).
         const freshToken = await renewToken()
         // Update the request header with the fresh token for the retry.
