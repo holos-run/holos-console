@@ -105,6 +105,38 @@ export declare type UpdateProjectSettingsResponse = Message<"holos.console.v1.Up
 export declare const UpdateProjectSettingsResponseSchema: GenMessage<UpdateProjectSettingsResponse>;
 
 /**
+ * @generated from message holos.console.v1.GetProjectSettingsRawRequest
+ */
+export declare type GetProjectSettingsRawRequest = Message<"holos.console.v1.GetProjectSettingsRawRequest"> & {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectSettingsRawRequest.
+ * Use `create(GetProjectSettingsRawRequestSchema)` to create a new message.
+ */
+export declare const GetProjectSettingsRawRequestSchema: GenMessage<GetProjectSettingsRawRequest>;
+
+/**
+ * @generated from message holos.console.v1.GetProjectSettingsRawResponse
+ */
+export declare type GetProjectSettingsRawResponse = Message<"holos.console.v1.GetProjectSettingsRawResponse"> & {
+  /**
+   * @generated from field: string raw = 1;
+   */
+  raw: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectSettingsRawResponse.
+ * Use `create(GetProjectSettingsRawResponseSchema)` to create a new message.
+ */
+export declare const GetProjectSettingsRawResponseSchema: GenMessage<GetProjectSettingsRawResponse>;
+
+/**
  * ProjectSettingsService manages per-project configuration.
  *
  * @generated from service holos.console.v1.ProjectSettingsService
@@ -112,7 +144,7 @@ export declare const UpdateProjectSettingsResponseSchema: GenMessage<UpdateProje
 export declare const ProjectSettingsService: GenService<{
   /**
    * GetProjectSettings returns the settings for a project.
-   * Returns default settings if no settings ConfigMap exists (deployments_enabled=true).
+   * Returns default settings if no annotation exists (deployments_enabled=false).
    *
    * @generated from rpc holos.console.v1.ProjectSettingsService.GetProjectSettings
    */
@@ -123,7 +155,7 @@ export declare const ProjectSettingsService: GenService<{
   },
   /**
    * UpdateProjectSettings updates the settings for a project.
-   * Requires PERMISSION_PROJECT_SETTINGS_WRITE on the project.
+   * Requires PERMISSION_PROJECT_DEPLOYMENTS_ENABLE (granted to org-level OWNERs).
    *
    * @generated from rpc holos.console.v1.ProjectSettingsService.UpdateProjectSettings
    */
@@ -131,6 +163,17 @@ export declare const ProjectSettingsService: GenService<{
     methodKind: "unary";
     input: typeof UpdateProjectSettingsRequestSchema;
     output: typeof UpdateProjectSettingsResponseSchema;
+  },
+  /**
+   * GetProjectSettingsRaw retrieves the full Kubernetes Namespace object backing
+   * the project as verbatim JSON. Requires PERMISSION_PROJECT_SETTINGS_READ.
+   *
+   * @generated from rpc holos.console.v1.ProjectSettingsService.GetProjectSettingsRaw
+   */
+  getProjectSettingsRaw: {
+    methodKind: "unary";
+    input: typeof GetProjectSettingsRawRequestSchema;
+    output: typeof GetProjectSettingsRawResponseSchema;
   },
 }>;
 

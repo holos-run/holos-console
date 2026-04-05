@@ -251,6 +251,14 @@ export enum Permission {
    * @generated from enum value: PERMISSION_PROJECT_SETTINGS_WRITE = 30;
    */
   PROJECT_SETTINGS_WRITE = 30,
+
+  /**
+   * Narrowly-scoped permission for enabling/disabling deployments on a project.
+   * Granted to org-level OWNERs via cascade; designed for future project-level grants.
+   *
+   * @generated from enum value: PERMISSION_PROJECT_DEPLOYMENTS_ENABLE = 31;
+   */
+  PROJECT_DEPLOYMENTS_ENABLE = 31,
 }
 
 /**
