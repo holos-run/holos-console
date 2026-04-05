@@ -53,6 +53,7 @@ export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated
     HTTPBIN_EXAMPLE_NAME,
     HTTPBIN_EXAMPLE_IMAGE,
     HTTPBIN_EXAMPLE_TAG,
+    open && previewOpen,
   )
 
   const slugify = (val: string) =>

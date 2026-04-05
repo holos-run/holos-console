@@ -87,6 +87,7 @@ export function useRenderDeploymentTemplate(
   exampleName = 'holos-console',
   exampleImage = 'ghcr.io/holos-run/holos-console',
   exampleTag = 'latest',
+  enabled = true,
 ) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
@@ -103,7 +104,7 @@ export function useRenderDeploymentTemplate(
       })
       return { renderedYaml: response.renderedYaml, renderedJson: response.renderedJson }
     },
-    enabled: isAuthenticated && !!project && !!cueTemplate,
+    enabled: isAuthenticated && !!project && !!cueTemplate && enabled,
     retry: false,
   })
 }
