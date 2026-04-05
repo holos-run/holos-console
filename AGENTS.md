@@ -197,6 +197,8 @@ Three-tier access control model evaluated in order (highest role wins):
 
 Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-roles`
 
+Metadata annotations on org/project namespaces: `console.holos.run/display-name`, `console.holos.run/creator-email` (email of the user who created the resource, written at creation time from the OIDC email claim)
+
 Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{name}`):
 - Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)
 - Projects: `{namespace-prefix}{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)

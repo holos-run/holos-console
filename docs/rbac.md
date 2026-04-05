@@ -77,6 +77,17 @@ Cascade behavior is defined by explicit permission tables per scope (`CascadeTab
 
 Organization grants have no cascade tables — they never cascade to projects or secrets ([ADR 007](adrs/007-org-grants-no-cascade.md)).
 
+## Metadata Annotations
+
+Metadata annotations are stored on organization and project Namespace resources:
+
+| Annotation | Resource | Description |
+|---|---|---|
+| `console.holos.run/display-name` | Organization, Project | Human-readable display name |
+| `console.holos.run/creator-email` | Organization, Project | Email address of the user who created the resource |
+
+The `creator-email` annotation is written at creation time from the authenticated user's OIDC email claim. It is read-only after creation and surfaced in the settings UI.
+
 ## Grant Annotations
 
 Grants are stored as JSON annotations on Namespace and Secret resources:
@@ -142,6 +153,7 @@ metadata:
     console.holos.run/resource-type: organization
   annotations:
     console.holos.run/display-name: "My Organization"
+    console.holos.run/creator-email: "alice@example.com"
     console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
     console.holos.run/share-roles: '[{"principal":"dev-team","role":"editor"}]'
 ---
@@ -157,6 +169,7 @@ metadata:
     console.holos.run/project: my-project
   annotations:
     console.holos.run/display-name: "My Project"
+    console.holos.run/creator-email: "bob@example.com"
     console.holos.run/description: "Production secrets"
     console.holos.run/share-users: '[{"principal":"bob@example.com","role":"viewer","exp":1735689600}]'
 ---
