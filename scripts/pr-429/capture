@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #429: CUE input editor in preview tab.
+#
+# Captures:
+#   1. Template detail page — editor tab (default view)
+#   2. Template detail page — preview tab with CUE input editor and rendered YAML
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+ORG_NAME="e2e-pr429-org"
+PROJECT_NAME="e2e-pr429-prj"
+TEMPLATE_NAME="e2e-pr429-tmpl"
+
+AB="agent-browser --session-name holos-dev"
+
+# Get the OIDC token from the browser session (output is JSON-quoted, strip quotes)
+get_token() {
+  $AB eval "
+(function() {
+  const key = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'));
+  if (!key) throw new Error('no session');
+  const data = JSON.parse(sessionStorage.getItem(key));
+  return data.access_token;
+})()" 2>/dev/null | tr -d '"'
+}
+
+create_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/CreateOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\"}" > /dev/null
+}
+
+create_project() {
+  local name="$1" org="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/CreateProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\",\"organization\":\"${org}\"}" > /dev/null
+}
+
+create_template() {
+  local project="$1" name="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.DeploymentTemplateService/CreateDeploymentTemplate" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"project\":\"${project}\",\"name\":\"${name}\",\"displayName\":\"Preview Tab Template\",\"description\":\"Template for PR 429 screenshot\",\"cueTemplate\":\"\"}" > /dev/null
+}
+
+delete_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/DeleteOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+delete_project() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/DeleteProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+cleanup() {
+  delete_project "$PROJECT_NAME" 2>/dev/null || true
+  delete_org "$ORG_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+create_org "$ORG_NAME"
+create_project "$PROJECT_NAME" "$ORG_NAME"
+create_template "$PROJECT_NAME" "$TEMPLATE_NAME"
+
+TEMPLATE_URL="${HOLOS_BACKEND_URL}/projects/${PROJECT_NAME}/templates/${TEMPLATE_NAME}"
+
+# Screenshot 1: Template detail — editor tab (default)
+$AB open "$TEMPLATE_URL"
+$AB wait --load networkidle
+$AB wait 1500
+$AB screenshot "${PR_SCREENSHOT_DIR}/template-editor-tab.png"
+
+# Screenshot 2: Template detail — preview tab (CUE input editor + rendered YAML area)
+$AB open "$TEMPLATE_URL"
+$AB wait --load networkidle
+$AB wait 500
+# Use accessibility ref-based click via snapshot: click the "Preview" tab
+$AB eval "
+(function() {
+  const tabs = document.querySelectorAll('[role=tab]');
+  const preview = Array.from(tabs).find(t => t.textContent.trim() === 'Preview');
+  if (preview) { preview.click(); }
+})()
+"
+$AB wait 1000
+$AB screenshot "${PR_SCREENSHOT_DIR}/template-preview-tab.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"
