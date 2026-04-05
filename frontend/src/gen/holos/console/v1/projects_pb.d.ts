@@ -80,6 +80,20 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
    * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 9;
    */
   defaultRoleGrants: ShareGrant[];
+
+  /**
+   * creator_email is the email address of the user who created this project.
+   *
+   * @generated from field: string creator_email = 10;
+   */
+  creatorEmail: string;
+
+  /**
+   * created_at is the RFC3339-formatted timestamp when this project was created.
+   *
+   * @generated from field: string created_at = 11;
+   */
+  createdAt: string;
 };
 
 /**

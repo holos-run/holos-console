@@ -62,6 +62,10 @@ message Organization {
   repeated ShareGrant default_user_grants = 7;
   // default_role_grants are the per-role sharing grants applied by default to new projects in this organization.
   repeated ShareGrant default_role_grants = 8;
+  // creator_email is the email address of the user who created this organization.
+  string creator_email = 9;
+  // created_at is the RFC3339-formatted timestamp when this organization was created.
+  string created_at = 10;
 }
 
 // ListOrganizationsRequest contains optional filters for listing organizations.

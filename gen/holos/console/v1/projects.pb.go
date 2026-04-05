@@ -42,8 +42,12 @@ type Project struct {
 	DefaultUserGrants []*ShareGrant `protobuf:"bytes,8,rep,name=default_user_grants,json=defaultUserGrants,proto3" json:"default_user_grants,omitempty"`
 	// default_role_grants are the per-role sharing grants applied by default to new secrets in this project.
 	DefaultRoleGrants []*ShareGrant `protobuf:"bytes,9,rep,name=default_role_grants,json=defaultRoleGrants,proto3" json:"default_role_grants,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// creator_email is the email address of the user who created this project.
+	CreatorEmail string `protobuf:"bytes,10,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`
+	// created_at is the RFC3339-formatted timestamp when this project was created.
+	CreatedAt     string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Project) Reset() {
@@ -137,6 +141,20 @@ func (x *Project) GetDefaultRoleGrants() []*ShareGrant {
 		return x.DefaultRoleGrants
 	}
 	return nil
+}
+
+func (x *Project) GetCreatorEmail() string {
+	if x != nil {
+		return x.CreatorEmail
+	}
+	return ""
+}
+
+func (x *Project) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
 }
 
 // ListProjectsRequest contains optional filters for listing projects.
@@ -960,7 +978,7 @@ var File_holos_console_v1_projects_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\n" +
-	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xd5\x03\n" +
+	"\x1fholos/console/v1/projects.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\x99\x04\n" +
 	"\aProject\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -972,7 +990,11 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\x12\"\n" +
 	"\forganization\x18\a \x01(\tR\forganization\x12L\n" +
 	"\x13default_user_grants\x18\b \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultUserGrants\x12L\n" +
-	"\x13default_role_grants\x18\t \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultRoleGrants\"9\n" +
+	"\x13default_role_grants\x18\t \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultRoleGrants\x12#\n" +
+	"\rcreator_email\x18\n" +
+	" \x01(\tR\fcreatorEmail\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\"9\n" +
 	"\x13ListProjectsRequest\x12\"\n" +
 	"\forganization\x18\x01 \x01(\tR\forganization\"M\n" +
 	"\x14ListProjectsResponse\x125\n" +
