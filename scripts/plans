@@ -1,0 +1,49 @@
+#!/bin/bash
+# List plan issues ready for agent dispatch, excluding backlog.
+#
+# Usage:
+#   scripts/plans              # list actionable plan issues
+#   scripts/plans --backlog    # list backlog plan issues
+#   scripts/plans --all        # list all plan issues
+
+set -euo pipefail
+
+case "${1:-}" in
+  --backlog)
+    FILTER="only-backlog"
+    ;;
+  --all)
+    FILTER=""
+    ;;
+  "")
+    FILTER="exclude-backlog"
+    ;;
+  *)
+    echo "Usage: scripts/plans [--backlog | --all]" >&2
+    exit 1
+    ;;
+esac
+
+# Fetch all plan issues with body to count sub-issues
+ALL=$(gh issue list --state open --label plan --json number,title,url,labels,body)
+
+echo "$ALL" | jq -r --arg filter "$FILTER" '
+  # Filter based on backlog label
+  (if $filter == "exclude-backlog" then
+    [.[] | select(.labels | map(.name) | index("backlog") | not)]
+  elif $filter == "only-backlog" then
+    [.[] | select(.labels | map(.name) | index("backlog"))]
+  else
+    .
+  end)
+  # Sort oldest first
+  | sort_by(.number)
+  # Count sub-issues: lines matching "- [ ] #N" or "- [x] #N"
+  | .[] | {
+      number,
+      title,
+      url,
+      subs: [.body | scan("- \\[[ x]\\] #[0-9]+")] | length
+    }
+  | "#\(.number)  \(.title)  (\(.subs) sub-issues)\n  \(.url)\n"
+'
