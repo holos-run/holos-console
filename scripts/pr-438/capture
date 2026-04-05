@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #438 — debounce CUE input render with stale/fresh status indicator.
+#
+# Captures:
+#   1. Template detail — preview tab showing the "Up to date" (fresh) indicator
+#   2. Template detail — preview tab after input change showing "Out of date" (stale) indicator
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+ORG_NAME="e2e-pr438-org"
+PROJECT_NAME="e2e-pr438-prj"
+TEMPLATE_NAME="e2e-pr438-tmpl"
+
+AB="agent-browser --session-name holos-dev"
+
+get_token() {
+  $AB eval "
+(function() {
+  const key = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'));
+  if (!key) throw new Error('no session');
+  const data = JSON.parse(sessionStorage.getItem(key));
+  return data.access_token;
+})()" 2>/dev/null | tr -d '"'
+}
+
+create_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/CreateOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\"}" > /dev/null
+}
+
+create_project() {
+  local name="$1" org="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/CreateProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\",\"displayName\":\"${name}\",\"organization\":\"${org}\"}" > /dev/null
+}
+
+create_template() {
+  local project="$1" name="$2"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.DeploymentTemplateService/CreateDeploymentTemplate" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"project\":\"${project}\",\"name\":\"${name}\",\"displayName\":\"PR 438 Template\",\"description\":\"Debounce status indicator demo\",\"cueTemplate\":\"\"}" > /dev/null
+}
+
+delete_org() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.OrganizationService/DeleteOrganization" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+delete_project() {
+  local name="$1"
+  curl -sk -X POST "${HOLOS_BACKEND_URL}/holos.console.v1.ProjectService/DeleteProject" \
+    -H "Content-Type: application/json" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Authorization: Bearer $(get_token)" \
+    -d "{\"name\":\"${name}\"}" > /dev/null
+}
+
+cleanup() {
+  delete_project "$PROJECT_NAME" 2>/dev/null || true
+  delete_org "$ORG_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+create_org "$ORG_NAME"
+create_project "$PROJECT_NAME" "$ORG_NAME"
+create_template "$PROJECT_NAME" "$TEMPLATE_NAME"
+
+TEMPLATE_URL="${HOLOS_BACKEND_URL}/projects/${PROJECT_NAME}/templates/${TEMPLATE_NAME}"
+
+# Open template detail page
+$AB open "$TEMPLATE_URL"
+$AB wait --load networkidle
+$AB wait 500
+
+# Click the Preview tab
+$AB click "[role=tab]:has-text('Preview')"
+# Wait for initial render + debounce to settle (500ms debounce + render time)
+$AB wait 2000
+
+# Screenshot 1: Fresh/up-to-date indicator after initial render
+$AB screenshot "${PR_SCREENSHOT_DIR}/preview-fresh-indicator.png"
+
+# Screenshot 2: Type in the CUE input editor to trigger stale state
+$AB fill "[aria-label='CUE Input']" "input: { name: \"changed\" }"
+# Take screenshot immediately (before 500ms debounce fires) to capture stale state
+$AB wait 100
+$AB screenshot "${PR_SCREENSHOT_DIR}/preview-stale-indicator.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"

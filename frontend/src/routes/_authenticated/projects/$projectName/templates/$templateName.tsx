@@ -20,10 +20,69 @@ import {
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,
 })
+
+interface RenderStatusIndicatorProps {
+  isStale: boolean
+  isRendering: boolean
+  hasError: boolean
+}
+
+function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusIndicatorProps) {
+  if (isRendering) {
+    return (
+      <span aria-label="Render status: rendering" className="flex items-center gap-1 text-xs text-muted-foreground">
+        {/* Spinning loader */}
+        <svg className="size-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+        Rendering…
+      </span>
+    )
+  }
+
+  if (hasError) {
+    return (
+      <span aria-label="Render status: error" className="flex items-center gap-1 text-xs text-destructive">
+        {/* X circle */}
+        <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M15 9l-6 6M9 9l6 6" />
+        </svg>
+        Error
+      </span>
+    )
+  }
+
+  if (isStale) {
+    return (
+      <span aria-label="Render status: stale" className="flex items-center gap-1 text-xs text-amber-500">
+        {/* Clock icon */}
+        <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </svg>
+        Out of date
+      </span>
+    )
+  }
+
+  return (
+    <span aria-label="Render status: fresh" className="flex items-center gap-1 text-xs text-green-500">
+      {/* Check circle */}
+      <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+      Up to date
+    </span>
+  )
+}
 
 function DeploymentTemplateDetailRoute() {
   const { projectName, templateName } = Route.useParams()
@@ -64,7 +123,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
 
-  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(cueTemplate, cueInput, activeTab === 'preview')
+  const debouncedCueInput = useDebouncedValue(cueInput, 500)
+  const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
+  const isStale = cueInput !== debouncedCueInput || cueTemplate !== debouncedCueTemplate
+  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(debouncedCueTemplate, debouncedCueInput, activeTab === 'preview')
   const renderedYaml = renderData?.renderedYaml
 
   const handleSave = async () => {
@@ -180,7 +242,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Rendered YAML</Label>
+                  <div className="flex items-center gap-2">
+                    <Label>Rendered YAML</Label>
+                    <RenderStatusIndicator isStale={isStale} isRendering={isRendering} hasError={!!renderError} />
+                  </div>
                   {renderError ? (
                     <Alert variant="destructive">
                       <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
@@ -190,7 +255,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       aria-label="Rendered YAML"
                       className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
                     >
-                      {isRendering ? 'Rendering…' : (renderedYaml ?? '')}
+                      {renderedYaml ?? ''}
                     </pre>
                   )}
                 </div>
