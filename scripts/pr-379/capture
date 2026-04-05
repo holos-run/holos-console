@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #379: JSON preview in create template modal
+set -euo pipefail
+
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-379}"
+
+# Navigate to the garage project templates page
+agent-browser navigate "${HOLOS_BACKEND_URL}/projects/garage/templates"
+sleep 2
+agent-browser screenshot "${SCREENSHOT_DIR}/templates-page.png"
+
+# Use @ref-based click on the Create Template button (find it via eval)
+agent-browser eval "document.querySelector('button') && document.querySelector('button').textContent"
+# Click via JavaScript eval
+agent-browser eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Create Template'))?.click()"
+sleep 1
+agent-browser screenshot "${SCREENSHOT_DIR}/create-template-modal.png"
+
+# Click Preview button via JavaScript
+agent-browser eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Preview')?.click()"
+sleep 4
+agent-browser screenshot "${SCREENSHOT_DIR}/create-template-modal-preview.png"
+
+echo "Screenshots captured to ${SCREENSHOT_DIR}"
