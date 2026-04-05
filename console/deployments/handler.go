@@ -46,7 +46,7 @@ type TemplateResolver interface {
 
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error)
+	Render(ctx context.Context, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -241,18 +241,27 @@ func (h *Handler) CreateDeployment(
 	// Render and apply the deployment resources.
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		input := DeploymentInput{
-			Name:      name,
-			Image:     req.Msg.Image,
-			Tag:       req.Msg.Tag,
+		system := SystemInput{
 			Project:   project,
 			Namespace: ns,
-			Command:   req.Msg.Command,
-			Args:      req.Msg.Args,
-			Env:       envInputs,
-			Port:      req.Msg.Port,
+			Claims: ClaimsInput{
+				Sub:           claims.Sub,
+				Email:         claims.Email,
+				EmailVerified: claims.EmailVerified,
+				Name:          claims.Name,
+				Groups:        claims.Roles,
+			},
 		}
-		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
+		user := UserInput{
+			Name:    name,
+			Image:   req.Msg.Image,
+			Tag:     req.Msg.Tag,
+			Command: req.Msg.Command,
+			Args:    req.Msg.Args,
+			Env:     envInputs,
+			Port:    req.Msg.Port,
+		}
+		resources, renderErr := h.renderer.Render(ctx, cueSource, system, user)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment",
 				slog.String("project", project),
@@ -339,18 +348,27 @@ func (h *Handler) UpdateDeployment(
 		}
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		input := DeploymentInput{
-			Name:      name,
-			Image:     image,
-			Tag:       tag,
+		system := SystemInput{
 			Project:   project,
 			Namespace: ns,
-			Command:   commandFromConfigMap(updated),
-			Args:      argsFromConfigMap(updated),
-			Env:       envFromConfigMapAsInputs(updated),
-			Port:      portFromConfigMap(updated),
+			Claims: ClaimsInput{
+				Sub:           claims.Sub,
+				Email:         claims.Email,
+				EmailVerified: claims.EmailVerified,
+				Name:          claims.Name,
+				Groups:        claims.Roles,
+			},
 		}
-		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
+		user := UserInput{
+			Name:    name,
+			Image:   image,
+			Tag:     tag,
+			Command: commandFromConfigMap(updated),
+			Args:    argsFromConfigMap(updated),
+			Env:     envFromConfigMapAsInputs(updated),
+			Port:    portFromConfigMap(updated),
+		}
+		resources, renderErr := h.renderer.Render(ctx, cueSource, system, user)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),

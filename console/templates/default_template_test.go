@@ -14,15 +14,14 @@ import (
 func TestDefaultTemplate(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	input := deployments.DeploymentInput{
-		Name:      "holos-console",
-		Image:     "ghcr.io/holos-run/holos-console",
-		Tag:       "latest",
-		Project:   "my-project",
-		Namespace: namespace,
+	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	user := deployments.UserInput{
+		Name:  "holos-console",
+		Image: "ghcr.io/holos-run/holos-console",
+		Tag:   "latest",
 	}
 
-	resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 	if err != nil {
 		t.Fatalf("default template render failed: %v", err)
 	}
@@ -78,19 +77,18 @@ func TestDefaultTemplate(t *testing.T) {
 func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
+	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
 
 	t.Run("command and args appear in container spec", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
-			Command:   []string{"myapp"},
-			Args:      []string{"--port", "8080"},
+		user := deployments.UserInput{
+			Name:    "holos-console",
+			Image:   "ghcr.io/holos-run/holos-console",
+			Tag:     "latest",
+			Command: []string{"myapp"},
+			Args:    []string{"--port", "8080"},
 		}
 
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("default template render failed: %v", err)
 		}
@@ -121,15 +119,13 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	})
 
 	t.Run("command and args absent when not provided", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
 		}
 
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("default template render failed: %v", err)
 		}
@@ -163,16 +159,15 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 func TestDefaultTemplate_EnvVars(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
+	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
 
 	t.Run("no env vars renders without env field", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -197,17 +192,13 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("literal env var renders as value", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
-			Env: []deployments.EnvVarInput{
-				{Name: "FOO", Value: "bar"},
-			},
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
+			Env:   []deployments.EnvVarInput{{Name: "FOO", Value: "bar"}},
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -229,17 +220,13 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("secret ref renders as valueFrom.secretKeyRef", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
-			Env: []deployments.EnvVarInput{
-				{Name: "DB_PASS", SecretKeyRef: &deployments.KeyRefInput{Name: "my-secret", Key: "password"}},
-			},
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
+			Env:   []deployments.EnvVarInput{{Name: "DB_PASS", SecretKeyRef: &deployments.KeyRefInput{Name: "my-secret", Key: "password"}}},
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -266,17 +253,13 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("configmap ref renders as valueFrom.configMapKeyRef", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
-			Env: []deployments.EnvVarInput{
-				{Name: "APP_MODE", ConfigMapKeyRef: &deployments.KeyRefInput{Name: "my-config", Key: "mode"}},
-			},
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
+			Env:   []deployments.EnvVarInput{{Name: "APP_MODE", ConfigMapKeyRef: &deployments.KeyRefInput{Name: "my-config", Key: "mode"}}},
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -303,19 +286,17 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("mixed env var types render correctly", func(t *testing.T) {
-		input := deployments.DeploymentInput{
-			Name:      "holos-console",
-			Image:     "ghcr.io/holos-run/holos-console",
-			Tag:       "latest",
-			Project:   "my-project",
-			Namespace: namespace,
+		user := deployments.UserInput{
+			Name:  "holos-console",
+			Image: "ghcr.io/holos-run/holos-console",
+			Tag:   "latest",
 			Env: []deployments.EnvVarInput{
 				{Name: "FOO", Value: "bar"},
 				{Name: "DB_PASS", SecretKeyRef: &deployments.KeyRefInput{Name: "my-secret", Key: "password"}},
 				{Name: "APP_MODE", ConfigMapKeyRef: &deployments.KeyRefInput{Name: "my-config", Key: "mode"}},
 			},
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -342,15 +323,14 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	input := deployments.DeploymentInput{
-		Name:      "holos-console",
-		Image:     "ghcr.io/holos-run/holos-console",
-		Tag:       "latest",
-		Project:   "my-project",
-		Namespace: namespace,
+	system := deployments.SystemInput{Project: "my-project", Namespace: namespace}
+	user := deployments.UserInput{
+		Name:  "holos-console",
+		Image: "ghcr.io/holos-run/holos-console",
+		Tag:   "latest",
 	}
 
-	resources, err := renderer.Render(context.Background(), DefaultTemplate, input)
+	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 	if err != nil {
 		t.Fatalf("default template render failed: %v", err)
 	}
@@ -376,8 +356,8 @@ func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 		}
 
 		// Every resource must have the expected name.
-		if r.GetName() != input.Name {
-			t.Errorf("resource %s: expected name %q, got %q", r.GetKind(), input.Name, r.GetName())
+		if r.GetName() != user.Name {
+			t.Errorf("resource %s: expected name %q, got %q", r.GetKind(), user.Name, r.GetName())
 		}
 	}
 

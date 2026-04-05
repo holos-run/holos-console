@@ -735,6 +735,11 @@ func (*DeleteDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
 type RenderDeploymentTemplateRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	CueTemplate string                 `protobuf:"bytes,2,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"` // CUE source to evaluate
+	// cue_system_input contains CUE source for system-provided values (project,
+	// namespace, claims).  These values are trusted — set by the console backend
+	// from authenticated context.  The claims field carries the OIDC ID token
+	// claims of the authenticated user.
+	CueSystemInput string `protobuf:"bytes,7,opt,name=cue_system_input,json=cueSystemInput,proto3" json:"cue_system_input,omitempty"`
 	// cue_input contains valid CUE source that is unified with cue_template at
 	// the "input" path to supply concrete values for template parameters.
 	// Example:
@@ -743,8 +748,6 @@ type RenderDeploymentTemplateRequest struct {
 	//	  name:      "holos-console"
 	//	  image:     "ghcr.io/holos-run/holos-console"
 	//	  tag:       "latest"
-	//	  project:   "garage"
-	//	  namespace: "holos-prj-garage"
 	//	}
 	CueInput      string `protobuf:"bytes,6,opt,name=cue_input,json=cueInput,proto3" json:"cue_input,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -784,6 +787,13 @@ func (*RenderDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
 func (x *RenderDeploymentTemplateRequest) GetCueTemplate() string {
 	if x != nil {
 		return x.CueTemplate
+	}
+	return ""
+}
+
+func (x *RenderDeploymentTemplateRequest) GetCueSystemInput() string {
+	if x != nil {
+		return x.CueSystemInput
 	}
 	return ""
 }
@@ -904,9 +914,10 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x1fDeleteDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"\"\n" +
-	" DeleteDeploymentTemplateResponse\"a\n" +
+	" DeleteDeploymentTemplateResponse\"\x8b\x01\n" +
 	"\x1fRenderDeploymentTemplateRequest\x12!\n" +
-	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12\x1b\n" +
+	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12(\n" +
+	"\x10cue_system_input\x18\a \x01(\tR\x0ecueSystemInput\x12\x1b\n" +
 	"\tcue_input\x18\x06 \x01(\tR\bcueInput\"l\n" +
 	" RenderDeploymentTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +

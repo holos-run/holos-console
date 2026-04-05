@@ -6,14 +6,18 @@ import (
 	"testing"
 )
 
-// adapterStructuredTemplate uses the namespaced/cluster structured output format.
+// adapterStructuredTemplate uses the namespaced/cluster structured output format
+// with the new system/input split structure.
 const adapterStructuredTemplate = `
 package deployment
 
 input: {
-	name:      string
-	image:     string
-	tag:       string
+	name:  string
+	image: string
+	tag:   string
+}
+
+system: {
 	project:   string
 	namespace: string
 }
@@ -23,13 +27,13 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-namespaced: (input.namespace): {
+namespaced: (system.namespace): {
 	ServiceAccount: (input.name): {
 		apiVersion: "v1"
 		kind:       "ServiceAccount"
 		metadata: {
 			name:      input.name
-			namespace: input.namespace
+			namespace: system.namespace
 			labels:    _labels
 		}
 	}
@@ -38,7 +42,7 @@ namespaced: (input.namespace): {
 		kind:       "Deployment"
 		metadata: {
 			name:      input.name
-			namespace: input.namespace
+			namespace: system.namespace
 			labels:    _labels
 		}
 		spec: {
@@ -68,14 +72,17 @@ const adapterCrossNamespaceTemplate = `
 package deployment
 
 input: {
-	name:      string
-	image:     string
-	tag:       string
+	name:  string
+	image: string
+	tag:   string
+}
+
+system: {
 	project:   string
 	namespace: string
 }
 
-namespaced: (input.namespace): {
+namespaced: (system.namespace): {
 	Deployment: (input.name): {
 		apiVersion: "apps/v1"
 		kind:       "Deployment"
@@ -91,12 +98,14 @@ namespaced: (input.namespace): {
 cluster: {}
 `
 
-// cueInput builds a CUE input string for the adapter tests.
+// cueInput builds a CUE input string for the adapter tests using the new system/input split.
 func cueInput(name, image, tag, project, namespace string) string {
 	return `input: {
-	name:      "` + name + `"
-	image:     "` + image + `"
-	tag:       "` + tag + `"
+	name:  "` + name + `"
+	image: "` + image + `"
+	tag:   "` + tag + `"
+}
+system: {
 	project:   "` + project + `"
 	namespace: "` + namespace + `"
 }`
