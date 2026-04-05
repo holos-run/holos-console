@@ -44,6 +44,7 @@ const mockDeployment = {
   project: 'test-project',
   image: 'ghcr.io/org/api',
   tag: 'v1.2.3',
+  port: 8080,
   template: 'web-app',
   displayName: 'API Service',
   description: '',
@@ -279,6 +280,38 @@ describe('DeploymentDetailPage', () => {
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({ command: ['myapp'] }),
+      )
+    })
+  })
+
+  it('re-deploy dialog has Port field', () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    expect(screen.getByLabelText(/^port$/i)).toBeInTheDocument()
+  })
+
+  it('re-deploy dialog pre-populates port from deployment', () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+    const portInput = screen.getByLabelText(/^port$/i) as HTMLInputElement
+    expect(portInput.value).toBe('8080')
+  })
+
+  it('re-deploy passes port to mutateAsync', async () => {
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
+
+    const portInput = screen.getByLabelText(/^port$/i)
+    fireEvent.change(portInput, { target: { value: '3000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^deploy$/i }))
+    const mutateAsync = (useUpdateDeployment as Mock).mock.results[0].value.mutateAsync
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ port: 3000 }),
       )
     })
   })

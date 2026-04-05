@@ -78,6 +78,7 @@ export function DeploymentDetailPage({
   const [redeployOpen, setRedeployOpen] = useState(false)
   const [redeployImage, setRedeployImage] = useState('')
   const [redeployTag, setRedeployTag] = useState('')
+  const [redeployPort, setRedeployPort] = useState(8080)
   const [redeployCommand, setRedeployCommand] = useState<string[]>([])
   const [redeployArgs, setRedeployArgs] = useState<string[]>([])
   const [redeployEnv, setRedeployEnv] = useState<EnvVar[]>([])
@@ -89,11 +90,12 @@ export function DeploymentDetailPage({
     if (deployment) {
       setRedeployImage(deployment.image)
       setRedeployTag(deployment.tag)
+      setRedeployPort(deployment.port || 8080)
       setRedeployCommand(deployment.command ?? [])
       setRedeployArgs(deployment.args ?? [])
       setRedeployEnv(deployment.env ?? [])
     }
-  }, [deployment?.image, deployment?.tag, deployment?.command, deployment?.args, deployment?.env])
+  }, [deployment?.image, deployment?.tag, deployment?.port, deployment?.command, deployment?.args, deployment?.env])
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -102,6 +104,7 @@ export function DeploymentDetailPage({
   const handleRedeployOpen = () => {
     setRedeployImage(deployment?.image ?? '')
     setRedeployTag(deployment?.tag ?? '')
+    setRedeployPort(deployment?.port || 8080)
     setRedeployCommand(deployment?.command ?? [])
     setRedeployArgs(deployment?.args ?? [])
     setRedeployEnv(deployment?.env ?? [])
@@ -121,7 +124,7 @@ export function DeploymentDetailPage({
     }
     setRedeployError(null)
     try {
-      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim(), command: redeployCommand, args: redeployArgs, env: filterEnvVars(redeployEnv) })
+      await updateMutation.mutateAsync({ image: redeployImage.trim(), tag: redeployTag.trim(), port: redeployPort, command: redeployCommand, args: redeployArgs, env: filterEnvVars(redeployEnv) })
       setRedeployOpen(false)
       toast.success('Deployment updated')
     } catch (err) {
@@ -344,6 +347,22 @@ export function DeploymentDetailPage({
                 onChange={(e) => setRedeployTag(e.target.value)}
                 placeholder="v1.0.0"
               />
+            </div>
+            <div>
+              <Label htmlFor="redeploy-port">Port</Label>
+              <Input
+                id="redeploy-port"
+                aria-label="Port"
+                type="number"
+                min={1}
+                max={65535}
+                value={redeployPort}
+                onChange={(e) => setRedeployPort(parseInt(e.target.value, 10))}
+                placeholder="8080"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Container port the application listens on (HTTP)
+              </p>
             </div>
             <div>
               <Label>Command</Label>

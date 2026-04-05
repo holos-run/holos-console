@@ -47,6 +47,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   const [template, setTemplate] = useState('')
   const [image, setImage] = useState('')
   const [tag, setTag] = useState('')
+  const [port, setPort] = useState(8080)
   const [command, setCommand] = useState<string[]>([])
   const [args, setArgs] = useState<string[]>([])
   const [env, setEnv] = useState<EnvVar[]>([])
@@ -66,6 +67,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     const defaults = selected?.defaults
     setImage(defaults?.image ?? '')
     setTag(defaults?.tag ?? '')
+    setPort(defaults?.port || 8080)
     setCommand(defaults?.command ?? [])
     setArgs(defaults?.args ?? [])
     setEnv(defaults?.env ?? [])
@@ -88,6 +90,10 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
       setError('Tag is required')
       return
     }
+    if (!port || port < 1 || port > 65535 || !Number.isInteger(port)) {
+      setError('Port must be between 1 and 65535')
+      return
+    }
     setError(null)
     try {
       const result = await createMutation.mutateAsync({
@@ -97,6 +103,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
         template,
         image: image.trim(),
         tag: tag.trim(),
+        port,
         command,
         args,
         env: filterEnvVars(env),
@@ -197,6 +204,22 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               onChange={(e) => setTag(e.target.value)}
               placeholder="v1.0.0"
             />
+          </div>
+          <div>
+            <Label htmlFor="deployment-port">Port</Label>
+            <Input
+              id="deployment-port"
+              aria-label="Port"
+              type="number"
+              min={1}
+              max={65535}
+              value={port}
+              onChange={(e) => setPort(parseInt(e.target.value, 10))}
+              placeholder="8080"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Container port the application listens on (HTTP)
+            </p>
           </div>
           <div>
             <Label>Command</Label>
