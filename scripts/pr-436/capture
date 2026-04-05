@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #436: port input in Create and Update Deployment forms.
+#
+# Captures:
+#   1. Create Deployment page showing the Port field (no K8s required)
+set -euo pipefail
+
+: "${HOLOS_BACKEND_URL:?HOLOS_BACKEND_URL must be set}"
+: "${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+# The Create Deployment page renders the full form with Port field even without
+# a real project - it uses projectName from the URL param. The page renders
+# "No templates available" but all form fields including Port are visible.
+agent-browser --session-name holos-dev open "${HOLOS_BACKEND_URL}/projects/demo/deployments/new"
+agent-browser --session-name holos-dev wait --load networkidle
+agent-browser --session-name holos-dev wait 1000
+agent-browser --session-name holos-dev screenshot "${PR_SCREENSHOT_DIR}/create-deployment-port-field.png"
+
+echo "Screenshots captured to ${PR_SCREENSHOT_DIR}"

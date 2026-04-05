@@ -49,7 +49,7 @@ import { useCreateDeployment } from '@/queries/deployments'
 import { useListDeploymentTemplates } from '@/queries/deployment-templates'
 import { CreateDeploymentPage } from './new'
 
-function makeTemplate(name: string, defaults?: { image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[] }) {
+function makeTemplate(name: string, defaults?: { image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[]; port?: number }) {
   return { name, project: 'test-project', displayName: '', description: '', cueTemplate: '', defaults }
 }
 
@@ -282,6 +282,77 @@ describe('CreateDeploymentPage', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
       expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v2.0.0')
+    })
+  })
+
+  it('renders Port field', () => {
+    render(<CreateDeploymentPage />)
+    expect(screen.getByLabelText(/^port$/i)).toBeInTheDocument()
+  })
+
+  it('Port field defaults to 8080', () => {
+    render(<CreateDeploymentPage />)
+    const portInput = screen.getByLabelText(/^port$/i) as HTMLInputElement
+    expect(portInput.value).toBe('8080')
+  })
+
+  it('selecting a template with port default pre-fills port field', async () => {
+    const templates = [makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0', port: 3000 })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      const portInput = screen.getByLabelText(/^port$/i) as HTMLInputElement
+      expect(portInput.value).toBe('3000')
+    })
+  })
+
+  it('selecting a template without port default uses 8080', async () => {
+    const templates = [makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      const portInput = screen.getByLabelText(/^port$/i) as HTMLInputElement
+      expect(portInput.value).toBe('8080')
+    })
+  })
+
+  it('shows validation error when port is out of range', async () => {
+    render(<CreateDeploymentPage />)
+    const displayInput = screen.getByLabelText(/display name/i)
+    fireEvent.change(displayInput, { target: { value: 'My API' } })
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
+    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
+    fireEvent.change(screen.getByLabelText(/^port$/i), { target: { value: '99999' } })
+    fireEvent.click(screen.getByRole('button', { name: /create deployment/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/port must be between 1 and 65535/i)).toBeInTheDocument()
+    })
+  })
+
+  it('port value is sent in mutation payload', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-api' })
+    setupMocks(mutateAsync)
+    render(<CreateDeploymentPage />)
+
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
+    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
+    fireEvent.change(screen.getByLabelText(/^port$/i), { target: { value: '3000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /create deployment/i }))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ port: 3000 }),
+      )
     })
   })
 
