@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+
+# Capture screenshots for PR #366: constrain template source textarea height
+# Requires: HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+
+# Navigate to the templates listing page (shows create modal trigger and list)
+agent-browser navigate "${HOLOS_BACKEND_URL}/"
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/home.png"

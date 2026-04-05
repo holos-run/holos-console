@@ -191,4 +191,13 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(errEl).toBeInTheDocument()
     expect(errEl.textContent).toContain('CUE syntax error')
   })
+
+  it('CUE template textarea has fixed height and overflow classes', () => {
+    setupMocks()
+    render(<DeploymentTemplateDetailPage />)
+    const editor = screen.getByRole('textbox', { name: /cue template/i })
+    expect(editor.className).toContain('field-sizing-normal')
+    expect(editor.className).toContain('max-h-96')
+    expect(editor.className).toContain('overflow-y-auto')
+  })
 })
