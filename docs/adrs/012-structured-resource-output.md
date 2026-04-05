@@ -92,13 +92,13 @@ Deployment in the `example` namespace. This structure:
 Example:
 
 ```cue
-namespaced: (input.namespace): {
+namespaced: (system.namespace): {
     ServiceAccount: (input.name): {
         apiVersion: "v1"
         kind:       "ServiceAccount"
         metadata: {
             name:      input.name
-            namespace: input.namespace
+            namespace: system.namespace
             labels:    _labels
         }
     }
@@ -107,7 +107,7 @@ namespaced: (input.namespace): {
         kind:       "Deployment"
         metadata: {
             name:      input.name
-            namespace: input.namespace
+            namespace: system.namespace
             labels:    _labels
         }
         spec: { ... }
@@ -117,7 +117,7 @@ namespaced: (input.namespace): {
         kind:       "Service"
         metadata: {
             name:      input.name
-            namespace: input.namespace
+            namespace: system.namespace
             labels:    _labels
         }
         spec: { ... }
@@ -140,11 +140,11 @@ Example:
 
 ```cue
 cluster: {
-    Namespace: (input.namespace): {
+    Namespace: (system.namespace): {
         apiVersion: "v1"
         kind:       "Namespace"
         metadata: {
-            name:   input.namespace
+            name:   system.namespace
             labels: _labels
         }
     }

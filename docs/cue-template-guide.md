@@ -421,7 +421,7 @@ The RPC accepts two separate CUE input fields:
 - `cue_system_input` — trusted system context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
 - `cue_input` — user-provided deployment parameters (name, image, tag, env, etc.)
 
-Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available. When `cue_system_input` is not provided, `cue_input` may include both `system` and `input` fields for preview purposes.
+Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available.
 
 Example `cue_system_input` (trusted, set from authenticated context):
 
