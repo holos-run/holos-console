@@ -24,14 +24,20 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('@/queries/project-settings', () => ({
   useGetProjectSettings: vi.fn(),
+  useGetProjectSettingsRaw: vi.fn(),
   useUpdateProjectSettings: vi.fn(),
+}))
+
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
-import { useGetProjectSettings, useUpdateProjectSettings } from '@/queries/project-settings'
+import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
+import { useGetOrganization } from '@/queries/organizations'
 import { useAuth } from '@/lib/auth'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ProjectSettingsPage } from './index'
@@ -51,6 +57,7 @@ const mockProject = {
 function setupMocks(overrides: {
   projectOverrides?: Partial<typeof mockProject>
   deploymentsEnabled?: boolean
+  orgUserRole?: number
 } = {}) {
   const project = { ...mockProject, ...overrides.projectOverrides }
   ;(useGetProject as Mock).mockReturnValue({ data: project, isPending: false, error: null })
@@ -63,9 +70,19 @@ function setupMocks(overrides: {
     isPending: false,
     error: null,
   })
+  ;(useGetProjectSettingsRaw as Mock).mockReturnValue({
+    data: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"prj-test-project"}}',
+    isPending: false,
+    error: null,
+  })
   ;(useUpdateProjectSettings as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'my-org', userRole: overrides.orgUserRole ?? Role.OWNER },
+    isPending: false,
+    error: null,
   })
   ;(useAuth as Mock).mockReturnValue({
     isAuthenticated: true,
@@ -74,7 +91,7 @@ function setupMocks(overrides: {
   })
 }
 
-describe('ProjectSettingsPage — Features section', () => {
+describe('ProjectSettingsPage -- Features section', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -112,24 +129,32 @@ describe('ProjectSettingsPage — Features section', () => {
     })
   })
 
-  it('toggle is disabled for non-owners (viewer)', () => {
-    setupMocks({ projectOverrides: { userRole: Role.VIEWER } })
+  it('toggle is disabled when user is not org-level owner', () => {
+    setupMocks({ orgUserRole: Role.EDITOR })
     render(<ProjectSettingsPage />)
     const toggle = screen.getByRole('switch', { name: /deployments/i })
     expect(toggle).toBeDisabled()
   })
 
-  it('toggle is disabled for editors', () => {
-    setupMocks({ projectOverrides: { userRole: Role.EDITOR } })
+  it('toggle is disabled when user is org-level viewer', () => {
+    setupMocks({ orgUserRole: Role.VIEWER })
     render(<ProjectSettingsPage />)
     const toggle = screen.getByRole('switch', { name: /deployments/i })
     expect(toggle).toBeDisabled()
   })
 
-  it('toggle is enabled for owners', () => {
-    setupMocks({ projectOverrides: { userRole: Role.OWNER } })
+  it('toggle is enabled when user is org-level owner', () => {
+    setupMocks({ orgUserRole: Role.OWNER })
     render(<ProjectSettingsPage />)
     const toggle = screen.getByRole('switch', { name: /deployments/i })
     expect(toggle).not.toBeDisabled()
+  })
+
+  it('toggle is disabled when org data is not available', () => {
+    setupMocks()
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+    render(<ProjectSettingsPage />)
+    const toggle = screen.getByRole('switch', { name: /deployments/i })
+    expect(toggle).toBeDisabled()
   })
 })

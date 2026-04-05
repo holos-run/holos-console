@@ -30,6 +30,20 @@ export function useGetOrganization(name: string) {
   })
 }
 
+export function useGetOrganizationRaw(name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(OrganizationService, transport), [transport])
+  return useTanstackQuery({
+    queryKey: ['connect-query', 'getOrganizationRaw', name],
+    queryFn: async () => {
+      const response = await client.getOrganizationRaw({ name })
+      return response.raw
+    },
+    enabled: isAuthenticated && name.length > 0,
+  })
+}
+
 export function useCreateOrganization() {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])

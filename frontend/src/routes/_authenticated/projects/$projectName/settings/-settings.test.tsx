@@ -24,14 +24,20 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('@/queries/project-settings', () => ({
   useGetProjectSettings: vi.fn(),
+  useGetProjectSettingsRaw: vi.fn(),
   useUpdateProjectSettings: vi.fn(),
+}))
+
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
-import { useGetProjectSettings, useUpdateProjectSettings } from '@/queries/project-settings'
+import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
+import { useGetOrganization } from '@/queries/organizations'
 import { useAuth } from '@/lib/auth'
 import { ProjectSettingsPage } from './index'
 
@@ -49,8 +55,15 @@ const mockProject = {
   userRole: 3, // OWNER
 }
 
-function setupMocks(overrides: Partial<typeof mockProject> = {}) {
+const mockOrg = {
+  name: 'my-org',
+  displayName: 'My Org',
+  userRole: 3, // OWNER
+}
+
+function setupMocks(overrides: Partial<typeof mockProject> = {}, orgOverrides: Partial<typeof mockOrg> = {}) {
   const project = { ...mockProject, ...overrides }
+  const org = { ...mockOrg, ...orgOverrides }
 
   ;(useGetProject as Mock).mockReturnValue({
     data: project,
@@ -79,9 +92,19 @@ function setupMocks(overrides: Partial<typeof mockProject> = {}) {
     isPending: false,
     error: null,
   })
+  ;(useGetProjectSettingsRaw as Mock).mockReturnValue({
+    data: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"prj-test-project"}}',
+    isPending: false,
+    error: null,
+  })
   ;(useUpdateProjectSettings as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: org,
+    isPending: false,
+    error: null,
   })
   ;(useAuth as Mock).mockReturnValue({
     isAuthenticated: true,
@@ -115,7 +138,9 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+    ;(useGetProjectSettingsRaw as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
     render(<ProjectSettingsPage />)
@@ -130,7 +155,9 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteProject as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null })
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+    ;(useGetProjectSettingsRaw as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
 
     render(<ProjectSettingsPage />)
@@ -347,6 +374,29 @@ describe('ProjectSettingsPage', () => {
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith({ name: 'test-project' })
       })
+    })
+  })
+
+  describe('View mode toggle', () => {
+    it('renders Data/Resource toggle', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText('Data')).toBeInTheDocument()
+      expect(screen.getByText('Resource')).toBeInTheDocument()
+    })
+
+    it('shows raw JSON when Resource tab is clicked', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      fireEvent.click(screen.getByText('Resource'))
+      expect(screen.getByRole('code')).toBeInTheDocument()
+    })
+
+    it('shows data view by default', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText('General')).toBeInTheDocument()
+      expect(screen.getByText('Features')).toBeInTheDocument()
     })
   })
 })

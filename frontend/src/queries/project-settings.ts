@@ -23,6 +23,20 @@ export function useGetProjectSettings(project: string) {
   })
 }
 
+export function useGetProjectSettingsRaw(project: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(ProjectSettingsService, transport), [transport])
+  return useQuery({
+    queryKey: ['project-settings', 'raw', project] as const,
+    queryFn: async () => {
+      const response = await client.getProjectSettingsRaw({ project })
+      return response.raw
+    },
+    enabled: isAuthenticated && !!project,
+  })
+}
+
 export function useUpdateProjectSettings(project: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(ProjectSettingsService, transport), [transport])

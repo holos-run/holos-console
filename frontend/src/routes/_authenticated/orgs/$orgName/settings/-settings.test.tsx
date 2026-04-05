@@ -16,6 +16,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
+  useGetOrganizationRaw: vi.fn(),
   useUpdateOrganization: vi.fn(),
   useUpdateOrganizationSharing: vi.fn(),
   useUpdateOrganizationDefaultSharing: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import {
   useGetOrganization,
+  useGetOrganizationRaw,
   useUpdateOrganization,
   useUpdateOrganizationSharing,
   useUpdateOrganizationDefaultSharing,
@@ -53,6 +55,11 @@ function setupMocks(overrides: Partial<typeof mockOrg> = {}) {
 
   ;(useGetOrganization as Mock).mockReturnValue({
     data: org,
+    isPending: false,
+    error: null,
+  })
+  ;(useGetOrganizationRaw as Mock).mockReturnValue({
+    data: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"org-test-org"}}',
     isPending: false,
     error: null,
   })
@@ -100,6 +107,7 @@ describe('OrgSettingsPage', () => {
 
   it('shows skeleton rows while query is pending', () => {
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+    ;(useGetOrganizationRaw as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useUpdateOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
@@ -113,6 +121,7 @@ describe('OrgSettingsPage', () => {
 
   it('shows error alert when query fails', () => {
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('Not found') })
+    ;(useGetOrganizationRaw as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useUpdateOrganization as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useUpdateOrganizationDefaultSharing as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
@@ -242,7 +251,7 @@ describe('OrgSettingsPage', () => {
     it('saving default sharing calls useUpdateOrganizationDefaultSharing', async () => {
       setupMocks()
       render(<OrgSettingsPage />)
-      // Find the edit buttons — the Default Sharing panel's edit button
+      // Find the edit buttons -- the Default Sharing panel's edit button
       const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
       // The last edit button belongs to the Default Sharing panel
       fireEvent.click(editButtons[editButtons.length - 1])
@@ -328,6 +337,28 @@ describe('OrgSettingsPage', () => {
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith({ name: 'test-org' })
       })
+    })
+  })
+
+  describe('View mode toggle', () => {
+    it('renders Data/Resource toggle', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('Data')).toBeInTheDocument()
+      expect(screen.getByText('Resource')).toBeInTheDocument()
+    })
+
+    it('shows raw JSON when Resource tab is clicked', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      fireEvent.click(screen.getByText('Resource'))
+      expect(screen.getByRole('code')).toBeInTheDocument()
+    })
+
+    it('shows data view by default', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('General')).toBeInTheDocument()
     })
   })
 })
