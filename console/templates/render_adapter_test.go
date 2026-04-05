@@ -204,6 +204,32 @@ func TestCueRendererAdapter_Render(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("each resource has non-nil Object for JSON serialization", func(t *testing.T) {
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
+			Name:      "web-app",
+			Image:     "nginx",
+			Tag:       "1.25",
+			Project:   "my-project",
+			Namespace: namespace,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		for i, r := range resources {
+			if r.Object == nil {
+				t.Errorf("resource %d: expected non-nil Object for JSON serialization", i)
+			}
+			// Verify Object contains expected fields.
+			if _, ok := r.Object["apiVersion"]; !ok {
+				t.Errorf("resource %d: Object missing apiVersion field", i)
+			}
+			if _, ok := r.Object["kind"]; !ok {
+				t.Errorf("resource %d: Object missing kind field", i)
+			}
+		}
+	})
 }
 
 // TestCueRendererAdapter_WithDefaultTemplate verifies the adapter works end-to-end

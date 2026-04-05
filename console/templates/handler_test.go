@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -502,8 +503,14 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
 		stub := &stubRenderer{
 			resources: []RenderResource{
-				{YAML: "apiVersion: v1\nkind: ServiceAccount\n"},
-				{YAML: "apiVersion: apps/v1\nkind: Deployment\n"},
+				{
+					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
+					Object: map[string]interface{}{"apiVersion": "v1", "kind": "ServiceAccount"},
+				},
+				{
+					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
+					Object: map[string]interface{}{"apiVersion": "apps/v1", "kind": "Deployment"},
+				},
 			},
 		}
 		handler := NewHandler(k8s, pr, stub)
@@ -528,6 +535,102 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		}
 		if !strings.Contains(resp.Msg.RenderedYaml, "---\n") {
 			t.Error("expected YAML to contain document separator")
+		}
+	})
+
+	t.Run("rendered_json is a pretty-printed JSON array of all resource objects", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		stub := &stubRenderer{
+			resources: []RenderResource{
+				{
+					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
+					Object: map[string]interface{}{"apiVersion": "v1", "kind": "ServiceAccount"},
+				},
+				{
+					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
+					Object: map[string]interface{}{"apiVersion": "apps/v1", "kind": "Deployment"},
+				},
+			},
+		}
+		handler := NewHandler(k8s, pr, stub)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: validCueSrc,
+		})
+		resp, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// rendered_json must be non-empty.
+		if resp.Msg.RenderedJson == "" {
+			t.Fatal("expected non-empty rendered_json")
+		}
+
+		// rendered_json must be pretty-printed (contains newlines).
+		if !strings.Contains(resp.Msg.RenderedJson, "\n") {
+			t.Error("expected rendered_json to be pretty-printed with newlines")
+		}
+
+		// rendered_json must be valid JSON and parse as a JSON array.
+		var resources []map[string]interface{}
+		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
+			t.Fatalf("rendered_json is not valid JSON: %v", err)
+		}
+
+		// Must contain both resources.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 elements in rendered_json array, got %d", len(resources))
+		}
+
+		// Verify resource kinds are present.
+		kinds := make(map[string]bool)
+		for _, r := range resources {
+			if k, ok := r["kind"].(string); ok {
+				kinds[k] = true
+			}
+		}
+		if !kinds["ServiceAccount"] {
+			t.Error("expected rendered_json to contain ServiceAccount")
+		}
+		if !kinds["Deployment"] {
+			t.Error("expected rendered_json to contain Deployment")
+		}
+	})
+
+	t.Run("rendered_json is empty array when renderer returns no objects", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		// Resources with no Object set (legacy path).
+		stub := &stubRenderer{
+			resources: []RenderResource{
+				{YAML: "apiVersion: v1\nkind: ServiceAccount\n"},
+			},
+		}
+		handler := NewHandler(k8s, pr, stub)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
+			Project:     "my-project",
+			CueTemplate: validCueSrc,
+		})
+		resp, err := handler.RenderDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// rendered_json should be a valid JSON empty array.
+		var resources []map[string]interface{}
+		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
+			t.Fatalf("rendered_json is not valid JSON: %v", err)
+		}
+		if len(resources) != 0 {
+			t.Errorf("expected 0 elements in rendered_json when no objects provided, got %d", len(resources))
 		}
 	})
 

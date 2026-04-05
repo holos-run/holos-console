@@ -35,7 +35,7 @@ func (a *CueRendererAdapter) Render(ctx context.Context, cueSource string, in Re
 		if err != nil {
 			return nil, err
 		}
-		out[i] = RenderResource{YAML: string(b)}
+		out[i] = RenderResource{YAML: string(b), Object: u.Object}
 	}
 	return out, nil
 }
