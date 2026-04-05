@@ -169,7 +169,7 @@ func (h *Handler) CreateDeploymentTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.CreateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate)
+	_, err := h.k8s.CreateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -218,7 +218,7 @@ func (h *Handler) UpdateDeploymentTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate)
+	_, err := h.k8s.UpdateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -373,14 +373,29 @@ func validateCueSyntax(source string) error {
 }
 
 // configMapToTemplate converts a Kubernetes ConfigMap to a DeploymentTemplate protobuf message.
+// If the ConfigMap data contains a DefaultsKey entry, it is deserialized into the Defaults field.
+// Missing or empty DefaultsKey leaves the Defaults field nil.
 func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.DeploymentTemplate {
-	return &consolev1.DeploymentTemplate{
+	tmpl := &consolev1.DeploymentTemplate{
 		Name:        cm.Name,
 		Project:     project,
 		DisplayName: cm.Annotations[DisplayNameAnnotation],
 		Description: cm.Annotations[DescriptionAnnotation],
 		CueTemplate: cm.Data[CueTemplateKey],
 	}
+	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
+		var defaults consolev1.DeploymentDefaults
+		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
+			tmpl.Defaults = &defaults
+		} else {
+			slog.Warn("failed to deserialize deployment defaults from ConfigMap",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		}
+	}
+	return tmpl
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

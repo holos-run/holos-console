@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -9,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/holos-run/holos-console/console/resolver"
+	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
 func testResolver() *resolver.Resolver {
@@ -119,7 +121,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -148,6 +150,50 @@ func TestCreateTemplate(t *testing.T) {
 			t.Errorf("expected persisted cue template, got %q", got.Data[CueTemplateKey])
 		}
 	})
+
+	t.Run("creates template with defaults stored as JSON", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		defaults := &consolev1.DeploymentDefaults{
+			Image: "ghcr.io/mccutchen/go-httpbin",
+			Tag:   "2.21",
+		}
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", defaults)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Verify defaults.json key was written
+		rawJSON, ok := cm.Data[DefaultsKey]
+		if !ok {
+			t.Fatalf("expected %q key in ConfigMap data", DefaultsKey)
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(rawJSON), &got); err != nil {
+			t.Fatalf("defaults.json is not valid JSON: %v", err)
+		}
+		if got["image"] != "ghcr.io/mccutchen/go-httpbin" {
+			t.Errorf("expected image 'ghcr.io/mccutchen/go-httpbin', got %v", got["image"])
+		}
+		if got["tag"] != "2.21" {
+			t.Errorf("expected tag '2.21', got %v", got["tag"])
+		}
+	})
+
+	t.Run("creates template without defaults omits defaults.json key", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := cm.Data[DefaultsKey]; ok {
+			t.Errorf("expected no %q key in ConfigMap data when defaults is nil", DefaultsKey)
+		}
+	})
 }
 
 func TestUpdateTemplate(t *testing.T) {
@@ -158,7 +204,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated Web App"
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -178,12 +224,74 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTemplate := "package deployment\n\n#Input: { name: string }\n"
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, &newTemplate)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, &newTemplate, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if updated.Data[CueTemplateKey] != newTemplate {
 			t.Errorf("expected updated template, got %q", updated.Data[CueTemplateKey])
+		}
+	})
+
+	t.Run("adds defaults on update", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		defaults := &consolev1.DeploymentDefaults{Image: "ghcr.io/example/app", Tag: "v1.0"}
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, defaults, false)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		rawJSON, ok := updated.Data[DefaultsKey]
+		if !ok {
+			t.Fatalf("expected %q key after update with defaults", DefaultsKey)
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(rawJSON), &got); err != nil {
+			t.Fatalf("defaults.json is not valid JSON: %v", err)
+		}
+		if got["image"] != "ghcr.io/example/app" {
+			t.Errorf("expected image 'ghcr.io/example/app', got %v", got["image"])
+		}
+	})
+
+	t.Run("clears defaults on update when clearDefaults is true", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		// Pre-populate defaults.json
+		cm.Data[DefaultsKey] = `{"image":"old","tag":"old"}`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, nil, true)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := updated.Data[DefaultsKey]; ok {
+			t.Errorf("expected %q key to be removed after clearDefaults=true", DefaultsKey)
+		}
+	})
+
+	t.Run("preserves existing defaults when not updating them", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm.Data[DefaultsKey] = `{"image":"preserved","tag":"v1"}`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		newName := "New Display Name"
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		rawJSON, ok := updated.Data[DefaultsKey]
+		if !ok {
+			t.Fatalf("expected %q key to be preserved when not updating defaults", DefaultsKey)
+		}
+		if rawJSON != `{"image":"preserved","tag":"v1"}` {
+			t.Errorf("expected defaults to be preserved, got %q", rawJSON)
 		}
 	})
 
@@ -193,7 +301,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated"
-		_, err := k8s.UpdateTemplate(context.Background(), "my-project", "nonexistent", &newName, nil, nil)
+		_, err := k8s.UpdateTemplate(context.Background(), "my-project", "nonexistent", &newName, nil, nil, nil, false)
 		if err == nil {
 			t.Fatal("expected error for nonexistent template")
 		}
