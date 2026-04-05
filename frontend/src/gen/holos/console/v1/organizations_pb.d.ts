@@ -73,6 +73,20 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
    * @generated from field: repeated holos.console.v1.ShareGrant default_role_grants = 8;
    */
   defaultRoleGrants: ShareGrant[];
+
+  /**
+   * creator_email is the email address of the user who created this organization.
+   *
+   * @generated from field: string creator_email = 9;
+   */
+  creatorEmail: string;
+
+  /**
+   * created_at is the RFC3339-formatted timestamp when this organization was created.
+   *
+   * @generated from field: string created_at = 10;
+   */
+  createdAt: string;
 };
 
 /**

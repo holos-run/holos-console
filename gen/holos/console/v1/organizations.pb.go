@@ -40,8 +40,12 @@ type Organization struct {
 	DefaultUserGrants []*ShareGrant `protobuf:"bytes,7,rep,name=default_user_grants,json=defaultUserGrants,proto3" json:"default_user_grants,omitempty"`
 	// default_role_grants are the per-role sharing grants applied by default to new projects in this organization.
 	DefaultRoleGrants []*ShareGrant `protobuf:"bytes,8,rep,name=default_role_grants,json=defaultRoleGrants,proto3" json:"default_role_grants,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// creator_email is the email address of the user who created this organization.
+	CreatorEmail string `protobuf:"bytes,9,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`
+	// created_at is the RFC3339-formatted timestamp when this organization was created.
+	CreatedAt     string `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Organization) Reset() {
@@ -128,6 +132,20 @@ func (x *Organization) GetDefaultRoleGrants() []*ShareGrant {
 		return x.DefaultRoleGrants
 	}
 	return nil
+}
+
+func (x *Organization) GetCreatorEmail() string {
+	if x != nil {
+		return x.CreatorEmail
+	}
+	return ""
+}
+
+func (x *Organization) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
 }
 
 // ListOrganizationsRequest contains optional filters for listing organizations.
@@ -933,7 +951,7 @@ var File_holos_console_v1_organizations_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\n" +
-	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xb6\x03\n" +
+	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xfa\x03\n" +
 	"\fOrganization\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -944,7 +962,11 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"roleGrants\x123\n" +
 	"\tuser_role\x18\x06 \x01(\x0e2\x16.holos.console.v1.RoleR\buserRole\x12L\n" +
 	"\x13default_user_grants\x18\a \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultUserGrants\x12L\n" +
-	"\x13default_role_grants\x18\b \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultRoleGrants\"\x1a\n" +
+	"\x13default_role_grants\x18\b \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultRoleGrants\x12#\n" +
+	"\rcreator_email\x18\t \x01(\tR\fcreatorEmail\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\tR\tcreatedAt\"\x1a\n" +
 	"\x18ListOrganizationsRequest\"a\n" +
 	"\x19ListOrganizationsResponse\x12D\n" +
 	"\rorganizations\x18\x01 \x03(\v2\x1e.holos.console.v1.OrganizationR\rorganizations\",\n" +

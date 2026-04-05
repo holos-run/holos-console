@@ -63,6 +63,10 @@ message Project {
   repeated ShareGrant default_user_grants = 8;
   // default_role_grants are the per-role sharing grants applied by default to new secrets in this project.
   repeated ShareGrant default_role_grants = 9;
+  // creator_email is the email address of the user who created this project.
+  string creator_email = 10;
+  // created_at is the RFC3339-formatted timestamp when this project was created.
+  string created_at = 11;
 }
 
 // ListProjectsRequest contains optional filters for listing projects.
