@@ -719,17 +719,25 @@ func (*DeleteDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{11}
 }
 
-// RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
-// and returns the rendered Kubernetes resource manifests as multi-document YAML
-// and as a pretty-printed JSON array.
+// RenderDeploymentTemplateRequest evaluates a CUE template unified with a CUE
+// input value and returns the rendered Kubernetes resource manifests as
+// multi-document YAML and as a pretty-printed JSON array.
 // The cue_template field is rendered directly (supports unsaved/draft templates).
 type RenderDeploymentTemplateRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Project       string                 `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`                               // owning project (used to resolve namespace)
-	CueTemplate   string                 `protobuf:"bytes,2,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`    // CUE source to evaluate
-	ExampleName   string                 `protobuf:"bytes,3,opt,name=example_name,json=exampleName,proto3" json:"example_name,omitempty"`    // example deployment name (e.g. "holos-console")
-	ExampleImage  string                 `protobuf:"bytes,4,opt,name=example_image,json=exampleImage,proto3" json:"example_image,omitempty"` // example image (e.g. "ghcr.io/holos-run/holos-console")
-	ExampleTag    string                 `protobuf:"bytes,5,opt,name=example_tag,json=exampleTag,proto3" json:"example_tag,omitempty"`       // example tag (e.g. "latest")
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	CueTemplate string                 `protobuf:"bytes,2,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"` // CUE source to evaluate
+	// cue_input contains valid CUE source that is unified with cue_template at
+	// the "input" path to supply concrete values for template parameters.
+	// Example:
+	//
+	//	input: {
+	//	  name:      "holos-console"
+	//	  image:     "ghcr.io/holos-run/holos-console"
+	//	  tag:       "latest"
+	//	  project:   "garage"
+	//	  namespace: "holos-prj-garage"
+	//	}
+	CueInput      string `protobuf:"bytes,6,opt,name=cue_input,json=cueInput,proto3" json:"cue_input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -764,13 +772,6 @@ func (*RenderDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *RenderDeploymentTemplateRequest) GetProject() string {
-	if x != nil {
-		return x.Project
-	}
-	return ""
-}
-
 func (x *RenderDeploymentTemplateRequest) GetCueTemplate() string {
 	if x != nil {
 		return x.CueTemplate
@@ -778,23 +779,9 @@ func (x *RenderDeploymentTemplateRequest) GetCueTemplate() string {
 	return ""
 }
 
-func (x *RenderDeploymentTemplateRequest) GetExampleName() string {
+func (x *RenderDeploymentTemplateRequest) GetCueInput() string {
 	if x != nil {
-		return x.ExampleName
-	}
-	return ""
-}
-
-func (x *RenderDeploymentTemplateRequest) GetExampleImage() string {
-	if x != nil {
-		return x.ExampleImage
-	}
-	return ""
-}
-
-func (x *RenderDeploymentTemplateRequest) GetExampleTag() string {
-	if x != nil {
-		return x.ExampleTag
+		return x.CueInput
 	}
 	return ""
 }
@@ -907,14 +894,10 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x1fDeleteDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"\"\n" +
-	" DeleteDeploymentTemplateResponse\"\xc7\x01\n" +
-	"\x1fRenderDeploymentTemplateRequest\x12\x18\n" +
-	"\aproject\x18\x01 \x01(\tR\aproject\x12!\n" +
-	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12!\n" +
-	"\fexample_name\x18\x03 \x01(\tR\vexampleName\x12#\n" +
-	"\rexample_image\x18\x04 \x01(\tR\fexampleImage\x12\x1f\n" +
-	"\vexample_tag\x18\x05 \x01(\tR\n" +
-	"exampleTag\"l\n" +
+	" DeleteDeploymentTemplateResponse\"a\n" +
+	"\x1fRenderDeploymentTemplateRequest\x12!\n" +
+	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12\x1b\n" +
+	"\tcue_input\x18\x06 \x01(\tR\bcueInput\"l\n" +
 	" RenderDeploymentTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
 	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson2\xa5\x06\n" +

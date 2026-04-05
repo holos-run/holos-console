@@ -91,18 +91,24 @@ namespaced: (input.namespace): {
 cluster: {}
 `
 
+// cueInput builds a CUE input string for the adapter tests.
+func cueInput(name, image, tag, project, namespace string) string {
+	return `input: {
+	name:      "` + name + `"
+	image:     "` + image + `"
+	tag:       "` + tag + `"
+	project:   "` + project + `"
+	namespace: "` + namespace + `"
+}`
+}
+
 func TestCueRendererAdapter_Render(t *testing.T) {
 	adapter := NewCueRendererAdapter()
 	namespace := "prj-my-project"
 
 	t.Run("structured template produces YAML resources", func(t *testing.T) {
-		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
-			Name:      "web-app",
-			Image:     "nginx",
-			Tag:       "1.25",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate,
+			cueInput("web-app", "nginx", "1.25", "my-project", namespace))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -128,13 +134,8 @@ func TestCueRendererAdapter_Render(t *testing.T) {
 	})
 
 	t.Run("input values are reflected in rendered YAML", func(t *testing.T) {
-		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
-			Name:      "my-app",
-			Image:     "myrepo/myapp",
-			Tag:       "v2.0.0",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate,
+			cueInput("my-app", "myrepo/myapp", "v2.0.0", "my-project", namespace))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -154,40 +155,32 @@ func TestCueRendererAdapter_Render(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid CUE syntax returns error", func(t *testing.T) {
-		_, err := adapter.Render(context.Background(), adapterInvalidTemplate, RenderInput{
-			Name:      "web-app",
-			Image:     "nginx",
-			Tag:       "1.25",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+	t.Run("invalid CUE template syntax returns error", func(t *testing.T) {
+		_, err := adapter.Render(context.Background(), adapterInvalidTemplate,
+			cueInput("web-app", "nginx", "1.25", "my-project", namespace))
 		if err == nil {
 			t.Fatal("expected error for invalid CUE syntax")
 		}
 	})
 
+	t.Run("invalid CUE input syntax returns error", func(t *testing.T) {
+		_, err := adapter.Render(context.Background(), adapterStructuredTemplate, `this is { not valid cue !!!`)
+		if err == nil {
+			t.Fatal("expected error for invalid CUE input syntax")
+		}
+	})
+
 	t.Run("cross-namespace resource rejected", func(t *testing.T) {
-		_, err := adapter.Render(context.Background(), adapterCrossNamespaceTemplate, RenderInput{
-			Name:      "web-app",
-			Image:     "nginx",
-			Tag:       "1.25",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+		_, err := adapter.Render(context.Background(), adapterCrossNamespaceTemplate,
+			cueInput("web-app", "nginx", "1.25", "my-project", namespace))
 		if err == nil {
 			t.Fatal("expected error for cross-namespace resource")
 		}
 	})
 
 	t.Run("each resource YAML is valid YAML document", func(t *testing.T) {
-		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
-			Name:      "web-app",
-			Image:     "nginx",
-			Tag:       "1.25",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate,
+			cueInput("web-app", "nginx", "1.25", "my-project", namespace))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -206,13 +199,8 @@ func TestCueRendererAdapter_Render(t *testing.T) {
 	})
 
 	t.Run("each resource has non-nil Object for JSON serialization", func(t *testing.T) {
-		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate, RenderInput{
-			Name:      "web-app",
-			Image:     "nginx",
-			Tag:       "1.25",
-			Project:   "my-project",
-			Namespace: namespace,
-		})
+		resources, err := adapter.Render(context.Background(), adapterStructuredTemplate,
+			cueInput("web-app", "nginx", "1.25", "my-project", namespace))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -238,13 +226,8 @@ func TestCueRendererAdapter_WithDefaultTemplate(t *testing.T) {
 	adapter := NewCueRendererAdapter()
 	namespace := "prj-my-project"
 
-	resources, err := adapter.Render(context.Background(), DefaultTemplate, RenderInput{
-		Name:      "holos-console",
-		Image:     "ghcr.io/holos-run/holos-console",
-		Tag:       "latest",
-		Project:   "my-project",
-		Namespace: namespace,
-	})
+	resources, err := adapter.Render(context.Background(), DefaultTemplate,
+		cueInput("holos-console", "ghcr.io/holos-run/holos-console", "latest", "my-project", namespace))
 	if err != nil {
 		t.Fatalf("expected no error rendering default template, got %v", err)
 	}

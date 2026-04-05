@@ -29,11 +29,6 @@ type ProjectResolver interface {
 	GetProjectGrants(ctx context.Context, project string) (shareUsers, shareRoles map[string]string, err error)
 }
 
-// RenderInput mirrors deployments.DeploymentInput (injected to avoid circular import).
-type RenderInput struct {
-	Name, Image, Tag, Project, Namespace string
-}
-
 // RenderResource is a single rendered resource with its YAML representation
 // and its raw object data for JSON serialization.
 type RenderResource struct {
@@ -41,10 +36,10 @@ type RenderResource struct {
 	Object map[string]any
 }
 
-// Renderer evaluates a CUE template with deployment inputs and returns
+// Renderer evaluates a CUE template unified with a CUE input string and returns
 // a list of rendered Kubernetes manifests with both YAML and structured object data.
 type Renderer interface {
-	Render(ctx context.Context, cueSource string, input RenderInput) ([]RenderResource, error)
+	Render(ctx context.Context, cueTemplate string, cueInput string) ([]RenderResource, error)
 }
 
 // Handler implements the DeploymentTemplateService.
@@ -274,16 +269,21 @@ func (h *Handler) DeleteDeploymentTemplate(
 	return connect.NewResponse(&consolev1.DeleteDeploymentTemplateResponse{}), nil
 }
 
-// RenderDeploymentTemplate evaluates a CUE template with example inputs and returns
-// the rendered Kubernetes resource manifests as multi-document YAML.
+// RenderDeploymentTemplate evaluates a CUE template unified with a CUE input
+// string and returns the rendered Kubernetes resource manifests as
+// multi-document YAML and a pretty-printed JSON array.
+//
+// Authentication is required. The request requires a non-empty cue_template;
+// cue_input is optional (an empty string is valid for templates that have no
+// required inputs).
+//
+// Access is checked against the project embedded in cue_input when it can be
+// extracted, but this RPC intentionally does not require a top-level project
+// field — the project is carried inside cue_input instead.
 func (h *Handler) RenderDeploymentTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.RenderDeploymentTemplateRequest],
 ) (*connect.Response[consolev1.RenderDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
-	}
 	if req.Msg.CueTemplate == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cue_template is required"))
 	}
@@ -293,19 +293,7 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesRead); err != nil {
-		return nil, err
-	}
-
-	namespace := h.k8s.Resolver.ProjectNamespace(project)
-
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, RenderInput{
-		Name:      req.Msg.ExampleName,
-		Image:     req.Msg.ExampleImage,
-		Tag:       req.Msg.ExampleTag,
-		Project:   project,
-		Namespace: namespace,
-	})
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CueInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}

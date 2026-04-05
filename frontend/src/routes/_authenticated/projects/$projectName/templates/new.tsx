@@ -94,10 +94,6 @@ namespaced: #Namespaced & {
 cluster: #Cluster & {}
 `
 
-const HTTPBIN_EXAMPLE_NAME = 'go-httpbin'
-const HTTPBIN_EXAMPLE_IMAGE = 'ghcr.io/mccutchen/go-httpbin'
-const HTTPBIN_EXAMPLE_TAG = '2.21'
-
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/new')({
   component: CreateTemplateRoute,
 })
@@ -127,12 +123,17 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
+  const previewCueInput = `input: {
+\tname:      "go-httpbin"
+\timage:     "ghcr.io/mccutchen/go-httpbin"
+\ttag:       "2.21"
+\tproject:   "${projectName}"
+\tnamespace: "holos-prj-${projectName}"
+}`
+
   const renderQuery = useRenderDeploymentTemplate(
-    projectName,
     cueTemplate,
-    HTTPBIN_EXAMPLE_NAME,
-    HTTPBIN_EXAMPLE_IMAGE,
-    HTTPBIN_EXAMPLE_TAG,
+    previewCueInput,
     previewOpen,
   )
 

@@ -33,7 +33,7 @@ type stubRenderer struct {
 	err       error
 }
 
-func (r *stubRenderer) Render(_ context.Context, _ string, _ RenderInput) ([]RenderResource, error) {
+func (r *stubRenderer) Render(_ context.Context, _ string, _ string) ([]RenderResource, error) {
 	return r.resources, r.err
 }
 
@@ -571,7 +571,6 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
 
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
 			CueTemplate: validCueSrc,
 		})
 		_, err := handler.RenderDeploymentTemplate(context.Background(), req)
@@ -583,53 +582,13 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer with no project access returns CodePermissionDenied", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
-
-		ctx := authedCtx("nobody@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
-			CueTemplate: validCueSrc,
-		})
-		_, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for unauthorized user")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("missing project returns CodeInvalidArgument", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "",
-			CueTemplate: validCueSrc,
-		})
-		_, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for missing project")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-
 	t.Run("missing cue_template returns CodeInvalidArgument", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, &stubRenderer{})
+		handler := NewHandler(k8s, nil, &stubRenderer{})
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
 			CueTemplate: "",
 		})
 		_, err := handler.RenderDeploymentTemplate(ctx, req)
@@ -644,7 +603,6 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 	t.Run("valid request calls renderer with correct inputs and returns YAML", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
 		stub := &stubRenderer{
 			resources: []RenderResource{
 				{
@@ -657,15 +615,18 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 				},
 			},
 		}
-		handler := NewHandler(k8s, pr, stub)
+		handler := NewHandler(k8s, nil, stub)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:      "my-project",
-			CueTemplate:  validCueSrc,
-			ExampleName:  "holos-console",
-			ExampleImage: "ghcr.io/holos-run/holos-console",
-			ExampleTag:   "latest",
+			CueTemplate: validCueSrc,
+			CueInput: `input: {
+	name:      "holos-console"
+	image:     "ghcr.io/holos-run/holos-console"
+	tag:       "latest"
+	project:   "my-project"
+	namespace: "holos-prj-my-project"
+}`,
 		})
 		resp, err := handler.RenderDeploymentTemplate(ctx, req)
 		if err != nil {
@@ -685,7 +646,6 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 	t.Run("rendered_json is a pretty-printed JSON array of all resource objects", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
 		stub := &stubRenderer{
 			resources: []RenderResource{
 				{
@@ -698,11 +658,10 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 				},
 			},
 		}
-		handler := NewHandler(k8s, pr, stub)
+		handler := NewHandler(k8s, nil, stub)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
 			CueTemplate: validCueSrc,
 		})
 		resp, err := handler.RenderDeploymentTemplate(ctx, req)
@@ -749,18 +708,16 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 	t.Run("rendered_json is empty array when renderer returns no objects", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
 		// Resources with no Object set (legacy path).
 		stub := &stubRenderer{
 			resources: []RenderResource{
 				{YAML: "apiVersion: v1\nkind: ServiceAccount\n"},
 			},
 		}
-		handler := NewHandler(k8s, pr, stub)
+		handler := NewHandler(k8s, nil, stub)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
 			CueTemplate: validCueSrc,
 		})
 		resp, err := handler.RenderDeploymentTemplate(ctx, req)
@@ -781,13 +738,11 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 	t.Run("renderer error is propagated as CodeInvalidArgument", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
 		stub := &stubRenderer{err: fmt.Errorf("syntax error in CUE")}
-		handler := NewHandler(k8s, pr, stub)
+		handler := NewHandler(k8s, nil, stub)
 
 		ctx := authedCtx("viewer@example.com", nil)
 		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			Project:     "my-project",
 			CueTemplate: validCueSrc,
 		})
 		_, err := handler.RenderDeploymentTemplate(ctx, req)
