@@ -89,15 +89,17 @@ cluster: {}
 
 // stubRenderer implements Renderer for tests.
 type stubRenderer struct {
-	resources []unstructured.Unstructured
-	err       error
-	called    bool
-	lastInput DeploymentInput
+	resources  []unstructured.Unstructured
+	err        error
+	called     bool
+	lastSystem SystemInput
+	lastUser   UserInput
 }
 
-func (s *stubRenderer) Render(_ context.Context, _ string, input DeploymentInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) Render(_ context.Context, _ string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
 	s.called = true
-	s.lastInput = input
+	s.lastSystem = system
+	s.lastUser = user
 	return s.resources, s.err
 }
 
@@ -719,14 +721,14 @@ func TestHandler_EnvVarRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastInput.Env) != 2 {
-			t.Fatalf("expected 2 env vars in renderer input, got %d", len(renderer.lastInput.Env))
+		if len(renderer.lastUser.Env) != 2 {
+			t.Fatalf("expected 2 env vars in renderer input, got %d", len(renderer.lastUser.Env))
 		}
-		if renderer.lastInput.Env[0].Name != "FOO" || renderer.lastInput.Env[0].Value != "bar" {
-			t.Errorf("unexpected first env var: %+v", renderer.lastInput.Env[0])
+		if renderer.lastUser.Env[0].Name != "FOO" || renderer.lastUser.Env[0].Value != "bar" {
+			t.Errorf("unexpected first env var: %+v", renderer.lastUser.Env[0])
 		}
-		if renderer.lastInput.Env[1].Name != "FROM_SECRET" || renderer.lastInput.Env[1].SecretKeyRef == nil {
-			t.Errorf("unexpected second env var: %+v", renderer.lastInput.Env[1])
+		if renderer.lastUser.Env[1].Name != "FROM_SECRET" || renderer.lastUser.Env[1].SecretKeyRef == nil {
+			t.Errorf("unexpected second env var: %+v", renderer.lastUser.Env[1])
 		}
 	})
 
@@ -752,8 +754,8 @@ func TestHandler_EnvVarRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastInput.Env) != 1 || renderer.lastInput.Env[0].Name != "PORT" {
-			t.Errorf("expected env [PORT=8080] from stored data, got %v", renderer.lastInput.Env)
+		if len(renderer.lastUser.Env) != 1 || renderer.lastUser.Env[0].Name != "PORT" {
+			t.Errorf("expected env [PORT=8080] from stored data, got %v", renderer.lastUser.Env)
 		}
 	})
 }
@@ -787,14 +789,14 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if !applier.applyCalled {
 			t.Error("expected applier.Apply to be called on CreateDeployment")
 		}
-		if renderer.lastInput.Name != "web-app" {
-			t.Errorf("expected input name 'web-app', got %q", renderer.lastInput.Name)
+		if renderer.lastUser.Name != "web-app" {
+			t.Errorf("expected input name 'web-app', got %q", renderer.lastUser.Name)
 		}
-		if renderer.lastInput.Image != "nginx" {
-			t.Errorf("expected input image 'nginx', got %q", renderer.lastInput.Image)
+		if renderer.lastUser.Image != "nginx" {
+			t.Errorf("expected input image 'nginx', got %q", renderer.lastUser.Image)
 		}
-		if renderer.lastInput.Tag != "1.25" {
-			t.Errorf("expected input tag '1.25', got %q", renderer.lastInput.Tag)
+		if renderer.lastUser.Tag != "1.25" {
+			t.Errorf("expected input tag '1.25', got %q", renderer.lastUser.Tag)
 		}
 	})
 
@@ -849,11 +851,11 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastInput.Command) != 1 || renderer.lastInput.Command[0] != "myapp" {
-			t.Errorf("expected command [myapp], got %v", renderer.lastInput.Command)
+		if len(renderer.lastUser.Command) != 1 || renderer.lastUser.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp], got %v", renderer.lastUser.Command)
 		}
-		if len(renderer.lastInput.Args) != 2 || renderer.lastInput.Args[0] != "--port" || renderer.lastInput.Args[1] != "8080" {
-			t.Errorf("expected args [--port 8080], got %v", renderer.lastInput.Args)
+		if len(renderer.lastUser.Args) != 2 || renderer.lastUser.Args[0] != "--port" || renderer.lastUser.Args[1] != "8080" {
+			t.Errorf("expected args [--port 8080], got %v", renderer.lastUser.Args)
 		}
 	})
 
@@ -880,11 +882,11 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastInput.Command) != 1 || renderer.lastInput.Command[0] != "myapp" {
-			t.Errorf("expected command [myapp] from stored data, got %v", renderer.lastInput.Command)
+		if len(renderer.lastUser.Command) != 1 || renderer.lastUser.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp] from stored data, got %v", renderer.lastUser.Command)
 		}
-		if len(renderer.lastInput.Args) != 2 || renderer.lastInput.Args[0] != "--port" {
-			t.Errorf("expected args [--port 8080] from stored data, got %v", renderer.lastInput.Args)
+		if len(renderer.lastUser.Args) != 2 || renderer.lastUser.Args[0] != "--port" {
+			t.Errorf("expected args [--port 8080] from stored data, got %v", renderer.lastUser.Args)
 		}
 	})
 

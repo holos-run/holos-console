@@ -41,25 +41,45 @@ type EnvVarInput struct {
 	ConfigMapKeyRef *KeyRefInput `json:"configMapKeyRef,omitempty"`
 }
 
-// DeploymentInput is the standard input passed to CUE templates.
-type DeploymentInput struct {
-	Name      string        `json:"name"`
-	Image     string        `json:"image"`
-	Tag       string        `json:"tag"`
-	Project   string        `json:"project"`
-	Namespace string        `json:"namespace"`
-	Command   []string      `json:"command,omitempty"`
-	Args      []string      `json:"args,omitempty"`
-	Env       []EnvVarInput `json:"env,omitempty"`
-	Port      int32         `json:"port,omitempty"`
+// ClaimsInput carries OIDC ID token claims passed to CUE templates.
+type ClaimsInput struct {
+	Iss           string   `json:"iss"`
+	Sub           string   `json:"sub"`
+	Aud           string   `json:"aud,omitempty"`
+	Exp           int64    `json:"exp"`
+	Iat           int64    `json:"iat"`
+	Email         string   `json:"email"`
+	EmailVerified bool     `json:"email_verified"`
+	Name          string   `json:"name,omitempty"`
+	Groups        []string `json:"groups,omitempty"`
+}
+
+// SystemInput contains trusted values set by the console backend.
+// These values are derived from authenticated context (project namespace
+// resolution and OIDC token claims) and are not supplied by the user.
+type SystemInput struct {
+	Project   string      `json:"project"`
+	Namespace string      `json:"namespace"`
+	Claims    ClaimsInput `json:"claims"`
+}
+
+// UserInput contains user-provided deployment parameters.
+type UserInput struct {
+	Name    string        `json:"name"`
+	Image   string        `json:"image"`
+	Tag     string        `json:"tag"`
+	Command []string      `json:"command,omitempty"`
+	Args    []string      `json:"args,omitempty"`
+	Env     []EnvVarInput `json:"env,omitempty"`
+	Port    int32         `json:"port,omitempty"`
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.
 type CueRenderer struct{}
 
-// Render evaluates the CUE template with the given input and returns a list of
-// K8s resource manifests as unstructured objects.
-func (r *CueRenderer) Render(ctx context.Context, cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error) {
+// Render evaluates the CUE template with the given system and user inputs and
+// returns a list of K8s resource manifests as unstructured objects.
+func (r *CueRenderer) Render(ctx context.Context, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
 	// Enforce evaluation timeout.
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
@@ -71,7 +91,7 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, input Deploy
 	}
 	ch := make(chan result, 1)
 	go func() {
-		resources, err := evaluate(cueSource, input)
+		resources, err := evaluate(cueSource, system, user)
 		ch <- result{resources, err}
 	}()
 
@@ -111,7 +131,9 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 
 // evaluate performs synchronous CUE template evaluation.
 // Templates must use the structured namespaced/cluster output format.
-func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error) {
+// The system input (project, namespace, claims) and user input (name, image,
+// tag, etc.) are encoded separately and unified with the template.
+func evaluate(cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
 	// Compile the template source.
@@ -120,20 +142,35 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 		return nil, fmt.Errorf("invalid CUE template: %w", err)
 	}
 
-	// Encode input as JSON then compile to a CUE value.
-	inputJSON, err := json.Marshal(input)
+	// Encode user input as JSON then compile to a CUE value and unify at "input".
+	inputJSON, err := json.Marshal(user)
 	if err != nil {
-		return nil, fmt.Errorf("encoding input: %w", err)
+		return nil, fmt.Errorf("encoding user input: %w", err)
 	}
 	inputValue := cueCtx.CompileBytes(inputJSON)
 	if err := inputValue.Err(); err != nil {
-		return nil, fmt.Errorf("compiling input: %w", err)
+		return nil, fmt.Errorf("compiling user input: %w", err)
 	}
 
-	// Unify template with the input field.
+	// Encode system input as JSON then compile to a CUE value and unify at "system".
+	systemJSON, err := json.Marshal(system)
+	if err != nil {
+		return nil, fmt.Errorf("encoding system input: %w", err)
+	}
+	systemValue := cueCtx.CompileBytes(systemJSON)
+	if err := systemValue.Err(); err != nil {
+		return nil, fmt.Errorf("compiling system input: %w", err)
+	}
+
+	// Unify template with the user input at the "input" path and system input
+	// at the "system" path.
 	unified := tmpl.FillPath(cue.ParsePath("input"), inputValue)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("unifying template with input: %w", err)
+		return nil, fmt.Errorf("unifying template with user input: %w", err)
+	}
+	unified = unified.FillPath(cue.ParsePath("system"), systemValue)
+	if err := unified.Err(); err != nil {
+		return nil, fmt.Errorf("unifying template with system input: %w", err)
 	}
 
 	// Require the structured namespaced/cluster output format.
@@ -142,13 +179,15 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
 	}
 
-	return evaluateStructured(unified, input.Namespace)
+	return evaluateStructured(unified, system.Namespace)
 }
 
 // evaluateWithCueInput performs synchronous CUE template evaluation using a raw
-// CUE string as input instead of a JSON-encoded DeploymentInput.  The cueInput
-// is compiled and unified with the template at the "input" path.  The expected
-// namespace is derived from input.namespace in the unified value.
+// CUE string as input.  The cueInput is a CUE document that provides both
+// "input" (user-provided values) and "system" (trusted backend values) at the
+// top level.  It is unified with the template at the top level so that
+// input.name, system.namespace, etc. resolve correctly.
+// The expected namespace is derived from system.namespace in the unified value.
 func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -159,13 +198,16 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 	}
 
 	// Compile the CUE input source.  cueInput is a CUE document that contains
-	// an "input" field at the top level, e.g.:
+	// "input" and "system" fields at the top level, e.g.:
 	//   input: {
-	//     name:      "holos-console"
+	//     name:  "holos-console"
+	//   }
+	//   system: {
+	//     project:   "garage"
 	//     namespace: "holos-prj-garage"
 	//   }
 	// We unify the full cueInput value with the template at the top level so
-	// that input.name, input.namespace, etc. resolve correctly.
+	// that input.name, system.namespace, etc. resolve correctly.
 	inputValue := cueCtx.CompileString(cueInput)
 	if err := inputValue.Err(); err != nil {
 		return nil, fmt.Errorf("invalid CUE input: %w", err)
@@ -183,14 +225,14 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
 	}
 
-	// Extract the expected namespace from the unified input value.
-	nsValue := unified.LookupPath(cue.ParsePath("input.namespace"))
+	// Extract the expected namespace from the unified system value.
+	nsValue := unified.LookupPath(cue.ParsePath("system.namespace"))
 	if nsValue.Err() != nil || !nsValue.Exists() {
-		return nil, fmt.Errorf("cue_input must provide an 'input.namespace' field")
+		return nil, fmt.Errorf("cue_input must provide a 'system.namespace' field")
 	}
 	expectedNamespace, err := nsValue.String()
 	if err != nil {
-		return nil, fmt.Errorf("input.namespace must be a concrete string: %w", err)
+		return nil, fmt.Errorf("system.namespace must be a concrete string: %w", err)
 	}
 
 	return evaluateStructured(unified, expectedNamespace)

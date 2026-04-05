@@ -357,6 +357,16 @@ export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.
   cueTemplate: string;
 
   /**
+   * cue_system_input contains CUE source for system-provided values (project,
+   * namespace, claims).  These values are trusted — set by the console backend
+   * from authenticated context.  The claims field carries the OIDC ID token
+   * claims of the authenticated user.
+   *
+   * @generated from field: string cue_system_input = 7;
+   */
+  cueSystemInput: string;
+
+  /**
    * cue_input contains valid CUE source that is unified with cue_template at
    * the "input" path to supply concrete values for template parameters.
    * Example:
@@ -364,8 +374,6 @@ export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.
    *     name:      "holos-console"
    *     image:     "ghcr.io/holos-run/holos-console"
    *     tag:       "latest"
-   *     project:   "garage"
-   *     namespace: "holos-prj-garage"
    *   }
    *
    * @generated from field: string cue_input = 6;

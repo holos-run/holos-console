@@ -17,21 +17,44 @@ package deployment
 	configMapKeyRef?: #KeyRef
 }
 
-// #Input defines the fields the console fills in at render time.
+// #Input defines the user-provided fields the console fills in at render time.
 // Constraints here are enforced by CUE before any Kubernetes call is made.
 #Input: {
-	name:      string & =~"^[a-z][a-z0-9-]*$" // DNS label
-	image:     string
-	tag:       string
-	project:   string
-	namespace: string
+	name:    string & =~"^[a-z][a-z0-9-]*$" // DNS label
+	image:   string
+	tag:     string
 	command?: [...string]
 	args?: [...string]
 	env:  [...#EnvVar] | *[]
 	port: int & >0 & <=65535 | *8080
 }
 
-input: #Input
+// #Claims carries the OIDC ID token claims of the authenticated user.
+// These values are set by the console backend from the verified JWT and are
+// never supplied directly by the user.
+#Claims: {
+	iss?:            string
+	sub:             string
+	aud?:            string
+	exp?:            int
+	iat?:            int
+	email:           string
+	email_verified?: bool
+	name?:           string
+	groups?: [...string]
+}
+
+// #System defines the trusted system-provided fields set by the console backend.
+// These values are derived from authenticated context (project namespace resolution
+// and OIDC token claims) and are never supplied by the user.
+#System: {
+	project:   string
+	namespace: string
+	claims:    #Claims
+}
+
+input:  #Input
+system: #System
 
 // _labels are the standard labels required on every resource.
 // app.kubernetes.io/managed-by MUST equal "console.holos.run" or the
@@ -89,14 +112,14 @@ _envSpec: [for e in input.env {
 // namespaced organizes resources that live within a Kubernetes namespace.
 // The struct key path (namespace/Kind/name) must match the resource metadata.
 namespaced: #Namespaced & {
-	(input.namespace): {
+	(system.namespace): {
 		// ServiceAccount provides a Kubernetes identity for the pods.
 		ServiceAccount: (input.name): {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      input.name
-				namespace: input.namespace
+				namespace: system.namespace
 				labels:    _labels
 			}
 		}
@@ -107,7 +130,7 @@ namespaced: #Namespaced & {
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: input.namespace
+				namespace: system.namespace
 				labels:    _labels
 			}
 			spec: {
@@ -142,7 +165,7 @@ namespaced: #Namespaced & {
 			kind:       "Service"
 			metadata: {
 				name:      input.name
-				namespace: input.namespace
+				namespace: system.namespace
 				labels:    _labels
 			}
 			spec: {
