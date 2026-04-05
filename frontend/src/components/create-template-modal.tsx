@@ -14,16 +14,90 @@ import {
 } from '@/components/ui/dialog'
 import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 
-const DEFAULT_CUE_TEMPLATE = `// deployment.cue — default deployment template
-package holos
+const DEFAULT_CUE_TEMPLATE = `// package deployment is the required CUE package declaration.
+package deployment
 
-// #Deployment defines the shape of a deployment.
-#Deployment: {
-  name:      string
-  namespace: string
-  image:     string
-  replicas?: int & >=1 | *1
+// #KeyRef identifies a key within a Kubernetes Secret or ConfigMap.
+#KeyRef: {
+  name: string
+  key:  string
 }
+
+// #EnvVar represents a container environment variable.
+#EnvVar: {
+  name:               string
+  value?:             string
+  secretKeyRef?:      #KeyRef
+  configMapKeyRef?:   #KeyRef
+}
+
+// #Input defines the fields the console fills in at render time.
+#Input: {
+  name:      string & =~"^[a-z][a-z0-9-]*$"
+  image:     string
+  tag:       string
+  project:   string
+  namespace: string
+  command?: [...string]
+  args?: [...string]
+  env: [...#EnvVar] | *[]
+}
+
+input: #Input
+
+// _labels are the standard labels required on every resource.
+_labels: {
+  "app.kubernetes.io/name":       input.name
+  "app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+// #Namespaced constrains namespaced resource struct keys to match resource metadata.
+#Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+  kind: Kind
+  metadata: {
+    name:      Name
+    namespace: Namespace
+    ...
+  }
+  ...
+}
+
+// #Cluster constrains cluster-scoped resource struct keys to match resource metadata.
+#Cluster: [Kind=string]: [Name=string]: {
+  kind: Kind
+  metadata: {
+    name: Name
+    ...
+  }
+  ...
+}
+
+namespaced: #Namespaced & {
+  (input.namespace): {
+    Deployment: (input.name): {
+      apiVersion: "apps/v1"
+      kind:       "Deployment"
+      metadata: {
+        name:      input.name
+        namespace: input.namespace
+        labels:    _labels
+      }
+      spec: {
+        replicas: 1
+        selector: matchLabels: "app.kubernetes.io/name": input.name
+        template: {
+          metadata: labels: _labels
+          spec: containers: [{
+            name:  input.name
+            image: input.image + ":" + input.tag
+          }]
+        }
+      }
+    }
+  }
+}
+
+cluster: #Cluster & {}
 `
 
 const HTTPBIN_EXAMPLE_NAME = 'go-httpbin'
