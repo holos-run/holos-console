@@ -27,7 +27,8 @@ package deployment
 	namespace: string
 	command?: [...string]
 	args?: [...string]
-	env: [...#EnvVar] | *[]
+	env:  [...#EnvVar] | *[]
+	port: int & >0 & <=65535 | *8080
 }
 
 input: #Input
@@ -122,7 +123,7 @@ namespaced: #Namespaced & {
 							if len(_envSpec) > 0 {
 								env: _envSpec
 							}
-							ports: [{containerPort: 8443, name: "https"}]
+							ports: [{containerPort: input.port, name: "http"}]
 							if input.command != _|_ {
 								command: input.command
 							}
@@ -135,7 +136,7 @@ namespaced: #Namespaced & {
 			}
 		}
 
-		// Service exposes port 443 → container port 8443.
+		// Service exposes port 80 → container port input.port (named "http").
 		Service: (input.name): {
 			apiVersion: "v1"
 			kind:       "Service"
@@ -146,7 +147,7 @@ namespaced: #Namespaced & {
 			}
 			spec: {
 				selector: "app.kubernetes.io/name": input.name
-				ports: [{port: 443, targetPort: "https", name: "https"}]
+				ports: [{port: 80, targetPort: "http", name: "http"}]
 			}
 		}
 	}

@@ -51,6 +51,7 @@ type DeploymentInput struct {
 	Command   []string      `json:"command,omitempty"`
 	Args      []string      `json:"args,omitempty"`
 	Env       []EnvVarInput `json:"env,omitempty"`
+	Port      int32         `json:"port,omitempty"`
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.

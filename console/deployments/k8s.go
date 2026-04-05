@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,7 @@ const (
 	CommandKey  = "command"
 	ArgsKey     = "args"
 	EnvKey      = "env"
+	PortKey     = "port"
 )
 
 // K8sClient wraps Kubernetes client operations for deployments.
@@ -70,7 +72,7 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 }
 
 // CreateDeployment creates a new deployment ConfigMap.
-func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []EnvVarInput) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []EnvVarInput, port int32) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
 		slog.String("project", project),
@@ -108,13 +110,17 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 		b, _ := json.Marshal(env)
 		cm.Data[EnvKey] = string(b)
 	}
+	if port > 0 {
+		cm.Data[PortKey] = strconv.Itoa(int(port))
+	}
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
 // UpdateDeployment updates an existing deployment ConfigMap.
 // Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.
 // A non-nil env slice (even if empty) replaces the stored env vars.
-func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []EnvVarInput) (*corev1.ConfigMap, error) {
+// A non-nil port pointer updates the stored port value.
+func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []EnvVarInput, port *int32) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment in kubernetes",
 		slog.String("project", project),
@@ -154,6 +160,13 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 	if env != nil {
 		b, _ := json.Marshal(env)
 		cm.Data[EnvKey] = string(b)
+	}
+	if port != nil {
+		if *port > 0 {
+			cm.Data[PortKey] = strconv.Itoa(int(*port))
+		} else {
+			delete(cm.Data, PortKey)
+		}
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
