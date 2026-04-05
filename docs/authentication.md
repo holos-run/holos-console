@@ -151,25 +151,11 @@ function LoginButton() {
 }
 ```
 
-### Getting Access Tokens for API Calls
+### ConnectRPC Token Injection
 
-```tsx
-import { useAuth } from './auth'
+All ConnectRPC requests made through the shared `transport` (from `frontend/src/lib/transport.ts`) have Bearer tokens attached automatically by the `createAuthInterceptor`. Query hooks in `frontend/src/queries/` use this transport via the `TransportProvider` in `__root.tsx`, so no manual token injection is needed.
 
-function MyComponent() {
-  const { getAccessToken } = useAuth()
-
-  const fetchData = async () => {
-    const token = getAccessToken()
-    const response = await fetch('/api/endpoint', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-    // ...
-  }
-}
-```
+The interceptor also handles token expiry: on a `401 Unauthenticated` response it calls `signinSilent()` once to renew the token and retries the request. Concurrent 401s are coalesced so only one renewal flow runs at a time.
 
 ## Security Considerations
 
