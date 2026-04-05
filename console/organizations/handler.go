@@ -173,7 +173,7 @@ func (h *Handler) CreateOrganization(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	if _, err := h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, shareUsers, shareRoles); err != nil {
+	if _, err := h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, claims.Email, shareUsers, shareRoles); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -550,8 +550,9 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 		if annotations != nil {
 			org.DisplayName = annotations[DisplayNameAnnotation]
 			org.Description = annotations[secrets.DescriptionAnnotation]
+			org.CreatorEmail = annotations[CreatorEmailAnnotation]
 		}
-		// Populate default sharing grants from annotations
+		// Populate default sharing grants and creation timestamp from typed namespace
 		if nsTyped, ok := ns.(*corev1.Namespace); ok {
 			if defaultUsers, err := GetDefaultShareUsers(nsTyped); err == nil {
 				org.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
@@ -559,6 +560,7 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 			if defaultRoles, err := GetDefaultShareRoles(nsTyped); err == nil {
 				org.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
 			}
+			org.CreatedAt = nsTyped.CreationTimestamp.UTC().Format(time.RFC3339)
 		}
 	}
 

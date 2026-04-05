@@ -17,6 +17,9 @@ import (
 // DisplayNameAnnotation is the annotation key for a project's display name.
 const DisplayNameAnnotation = "console.holos.run/display-name"
 
+// CreatorEmailAnnotation is the annotation key for the email of the user who created the project.
+const CreatorEmailAnnotation = "console.holos.run/creator-email"
+
 // DefaultShareUsersAnnotation is the annotation key for default per-user sharing grants on a project.
 const DefaultShareUsersAnnotation = "console.holos.run/default-share-users"
 
@@ -92,7 +95,7 @@ func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namesp
 }
 
 // CreateProject creates a new namespace with managed-by and resource-type labels.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
@@ -129,6 +132,9 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	}
 	if description != "" {
 		annotations[secrets.DescriptionAnnotation] = description
+	}
+	if creatorEmail != "" {
+		annotations[CreatorEmailAnnotation] = creatorEmail
 	}
 	labels := map[string]string{
 		secrets.ManagedByLabel:     secrets.ManagedByValue,

@@ -256,7 +256,7 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
 	shareRoles := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
 
-	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", shareUsers, shareRoles, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", "", shareUsers, shareRoles, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -281,7 +281,7 @@ func TestCreateProject_SetsOrgLabelWhenProvided(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -294,7 +294,7 @@ func TestCreateProject_OmitsOrgLabelWhenEmpty(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -317,7 +317,7 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", nil, nil, nil, nil)
+	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", "", nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -602,5 +602,90 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 	}
 	if len(users) != 2 {
 		t.Fatalf("expected 2 user grants, got %d", len(users))
+	}
+}
+
+func TestCreateProject_StoresCreatorEmailAnnotation(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "creator@example.com", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Annotations[CreatorEmailAnnotation] != "creator@example.com" {
+		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[CreatorEmailAnnotation])
+	}
+}
+
+func TestCreateProject_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if _, ok := result.Annotations[CreatorEmailAnnotation]; ok {
+		t.Error("expected no creator-email annotation when email is empty")
+	}
+}
+
+func TestBuildProject_PopulatesCreatorEmailAndCreatedAt(t *testing.T) {
+	now := metav1.Now()
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "holos-prj-my-project",
+			CreationTimestamp: now,
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+				resolver.OrganizationLabel: "acme",
+			},
+			Annotations: map[string]string{
+				CreatorEmailAnnotation:       "creator@example.com",
+				secrets.ShareUsersAnnotation: `[{"principal":"creator@example.com","role":"owner"}]`,
+				secrets.ShareRolesAnnotation: `[]`,
+			},
+		},
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareRoles, _ := GetShareRoles(ns)
+	k8s := NewK8sClient(fake.NewClientset(ns), testResolver())
+	h := &Handler{k8s: k8s}
+	project := h.buildProject(ns, shareUsers, shareRoles, 0)
+
+	if project.CreatorEmail != "creator@example.com" {
+		t.Errorf("expected CreatorEmail %q, got %q", "creator@example.com", project.CreatorEmail)
+	}
+	if project.CreatedAt == "" {
+		t.Error("expected CreatedAt to be non-empty")
+	}
+	expectedTime := now.UTC().Format("2006-01-02T15:04:05Z07:00")
+	if project.CreatedAt != expectedTime {
+		t.Errorf("expected CreatedAt %q, got %q", expectedTime, project.CreatedAt)
+	}
+}
+
+func TestBuildProject_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-my-project",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
+				resolver.ProjectLabel:      "my-project",
+			},
+		},
+	}
+
+	k8s := NewK8sClient(fake.NewClientset(ns), testResolver())
+	h := &Handler{k8s: k8s}
+	project := h.buildProject(ns, nil, nil, 0)
+
+	if project.CreatorEmail != "" {
+		t.Errorf("expected empty CreatorEmail for namespace without annotation, got %q", project.CreatorEmail)
 	}
 }

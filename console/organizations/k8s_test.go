@@ -179,7 +179,7 @@ func TestCreateOrganization_CreatesNamespaceWithPrefixAndLabels(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "ACME Corp", "Test org", shareUsers, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "ACME Corp", "Test org", "", shareUsers, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -208,7 +208,7 @@ func TestCreateOrganization_SetsOrganizationLabel(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", nil, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -230,7 +230,7 @@ func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateOrganization(context.Background(), "acme", "", "", nil, nil)
+	_, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -543,5 +543,87 @@ func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	_, err := k8s.UpdateOrganizationSharing(context.Background(), "fake", nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestCreateOrganization_StoresCreatorEmailAnnotation(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "creator@example.com", nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Annotations[CreatorEmailAnnotation] != "creator@example.com" {
+		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[CreatorEmailAnnotation])
+	}
+}
+
+func TestCreateOrganization_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if _, ok := result.Annotations[CreatorEmailAnnotation]; ok {
+		t.Error("expected no creator-email annotation when email is empty")
+	}
+}
+
+func TestBuildOrganization_PopulatesCreatorEmailAndCreatedAt(t *testing.T) {
+	now := metav1.Now()
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "holos-org-acme",
+			CreationTimestamp: now,
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "acme",
+			},
+			Annotations: map[string]string{
+				CreatorEmailAnnotation:        "creator@example.com",
+				secrets.ShareUsersAnnotation:  `[{"principal":"creator@example.com","role":"owner"}]`,
+				secrets.ShareRolesAnnotation:  `[]`,
+			},
+		},
+	}
+
+	shareUsers, _ := GetShareUsers(ns)
+	shareRoles, _ := GetShareRoles(ns)
+	k8s := NewK8sClient(fake.NewClientset(ns), testResolver())
+	org := buildOrganization(k8s, ns, shareUsers, shareRoles, 0)
+
+	if org.CreatorEmail != "creator@example.com" {
+		t.Errorf("expected CreatorEmail %q, got %q", "creator@example.com", org.CreatorEmail)
+	}
+	if org.CreatedAt == "" {
+		t.Error("expected CreatedAt to be non-empty")
+	}
+	expectedTime := now.UTC().Format("2006-01-02T15:04:05Z07:00")
+	if org.CreatedAt != expectedTime {
+		t.Errorf("expected CreatedAt %q, got %q", expectedTime, org.CreatedAt)
+	}
+}
+
+func TestBuildOrganization_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Labels: map[string]string{
+				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				resolver.OrganizationLabel: "acme",
+			},
+		},
+	}
+
+	k8s := NewK8sClient(fake.NewClientset(ns), testResolver())
+	org := buildOrganization(k8s, ns, nil, nil, 0)
+
+	if org.CreatorEmail != "" {
+		t.Errorf("expected empty CreatorEmail for namespace without annotation, got %q", org.CreatorEmail)
 	}
 }

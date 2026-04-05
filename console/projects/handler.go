@@ -215,7 +215,7 @@ func (h *Handler) CreateProject(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -555,8 +555,9 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 		if annotations != nil {
 			p.DisplayName = annotations[DisplayNameAnnotation]
 			p.Description = annotations[secrets.DescriptionAnnotation]
+			p.CreatorEmail = annotations[CreatorEmailAnnotation]
 		}
-		// Populate default sharing grants from annotations
+		// Populate default sharing grants and creation timestamp from typed namespace
 		if nsTyped, ok := ns.(*corev1.Namespace); ok {
 			if defaultUsers, err := GetDefaultShareUsers(nsTyped); err == nil {
 				p.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
@@ -564,6 +565,7 @@ func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, sha
 			if defaultRoles, err := GetDefaultShareRoles(nsTyped); err == nil {
 				p.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
 			}
+			p.CreatedAt = nsTyped.CreationTimestamp.UTC().Format(time.RFC3339)
 		}
 	}
 	if l, ok := ns.(labeled); ok {

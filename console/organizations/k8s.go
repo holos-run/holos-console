@@ -17,6 +17,9 @@ import (
 // DisplayNameAnnotation is the annotation key for an organization's display name.
 const DisplayNameAnnotation = "console.holos.run/display-name"
 
+// CreatorEmailAnnotation is the annotation key for the email of the user who created the organization.
+const CreatorEmailAnnotation = "console.holos.run/creator-email"
+
 // DefaultShareUsersAnnotation is the annotation key for default per-user sharing grants on an organization.
 const DefaultShareUsersAnnotation = "console.holos.run/default-share-users"
 
@@ -89,7 +92,7 @@ func (c *K8sClient) GetOrganization(ctx context.Context, name string) (*corev1.N
 }
 
 // CreateOrganization creates a new namespace with organization labels and annotations.
-func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, description string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, description, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.resolver.OrgNamespace(name)
 	slog.DebugContext(ctx, "creating organization in kubernetes",
 		slog.String("name", name),
@@ -112,6 +115,9 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 	}
 	if description != "" {
 		annotations[secrets.DescriptionAnnotation] = description
+	}
+	if creatorEmail != "" {
+		annotations[CreatorEmailAnnotation] = creatorEmail
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
