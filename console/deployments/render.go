@@ -82,6 +82,32 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, input Deploy
 	}
 }
 
+// RenderWithCueInput evaluates the CUE template unified with a raw CUE input
+// string at the "input" path and returns a list of K8s resource manifests as
+// unstructured objects.  The cueInput must be valid CUE source that supplies
+// concrete values for the template parameters (including "namespace").
+func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInput string) ([]unstructured.Unstructured, error) {
+	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
+	defer cancel()
+
+	type result struct {
+		resources []unstructured.Unstructured
+		err       error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		resources, err := evaluateWithCueInput(cueSource, cueInput)
+		ch <- result{resources, err}
+	}()
+
+	select {
+	case <-evalCtx.Done():
+		return nil, fmt.Errorf("CUE template evaluation timed out after %s", renderTimeout)
+	case res := <-ch:
+		return res.resources, res.err
+	}
+}
+
 // evaluate performs synchronous CUE template evaluation.
 // Templates must use the structured namespaced/cluster output format.
 func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructured, error) {
@@ -116,6 +142,57 @@ func evaluate(cueSource string, input DeploymentInput) ([]unstructured.Unstructu
 	}
 
 	return evaluateStructured(unified, input.Namespace)
+}
+
+// evaluateWithCueInput performs synchronous CUE template evaluation using a raw
+// CUE string as input instead of a JSON-encoded DeploymentInput.  The cueInput
+// is compiled and unified with the template at the "input" path.  The expected
+// namespace is derived from input.namespace in the unified value.
+func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructured, error) {
+	cueCtx := cuecontext.New()
+
+	// Compile the template source.
+	tmpl := cueCtx.CompileString(cueSource)
+	if err := tmpl.Err(); err != nil {
+		return nil, fmt.Errorf("invalid CUE template: %w", err)
+	}
+
+	// Compile the CUE input source.  cueInput is a CUE document that contains
+	// an "input" field at the top level, e.g.:
+	//   input: {
+	//     name:      "holos-console"
+	//     namespace: "holos-prj-garage"
+	//   }
+	// We unify the full cueInput value with the template at the top level so
+	// that input.name, input.namespace, etc. resolve correctly.
+	inputValue := cueCtx.CompileString(cueInput)
+	if err := inputValue.Err(); err != nil {
+		return nil, fmt.Errorf("invalid CUE input: %w", err)
+	}
+
+	// Unify the template with the input document at the top level.
+	unified := tmpl.Unify(inputValue)
+	if err := unified.Err(); err != nil {
+		return nil, fmt.Errorf("unifying template with input: %w", err)
+	}
+
+	// Require the structured namespaced/cluster output format.
+	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
+		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
+	}
+
+	// Extract the expected namespace from the unified input value.
+	nsValue := unified.LookupPath(cue.ParsePath("input.namespace"))
+	if nsValue.Err() != nil || !nsValue.Exists() {
+		return nil, fmt.Errorf("cue_input must provide an 'input.namespace' field")
+	}
+	expectedNamespace, err := nsValue.String()
+	if err != nil {
+		return nil, fmt.Errorf("input.namespace must be a concrete string: %w", err)
+	}
+
+	return evaluateStructured(unified, expectedNamespace)
 }
 
 // evaluateStructured walks the namespaced and cluster structured output fields

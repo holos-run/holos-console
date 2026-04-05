@@ -97,16 +97,23 @@ message DeleteDeploymentTemplateRequest {
 
 message DeleteDeploymentTemplateResponse {}
 
-// RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
-// and returns the rendered Kubernetes resource manifests as multi-document YAML
-// and as a pretty-printed JSON array.
+// RenderDeploymentTemplateRequest evaluates a CUE template unified with a CUE
+// input value and returns the rendered Kubernetes resource manifests as
+// multi-document YAML and as a pretty-printed JSON array.
 // The cue_template field is rendered directly (supports unsaved/draft templates).
 message RenderDeploymentTemplateRequest {
-  string project      = 1; // owning project (used to resolve namespace)
   string cue_template = 2; // CUE source to evaluate
-  string example_name  = 3; // example deployment name (e.g. "holos-console")
-  string example_image = 4; // example image (e.g. "ghcr.io/holos-run/holos-console")
-  string example_tag   = 5; // example tag (e.g. "latest")
+  // cue_input contains valid CUE source that is unified with cue_template at
+  // the "input" path to supply concrete values for template parameters.
+  // Example:
+  //   input: {
+  //     name:      "holos-console"
+  //     image:     "ghcr.io/holos-run/holos-console"
+  //     tag:       "latest"
+  //     project:   "garage"
+  //     namespace: "holos-prj-garage"
+  //   }
+  string cue_input    = 6;
 }
 
 // RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.

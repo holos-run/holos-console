@@ -18,14 +18,11 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 	return &CueRendererAdapter{inner: &deployments.CueRenderer{}}
 }
 
-func (a *CueRendererAdapter) Render(ctx context.Context, cueSource string, in RenderInput) ([]RenderResource, error) {
-	resources, err := a.inner.Render(ctx, cueSource, deployments.DeploymentInput{
-		Name:      in.Name,
-		Image:     in.Image,
-		Tag:       in.Tag,
-		Project:   in.Project,
-		Namespace: in.Namespace,
-	})
+// Render evaluates cueTemplate unified with cueInput at the "input" CUE path
+// and returns the rendered Kubernetes resource manifests.  cueInput must be
+// valid CUE source that supplies concrete values for the template parameters.
+func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cueInput string) ([]RenderResource, error) {
+	resources, err := a.inner.RenderWithCueInput(ctx, cueTemplate, cueInput)
 	if err != nil {
 		return nil, err
 	}
