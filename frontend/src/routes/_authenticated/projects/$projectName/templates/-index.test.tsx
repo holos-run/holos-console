@@ -19,6 +19,7 @@ vi.mock('@/queries/deployment-templates', () => ({
   useListDeploymentTemplates: vi.fn(),
   useCreateDeploymentTemplate: vi.fn(),
   useDeleteDeploymentTemplate: vi.fn(),
+  useRenderDeploymentTemplate: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -27,7 +28,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListDeploymentTemplates, useCreateDeploymentTemplate, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListDeploymentTemplates, useCreateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplatesPage } from './index'
@@ -41,6 +42,7 @@ function setupMocks(templates = [makeTemplate('web-app', 'Standard web app')], u
   ;(useCreateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
   ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: undefined, isLoading: false, isError: false, error: null })
 }
 
 describe('DeploymentTemplatesPage', () => {
