@@ -1,13 +1,8 @@
 import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { CreateTemplateModal } from '@/components/create-template-modal'
-import { StringListInput } from '@/components/string-list-input'
-import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,13 +15,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Table,
   TableBody,
   TableCell,
@@ -37,9 +25,7 @@ import {
 import { Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
-import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
-import { useListDeployments, useCreateDeployment, useDeleteDeployment } from '@/queries/deployments'
-import { useListDeploymentTemplates } from '@/queries/deployment-templates'
+import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/')({
@@ -63,89 +49,14 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
 
   const { data: deployments = [], isLoading, error } = useListDeployments(projectName)
   const { data: project } = useGetProject(projectName)
-  const { data: templates = [] } = useListDeploymentTemplates(projectName)
-  const createMutation = useCreateDeployment(projectName)
   const deleteMutation = useDeleteDeployment(projectName)
-
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createDisplayName, setCreateDisplayName] = useState('')
-  const [createName, setCreateName] = useState('')
-  const [createDescription, setCreateDescription] = useState('')
-  const [createTemplate, setCreateTemplate] = useState('')
-  const [createImage, setCreateImage] = useState('')
-  const [createTag, setCreateTag] = useState('')
-  const [createCommand, setCreateCommand] = useState<string[]>([])
-  const [createArgs, setCreateArgs] = useState<string[]>([])
-  const [createEnv, setCreateEnv] = useState<EnvVar[]>([])
-  const [createError, setCreateError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  const [templateSubModalOpen, setTemplateSubModalOpen] = useState(false)
-
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
-
-  const slugify = (val: string) =>
-    val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-
-  const handleDisplayNameChange = (val: string) => {
-    setCreateDisplayName(val)
-    setCreateName(slugify(val))
-  }
-
-  const handleCreateOpen = () => {
-    setCreateDisplayName('')
-    setCreateName('')
-    setCreateDescription('')
-    setCreateTemplate('')
-    setCreateImage('')
-    setCreateTag('')
-    setCreateCommand([])
-    setCreateArgs([])
-    setCreateEnv([])
-    setCreateError(null)
-    createMutation.reset()
-    setCreateOpen(true)
-  }
-
-  const handleCreate = async () => {
-    if (!createName.trim()) {
-      setCreateError('Name is required')
-      return
-    }
-    if (!createTemplate) {
-      setCreateError('Template is required')
-      return
-    }
-    if (!createImage.trim()) {
-      setCreateError('Image is required')
-      return
-    }
-    if (!createTag.trim()) {
-      setCreateError('Tag is required')
-      return
-    }
-    setCreateError(null)
-    try {
-      await createMutation.mutateAsync({
-        name: createName.trim(),
-        displayName: createDisplayName.trim(),
-        description: createDescription.trim(),
-        template: createTemplate,
-        image: createImage.trim(),
-        tag: createTag.trim(),
-        command: createCommand,
-        args: createArgs,
-        env: filterEnvVars(createEnv),
-      })
-      setCreateOpen(false)
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err))
-    }
-  }
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
@@ -192,7 +103,9 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>{projectName} / Deployments</CardTitle>
           {canWrite && (
-            <Button size="sm" onClick={handleCreateOpen}>Create Deployment</Button>
+            <Link to="/projects/$projectName/deployments/new" params={{ projectName }}>
+              <Button size="sm">Create Deployment</Button>
+            </Link>
           )}
         </CardHeader>
         <CardContent>
@@ -200,7 +113,9 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <p className="text-muted-foreground">No deployments yet. Create one to get started.</p>
               {canWrite && (
-                <Button size="sm" onClick={handleCreateOpen}>Create Deployment</Button>
+                <Link to="/projects/$projectName/deployments/new" params={{ projectName }}>
+                  <Button size="sm">Create Deployment</Button>
+                </Link>
               )}
             </div>
           ) : (
@@ -251,140 +166,6 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create Deployment</DialogTitle>
-            <DialogDescription>Deploy a new application to this project.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="create-display-name">Display Name</Label>
-              <Input
-                id="create-display-name"
-                aria-label="Display Name"
-                autoFocus
-                value={createDisplayName}
-                onChange={(e) => handleDisplayNameChange(e.target.value)}
-                placeholder="My API"
-              />
-            </div>
-            <div>
-              <Label>Name (slug)</Label>
-              <Input
-                aria-label="Name slug"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="my-api"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Auto-derived from display name. Lowercase alphanumeric and hyphens only.</p>
-            </div>
-            <div>
-              <Label htmlFor="create-description">Description</Label>
-              <Input
-                id="create-description"
-                aria-label="Description"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="What does this deployment serve?"
-              />
-            </div>
-            <div>
-              <Label>Template</Label>
-              <Select value={createTemplate} onValueChange={(templateName: string) => {
-                setCreateTemplate(templateName)
-                const selected = templates.find((t) => t.name === templateName)
-                const defaults = selected?.defaults
-                setCreateImage(defaults?.image ?? '')
-                setCreateTag(defaults?.tag ?? '')
-                setCreateCommand(defaults?.command ?? [])
-                setCreateArgs(defaults?.args ?? [])
-                setCreateEnv(defaults?.env ?? [])
-              }}>
-                <SelectTrigger aria-label="Template">
-                  <SelectValue placeholder="Select a template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {templates.length === 0 && canWrite && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  No templates yet.{' '}
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => setTemplateSubModalOpen(true)}
-                  >
-                    Create one now
-                  </button>
-                </p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-image">Image</Label>
-              <Input
-                id="create-image"
-                aria-label="Image"
-                value={createImage}
-                onChange={(e) => setCreateImage(e.target.value)}
-                placeholder="ghcr.io/org/app"
-              />
-            </div>
-            <div>
-              <Label htmlFor="create-tag">Tag</Label>
-              <Input
-                id="create-tag"
-                aria-label="Tag"
-                value={createTag}
-                onChange={(e) => setCreateTag(e.target.value)}
-                placeholder="v1.0.0"
-              />
-            </div>
-            <div>
-              <Label>Command</Label>
-              <p className="text-xs text-muted-foreground mb-1">Override container ENTRYPOINT (optional)</p>
-              <StringListInput
-                value={createCommand}
-                onChange={setCreateCommand}
-                placeholder="command entry"
-                addLabel="Add command"
-              />
-            </div>
-            <div>
-              <Label>Args</Label>
-              <p className="text-xs text-muted-foreground mb-1">Override container CMD (optional)</p>
-              <StringListInput
-                value={createArgs}
-                onChange={setCreateArgs}
-                placeholder="args entry"
-                addLabel="Add args"
-              />
-            </div>
-            <div>
-              <Label>Environment Variables</Label>
-              <p className="text-xs text-muted-foreground mb-1">Set container environment variables (optional)</p>
-              <EnvVarEditor
-                project={projectName}
-                value={createEnv}
-                onChange={setCreateEnv}
-              />
-            </div>
-            {createError && (
-              <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -404,16 +185,6 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <CreateTemplateModal
-        projectName={projectName}
-        open={templateSubModalOpen}
-        onOpenChange={setTemplateSubModalOpen}
-        onCreated={(name) => {
-          setCreateTemplate(name)
-          setTemplateSubModalOpen(false)
-        }}
-      />
     </>
   )
 }

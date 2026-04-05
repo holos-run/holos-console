@@ -2,7 +2,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
-import ReactDOM from 'react-dom'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -18,53 +17,16 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/deployments', () => ({
   useListDeployments: vi.fn(),
-  useCreateDeployment: vi.fn(),
   useDeleteDeployment: vi.fn(),
-  useListNamespaceSecrets: vi.fn(),
-  useListNamespaceConfigMaps: vi.fn(),
-}))
-
-vi.mock('@/queries/deployment-templates', () => ({
-  useListDeploymentTemplates: vi.fn(),
-  useCreateDeploymentTemplate: vi.fn(),
-}))
-
-vi.mock('@/components/create-template-modal', () => ({
-  CreateTemplateModal: ({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated?: (name: string) => void }) => {
-    if (!open) return null
-    return ReactDOM.createPortal(
-      <div role="dialog" aria-label="create template dialog">
-        <span>Create Template Modal</span>
-        <button onClick={() => onCreated?.('new-template')}>Submit Template</button>
-        <button onClick={() => onOpenChange(false)}>Close Template Modal</button>
-      </div>,
-      document.body,
-    )
-  },
 }))
 
 vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ value, onValueChange, children }: { value?: string; onValueChange?: (v: string) => void; children: React.ReactNode }) => (
-    <select data-testid="template-select" data-value={value} value={value} onChange={(e) => onValueChange?.(e.target.value)}>
-      {children}
-    </select>
-  ),
-  SelectTrigger: () => null,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
-  SelectValue: () => null,
-}))
-
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListDeployments, useCreateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps } from '@/queries/deployments'
-import { useListDeploymentTemplates, useCreateDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
@@ -74,23 +36,13 @@ function makeDeployment(name: string, image = 'ghcr.io/org/app', tag = 'v1.0.0',
   return { name, project: 'test-project', image, tag, template: 'web-app', displayName: '', description: '', phase, message: '' }
 }
 
-function makeTemplate(name: string, defaults?: { image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[] }) {
-  return { name, project: 'test-project', displayName: '', description: '', cueTemplate: '', defaults }
-}
-
 function setupMocks(
   deployments = [makeDeployment('api'), makeDeployment('worker', 'ghcr.io/org/wrk', 'latest', DeploymentPhase.PENDING)],
   userRole = Role.OWNER,
-  templates = [makeTemplate('web-app'), makeTemplate('worker-tmpl')],
 ) {
   ;(useListDeployments as Mock).mockReturnValue({ data: deployments, isLoading: false, error: null })
-  ;(useCreateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'api' }), isPending: false, reset: vi.fn() })
   ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
-  ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: templates, isLoading: false })
-  ;(useCreateDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
-  ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
-  ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
 }
 
 describe('DeploymentsPage', () => {
@@ -137,29 +89,26 @@ describe('DeploymentsPage', () => {
     expect(screen.getByText(/no deployments yet/i)).toBeInTheDocument()
   })
 
-  it('renders Create Deployment button for owners', () => {
+  it('renders Create Deployment link for owners', () => {
     setupMocks([], Role.OWNER)
     render(<DeploymentsPage />)
-    expect(screen.getAllByRole('button', { name: /create deployment/i }).length).toBeGreaterThan(0)
+    const links = screen.getAllByRole('link', { name: /create deployment/i })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0].getAttribute('href')).toContain('deployments/new')
   })
 
-  it('renders Create Deployment button for editors', () => {
+  it('renders Create Deployment link for editors', () => {
     setupMocks([], Role.EDITOR)
     render(<DeploymentsPage />)
-    expect(screen.getAllByRole('button', { name: /create deployment/i }).length).toBeGreaterThan(0)
+    const links = screen.getAllByRole('link', { name: /create deployment/i })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0].getAttribute('href')).toContain('deployments/new')
   })
 
-  it('does not render Create Deployment button for viewers', () => {
+  it('does not render Create Deployment link for viewers', () => {
     setupMocks([], Role.VIEWER)
     render(<DeploymentsPage />)
-    expect(screen.queryByRole('button', { name: /create deployment/i })).not.toBeInTheDocument()
-  })
-
-  it('opens create dialog when Create Deployment button is clicked', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /create deployment/i })).not.toBeInTheDocument()
   })
 
   it('renders delete buttons for owners', () => {
@@ -183,287 +132,28 @@ describe('DeploymentsPage', () => {
 
   it('shows error state when fetch fails', () => {
     ;(useListDeployments as Mock).mockReturnValue({ data: undefined, isLoading: false, error: new Error('fetch failed') })
-    ;(useCreateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
     ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
-    ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: [], isLoading: false })
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
     render(<DeploymentsPage />)
     expect(screen.getByText(/fetch failed/)).toBeInTheDocument()
   })
 
-  it('create dialog has template options', async () => {
+  it('opens delete dialog when delete button is clicked', async () => {
+    setupMocks([makeDeployment('api')], Role.OWNER)
+    render(<DeploymentsPage />)
+    fireEvent.click(screen.getByRole('button', { name: /delete api/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  })
+
+  it('Create Deployment link in empty state navigates to new page', () => {
     setupMocks([], Role.OWNER)
     render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('web-app')).toBeInTheDocument()
-    expect(screen.getByText('worker-tmpl')).toBeInTheDocument()
-  })
-
-  it('create dialog validates required name field', async () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-    await waitFor(() => {
-      expect(screen.getByText(/name is required/i)).toBeInTheDocument()
-    })
-  })
-
-  it('creates a deployment when form is submitted with valid data', async () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select template first, then fill in name and override image/tag
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
-    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
-    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-
-    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
-    await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ image: 'ghcr.io/org/api', tag: 'v1.0.0', template: 'web-app' }),
-      )
-    })
-  })
-
-  it('shows no-templates empty-state message when templates list is empty and user can write', () => {
-    setupMocks([], Role.OWNER, [])
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getByText(/no templates yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /create one now/i })).toBeInTheDocument()
-  })
-
-  it('does not show no-templates empty-state when templates exist', () => {
-    setupMocks([], Role.OWNER, [makeTemplate('web-app')])
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.queryByText(/no templates yet/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /create one now/i })).not.toBeInTheDocument()
-  })
-
-  it('does not show no-templates empty-state for viewers even when templates list is empty', () => {
-    setupMocks([], Role.VIEWER, [])
-    ;(useListDeployments as Mock).mockReturnValue({ data: [], isLoading: false, error: null })
-    render(<DeploymentsPage />)
-    // Viewers cannot open the create dialog, so no empty-state is shown in the modal
-    expect(screen.queryByText(/no templates yet/i)).not.toBeInTheDocument()
-  })
-
-  it('opens create-template sub-modal when "Create one now" is clicked', async () => {
-    setupMocks([], Role.OWNER, [])
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    fireEvent.click(screen.getByRole('button', { name: /create one now/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /create template dialog/i })).toBeInTheDocument()
-    })
-  })
-
-  it('create dialog has Command section', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getByText(/^command$/i)).toBeInTheDocument()
-  })
-
-  it('create dialog has Args section', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getByText(/^args$/i)).toBeInTheDocument()
-  })
-
-  it('create dialog passes command and args to mutateAsync', async () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select template first, then fill in name and override image/tag
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
-    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
-    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-
-    // Add a command entry
-    fireEvent.change(screen.getByLabelText(/command entry/i), { target: { value: 'myapp' } })
-    fireEvent.click(screen.getByRole('button', { name: /add command/i }))
-
-    // Add an args entry
-    fireEvent.change(screen.getByLabelText(/args entry/i), { target: { value: '--port' } })
-    fireEvent.click(screen.getByRole('button', { name: /add args/i }))
-
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-
-    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
-    await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ command: ['myapp'], args: ['--port'] }),
-      )
-    })
-  })
-
-  it('auto-selects template after creation from sub-modal', async () => {
-    setupMocks([], Role.OWNER, [])
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    fireEvent.click(screen.getByRole('button', { name: /create one now/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /create template dialog/i })).toBeInTheDocument()
-    })
-    // Submitting the sub-modal triggers onCreated with 'new-template'
-    fireEvent.click(screen.getByRole('button', { name: /submit template/i }))
-    await waitFor(() => {
-      // The sub-modal should close
-      expect(screen.queryByRole('dialog', { name: /create template dialog/i })).not.toBeInTheDocument()
-    })
-    // The template-select should now have 'new-template' as its value
-    const select = screen.getByTestId('template-select')
-    expect(select.getAttribute('data-value')).toBe('new-template')
-  })
-
-  it('create dialog has Environment Variables section', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-    expect(screen.getAllByText(/environment variables/i).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: /add environment variable/i })).toBeInTheDocument()
-  })
-
-  it('create dialog passes env to mutateAsync with literal value', async () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select template first, then fill in name and override image/tag
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
-    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
-    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-
-    // Add an env var
-    fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
-    fireEvent.change(screen.getByLabelText(/env var name/i), { target: { value: 'MY_VAR' } })
-    fireEvent.change(screen.getByLabelText(/literal value/i), { target: { value: 'hello' } })
-
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-
-    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
-    await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          env: [expect.objectContaining({ name: 'MY_VAR', source: { case: 'value', value: 'hello' } })],
-        }),
-      )
-    })
-  })
-
-  it('create dialog filters out incomplete env rows on submit', async () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select template first, then fill in name and override image/tag
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My API' } })
-    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/org/api' } })
-    fireEvent.change(screen.getByLabelText(/^tag$/i), { target: { value: 'v1.0.0' } })
-
-    // Add an env var but leave name empty (incomplete row)
-    fireEvent.click(screen.getByRole('button', { name: /add environment variable/i }))
-    // Don't fill in the name — leave it empty
-
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-
-    const mutateAsync = (useCreateDeployment as Mock).mock.results[0].value.mutateAsync
-    await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ env: [] }),
-      )
-    })
-  })
-
-  it('selecting a template with defaults pre-fills image and tag', async () => {
-    const templates = [makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' })]
-    setupMocks([], Role.OWNER, templates)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Before selecting template, fields are empty
-    expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
-    expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
-
-    // Select the template with defaults
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
-      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v2.0.0')
-    })
-  })
-
-  it('selecting a template without defaults leaves image and tag empty', async () => {
-    const templates = [makeTemplate('web-app')]
-    setupMocks([], Role.OWNER, templates)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
-      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
-    })
-  })
-
-  it('changing template updates pre-filled values', async () => {
-    const templates = [
-      makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' }),
-      makeTemplate('worker-tmpl', { image: 'ghcr.io/org/worker', tag: 'v3.0.0' }),
-    ]
-    setupMocks([], Role.OWNER, templates)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select first template
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
-    })
-
-    // Switch to second template — values should update
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'worker-tmpl' } })
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/worker')
-      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v3.0.0')
-    })
-  })
-
-  it('selecting a template with no defaults clears previously set pre-fill values', async () => {
-    const templates = [
-      makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0' }),
-      makeTemplate('bare-tmpl'),
-    ]
-    setupMocks([], Role.OWNER, templates)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: /create deployment/i })[0])
-
-    // Select template with defaults
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
-    })
-
-    // Switch to template without defaults — fields should clear
-    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'bare-tmpl' } })
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^image$/i)).toHaveValue('')
-      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('')
+    const links = screen.getAllByRole('link', { name: /create deployment/i })
+    // All Create Deployment links should point to the new page
+    links.forEach((link) => {
+      expect(link.getAttribute('href')).toContain('deployments/new')
     })
   })
 })
