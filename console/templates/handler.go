@@ -38,7 +38,7 @@ type RenderInput struct {
 // and its raw object data for JSON serialization.
 type RenderResource struct {
 	YAML   string
-	Object map[string]interface{}
+	Object map[string]any
 }
 
 // Renderer evaluates a CUE template with deployment inputs and returns
@@ -311,7 +311,7 @@ func (h *Handler) RenderDeploymentTemplate(
 	}
 
 	var buf strings.Builder
-	objects := make([]map[string]interface{}, 0, len(resources))
+	objects := make([]map[string]any, 0, len(resources))
 	for i, r := range resources {
 		if i > 0 {
 			buf.WriteString("---\n")
