@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #401: dark-themed scrollbar CSS
+set -euo pipefail
+
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-401}"
+
+# Navigate to the templates page (CUE Template textarea is the primary use case)
+agent-browser navigate "${HOLOS_BACKEND_URL}/projects/garage/templates"
+sleep 2
+agent-browser screenshot "${SCREENSHOT_DIR}/templates-page.png"
+
+# Click "Create Template" button to open the modal with the CUE textarea
+agent-browser eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Create Template'))?.click()"
+sleep 1
+agent-browser screenshot "${SCREENSHOT_DIR}/create-template-modal.png"
+
+echo "Screenshots captured to ${SCREENSHOT_DIR}"
