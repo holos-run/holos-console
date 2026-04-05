@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #399: pre-fill Create Deployment form from template defaults
+set -euo pipefail
+
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-399}"
+
+# Navigate to the garage project deployments page
+agent-browser navigate "${HOLOS_BACKEND_URL}/projects/garage/deployments"
+sleep 2
+agent-browser screenshot "${SCREENSHOT_DIR}/deployments-page.png"
+
+# Click "Create Deployment" button
+agent-browser eval "Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Create Deployment'))?.click()"
+sleep 1
+agent-browser screenshot "${SCREENSHOT_DIR}/create-deployment-modal-empty.png"
+
+# Select a template that has defaults using the select element
+agent-browser eval "
+  const select = document.querySelector('[aria-label=\"Template\"]');
+  if (select) {
+    // For shadcn Select, trigger a click to open the dropdown
+    select.click();
+  }
+"
+sleep 1
+agent-browser screenshot "${SCREENSHOT_DIR}/create-deployment-template-dropdown.png"
+
+echo "Screenshots captured to ${SCREENSHOT_DIR}"
