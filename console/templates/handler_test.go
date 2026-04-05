@@ -505,11 +505,11 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 			resources: []RenderResource{
 				{
 					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
-					Object: map[string]interface{}{"apiVersion": "v1", "kind": "ServiceAccount"},
+					Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
 				},
 				{
 					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
-					Object: map[string]interface{}{"apiVersion": "apps/v1", "kind": "Deployment"},
+					Object: map[string]any{"apiVersion": "apps/v1", "kind": "Deployment"},
 				},
 			},
 		}
@@ -546,11 +546,11 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 			resources: []RenderResource{
 				{
 					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
-					Object: map[string]interface{}{"apiVersion": "v1", "kind": "ServiceAccount"},
+					Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
 				},
 				{
 					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
-					Object: map[string]interface{}{"apiVersion": "apps/v1", "kind": "Deployment"},
+					Object: map[string]any{"apiVersion": "apps/v1", "kind": "Deployment"},
 				},
 			},
 		}
@@ -577,7 +577,7 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		}
 
 		// rendered_json must be valid JSON and parse as a JSON array.
-		var resources []map[string]interface{}
+		var resources []map[string]any
 		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
 			t.Fatalf("rendered_json is not valid JSON: %v", err)
 		}
@@ -625,7 +625,7 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		}
 
 		// rendered_json should be a valid JSON empty array.
-		var resources []map[string]interface{}
+		var resources []map[string]any
 		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
 			t.Fatalf("rendered_json is not valid JSON: %v", err)
 		}
