@@ -313,10 +313,23 @@ cluster: #Cluster & {}
 ### Previewing Templates
 
 Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
-deployment. This accepts raw CUE source and example inputs, returning the
-rendered resources as multi-document YAML (`rendered_yaml`) and as a
-pretty-printed JSON array (`rendered_json`). Useful for validating templates
+deployment. This accepts a `cue_template` (raw CUE source) and a `cue_input`
+(valid CUE source that supplies concrete values for template parameters),
+returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
+a pretty-printed JSON array (`rendered_json`). Useful for validating templates
 during authoring.
+
+Example `cue_input`:
+
+```cue
+input: {
+    name:      "my-app"
+    image:     "ghcr.io/example/my-app"
+    tag:       "v1.0.0"
+    project:   "my-project"
+    namespace: "holos-prj-my-project"
+}
+```
 
 ## Planned Extensions
 
@@ -358,10 +371,13 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 ### Go Rendering Pipeline
 
+Two render paths exist — one for the deployment service and one for the template preview RPC:
+
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — compiles CUE source, marshals `DeploymentInput` to JSON, unifies via `FillPath("input")`, walks structured `namespaced`/`cluster` output fields, validates. |
-| `console/deployments/render.go:44-54` | `DeploymentInput` struct — the Go representation of `#Input`, serialized to JSON for CUE unification. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `DeploymentInput` to JSON, unifies via `FillPath("input")`, walks structured `namespaced`/`cluster` output fields, validates. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: compiles CUE source, unifies with a raw CUE input string at the top level, extracts `input.namespace` from the unified value. |
+| `console/deployments/render.go:44-54` | `DeploymentInput` struct — the Go representation of `#Input` used by the deployment service, serialized to JSON for CUE unification. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` adds namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
