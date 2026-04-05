@@ -720,7 +720,8 @@ func (*DeleteDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
 }
 
 // RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
-// and returns the rendered Kubernetes resource manifests as multi-document YAML.
+// and returns the rendered Kubernetes resource manifests as multi-document YAML
+// and as a pretty-printed JSON array.
 // The cue_template field is rendered directly (supports unsaved/draft templates).
 type RenderDeploymentTemplateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -798,7 +799,7 @@ func (x *RenderDeploymentTemplateRequest) GetExampleTag() string {
 	return ""
 }
 
-// RenderDeploymentTemplateResponse contains the rendered YAML output.
+// RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.
 type RenderDeploymentTemplateResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// rendered_yaml is the concatenated multi-document YAML of all rendered
