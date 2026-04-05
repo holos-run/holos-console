@@ -55,3 +55,8 @@ Lock the application to a single dark theme inspired by Linear's aesthetic:
   preference at this stage of the product.
 - Future re-introduction of a light theme would require reversing this ADR and
   restoring the `.dark {}` CSS block pattern.
+- Browser scrollbars are styled dark globally via `*` selectors in
+  `frontend/src/app.css` (both `scrollbar-color` for Firefox and
+  `*::-webkit-scrollbar` for WebKit). New scrollable elements need only
+  `overflow-auto` or `overflow-y-auto` — no per-component scrollbar CSS is required.
+  See `docs/ui-styling-guide.md` for the full scrollbar styling conventions.
