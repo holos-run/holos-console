@@ -88,15 +88,15 @@ test.describe('Create Deployment page — no-templates affordance', () => {
 
     // Affordance should NOT be present when templates exist
     await expect(page.getByText(/no templates available/i)).not.toBeVisible()
-    // Template select should be present
-    await expect(page.getByText(/create deployment/i)).toBeVisible()
+    // The Create Deployment submit button should be present
+    await expect(page.getByRole('button', { name: /create deployment/i })).toBeVisible()
 
     // Cleanup
     await apiDeleteProject(page, projectName)
     await apiDeleteOrg(page, orgName)
   })
 
-  test('clicking "Create Deployment" button on list page navigates to new page', async ({ page }) => {
+  test('clicking "Create Deployment" link on list page navigates to new page', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const orgName = `e2e-deploy-nav-org-${Date.now()}`
@@ -108,12 +108,12 @@ test.describe('Create Deployment page — no-templates affordance', () => {
     await page.goto(`/projects/${projectName}/deployments`)
     await page.waitForLoadState('networkidle')
 
-    // Click Create Deployment — should navigate to new page, not open a modal
+    // Click Create Deployment link — should navigate to new page, not open a modal
     await page.getByRole('link', { name: /create deployment/i }).first().click()
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/deployments/new`))
 
-    // The Create Deployment form should be visible
-    await expect(page.getByText('Create Deployment')).toBeVisible({ timeout: 5000 })
+    // The Create Deployment form should be visible (submit button)
+    await expect(page.getByRole('button', { name: /create deployment/i })).toBeVisible({ timeout: 5000 })
     // No dialog element (old modal behavior)
     await expect(page.getByRole('dialog')).not.toBeVisible()
 
