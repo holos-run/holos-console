@@ -145,7 +145,7 @@ func TestCreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app", nil, nil, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "Web App", "A web app", nil, nil, nil, 0)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -182,7 +182,7 @@ func TestCreateDeployment(t *testing.T) {
 
 		cmd := []string{"myapp"}
 		args := []string{"--port", "8080"}
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", cmd, args, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", cmd, args, nil, 0)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -199,7 +199,7 @@ func TestCreateDeployment(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil, 0)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -221,7 +221,7 @@ func TestUpdateDeployment(t *testing.T) {
 
 		newTag := "1.26"
 		newDesc := "updated desc"
-		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc, nil, nil, nil)
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, &newTag, nil, &newDesc, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -245,7 +245,7 @@ func TestUpdateDeployment(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTag := "1.26"
-		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil, nil, nil, nil)
+		_, err := k8s.UpdateDeployment(context.Background(), "my-project", "does-not-exist", nil, &newTag, nil, nil, nil, nil, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for non-existent deployment")
 		}
@@ -263,7 +263,7 @@ func TestCreateDeployment_Env(t *testing.T) {
 			{Name: "FROM_SECRET", SecretKeyRef: &KeyRefInput{Name: "mysecret", Key: "mykey"}},
 			{Name: "FROM_CM", ConfigMapKeyRef: &KeyRefInput{Name: "mycm", Key: "mykey"}},
 		}
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, env)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, env, 0)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -294,7 +294,7 @@ func TestCreateDeployment_Env(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil)
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil, 0)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -314,7 +314,7 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		env := []EnvVarInput{
 			{Name: "PORT", Value: "8080"},
 		}
-		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, env)
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, env, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -328,6 +328,90 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		}
 		if len(got) != 1 || got[0].Name != "PORT" || got[0].Value != "8080" {
 			t.Errorf("unexpected env vars: %+v", got)
+		}
+	})
+}
+
+func TestCreateDeployment_Port(t *testing.T) {
+	t.Run("stores port as string in ConfigMap", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil, 9090)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if cm.Data[PortKey] != "9090" {
+			t.Errorf("expected port %q, got %q", "9090", cm.Data[PortKey])
+		}
+	})
+
+	t.Run("omits port key when zero", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil, 0)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, ok := cm.Data[PortKey]; ok {
+			t.Error("expected port key to be absent when zero")
+		}
+	})
+
+	t.Run("round-trip: create with port then get returns same port", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		_, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, nil, 3000)
+		if err != nil {
+			t.Fatalf("expected no error creating deployment, got %v", err)
+		}
+
+		got, err := k8s.GetDeployment(context.Background(), "my-project", "web-app")
+		if err != nil {
+			t.Fatalf("expected no error getting deployment, got %v", err)
+		}
+		dep := configMapToDeployment(got, "my-project")
+		if dep.Port != 3000 {
+			t.Errorf("expected port 3000, got %d", dep.Port)
+		}
+	})
+}
+
+func TestUpdateDeployment_Port(t *testing.T) {
+	t.Run("updates port in ConfigMap", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "", "")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		newPort := int32(8081)
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, nil, &newPort)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if updated.Data[PortKey] != "8081" {
+			t.Errorf("expected port %q, got %q", "8081", updated.Data[PortKey])
+		}
+	})
+
+	t.Run("does not update port when nil", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "", "")
+		cm.Data[PortKey] = "9090"
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if updated.Data[PortKey] != "9090" {
+			t.Errorf("expected port unchanged %q, got %q", "9090", updated.Data[PortKey])
 		}
 	})
 }

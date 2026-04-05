@@ -586,6 +586,156 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 	})
 }
 
+// portTemplate renders a containerPort using input.port (structured output).
+const portTemplate = `
+package deployment
+
+input: {
+	name:      string
+	image:     string
+	tag:       string
+	project:   string
+	namespace: string
+	port:      int & >0 & <=65535 | *8080
+}
+
+namespaced: (input.namespace): {
+	Deployment: (input.name): {
+		apiVersion: "apps/v1"
+		kind:       "Deployment"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: {
+				"app.kubernetes.io/managed-by": "console.holos.run"
+				"app.kubernetes.io/name":       input.name
+			}
+		}
+		spec: {
+			selector: matchLabels: "app.kubernetes.io/name": input.name
+			template: {
+				metadata: labels: "app.kubernetes.io/name": input.name
+				spec: containers: [{
+					name:  input.name
+					image: input.image + ":" + input.tag
+					ports: [{containerPort: input.port, name: "http"}]
+				}]
+			}
+		}
+	}
+	Service: (input.name): {
+		apiVersion: "v1"
+		kind:       "Service"
+		metadata: {
+			name:      input.name
+			namespace: input.namespace
+			labels: {
+				"app.kubernetes.io/managed-by": "console.holos.run"
+				"app.kubernetes.io/name":       input.name
+			}
+		}
+		spec: {
+			selector: "app.kubernetes.io/name": input.name
+			ports: [{port: 80, targetPort: "http", name: "http"}]
+		}
+	}
+}
+
+cluster: {}
+`
+
+func TestCueRenderer_Port(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("explicit port is used in containerPort", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), portTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+			Port:      9090,
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		var deployment unstructured.Unstructured
+		for _, r := range resources {
+			if r.GetKind() == "Deployment" {
+				deployment = r
+				break
+			}
+		}
+		containers, _, _ := unstructured.NestedSlice(deployment.Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]any)
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		ports, _, _ := unstructured.NestedSlice(map[string]any{"c": c}, "c", "ports")
+		if len(ports) != 1 {
+			t.Fatalf("expected 1 port, got %d", len(ports))
+		}
+		port, ok := ports[0].(map[string]any)
+		if !ok {
+			t.Fatal("port is not a map")
+		}
+		// CUE decodes integers as int64 in Go.
+		gotPort, _, _ := unstructured.NestedFieldNoCopy(map[string]any{"p": port}, "p", "containerPort")
+		if gotPort != int64(9090) {
+			t.Errorf("expected containerPort 9090, got %v (%T)", gotPort, gotPort)
+		}
+		if port["name"] != "http" {
+			t.Errorf("expected port name 'http', got %v", port["name"])
+		}
+	})
+
+	t.Run("zero port uses CUE default 8080", func(t *testing.T) {
+		// When Port is 0 (omitempty), the JSON omits the field and CUE applies default 8080.
+		resources, err := renderer.Render(context.Background(), portTemplate, DeploymentInput{
+			Name:      "my-app",
+			Image:     "myrepo/myapp",
+			Tag:       "v1.0.0",
+			Project:   "my-project",
+			Namespace: namespace,
+			Port:      0, // zero → omitempty → CUE default applies
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		var deployment unstructured.Unstructured
+		for _, r := range resources {
+			if r.GetKind() == "Deployment" {
+				deployment = r
+				break
+			}
+		}
+		containers, _, _ := unstructured.NestedSlice(deployment.Object, "spec", "template", "spec", "containers")
+		if len(containers) == 0 {
+			t.Fatal("expected at least 1 container")
+		}
+		c, ok := containers[0].(map[string]any)
+		if !ok {
+			t.Fatal("container is not a map")
+		}
+		ports, _, _ := unstructured.NestedSlice(map[string]any{"c": c}, "c", "ports")
+		if len(ports) != 1 {
+			t.Fatalf("expected 1 port, got %d", len(ports))
+		}
+		port, ok := ports[0].(map[string]any)
+		if !ok {
+			t.Fatal("port is not a map")
+		}
+		gotPort, _, _ := unstructured.NestedFieldNoCopy(map[string]any{"p": port}, "p", "containerPort")
+		if gotPort != int64(8080) {
+			t.Errorf("expected default containerPort 8080, got %v (%T)", gotPort, gotPort)
+		}
+	})
+}
+
 // structuredDuplicateTemplate tries to define the same Kind/name twice.
 // CUE struct semantics naturally enforce uniqueness — setting the same path
 // twice merges values or produces a conflict error if they are incompatible.

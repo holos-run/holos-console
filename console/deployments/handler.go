@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -232,7 +233,7 @@ func (h *Handler) CreateDeployment(
 		description = *req.Msg.Description
 	}
 
-	_, err = h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs)
+	_, err = h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -249,6 +250,7 @@ func (h *Handler) CreateDeployment(
 			Command:   req.Msg.Command,
 			Args:      req.Msg.Args,
 			Env:       envInputs,
+			Port:      req.Msg.Port,
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -311,7 +313,7 @@ func (h *Handler) UpdateDeployment(
 		return nil, err
 	}
 
-	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs)
+	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -346,6 +348,7 @@ func (h *Handler) UpdateDeployment(
 			Command:   commandFromConfigMap(updated),
 			Args:      argsFromConfigMap(updated),
 			Env:       envFromConfigMapAsInputs(updated),
+			Port:      portFromConfigMap(updated),
 		}
 		resources, renderErr := h.renderer.Render(ctx, cueSource, input)
 		if renderErr != nil {
@@ -550,7 +553,7 @@ func validateDeploymentName(name string) error {
 
 // configMapToDeployment converts a Kubernetes ConfigMap to a Deployment protobuf message.
 func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Deployment {
-	return &consolev1.Deployment{
+	dep := &consolev1.Deployment{
 		Name:        cm.Name,
 		Project:     project,
 		Image:       cm.Data[ImageKey],
@@ -562,6 +565,12 @@ func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Depl
 		Args:        argsFromConfigMap(cm),
 		Env:         envFromConfigMap(cm),
 	}
+	if raw, ok := cm.Data[PortKey]; ok && raw != "" {
+		if p, err := strconv.ParseInt(raw, 10, 32); err == nil {
+			dep.Port = int32(p)
+		}
+	}
+	return dep
 }
 
 // commandFromConfigMap reads the JSON-encoded command slice from a ConfigMap.
@@ -654,6 +663,19 @@ func validateEnvVars(envVars []*consolev1.EnvVar) ([]EnvVarInput, error) {
 		result = append(result, protoToEnvVarInput(e))
 	}
 	return result, nil
+}
+
+// portFromConfigMap reads the port integer from a ConfigMap data key.
+func portFromConfigMap(cm *corev1.ConfigMap) int32 {
+	raw, ok := cm.Data[PortKey]
+	if !ok || raw == "" {
+		return 0
+	}
+	p, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int32(p)
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
