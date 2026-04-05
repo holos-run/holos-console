@@ -130,6 +130,9 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
 
   const displayName = org?.displayName ?? ''
   const description = org?.description ?? ''
+  const creatorEmail = org?.creatorEmail ?? ''
+  const createdAt = org?.createdAt ?? ''
+  const createdAtFormatted = createdAt ? new Date(createdAt).toLocaleString() : 'Unknown'
   const userGrants = (org?.userGrants ?? []) as Grant[]
   const roleGrants = (org?.roleGrants ?? []) as Grant[]
   const defaultUserGrants = (org?.defaultUserGrants ?? []) as Grant[]
@@ -198,6 +201,18 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
           <div className="flex items-center gap-2">
             <span className="w-32 text-sm text-muted-foreground shrink-0">Name (slug)</span>
             <span className="flex-1 text-sm font-mono">{orgName}</span>
+          </div>
+
+          {/* Creator - read-only */}
+          <div className="flex items-center gap-2">
+            <span className="w-32 text-sm text-muted-foreground shrink-0">Creator</span>
+            <span className="flex-1 text-sm">{creatorEmail || 'Unknown'}</span>
+          </div>
+
+          {/* Created - read-only */}
+          <div className="flex items-center gap-2">
+            <span className="w-32 text-sm text-muted-foreground shrink-0">Created</span>
+            <span className="flex-1 text-sm">{createdAtFormatted}</span>
           </div>
 
           {/* Description */}

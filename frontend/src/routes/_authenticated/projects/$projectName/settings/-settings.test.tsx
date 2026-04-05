@@ -40,6 +40,8 @@ const mockProject = {
   displayName: 'Test Project',
   description: 'A test project',
   organization: 'my-org',
+  creatorEmail: 'creator@example.com',
+  createdAt: '2024-01-15T10:30:00Z',
   userGrants: [{ principal: 'alice@example.com', role: 3 }],
   roleGrants: [],
   defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
@@ -271,6 +273,42 @@ describe('ProjectSettingsPage', () => {
       // With userRole=VIEWER, there are no Edit buttons since isOwner=false
       const editButtons = screen.queryAllByRole('button', { name: /^edit$/i })
       expect(editButtons.length).toBe(0)
+    })
+  })
+
+  describe('Creator and Created At fields', () => {
+    it('renders creator email as read-only text', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText('creator@example.com')).toBeInTheDocument()
+    })
+
+    it('renders formatted created timestamp as read-only text', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      const formatted = new Date('2024-01-15T10:30:00Z').toLocaleString()
+      expect(screen.getByText(formatted)).toBeInTheDocument()
+    })
+
+    it('shows "Unknown" for creator email when empty', () => {
+      setupMocks({ creatorEmail: '' })
+      render(<ProjectSettingsPage />)
+      expect(screen.getByText('Unknown')).toBeInTheDocument()
+    })
+
+    it('shows "Unknown" for created timestamp when empty', () => {
+      setupMocks({ creatorEmail: '', createdAt: '' })
+      render(<ProjectSettingsPage />)
+      const unknownElements = screen.getAllByText('Unknown')
+      expect(unknownElements.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('no input element is present for creator email', () => {
+      setupMocks()
+      render(<ProjectSettingsPage />)
+      // Verify creator email is static text, not an input
+      const inputs = document.querySelectorAll('input[aria-label*="creator"], input[aria-label*="created"]')
+      expect(inputs.length).toBe(0)
     })
   })
 

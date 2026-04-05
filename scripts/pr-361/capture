@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+
+# Capture screenshots for PR #361: read-only creator and creation time in settings
+# Requires: HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR
+# Note: requires a Kubernetes cluster with org/project resources
+
+# Navigate to home (shows org list or empty state)
+agent-browser navigate "${HOLOS_BACKEND_URL}/"
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/home.png"

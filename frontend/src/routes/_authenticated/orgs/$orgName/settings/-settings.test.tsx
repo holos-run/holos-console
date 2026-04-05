@@ -39,6 +39,8 @@ const mockOrg = {
   name: 'test-org',
   displayName: 'Test Org',
   description: 'A test organization',
+  creatorEmail: 'creator@example.com',
+  createdAt: '2024-01-15T10:30:00Z',
   userGrants: [{ principal: 'alice@example.com', role: 3 }],
   roleGrants: [],
   defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
@@ -251,6 +253,43 @@ describe('OrgSettingsPage', () => {
           expect.objectContaining({ name: 'test-org' }),
         )
       })
+    })
+  })
+
+  describe('Creator and Created At fields', () => {
+    it('renders creator email as read-only text', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('creator@example.com')).toBeInTheDocument()
+    })
+
+    it('renders formatted created timestamp as read-only text', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      // The formatted date should appear somewhere in the document
+      const formatted = new Date('2024-01-15T10:30:00Z').toLocaleString()
+      expect(screen.getByText(formatted)).toBeInTheDocument()
+    })
+
+    it('shows "Unknown" for creator email when empty', () => {
+      setupMocks({ creatorEmail: '' })
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('Unknown')).toBeInTheDocument()
+    })
+
+    it('shows "Unknown" for created timestamp when empty', () => {
+      setupMocks({ creatorEmail: '', createdAt: '' })
+      render(<OrgSettingsPage />)
+      const unknownElements = screen.getAllByText('Unknown')
+      expect(unknownElements.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('no input element is present for creator email', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      // Verify creator email is static text, not an input
+      const inputs = document.querySelectorAll('input[aria-label*="creator"], input[aria-label*="created"]')
+      expect(inputs.length).toBe(0)
     })
   })
 

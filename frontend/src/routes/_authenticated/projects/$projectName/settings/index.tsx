@@ -129,6 +129,9 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
 
   const displayName = project?.displayName ?? ''
   const description = project?.description ?? ''
+  const creatorEmail = project?.creatorEmail ?? ''
+  const createdAt = project?.createdAt ?? ''
+  const createdAtFormatted = createdAt ? new Date(createdAt).toLocaleString() : 'Unknown'
   const userGrants = (project?.userGrants ?? []) as Grant[]
   const roleGrants = (project?.roleGrants ?? []) as Grant[]
   const defaultUserGrants = (project?.defaultUserGrants ?? []) as Grant[]
@@ -197,6 +200,18 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
           <div className="flex items-center gap-2">
             <span className="w-32 text-sm text-muted-foreground shrink-0">Name (slug)</span>
             <span className="flex-1 text-sm font-mono">{projectName}</span>
+          </div>
+
+          {/* Creator - read-only */}
+          <div className="flex items-center gap-2">
+            <span className="w-32 text-sm text-muted-foreground shrink-0">Creator</span>
+            <span className="flex-1 text-sm">{creatorEmail || 'Unknown'}</span>
+          </div>
+
+          {/* Created - read-only */}
+          <div className="flex items-center gap-2">
+            <span className="w-32 text-sm text-muted-foreground shrink-0">Created</span>
+            <span className="flex-1 text-sm">{createdAtFormatted}</span>
           </div>
 
           {/* Description */}
