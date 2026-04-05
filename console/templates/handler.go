@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -33,9 +34,11 @@ type RenderInput struct {
 	Name, Image, Tag, Project, Namespace string
 }
 
-// RenderResource is a single rendered resource with its YAML representation.
+// RenderResource is a single rendered resource with its YAML representation
+// and its raw object data for JSON serialization.
 type RenderResource struct {
-	YAML string
+	YAML   string
+	Object map[string]interface{}
 }
 
 // Renderer evaluates a CUE template with deployment inputs and returns
@@ -308,15 +311,25 @@ func (h *Handler) RenderDeploymentTemplate(
 	}
 
 	var buf strings.Builder
+	objects := make([]map[string]interface{}, 0, len(resources))
 	for i, r := range resources {
 		if i > 0 {
 			buf.WriteString("---\n")
 		}
 		buf.WriteString(r.YAML)
+		if r.Object != nil {
+			objects = append(objects, r.Object)
+		}
+	}
+
+	jsonBytes, err := json.MarshalIndent(objects, "", "  ")
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal rendered resources to JSON: %w", err))
 	}
 
 	return connect.NewResponse(&consolev1.RenderDeploymentTemplateResponse{
 		RenderedYaml: buf.String(),
+		RenderedJson: string(jsonBytes),
 	}), nil
 }
 
