@@ -25,7 +25,6 @@ import { Pencil, Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListDeploymentTemplates, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
-import { CreateTemplateModal } from '@/components/create-template-modal'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
   component: DeploymentTemplatesRoute,
@@ -49,8 +48,6 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const { data: templates = [], isLoading, error } = useListDeploymentTemplates(projectName)
   const { data: project } = useGetProject(projectName)
   const deleteMutation = useDeleteDeploymentTemplate(projectName)
-
-  const [createOpen, setCreateOpen] = useState(false)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -104,7 +101,9 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>{projectName} / Templates</CardTitle>
           {canWrite && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>Create Template</Button>
+            <Link to="/projects/$projectName/templates/new" params={{ projectName }}>
+              <Button size="sm">Create Template</Button>
+            </Link>
           )}
         </CardHeader>
         <CardContent>
@@ -112,7 +111,9 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <p className="text-muted-foreground">No deployment templates yet. Create one to get started.</p>
               {canWrite && (
-                <Button size="sm" onClick={() => setCreateOpen(true)}>Create Template</Button>
+                <Link to="/projects/$projectName/templates/new" params={{ projectName }}>
+                  <Button size="sm">Create Template</Button>
+                </Link>
               )}
             </div>
           ) : (
@@ -176,12 +177,6 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
           )}
         </CardContent>
       </Card>
-
-      <CreateTemplateModal
-        projectName={projectName}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
