@@ -36,7 +36,9 @@ type DeploymentDefaults struct {
 	// args overrides the container image CMD.
 	Args []string `protobuf:"bytes,4,rep,name=args,proto3" json:"args,omitempty"`
 	// env sets default container environment variables.
-	Env           []*EnvVar `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty"`
+	Env []*EnvVar `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty"`
+	// port is the default container port the application listens on.
+	Port          int32 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -104,6 +106,13 @@ func (x *DeploymentDefaults) GetEnv() []*EnvVar {
 		return x.Env
 	}
 	return nil
+}
+
+func (x *DeploymentDefaults) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
 }
 
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.
@@ -847,13 +856,14 @@ var File_holos_console_v1_deployment_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\n" +
-	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\"holos/console/v1/deployments.proto\x1a\x1bholos/console/v1/rbac.proto\"\x96\x01\n" +
+	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\"holos/console/v1/deployments.proto\x1a\x1bholos/console/v1/rbac.proto\"\xaa\x01\n" +
 	"\x12DeploymentDefaults\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
 	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x18\n" +
 	"\acommand\x18\x03 \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\x04 \x03(\tR\x04args\x12*\n" +
-	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\"\xec\x01\n" +
+	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
+	"\x04port\x18\x06 \x01(\x05R\x04port\"\xec\x01\n" +
 	"\x12DeploymentTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +

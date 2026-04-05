@@ -100,7 +100,9 @@ type Deployment struct {
 	// args overrides the container image CMD.
 	Args []string `protobuf:"bytes,11,rep,name=args,proto3" json:"args,omitempty"`
 	// env sets container environment variables.
-	Env           []*EnvVar `protobuf:"bytes,12,rep,name=env,proto3" json:"env,omitempty"`
+	Env []*EnvVar `protobuf:"bytes,12,rep,name=env,proto3" json:"env,omitempty"`
+	// port is the container port the application listens on.
+	Port          int32 `protobuf:"varint,13,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -217,6 +219,13 @@ func (x *Deployment) GetEnv() []*EnvVar {
 		return x.Env
 	}
 	return nil
+}
+
+func (x *Deployment) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
 }
 
 // EnvVar represents a container environment variable.
@@ -640,7 +649,9 @@ type CreateDeploymentRequest struct {
 	// args overrides the container image CMD.
 	Args []string `protobuf:"bytes,9,rep,name=args,proto3" json:"args,omitempty"`
 	// env sets container environment variables.
-	Env           []*EnvVar `protobuf:"bytes,10,rep,name=env,proto3" json:"env,omitempty"`
+	Env []*EnvVar `protobuf:"bytes,10,rep,name=env,proto3" json:"env,omitempty"`
+	// port is the container port the application listens on.
+	Port          int32 `protobuf:"varint,11,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -745,6 +756,13 @@ func (x *CreateDeploymentRequest) GetEnv() []*EnvVar {
 	return nil
 }
 
+func (x *CreateDeploymentRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
 type CreateDeploymentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -803,7 +821,9 @@ type UpdateDeploymentRequest struct {
 	// args overrides the container image CMD.
 	Args []string `protobuf:"bytes,8,rep,name=args,proto3" json:"args,omitempty"`
 	// env sets container environment variables.
-	Env           []*EnvVar `protobuf:"bytes,9,rep,name=env,proto3" json:"env,omitempty"`
+	Env []*EnvVar `protobuf:"bytes,9,rep,name=env,proto3" json:"env,omitempty"`
+	// port is the container port the application listens on.
+	Port          *int32 `protobuf:"varint,10,opt,name=port,proto3,oneof" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -899,6 +919,13 @@ func (x *UpdateDeploymentRequest) GetEnv() []*EnvVar {
 		return x.Env
 	}
 	return nil
+}
+
+func (x *UpdateDeploymentRequest) GetPort() int32 {
+	if x != nil && x.Port != nil {
+		return *x.Port
+	}
+	return 0
 }
 
 type UpdateDeploymentResponse struct {
@@ -1696,7 +1723,7 @@ var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
-	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf0\x02\n" +
+	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x84\x03\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -1711,7 +1738,8 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\acommand\x18\n" +
 	" \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\v \x03(\tR\x04args\x12*\n" +
-	"\x03env\x18\f \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\"\xd8\x01\n" +
+	"\x03env\x18\f \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
+	"\x04port\x18\r \x01(\x05R\x04port\"\xd8\x01\n" +
 	"\x06EnvVar\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x05value\x18\x02 \x01(\tH\x00R\x05value\x12F\n" +
@@ -1734,7 +1762,7 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x15GetDeploymentResponse\x12<\n" +
 	"\n" +
 	"deployment\x18\x01 \x01(\v2\x1c.holos.console.v1.DeploymentR\n" +
-	"deployment\"\xd5\x02\n" +
+	"deployment\"\xe9\x02\n" +
 	"\x17CreateDeploymentRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x14\n" +
@@ -1746,11 +1774,12 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\acommand\x18\b \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\t \x03(\tR\x04args\x12*\n" +
 	"\x03env\x18\n" +
-	" \x03(\v2\x18.holos.console.v1.EnvVarR\x03envB\x0f\n" +
+	" \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
+	"\x04port\x18\v \x01(\x05R\x04portB\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_description\".\n" +
 	"\x18CreateDeploymentResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xd5\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xf7\x02\n" +
 	"\x17UpdateDeploymentRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x19\n" +
@@ -1760,11 +1789,14 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\vdescription\x18\x06 \x01(\tH\x03R\vdescription\x88\x01\x01\x12\x18\n" +
 	"\acommand\x18\a \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\b \x03(\tR\x04args\x12*\n" +
-	"\x03env\x18\t \x03(\v2\x18.holos.console.v1.EnvVarR\x03envB\b\n" +
+	"\x03env\x18\t \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x17\n" +
+	"\x04port\x18\n" +
+	" \x01(\x05H\x04R\x04port\x88\x01\x01B\b\n" +
 	"\x06_imageB\x06\n" +
 	"\x04_tagB\x0f\n" +
 	"\r_display_nameB\x0e\n" +
-	"\f_description\"\x1a\n" +
+	"\f_descriptionB\a\n" +
+	"\x05_port\"\x1a\n" +
 	"\x18UpdateDeploymentResponse\"G\n" +
 	"\x17DeleteDeploymentRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +

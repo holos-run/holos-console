@@ -43,6 +43,8 @@ message Deployment {
   repeated string args = 11;
   // env sets container environment variables.
   repeated EnvVar env = 12;
+  // port is the container port the application listens on.
+  int32 port = 13;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.
@@ -116,6 +118,8 @@ message CreateDeploymentRequest {
   repeated string args = 9;
   // env sets container environment variables.
   repeated EnvVar env = 10;
+  // port is the container port the application listens on.
+  int32 port = 11;
 }
 
 message CreateDeploymentResponse {
@@ -136,6 +140,8 @@ message UpdateDeploymentRequest {
   repeated string args = 8;
   // env sets container environment variables.
   repeated EnvVar env = 9;
+  // port is the container port the application listens on.
+  optional int32 port = 10;
 }
 
 message UpdateDeploymentResponse {}
