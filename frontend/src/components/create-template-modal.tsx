@@ -129,7 +129,7 @@ export function CreateTemplateModal({ projectName, open, onOpenChange, onCreated
               value={cueTemplate}
               onChange={(e) => setCueTemplate(e.target.value)}
               rows={10}
-              className="font-mono text-sm"
+              className="font-mono text-sm field-sizing-normal max-h-96 overflow-y-auto"
             />
           </div>
           {error && (

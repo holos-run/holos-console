@@ -150,7 +150,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                     value={cueTemplate}
                     onChange={(e) => setCueTemplate(e.target.value)}
                     rows={20}
-                    className="font-mono text-sm"
+                    className="font-mono text-sm field-sizing-normal max-h-96 overflow-y-auto"
                     readOnly={!canWrite}
                   />
                 </div>
