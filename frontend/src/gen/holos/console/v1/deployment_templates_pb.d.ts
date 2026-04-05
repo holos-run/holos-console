@@ -323,6 +323,14 @@ export declare type RenderDeploymentTemplateResponse = Message<"holos.console.v1
    * @generated from field: string rendered_yaml = 1;
    */
   renderedYaml: string;
+
+  /**
+   * rendered_json is the pretty-printed JSON representation of all rendered
+   * resources as a JSON array.
+   *
+   * @generated from field: string rendered_json = 2;
+   */
+  renderedJson: string;
 };
 
 /**

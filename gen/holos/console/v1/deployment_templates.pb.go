@@ -691,7 +691,10 @@ type RenderDeploymentTemplateResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// rendered_yaml is the concatenated multi-document YAML of all rendered
 	// resources, separated by "---\n".
-	RenderedYaml  string `protobuf:"bytes,1,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
+	RenderedYaml string `protobuf:"bytes,1,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
+	// rendered_json is the pretty-printed JSON representation of all rendered
+	// resources as a JSON array.
+	RenderedJson  string `protobuf:"bytes,2,opt,name=rendered_json,json=renderedJson,proto3" json:"rendered_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -729,6 +732,13 @@ func (*RenderDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
 func (x *RenderDeploymentTemplateResponse) GetRenderedYaml() string {
 	if x != nil {
 		return x.RenderedYaml
+	}
+	return ""
+}
+
+func (x *RenderDeploymentTemplateResponse) GetRenderedJson() string {
+	if x != nil {
+		return x.RenderedJson
 	}
 	return ""
 }
@@ -781,9 +791,10 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\fexample_name\x18\x03 \x01(\tR\vexampleName\x12#\n" +
 	"\rexample_image\x18\x04 \x01(\tR\fexampleImage\x12\x1f\n" +
 	"\vexample_tag\x18\x05 \x01(\tR\n" +
-	"exampleTag\"G\n" +
+	"exampleTag\"l\n" +
 	" RenderDeploymentTemplateResponse\x12#\n" +
-	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml2\xa5\x06\n" +
+	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
+	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson2\xa5\x06\n" +
 	"\x19DeploymentTemplateService\x12~\n" +
 	"\x17ListDeploymentTemplates\x120.holos.console.v1.ListDeploymentTemplatesRequest\x1a1.holos.console.v1.ListDeploymentTemplatesResponse\x12x\n" +
 	"\x15GetDeploymentTemplate\x12..holos.console.v1.GetDeploymentTemplateRequest\x1a/.holos.console.v1.GetDeploymentTemplateResponse\x12\x81\x01\n" +
