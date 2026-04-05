@@ -98,7 +98,8 @@ message DeleteDeploymentTemplateRequest {
 message DeleteDeploymentTemplateResponse {}
 
 // RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
-// and returns the rendered Kubernetes resource manifests as multi-document YAML.
+// and returns the rendered Kubernetes resource manifests as multi-document YAML
+// and as a pretty-printed JSON array.
 // The cue_template field is rendered directly (supports unsaved/draft templates).
 message RenderDeploymentTemplateRequest {
   string project      = 1; // owning project (used to resolve namespace)
@@ -108,7 +109,7 @@ message RenderDeploymentTemplateRequest {
   string example_tag   = 5; // example tag (e.g. "latest")
 }
 
-// RenderDeploymentTemplateResponse contains the rendered YAML output.
+// RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.
 message RenderDeploymentTemplateResponse {
   // rendered_yaml is the concatenated multi-document YAML of all rendered
   // resources, separated by "---\n".

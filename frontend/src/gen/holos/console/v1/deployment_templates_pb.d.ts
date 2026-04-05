@@ -335,7 +335,8 @@ export declare const DeleteDeploymentTemplateResponseSchema: GenMessage<DeleteDe
 
 /**
  * RenderDeploymentTemplateRequest evaluates a CUE template with example inputs
- * and returns the rendered Kubernetes resource manifests as multi-document YAML.
+ * and returns the rendered Kubernetes resource manifests as multi-document YAML
+ * and as a pretty-printed JSON array.
  * The cue_template field is rendered directly (supports unsaved/draft templates).
  *
  * @generated from message holos.console.v1.RenderDeploymentTemplateRequest
@@ -384,7 +385,7 @@ export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.
 export declare const RenderDeploymentTemplateRequestSchema: GenMessage<RenderDeploymentTemplateRequest>;
 
 /**
- * RenderDeploymentTemplateResponse contains the rendered YAML output.
+ * RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.
  *
  * @generated from message holos.console.v1.RenderDeploymentTemplateResponse
  */
