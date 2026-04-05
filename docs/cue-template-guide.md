@@ -43,17 +43,24 @@ This separation enforces a trust boundary: templates can reference `system.names
 
 ### `#System` Schema
 
+The `#System` definition groups the two trusted CUE definitions — `#Claims` and
+the outer `#System` struct — that the console backend fills unconditionally from
+authenticated context.
+
 ```cue
+// #Claims carries OIDC ID token claims of the authenticated user.
+// Standard claims are required; provider-specific claims are allowed via the
+// open struct (...) so templates remain compatible with any OIDC provider.
 #Claims: {
-    iss?:            string
-    sub:             string
-    aud?:            string
-    exp?:            int
-    iat?:            int
-    email:           string
-    email_verified?: bool
-    name?:           string
-    groups?: [...string]
+    iss:            string      // issuer URL
+    sub:            string      // subject (unique user ID)
+    exp:            int         // expiration time (Unix seconds)
+    iat:            int         // issued-at time (Unix seconds)
+    email:          string      // user email address
+    email_verified: bool        // whether the email was verified by the provider
+    name?:          string      // display name (optional)
+    groups?: [...string]        // role memberships from the configured OIDC claim
+    ...                         // allow provider-specific claims
 }
 
 #System: {
@@ -77,13 +84,45 @@ This separation enforces a trust boundary: templates can reference `system.names
 
 ### `#System` Field Descriptions
 
-| Field             | Type       | Description |
-|-------------------|------------|-------------|
-| `project`         | `string`   | Parent project name. |
-| `namespace`       | `string`   | Kubernetes namespace resolved from the project name. Computed by the server using `Resolver.ProjectNamespace()`. |
-| `claims.sub`      | `string`   | OIDC subject (unique user ID). |
-| `claims.email`    | `string`   | Authenticated user's email address. |
-| `claims.groups`   | `[...string]` | User's role memberships from the configured OIDC claim. |
+| Field                  | Type          | Description |
+|------------------------|---------------|-------------|
+| `project`              | `string`      | Parent project name. |
+| `namespace`            | `string`      | Kubernetes namespace resolved from the project name. Computed by the server using `Resolver.ProjectNamespace()`. |
+| `claims.iss`           | `string`      | OIDC issuer URL (e.g. `https://dex.example.com`). |
+| `claims.sub`           | `string`      | OIDC subject (unique user ID). |
+| `claims.exp`           | `int`         | Token expiration time as Unix epoch seconds. |
+| `claims.iat`           | `int`         | Token issued-at time as Unix epoch seconds. |
+| `claims.email`         | `string`      | Authenticated user's email address. |
+| `claims.email_verified`| `bool`        | Whether the provider verified the email address. |
+| `claims.name`          | `string`      | User's display name (optional; provider-dependent). |
+| `claims.groups`        | `[...string]` | User's role memberships from the configured OIDC claim (optional). |
+
+### Using Claims in Templates
+
+Templates can reference any `system.claims` field to annotate or configure
+resources with the identity of the user who last rendered the deployment. The
+default template uses this to stamp every resource with the deployer's email:
+
+```cue
+_annotations: {
+    "console.holos.run/deployer-email": system.claims.email
+}
+```
+
+Apply these annotations in resource `metadata`:
+
+```cue
+metadata: {
+    name:        input.name
+    namespace:   system.namespace
+    labels:      _labels
+    annotations: _annotations
+}
+```
+
+Because `#Claims` is an open struct (`...`), templates can also reference
+provider-specific claims not listed above. These pass through without CUE
+constraint errors as long as the field is present in the token.
 
 ### `#EnvVar` Schema
 
@@ -278,15 +317,15 @@ package deployment
 }
 
 #Claims: {
-    iss?:            string
-    sub:             string
-    aud?:            string
-    exp?:            int
-    iat?:            int
-    email:           string
-    email_verified?: bool
-    name?:           string
+    iss:            string
+    sub:            string
+    exp:            int
+    iat:            int
+    email:          string
+    email_verified: bool
+    name?:          string
     groups?: [...string]
+    ... // allow provider-specific claims
 }
 
 #System: {
@@ -297,6 +336,10 @@ package deployment
 
 input:  #Input
 system: #System
+
+_annotations: {
+    "console.holos.run/deployer-email": system.claims.email
+}
 
 _labels: {
     "app.kubernetes.io/name":       input.name
@@ -330,9 +373,10 @@ namespaced: #Namespaced & {
             apiVersion: "apps/v1"
             kind:       "Deployment"
             metadata: {
-                name:      input.name
-                namespace: system.namespace
-                labels:    _labels
+                name:        input.name
+                namespace:   system.namespace
+                labels:      _labels
+                annotations: _annotations
             }
             spec: {
                 replicas: 1
@@ -406,7 +450,30 @@ input: {
 }
 ```
 
+## Implemented: System / User Input Split
+
+The template interface enforces a trust boundary between system-provided and
+user-supplied inputs. This split is fully implemented:
+
+- **`system`** — trusted values set unconditionally by the console backend from
+  the verified JWT and K8s namespace resolver. Templates reference `system.claims`
+  for the authenticated user's identity and `system.namespace` for the resolved
+  project namespace.
+- **`input`** — user-provided deployment parameters (name, image, tag, env, port,
+  etc.) drawn from the API request fields.
+
+The `system.claims` field provides identity for audit and policy annotations.
+A future `platform` field for org-wide policy defaults (security contexts,
+resource limits, admission labels) remains a separate planned extension.
+
 ## Planned Extensions
+
+### Platform Input
+
+A future `platform` field will carry org-wide policy defaults such as security
+contexts, resource limits, and admission labels. These values would be set by
+the console backend from organization-level configuration, extending the same
+trust boundary as `system` without mixing them into user-supplied `input`.
 
 ### Cluster Resource Support
 
@@ -424,7 +491,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 | File | Purpose |
 |------|---------|
-| `console/templates/default_template.cue` | Default CUE template with `#Input` schema, env var transformation, `#Namespaced`/`#Cluster` constraints, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
+| `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
 
 ### Go Rendering Pipeline

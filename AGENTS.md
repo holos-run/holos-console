@@ -259,6 +259,16 @@ This produces:
 
 See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissions-guide.md` for permission design guidelines including narrow scoping, multi-level grantability, and the cascade table pattern.
 
+### Template Field Guardrail
+
+**When adding new fields to `CreateDeploymentRequest`, `DeploymentDefaults`, or related template proto messages**, the field must also be:
+
+1. Added to the CUE `#Input` (user-provided fields) or `#System` (system fields) schema in `console/templates/default_template.cue`
+2. Included in the Go `UserInput` or `SystemInput` struct in `console/deployments/render.go`
+3. Reflected in the template editor preview's User Input or System Input default values in the frontend (see `frontend/src/routes/`)
+
+This ensures template authors always see new fields in the preview and that the CUE schema stays in sync with the proto interface. See `docs/cue-template-guide.md` for the full template interface.
+
 ### Testing Patterns
 
 **Preference: unit tests first, E2E only for full-stack behaviours.**  
