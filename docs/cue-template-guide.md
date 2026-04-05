@@ -372,26 +372,37 @@ returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
 a pretty-printed JSON array (`rendered_json`). Useful for validating templates
 during authoring.
 
-The `cue_input` must provide both `input` (user parameters) and `system`
-(trusted backend values). In the RPC, the backend fills `system` from
-authenticated context when `cue_system_input` is provided; for preview purposes
-the caller may supply a `cue_input` that includes both.
+The RPC accepts two separate CUE input fields:
 
-Example `cue_input`:
+- `cue_system_input` — trusted system context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
+- `cue_input` — user-provided deployment parameters (name, image, tag, env, etc.)
+
+Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available. When `cue_system_input` is not provided, `cue_input` may include both `system` and `input` fields for preview purposes.
+
+Example `cue_system_input` (trusted, set from authenticated context):
+
+```cue
+system: {
+    project:   "my-project"
+    namespace: "holos-prj-my-project"
+    claims: {
+        iss:            "https://dex.example.com"
+        sub:            "user-123"
+        exp:            9999999999
+        iat:            1700000000
+        email:          "user@example.com"
+        email_verified: true
+    }
+}
+```
+
+Example `cue_input` (user-provided parameters):
 
 ```cue
 input: {
     name:  "my-app"
     image: "ghcr.io/example/my-app"
     tag:   "v1.0.0"
-}
-system: {
-    project:   "my-project"
-    namespace: "holos-prj-my-project"
-    claims: {
-        sub:   "user-123"
-        email: "user@example.com"
-    }
 }
 ```
 
