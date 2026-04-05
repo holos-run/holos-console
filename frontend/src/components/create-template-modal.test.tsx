@@ -263,4 +263,23 @@ describe('CreateTemplateModal', () => {
       expect(enabledCall).toBeDefined()
     })
   })
+
+  it('default CUE template uses structured namespaced/cluster output format', () => {
+    setupMocks()
+    render(
+      <CreateTemplateModal
+        projectName="test-project"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    const textarea = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+    // Verify the default template uses the structured output format required by the backend
+    expect(textarea.value).toContain('package deployment')
+    expect(textarea.value).toContain('namespaced:')
+    expect(textarea.value).toContain('cluster:')
+    expect(textarea.value).toContain('#Input')
+    expect(textarea.value).toContain('input: #Input')
+    expect(textarea.value).toContain('"app.kubernetes.io/managed-by": "console.holos.run"')
+  })
 })
