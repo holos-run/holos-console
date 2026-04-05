@@ -54,6 +54,13 @@ export declare type DeploymentDefaults = Message<"holos.console.v1.DeploymentDef
    * @generated from field: repeated holos.console.v1.EnvVar env = 5;
    */
   env: EnvVar[];
+
+  /**
+   * port is the default container port the application listens on.
+   *
+   * @generated from field: int32 port = 6;
+   */
+  port: number;
 };
 
 /**

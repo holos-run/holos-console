@@ -91,6 +91,13 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: repeated holos.console.v1.EnvVar env = 12;
    */
   env: EnvVar[];
+
+  /**
+   * port is the container port the application listens on.
+   *
+   * @generated from field: int32 port = 13;
+   */
+  port: number;
 };
 
 /**
@@ -332,6 +339,13 @@ export declare type CreateDeploymentRequest = Message<"holos.console.v1.CreateDe
    * @generated from field: repeated holos.console.v1.EnvVar env = 10;
    */
   env: EnvVar[];
+
+  /**
+   * port is the container port the application listens on.
+   *
+   * @generated from field: int32 port = 11;
+   */
+  port: number;
 };
 
 /**
@@ -412,6 +426,13 @@ export declare type UpdateDeploymentRequest = Message<"holos.console.v1.UpdateDe
    * @generated from field: repeated holos.console.v1.EnvVar env = 9;
    */
   env: EnvVar[];
+
+  /**
+   * port is the container port the application listens on.
+   *
+   * @generated from field: optional int32 port = 10;
+   */
+  port?: number;
 };
 
 /**
