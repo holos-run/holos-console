@@ -129,6 +129,24 @@ export function useGetDeploymentLogs(
   })
 }
 
+function deploymentRenderPreviewKey(project: string, name: string) {
+  return ['deployments', 'render-preview', project, name] as const
+}
+
+export function useGetDeploymentRenderPreview(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentRenderPreviewKey(project, name),
+    queryFn: async () => {
+      const response = await client.getDeploymentRenderPreview({ project, name })
+      return response
+    },
+    enabled: isAuthenticated && !!project && !!name,
+  })
+}
+
 function namespaceSecretsKey(project: string) {
   return ['deployments', 'namespace-secrets', project] as const
 }

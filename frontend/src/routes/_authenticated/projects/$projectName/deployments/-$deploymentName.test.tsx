@@ -25,16 +25,22 @@ vi.mock('@/queries/deployments', () => ({
   useDeleteDeployment: vi.fn(),
   useListNamespaceSecrets: vi.fn(),
   useListNamespaceConfigMaps: vi.fn(),
+  useGetDeploymentRenderPreview: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
+vi.mock('@/queries/deployment-templates', () => ({
+  useRenderDeploymentTemplate: vi.fn(),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentRenderPreview } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
+import { useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
 import { DeploymentDetailPage } from './$deploymentName'
@@ -70,6 +76,14 @@ const mockStatus = {
 
 const mockLogs = '2024-01-15T10:30:01Z Starting server...\n2024-01-15T10:30:02Z Listening on :8080'
 
+const mockPreview = {
+  cueTemplate: 'package templates\n\ninput: #Input\n',
+  cueSystemInput: 'system: {\n  project: "test-project"\n  namespace: "holos-prj-test-project"\n}',
+  cueUserInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
+  renderedYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n',
+  renderedJson: '[]',
+}
+
 function setupMocks(userRole = Role.OWNER) {
   ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
   ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
@@ -79,6 +93,8 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
   ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+  ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: { renderedYaml: mockPreview.renderedYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
 describe('DeploymentDetailPage', () => {
@@ -394,9 +410,69 @@ describe('DeploymentDetailPage', () => {
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
     ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
     ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+    ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
     render(<DeploymentDetailPage />)
     fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
     // The env var name input should be pre-populated
     expect(screen.getByDisplayValue('DB_URL')).toBeInTheDocument()
+  })
+
+  describe('Template Preview section', () => {
+    it('renders Template Preview heading', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('Template Preview')).toBeInTheDocument()
+    })
+
+    it('renders CUE template source in read-only editor', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
+      expect(editor).toBeInTheDocument()
+      expect(editor.readOnly).toBe(true)
+      expect(editor.value).toContain('package templates')
+    })
+
+    it('renders grpcurl Command section heading', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('grpcurl Command')).toBeInTheDocument()
+    })
+
+    it('renders grpcurl command with project and deployment name', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText(/GetDeploymentRenderPreview/)).toBeInTheDocument()
+      expect(screen.getByText(/"project":\s*"test-project"/)).toBeInTheDocument()
+      expect(screen.getByText(/"name":\s*"api"/)).toBeInTheDocument()
+    })
+
+    it('copy button copies grpcurl command and shows toast', async () => {
+      setupMocks()
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.assign(navigator, { clipboard: { writeText } })
+      render(<DeploymentDetailPage />)
+      fireEvent.click(screen.getByLabelText(/copy grpcurl command/i))
+      await waitFor(() => expect(writeText).toHaveBeenCalled())
+      const copied = writeText.mock.calls[0][0] as string
+      expect(copied).toContain('GetDeploymentRenderPreview')
+      expect(copied).toContain('test-project')
+      expect(copied).toContain('api')
+    })
+
+    it('shows skeleton while preview is loading', () => {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+      render(<DeploymentDetailPage />)
+      const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
+      expect(skeletons.length).toBeGreaterThan(0)
+    })
   })
 })
