@@ -146,6 +146,9 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/components/raw-view.test.tsx` | JSON pretty-print, field filtering, copy |
 | `src/components/secret-data-editor.test.tsx` | Editor add/remove key |
 | `src/components/secret-data-viewer.test.tsx` | Viewer reveal/hide/copy |
+| `src/components/cue-template-editor.test.tsx` | CUE editor: textarea, onChange, readOnly, save button, preview tab (system/user input, rendered YAML), render error, render status indicator |
+| `src/components/env-var-editor.test.tsx` | Env var editor: add/remove rows, literal value, secretKeyRef, configMapKeyRef, name/key select population |
+| `src/components/linkified-text.test.tsx` | LinkifiedText: plain text, single/multiple URLs, mid-sentence URL, empty/undefined, link styling |
 | `src/routes/_authenticated/-about.test.tsx` | About page: Server Version card, license card |
 | `src/routes/_authenticated/-profile.test.tsx` | Profile page: token claims, raw JSON view |
 | `src/routes/_authenticated/projects/$projectName/secrets/-index.test.tsx` | Secrets list page: table, sorting, error/loading |
@@ -154,17 +157,22 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/projects/$projectName/settings/-settings-deployments.test.tsx` | Project settings — Features section: deployments toggle, RBAC (owner/editor/viewer) |
 | `src/routes/_authenticated/projects/$projectName/templates/-index.test.tsx` | Deployment templates list: template names, create/delete buttons, RBAC, empty/error state |
 | `src/routes/_authenticated/projects/$projectName/templates/-$templateName.test.tsx` | Deployment template detail: CUE editor, save/delete, RBAC, skeleton, error state |
+| `src/routes/_authenticated/projects/$projectName/templates/-new.test.tsx` | Create template page: form fields (display name, slug, description, CUE), slug auto-derivation, validation, cancel link |
 | `src/routes/_authenticated/projects/$projectName/deployments/-index.test.tsx` | Deployments list: names, image/tag, status badges, create/delete, RBAC, empty/error state |
-| `src/routes/_authenticated/projects/$projectName/deployments/-$deploymentName.test.tsx` | Deployment detail: image/tag, replicas, conditions, logs, re-deploy/delete, RBAC |
+| `src/routes/_authenticated/projects/$projectName/deployments/-$deploymentName.test.tsx` | Deployment detail: image/tag, replicas, conditions, logs, re-deploy/delete, RBAC, Template Preview section, grpcurl Command section |
+| `src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` | Create deployment page: form fields (display name, slug, description, template, image, tag, command, args, env vars, port), RBAC |
 | `src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` | Org settings page: display name, description, sharing, default sharing, delete |
+| `src/routes/_authenticated/orgs/$orgName/settings/-system-templates.test.tsx` | System templates list and detail: names, descriptions, mandatory badge, RBAC (owner/viewer), skeleton, error state |
 | `src/routes/_authenticated/projects/-$projectName.test.tsx` | ProjectLayout: sets selected project from URL param |
 | `src/routes/_authenticated/orgs/$orgName/projects/-index.test.tsx` | Org projects page: list, navigate to project |
 | `src/routes/-_authenticated.test.tsx` | Auth layout: silent renewal, OIDC redirect |
 | `src/lib/isOwner.test.ts` | RBAC owner check logic |
 | `src/lib/org-context.test.tsx` | Org context: persistence, reset, filtering |
 | `src/lib/project-context.test.tsx` | Project context: persistence, reset, filtering |
+| `src/lib/-query-client.test.ts` | QueryClient retry logic: suppresses Unauthenticated errors, retries other errors up to 3 times |
 | `src/lib/slug.test.ts` | Slug generation from display names |
 | `src/lib/transport.test.ts` | Token storage and transport setup |
+| `src/hooks/-use-debounced-value.test.ts` | useDebouncedValue: initial value, delay behavior, timer reset on rapid changes, default delay |
 | `src/queries/-organizations.test.ts` | Organization query hooks: get, update, sharing, default sharing, delete |
 | `src/queries/-projects.test.ts` | useListProjects and useCreateProject hooks |
 | `src/components/create-org-dialog.test.tsx` | Create organization dialog: validation, submission |
