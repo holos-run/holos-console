@@ -63,11 +63,16 @@ input:  #Input         // user-provided deployment parameters
 
 ```cue
 #SystemInput: {
-    project:   string    // parent project name, resolved from authenticated session
-    namespace: string    // Kubernetes namespace, resolved via Resolver.ProjectNamespace()
-    claims:    #Claims   // OIDC ID token claims from the authenticated user's JWT
+    project:          string    // parent project name, resolved from authenticated session
+    namespace:        string    // Kubernetes namespace, resolved via Resolver.ProjectNamespace()
+    gatewayNamespace: string    // namespace of the gateway resource (default: "istio-ingress")
+    claims:           #Claims   // OIDC ID token claims from the authenticated user's JWT
 }
 ```
+
+The `gatewayNamespace` field was added after the initial decision to support
+`ReferenceGrant` resources in the default deployment template and HTTPRoute
+resources in system templates, both of which must reference the gateway namespace.
 
 ### `#Claims` Schema
 
@@ -131,6 +136,8 @@ At deployment create/update time, the backend constructs `#SystemInput` from:
 - `project`: the project name from the API request, validated against the
   authenticated session's project access.
 - `namespace`: resolved from the project name via `Resolver.ProjectNamespace()`.
+- `gatewayNamespace`: the configured gateway namespace (default: `"istio-ingress"`),
+  sourced from the `--gateway-namespace` flag or equivalent server configuration.
 - `claims`: the full `map[string]interface{}` of claims extracted from the
   verified OIDC ID token in the request context.
 
