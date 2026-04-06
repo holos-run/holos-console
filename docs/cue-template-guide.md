@@ -10,14 +10,22 @@ constraints enforced at render time.
 When a user creates or updates a deployment, the console:
 
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
-2. Builds a `SystemInput` (project, namespace, claims) from authenticated server context and a `UserInput` (name, image, tag, etc.) from the API request fields.
-3. Evaluates the CUE template by unifying `UserInput` at the `input` path and `SystemInput` at the `system` path.
-4. Reads the `output.namespacedResources` and `output.clusterResources` fields from the evaluated CUE value.
-5. Validates each resource against safety constraints.
-6. Applies the validated resources to Kubernetes via server-side apply.
+2. Loads all enabled `SystemTemplate` sources for the organization.
+3. Builds a `SystemInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `UserInput` (name, image, tag, etc.) from the API request fields.
+4. Unifies the deployment template with enabled system templates by concatenating them (they share the same `package deployment` declaration) before CUE compilation.
+5. Fills `UserInput` at the `input` path and `SystemInput` at the `system` path.
+6. Reads all four output fields from the evaluated CUE value:
+   - `output.namespacedResources` — user-controlled namespaced resources
+   - `output.clusterResources` — user-controlled cluster-scoped resources
+   - `output.systemNamespacedResources` — operator-controlled namespaced resources (from system templates)
+   - `output.systemClusterResources` — operator-controlled cluster-scoped resources (from system templates)
+7. Validates each resource against safety constraints.
+8. Applies the validated resources to Kubernetes via server-side apply.
 
 The architectural decision to use structured output is recorded in
-[ADR 012](adrs/012-structured-resource-output.md).
+[ADR 012](adrs/012-structured-resource-output.md). The decision to split
+system and user inputs is recorded in
+[ADR 013](adrs/013-separate-system-user-template-input.md).
 
 ## Writing a Custom Template
 
@@ -27,8 +35,9 @@ working template to making it accessible outside the cluster.
 ### Complete Template Example
 
 The template below mirrors the built-in default. It produces a `ServiceAccount`,
-a `Deployment`, and a `Service` — everything needed to run a container and reach
-it from inside the cluster.
+a `Deployment`, a `Service`, and a `ReferenceGrant` — everything needed to run a
+container, reach it from inside the cluster, and allow an HTTPRoute from the
+gateway namespace to reference the Service.
 
 ```cue
 package deployment
@@ -188,6 +197,33 @@ output: {
                     ports: [{port: 80, targetPort: "http", name: "http"}]
                 }
             }
+
+            // ReferenceGrant allows HTTPRoute resources in the gateway namespace
+            // to reference Service resources in the project namespace.
+            // This enables system templates (such as the example HTTPRoute template)
+            // to expose deployments via the gateway without requiring changes to
+            // the user deployment template.
+            ReferenceGrant: "allow-gateway-httproute": {
+                apiVersion: "gateway.networking.k8s.io/v1beta1"
+                kind:       "ReferenceGrant"
+                metadata: {
+                    name:        "allow-gateway-httproute"
+                    namespace:   system.namespace
+                    labels:      _labels
+                    annotations: _annotations
+                }
+                spec: {
+                    from: [{
+                        group:     "gateway.networking.k8s.io"
+                        kind:      "HTTPRoute"
+                        namespace: system.gatewayNamespace
+                    }]
+                    to: [{
+                        group: ""
+                        kind:  "Service"
+                    }]
+                }
+            }
         }
     }
     clusterResources: #Cluster & {}
@@ -272,6 +308,7 @@ port defined above — do not use `input.port` here.
 7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
 9. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
+10. **Never define `output.systemNamespacedResources` or `output.systemClusterResources` in a user deployment template** — these fields are reserved for system templates and are managed by the platform operator.
 
 ### Previewing Your Template
 
@@ -488,9 +525,90 @@ incrementally as cluster resource support is added.
 ### `output.systemNamespacedResources` and `output.systemClusterResources` Fields
 
 These fields follow the same structure as `namespacedResources` and `clusterResources`
-respectively, but are reserved for system template evaluations. User-authored deployment
-templates should NOT define these fields. The render engine reads them when present but
-does not require them.
+respectively, but are reserved for system template resources managed by the platform
+operator. User-authored deployment templates should NOT define these fields.
+
+**System Template Unification**
+
+At deploy time, the console unifies enabled system templates with the deployment
+template before CUE compilation. Because system templates share the same
+`package deployment` declaration, they have full access to all `input.*` and
+`system.*` fields defined by the deployment template — including `input.name`,
+`input.port`, `system.namespace`, and `system.gatewayNamespace`.
+
+System templates contribute their resources to `output.systemNamespacedResources`
+and `output.systemClusterResources` so that they do not conflict with the user
+template's `output.namespacedResources` and `output.clusterResources` fields.
+
+**Operator Guarantees**
+
+Resources placed in `output.systemNamespacedResources` and
+`output.systemClusterResources` by system templates are:
+
+- **Not modifiable by user templates** — user-authored deployment templates cannot
+  override or replace resources in the `system*` output fields. The fields are
+  explicitly separate, so CUE unification does not allow a user template to conflict
+  with a system template's output.
+- **Always applied alongside user resources** — the render engine collects resources
+  from all four output fields together and applies them in a single server-side apply
+  pass. This guarantees that operator-required resources (e.g., `HTTPRoute`, network
+  policies) are always present whenever the deployment is applied.
+
+**Operator Constraints via System Templates**
+
+Operators can use system templates to constrain user-controlled resources. Because
+system templates are unified with the deployment template before compilation, a
+system template can add CUE constraints on `output.namespacedResources` (the user
+output fields). For example, a system template could enforce a required label or
+annotation on all namespaced resources — any user template that violates the
+constraint will fail at CUE evaluation time before any Kubernetes call.
+
+**Example: HTTPRoute System Template**
+
+The built-in `default_referencegrant.cue` system template seeds a disabled HTTPRoute
+example. When enabled, it adds an `HTTPRoute` to `output.systemNamespacedResources`
+that routes all gateway traffic to the deployment's `Service`:
+
+```cue
+package deployment
+
+output: {
+    systemNamespacedResources: (system.namespace): {
+        HTTPRoute: (input.name): {
+            apiVersion: "gateway.networking.k8s.io/v1"
+            kind:       "HTTPRoute"
+            metadata: {
+                name:      input.name
+                namespace: system.namespace
+                labels: {
+                    "app.kubernetes.io/managed-by": "console.holos.run"
+                    "app.kubernetes.io/name":       input.name
+                }
+            }
+            spec: {
+                parentRefs: [{
+                    group:     "gateway.networking.k8s.io"
+                    kind:      "Gateway"
+                    namespace: system.gatewayNamespace
+                    name:      "default"
+                }]
+                rules: [{
+                    backendRefs: [{
+                        name: input.name
+                        port: 80
+                    }]
+                }]
+            }
+        }
+    }
+    systemClusterResources: {}
+}
+```
+
+This system template references `input.name` (user-supplied deployment name),
+`system.namespace` (resolved project namespace), and `system.gatewayNamespace`
+(operator-configured gateway namespace) — all available because system templates
+are unified with the deployment template before evaluation.
 
 ### Struct Key Consistency
 
@@ -506,7 +624,7 @@ A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 
 ### Example Output Structure
 
-The default template produces three namespaced resources:
+The default template produces four namespaced resources (ServiceAccount, Deployment, Service, and ReferenceGrant):
 
 ```cue
 output: {
@@ -532,6 +650,12 @@ output: {
             metadata: { ... }
             spec: { ... }
         }
+        ReferenceGrant: "allow-gateway-httproute": {
+            apiVersion: "gateway.networking.k8s.io/v1beta1"
+            kind:       "ReferenceGrant"
+            metadata: { ... }
+            spec: { ... }
+        }
     }
     clusterResources: {}
 }
@@ -539,9 +663,10 @@ output: {
 
 ## Validation Constraints
 
-Every resource collected from `output.namespacedResources` and `output.clusterResources` must satisfy these
-constraints or the render is rejected. These are enforced in Go after CUE
-evaluation, not in CUE itself.
+Every resource collected from all four output fields (`output.namespacedResources`,
+`output.clusterResources`, `output.systemNamespacedResources`, and
+`output.systemClusterResources`) must satisfy these constraints or the render is
+rejected. These are enforced in Go after CUE evaluation, not in CUE itself.
 
 ### Required Fields
 
