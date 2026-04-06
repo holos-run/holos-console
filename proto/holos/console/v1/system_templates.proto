@@ -1,0 +1,118 @@
+syntax = "proto3";
+package holos.console.v1;
+import "holos/console/v1/deployment_templates.proto";
+import "holos/console/v1/rbac.proto";
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// SystemTemplateService manages org-scoped CUE-based system templates.
+// System templates differ from deployment templates in that they are scoped to
+// an organization (not a project) and can be marked mandatory so they are
+// automatically rendered and applied when a project is created.
+service SystemTemplateService {
+  rpc ListSystemTemplates(ListSystemTemplatesRequest) returns (ListSystemTemplatesResponse);
+  rpc GetSystemTemplate(GetSystemTemplateRequest) returns (GetSystemTemplateResponse);
+  rpc CreateSystemTemplate(CreateSystemTemplateRequest) returns (CreateSystemTemplateResponse);
+  rpc UpdateSystemTemplate(UpdateSystemTemplateRequest) returns (UpdateSystemTemplateResponse);
+  rpc DeleteSystemTemplate(DeleteSystemTemplateRequest) returns (DeleteSystemTemplateResponse);
+  rpc RenderSystemTemplate(RenderSystemTemplateRequest) returns (RenderSystemTemplateResponse);
+}
+
+// SystemTemplate is a CUE template stored in an org namespace ConfigMap that
+// produces K8s resource manifests applied to project namespaces.
+message SystemTemplate {
+  // name is the unique identifier (DNS label slug) within the organization.
+  string name = 1;
+  // org is the parent organization name.
+  string org = 2;
+  // display_name is a human-readable name.
+  string display_name = 3;
+  // description explains what the template produces.
+  string description = 4;
+  // cue_template is the CUE source code.
+  string cue_template = 5;
+  // mandatory indicates that this template is automatically rendered and
+  // applied to every project namespace at project creation time.
+  bool mandatory = 6;
+  // gateway_namespace is the name of the gateway namespace used by templates
+  // that need to reference a cross-namespace Gateway (e.g. for ReferenceGrant
+  // resources). Defaults to "istio-ingress" per Istio's recommended Helm
+  // install convention (https://istio.io/latest/docs/setup/additional-setup/gateway/).
+  string gateway_namespace = 7;
+}
+
+message ListSystemTemplatesRequest {
+  string org = 1;
+}
+
+message ListSystemTemplatesResponse {
+  repeated SystemTemplate templates = 1;
+}
+
+message GetSystemTemplateRequest {
+  string name = 1;
+  string org = 2;
+}
+
+message GetSystemTemplateResponse {
+  SystemTemplate template = 1;
+}
+
+message CreateSystemTemplateRequest {
+  string name = 1;
+  string org = 2;
+  string display_name = 3;
+  string description = 4;
+  string cue_template = 5;
+  bool mandatory = 6;
+  // gateway_namespace defaults to "istio-ingress" when empty.
+  string gateway_namespace = 7;
+}
+
+message CreateSystemTemplateResponse {
+  string name = 1;
+}
+
+message UpdateSystemTemplateRequest {
+  string name = 1;
+  string org = 2;
+  optional string display_name = 3;
+  optional string description = 4;
+  optional string cue_template = 5;
+  optional bool mandatory = 6;
+  optional string gateway_namespace = 7;
+}
+
+message UpdateSystemTemplateResponse {}
+
+message DeleteSystemTemplateRequest {
+  string name = 1;
+  string org = 2;
+}
+
+message DeleteSystemTemplateResponse {}
+
+// RenderSystemTemplateRequest evaluates a CUE system template unified with CUE
+// input values and returns the rendered Kubernetes resource manifests as
+// multi-document YAML and as a pretty-printed JSON array.
+// The cue_template field is rendered directly (supports unsaved/draft templates).
+message RenderSystemTemplateRequest {
+  string cue_template = 2; // CUE source to evaluate
+  // cue_system_input contains CUE source for system-provided values (org,
+  // namespace, claims).  These values are trusted — set by the console backend
+  // from authenticated context.  The claims field carries the OIDC ID token
+  // claims of the authenticated user.
+  string cue_system_input = 7;
+  // cue_input contains valid CUE source that is unified with cue_template at
+  // the "input" path to supply concrete values for template parameters.
+  string cue_input = 6;
+}
+
+// RenderSystemTemplateResponse contains the rendered output in both YAML and JSON formats.
+message RenderSystemTemplateResponse {
+  // rendered_yaml is the concatenated multi-document YAML of all rendered
+  // resources, separated by "---\n".
+  string rendered_yaml = 1;
+  // rendered_json is the pretty-printed JSON representation of all rendered
+  // resources as a JSON array.
+  string rendered_json = 2;
+}
