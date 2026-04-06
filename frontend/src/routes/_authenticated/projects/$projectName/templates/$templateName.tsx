@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Pencil } from 'lucide-react'
+import { Pencil, Copy } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -18,7 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
@@ -48,12 +49,17 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const { data: project } = useGetProject(projectName)
   const updateMutation = useUpdateDeploymentTemplate(projectName, templateName)
   const deleteMutation = useDeleteDeploymentTemplate(projectName)
+  const cloneMutation = useCloneDeploymentTemplate(projectName)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [descEditOpen, setDescEditOpen] = useState(false)
   const [draftDescription, setDraftDescription] = useState('')
   const [descEditError, setDescEditError] = useState<string | null>(null)
+  const [cloneOpen, setCloneOpen] = useState(false)
+  const [cloneName, setCloneName] = useState('')
+  const [cloneDisplayName, setCloneDisplayName] = useState('')
+  const [cloneError, setCloneError] = useState<string | null>(null)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -102,6 +108,32 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
       setDescEditOpen(false)
     } catch (err) {
       setDescEditError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleOpenClone = () => {
+    setCloneName('')
+    setCloneDisplayName(template?.displayName ?? '')
+    setCloneError(null)
+    setCloneOpen(true)
+  }
+
+  const handleCloneConfirm = async () => {
+    setCloneError(null)
+    try {
+      const response = await cloneMutation.mutateAsync({
+        sourceName: templateName,
+        name: cloneName,
+        displayName: cloneDisplayName,
+      })
+      toast.success(`Cloned to "${response.name}"`)
+      setCloneOpen(false)
+      navigate({
+        to: '/projects/$projectName/templates/$templateName',
+        params: { projectName, templateName: response.name },
+      })
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -169,7 +201,13 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-sm font-medium">CUE Template</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">CUE Template</h3>
+              <Button variant="outline" size="sm" onClick={handleOpenClone}>
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                Clone
+              </Button>
+            </div>
             <Separator />
             <CueTemplateEditor
               cueTemplate={cueTemplate}
@@ -244,6 +282,50 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
             <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Clone Deployment Template</DialogTitle>
+            <DialogDescription>
+              Create a copy of &quot;{templateName}&quot; with a new name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clone-name">Name</Label>
+              <Input
+                id="clone-name"
+                aria-label="Name"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder="my-template-copy"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clone-display-name">Display Name</Label>
+              <Input
+                id="clone-display-name"
+                aria-label="Display Name"
+                value={cloneDisplayName}
+                onChange={(e) => setCloneDisplayName(e.target.value)}
+                placeholder="My Template Copy"
+              />
+            </div>
+          </div>
+          {cloneError && (
+            <Alert variant="destructive">
+              <AlertDescription>{cloneError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCloneOpen(false)}>Cancel</Button>
+            <Button onClick={handleCloneConfirm} disabled={cloneMutation.isPending || !cloneName}>
+              {cloneMutation.isPending ? 'Cloning...' : 'Clone'}
             </Button>
           </DialogFooter>
         </DialogContent>
