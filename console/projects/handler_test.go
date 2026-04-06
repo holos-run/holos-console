@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -1181,5 +1182,98 @@ func assertInvalidArgument(t *testing.T, err error) {
 	}
 	if connectErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connectErr.Code())
+	}
+}
+
+// ---- CreateProject with mandatory system templates tests ----
+
+// stubMandatoryTemplateApplier implements MandatoryTemplateApplier for tests.
+type stubMandatoryTemplateApplier struct {
+	called  bool
+	org     string
+	project string
+	err     error
+}
+
+func (s *stubMandatoryTemplateApplier) ApplyMandatorySystemTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
+	s.called = true
+	s.org = org
+	s.project = project
+	return s.err
+}
+
+func TestCreateProject_CallsMandatoryTemplateApplierOnSuccess(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+
+	applier := &stubMandatoryTemplateApplier{}
+	handler = handler.WithMandatoryTemplateApplier(applier)
+
+	ctx := contextWithClaims("alice@example.com")
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "my-org",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "new-project" {
+		t.Errorf("expected name 'new-project', got %q", resp.Msg.Name)
+	}
+	if !applier.called {
+		t.Error("expected mandatory template applier to be called")
+	}
+	if applier.org != "my-org" {
+		t.Errorf("expected org 'my-org', got %q", applier.org)
+	}
+	if applier.project != "new-project" {
+		t.Errorf("expected project 'new-project', got %q", applier.project)
+	}
+}
+
+func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+
+	applier := &stubMandatoryTemplateApplier{}
+	handler = handler.WithMandatoryTemplateApplier(applier)
+
+	ctx := contextWithClaims("alice@example.com")
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "", // no org
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if applier.called {
+		t.Error("expected mandatory template applier NOT to be called when org is empty")
+	}
+}
+
+func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	fakeClient := fake.NewClientset(existing)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, nil)
+
+	applier := &stubMandatoryTemplateApplier{
+		err: fmt.Errorf("render failed"),
+	}
+	handler = handler.WithMandatoryTemplateApplier(applier)
+
+	ctx := contextWithClaims("alice@example.com")
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-project",
+		Organization: "my-org",
+	}))
+	if err == nil {
+		t.Fatal("expected error when mandatory template applier fails")
+	}
+
+	// Verify project namespace was cleaned up (deleted).
+	_, getErr := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
+	if getErr == nil {
+		t.Error("expected project namespace to be deleted after applier failure")
 	}
 }
