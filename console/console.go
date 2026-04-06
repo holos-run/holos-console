@@ -245,8 +245,26 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 
+		// Create dynamic client early so it can be shared by both the deployment
+		// service and the mandatory template applier.
+		dynamicClient, err := deployments.NewDynamicClient()
+		if err != nil {
+			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
+		}
+
+		// System template applier for mandatory templates on project creation.
+		// Wired before the projects handler so it can be injected.
+		sysTemplatesApplierK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
+		var sysTmplApplier projects.MandatoryTemplateApplier
+		if dynamicClient != nil {
+			sysTmplApplier = system_templates.NewMandatoryTemplateApplier(sysTemplatesApplierK8s, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+		}
+
 		// Project service with org grant fallback
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
+		if sysTmplApplier != nil {
+			projectsHandler = projectsHandler.WithMandatoryTemplateApplier(sysTmplApplier)
+		}
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
@@ -277,10 +295,6 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Deployment service with project grant fallback
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
-		dynamicClient, err := deployments.NewDynamicClient()
-		if err != nil {
-			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
-		}
 		var deploymentsApplier deployments.ResourceApplier
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)

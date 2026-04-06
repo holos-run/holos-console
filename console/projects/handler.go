@@ -34,16 +34,30 @@ type OrgDefaultShareResolver interface {
 	GetOrgDefaultGrants(ctx context.Context, org string) (defaultUsers, defaultRoles []secrets.AnnotationGrant, err error)
 }
 
+// MandatoryTemplateApplier renders and applies all mandatory system templates
+// into a newly created project namespace.
+type MandatoryTemplateApplier interface {
+	ApplyMandatorySystemTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error
+}
+
 // Handler implements the ProjectService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
-	k8s         *K8sClient
-	orgResolver OrgResolver
+	k8s                       *K8sClient
+	orgResolver               OrgResolver
+	mandatoryTemplateApplier  MandatoryTemplateApplier
 }
 
 // NewHandler creates a new ProjectService handler.
 func NewHandler(k8s *K8sClient, orgResolver OrgResolver) *Handler {
 	return &Handler{k8s: k8s, orgResolver: orgResolver}
+}
+
+// WithMandatoryTemplateApplier sets the MandatoryTemplateApplier for the handler.
+// When set, mandatory system templates are applied to new project namespaces at creation time.
+func (h *Handler) WithMandatoryTemplateApplier(applier MandatoryTemplateApplier) *Handler {
+	h.mandatoryTemplateApplier = applier
+	return h
 }
 
 // ListProjects returns all projects the user has access to.
@@ -218,6 +232,27 @@ func (h *Handler) CreateProject(
 	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// Apply mandatory system templates into the new project namespace.
+	// On failure, attempt a best-effort cleanup of the project namespace to
+	// avoid leaving orphaned resources, then return the error.
+	if h.mandatoryTemplateApplier != nil && req.Msg.Organization != "" {
+		projectNamespace := h.k8s.Resolver.ProjectNamespace(req.Msg.Name)
+		if err := h.mandatoryTemplateApplier.ApplyMandatorySystemTemplates(ctx, req.Msg.Organization, req.Msg.Name, projectNamespace, claims); err != nil {
+			slog.ErrorContext(ctx, "mandatory system template apply failed, cleaning up project",
+				slog.String("project", req.Msg.Name),
+				slog.String("organization", req.Msg.Organization),
+				slog.Any("error", err),
+			)
+			if cleanupErr := h.k8s.DeleteProject(ctx, req.Msg.Name); cleanupErr != nil {
+				slog.WarnContext(ctx, "failed to clean up project after mandatory template apply failure",
+					slog.String("project", req.Msg.Name),
+					slog.Any("cleanup_error", cleanupErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying mandatory system templates to project %q: %w", req.Msg.Name, err))
+		}
 	}
 
 	slog.InfoContext(ctx, "project created",
