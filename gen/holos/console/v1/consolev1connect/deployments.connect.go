@@ -60,6 +60,9 @@ const (
 	// DeploymentServiceListNamespaceConfigMapsProcedure is the fully-qualified name of the
 	// DeploymentService's ListNamespaceConfigMaps RPC.
 	DeploymentServiceListNamespaceConfigMapsProcedure = "/holos.console.v1.DeploymentService/ListNamespaceConfigMaps"
+	// DeploymentServiceGetDeploymentRenderPreviewProcedure is the fully-qualified name of the
+	// DeploymentService's GetDeploymentRenderPreview RPC.
+	DeploymentServiceGetDeploymentRenderPreviewProcedure = "/holos.console.v1.DeploymentService/GetDeploymentRenderPreview"
 )
 
 // DeploymentServiceClient is a client for the holos.console.v1.DeploymentService service.
@@ -77,6 +80,10 @@ type DeploymentServiceClient interface {
 	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
 	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
 	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
+	// GetDeploymentRenderPreview returns the CUE template source, system input,
+	// user input, and rendered output for a deployment. This gives the frontend
+	// everything needed to display the template preview on the deployment detail page.
+	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
 }
 
 // NewDeploymentServiceClient constructs a client for the holos.console.v1.DeploymentService
@@ -144,20 +151,27 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceConfigMaps")),
 			connect.WithClientOptions(opts...),
 		),
+		getDeploymentRenderPreview: connect.NewClient[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse](
+			httpClient,
+			baseURL+DeploymentServiceGetDeploymentRenderPreviewProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentRenderPreview")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // deploymentServiceClient implements DeploymentServiceClient.
 type deploymentServiceClient struct {
-	listDeployments         *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
-	getDeployment           *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
-	createDeployment        *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
-	updateDeployment        *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
-	deleteDeployment        *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
-	getDeploymentStatus     *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
-	getDeploymentLogs       *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
-	listNamespaceSecrets    *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
-	listNamespaceConfigMaps *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
+	listDeployments            *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
+	getDeployment              *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
+	createDeployment           *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
+	updateDeployment           *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
+	deleteDeployment           *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
+	getDeploymentStatus        *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
+	getDeploymentLogs          *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
+	listNamespaceSecrets       *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
+	listNamespaceConfigMaps    *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
+	getDeploymentRenderPreview *connect.Client[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse]
 }
 
 // ListDeployments calls holos.console.v1.DeploymentService.ListDeployments.
@@ -205,6 +219,11 @@ func (c *deploymentServiceClient) ListNamespaceConfigMaps(ctx context.Context, r
 	return c.listNamespaceConfigMaps.CallUnary(ctx, req)
 }
 
+// GetDeploymentRenderPreview calls holos.console.v1.DeploymentService.GetDeploymentRenderPreview.
+func (c *deploymentServiceClient) GetDeploymentRenderPreview(ctx context.Context, req *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error) {
+	return c.getDeploymentRenderPreview.CallUnary(ctx, req)
+}
+
 // DeploymentServiceHandler is an implementation of the holos.console.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
 	ListDeployments(context.Context, *connect.Request[v1.ListDeploymentsRequest]) (*connect.Response[v1.ListDeploymentsResponse], error)
@@ -220,6 +239,10 @@ type DeploymentServiceHandler interface {
 	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
 	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
 	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
+	// GetDeploymentRenderPreview returns the CUE template source, system input,
+	// user input, and rendered output for a deployment. This gives the frontend
+	// everything needed to display the template preview on the deployment detail page.
+	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
 }
 
 // NewDeploymentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -283,6 +306,12 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("ListNamespaceConfigMaps")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServiceGetDeploymentRenderPreviewHandler := connect.NewUnaryHandler(
+		DeploymentServiceGetDeploymentRenderPreviewProcedure,
+		svc.GetDeploymentRenderPreview,
+		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentRenderPreview")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentServiceListDeploymentsProcedure:
@@ -303,6 +332,8 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceListNamespaceSecretsHandler.ServeHTTP(w, r)
 		case DeploymentServiceListNamespaceConfigMapsProcedure:
 			deploymentServiceListNamespaceConfigMapsHandler.ServeHTTP(w, r)
+		case DeploymentServiceGetDeploymentRenderPreviewProcedure:
+			deploymentServiceGetDeploymentRenderPreviewHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -346,4 +377,8 @@ func (UnimplementedDeploymentServiceHandler) ListNamespaceSecrets(context.Contex
 
 func (UnimplementedDeploymentServiceHandler) ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.ListNamespaceConfigMaps is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentRenderPreview is not implemented"))
 }
