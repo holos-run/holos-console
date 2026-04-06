@@ -13,7 +13,7 @@ import (
 )
 
 // allTestGVRs lists every GVR that the fake scheme must know about,
-// including the gateway.networking.k8s.io group for HTTPRoute.
+// including the gateway.networking.k8s.io group for HTTPRoute and ReferenceGrant.
 var allTestGVRs = []struct {
 	gvr  schema.GroupVersionResource
 	kind string
@@ -24,6 +24,7 @@ var allTestGVRs = []struct {
 	{schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}, "Role"},
 	{schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}, "RoleBinding"},
 	{schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes"}, "HTTPRoute"},
+	{schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1beta1", Resource: "referencegrants"}, "ReferenceGrant"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, "ConfigMap"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}, "Secret"},
 }

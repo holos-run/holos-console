@@ -40,6 +40,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
+	system_templates "github.com/holos-run/holos-console/console/system_templates"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -268,6 +269,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
+		// System template service with org-level RBAC
+		sysTemplatesK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
+		sysTemplatesHandler := system_templates.NewHandler(sysTemplatesK8s, orgGrantResolver, system_templates.NewCueRendererAdapter())
+		sysTemplatesPath, sysTemplatesHTTPHandler := consolev1connect.NewSystemTemplateServiceHandler(sysTemplatesHandler, protectedInterceptors)
+		mux.Handle(sysTemplatesPath, sysTemplatesHTTPHandler)
+
 		// Deployment service with project grant fallback
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
 		dynamicClient, err := deployments.NewDynamicClient()
@@ -301,6 +308,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.DeploymentTemplateServiceName,
+		consolev1connect.SystemTemplateServiceName,
 		consolev1connect.DeploymentServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
