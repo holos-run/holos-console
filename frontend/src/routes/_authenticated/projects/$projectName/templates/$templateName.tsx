@@ -3,12 +3,9 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -20,69 +17,11 @@ import {
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { CueTemplateEditor } from '@/components/cue-template-editor'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,
 })
-
-interface RenderStatusIndicatorProps {
-  isStale: boolean
-  isRendering: boolean
-  hasError: boolean
-}
-
-function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusIndicatorProps) {
-  if (isRendering) {
-    return (
-      <span aria-label="Render status: rendering" className="flex items-center gap-1 text-xs text-muted-foreground">
-        {/* Spinning loader */}
-        <svg className="size-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-        </svg>
-        Rendering…
-      </span>
-    )
-  }
-
-  if (hasError) {
-    return (
-      <span aria-label="Render status: error" className="flex items-center gap-1 text-xs text-destructive">
-        {/* X circle */}
-        <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M15 9l-6 6M9 9l6 6" />
-        </svg>
-        Error
-      </span>
-    )
-  }
-
-  if (isStale) {
-    return (
-      <span aria-label="Render status: stale" className="flex items-center gap-1 text-xs text-amber-500">
-        {/* Clock icon */}
-        <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 6v6l4 2" />
-        </svg>
-        Out of date
-      </span>
-    )
-  }
-
-  return (
-    <span aria-label="Render status: fresh" className="flex items-center gap-1 text-xs text-green-500">
-      {/* Check circle */}
-      <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M9 12l2 2 4-4" />
-      </svg>
-      Up to date
-    </span>
-  )
-}
 
 function DeploymentTemplateDetailRoute() {
   const { projectName, templateName } = Route.useParams()
@@ -108,13 +47,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('editor')
-  const [cueSystemInput, setCueSystemInput] = useState(
-    `system: {\n  project:   "${projectName}"\n  namespace: "holos-prj-${projectName}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
-  )
-  const [cueInput, setCueInput] = useState(
-    `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
-  )
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -126,12 +58,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
 
-  const debouncedCueInput = useDebouncedValue(cueInput, 500)
-  const debouncedCueSystemInput = useDebouncedValue(cueSystemInput, 500)
-  const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
-  const isStale = cueInput !== debouncedCueInput || cueSystemInput !== debouncedCueSystemInput || cueTemplate !== debouncedCueTemplate
-  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderDeploymentTemplate(debouncedCueTemplate, debouncedCueInput, activeTab === 'preview', debouncedCueSystemInput)
-  const renderedYaml = renderData?.renderedYaml
+  const defaultSystemInput = `system: {\n  project:   "${projectName}"\n  namespace: "holos-prj-${projectName}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  const defaultUserInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {
     try {
@@ -207,78 +135,16 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <div className="space-y-4">
             <h3 className="text-sm font-medium">CUE Template</h3>
             <Separator />
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                <TabsTrigger value="editor">Editor</TabsTrigger>
-                <TabsTrigger value="preview">Preview</TabsTrigger>
-              </TabsList>
-              <TabsContent value="editor" className="mt-4 space-y-4">
-                <div>
-                  <Label htmlFor="cue-template-editor" className="sr-only">CUE Template</Label>
-                  <Textarea
-                    id="cue-template-editor"
-                    aria-label="CUE Template"
-                    value={cueTemplate}
-                    onChange={(e) => setCueTemplate(e.target.value)}
-                    rows={20}
-                    className="font-mono text-sm field-sizing-normal max-h-96 overflow-y-auto"
-                    readOnly={!canWrite}
-                  />
-                </div>
-                {canWrite && (
-                  <div className="flex justify-end">
-                    <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                      {updateMutation.isPending ? 'Saving...' : 'Save'}
-                    </Button>
-                  </div>
-                )}
-              </TabsContent>
-              <TabsContent value="preview" className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cue-system-input-editor">System Input (provided by the platform)</Label>
-                  <p className="text-xs text-muted-foreground">
-                    These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
-                  </p>
-                  <Textarea
-                    id="cue-system-input-editor"
-                    aria-label="System Input"
-                    value={cueSystemInput}
-                    onChange={(e) => setCueSystemInput(e.target.value)}
-                    rows={10}
-                    className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cue-input-editor">User Input (deployment parameters)</Label>
-                  <Textarea
-                    id="cue-input-editor"
-                    aria-label="User Input"
-                    value={cueInput}
-                    onChange={(e) => setCueInput(e.target.value)}
-                    rows={6}
-                    className="font-mono text-sm field-sizing-normal max-h-48 overflow-y-auto"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label>Rendered YAML</Label>
-                    <RenderStatusIndicator isStale={isStale} isRendering={isRendering} hasError={!!renderError} />
-                  </div>
-                  {renderError ? (
-                    <Alert variant="destructive">
-                      <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
-                    </Alert>
-                  ) : (
-                    <pre
-                      aria-label="Rendered YAML"
-                      className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
-                    >
-                      {renderedYaml ?? ''}
-                    </pre>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+            <CueTemplateEditor
+              cueTemplate={cueTemplate}
+              onChange={setCueTemplate}
+              readOnly={!canWrite}
+              onSave={handleSave}
+              isSaving={updateMutation.isPending}
+              defaultSystemInput={defaultSystemInput}
+              defaultUserInput={defaultUserInput}
+              useRenderFn={useRenderDeploymentTemplate}
+            />
           </div>
 
           {canDelete && (
