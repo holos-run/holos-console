@@ -27,10 +27,7 @@ func orgNS(org string) *corev1.Namespace {
 	}
 }
 
-func sysTemplateConfigMap(org, name, displayName, description, cueTemplate string, mandatory bool, gatewayNs string) *corev1.ConfigMap {
-	if gatewayNs == "" {
-		gatewayNs = DefaultGatewayNamespace
-	}
+func sysTemplateConfigMap(org, name, displayName, description, cueTemplate string, mandatory, enabled bool) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -43,7 +40,7 @@ func sysTemplateConfigMap(org, name, displayName, description, cueTemplate strin
 				DisplayNameAnnotation: displayName,
 				DescriptionAnnotation: description,
 				MandatoryAnnotation:   boolToStr(mandatory),
-				GatewayNsAnnotation:   gatewayNs,
+				EnabledAnnotation:     boolToStr(enabled),
 			},
 		},
 		Data: map[string]string{
@@ -76,7 +73,7 @@ func TestListSystemTemplates(t *testing.T) {
 
 	t.Run("returns templates with correct label", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -96,7 +93,7 @@ func TestListSystemTemplates(t *testing.T) {
 func TestGetSystemTemplate(t *testing.T) {
 	t.Run("returns existing template", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -125,12 +122,12 @@ func TestGetSystemTemplate(t *testing.T) {
 }
 
 func TestCreateSystemTemplate(t *testing.T) {
-	t.Run("creates template with mandatory flag and gateway namespace", func(t *testing.T) {
+	t.Run("creates template with mandatory flag and enabled flag", func(t *testing.T) {
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, "istio-ingress")
+		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", true, true)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -146,25 +143,25 @@ func TestCreateSystemTemplate(t *testing.T) {
 		if cm.Annotations[MandatoryAnnotation] != "true" {
 			t.Errorf("expected mandatory annotation 'true', got %q", cm.Annotations[MandatoryAnnotation])
 		}
-		if cm.Annotations[GatewayNsAnnotation] != "istio-ingress" {
-			t.Errorf("expected gateway-namespace 'istio-ingress', got %q", cm.Annotations[GatewayNsAnnotation])
+		if cm.Annotations[EnabledAnnotation] != "true" {
+			t.Errorf("expected enabled annotation 'true', got %q", cm.Annotations[EnabledAnnotation])
 		}
 		if cm.Data[CueTemplateKey] != "package system_template\n" {
 			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
 		}
 	})
 
-	t.Run("defaults gateway namespace to istio-ingress when empty", func(t *testing.T) {
+	t.Run("new templates default enabled to false", func(t *testing.T) {
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", false, "")
+		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package system_template\n", false, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if cm.Annotations[GatewayNsAnnotation] != DefaultGatewayNamespace {
-			t.Errorf("expected default gateway namespace %q, got %q", DefaultGatewayNamespace, cm.Annotations[GatewayNsAnnotation])
+		if cm.Annotations[EnabledAnnotation] != "false" {
+			t.Errorf("expected enabled annotation 'false', got %q", cm.Annotations[EnabledAnnotation])
 		}
 	})
 
@@ -173,7 +170,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		_, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+		_, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -191,7 +188,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 func TestUpdateSystemTemplate(t *testing.T) {
 	t.Run("updates mandatory flag", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", false, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", false, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -205,19 +202,19 @@ func TestUpdateSystemTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("updates gateway namespace", func(t *testing.T) {
+	t.Run("updates enabled flag", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		newGatewayNs := "my-gateway"
-		updated, err := k8s.UpdateSystemTemplate(context.Background(), "my-org", "ref-grant", nil, nil, nil, nil, &newGatewayNs)
+		enabled := true
+		updated, err := k8s.UpdateSystemTemplate(context.Background(), "my-org", "ref-grant", nil, nil, nil, nil, &enabled)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if updated.Annotations[GatewayNsAnnotation] != "my-gateway" {
-			t.Errorf("expected gateway-namespace 'my-gateway', got %q", updated.Annotations[GatewayNsAnnotation])
+		if updated.Annotations[EnabledAnnotation] != "true" {
+			t.Errorf("expected enabled annotation 'true', got %q", updated.Annotations[EnabledAnnotation])
 		}
 	})
 
@@ -237,7 +234,7 @@ func TestUpdateSystemTemplate(t *testing.T) {
 func TestDeleteSystemTemplate(t *testing.T) {
 	t.Run("deletes existing template", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -265,27 +262,25 @@ func TestDeleteSystemTemplate(t *testing.T) {
 }
 
 func TestConfigMapToSystemTemplate(t *testing.T) {
-	t.Run("reads mandatory flag correctly", func(t *testing.T) {
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+	t.Run("reads mandatory and enabled flags correctly", func(t *testing.T) {
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, true)
 		tmpl := configMapToSystemTemplate(cm, "my-org")
 		if !tmpl.Mandatory {
 			t.Error("expected mandatory=true")
 		}
-		if tmpl.GatewayNamespace != "istio-ingress" {
-			t.Errorf("expected gateway_namespace 'istio-ingress', got %q", tmpl.GatewayNamespace)
+		if !tmpl.Enabled {
+			t.Error("expected enabled=true")
 		}
 		if tmpl.Org != "my-org" {
 			t.Errorf("expected org 'my-org', got %q", tmpl.Org)
 		}
 	})
 
-	t.Run("defaults gateway namespace when annotation is empty", func(t *testing.T) {
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", false, "")
-		// Explicitly remove the annotation to simulate missing annotation.
-		delete(cm.Annotations, GatewayNsAnnotation)
+	t.Run("reads enabled=false when annotation is false", func(t *testing.T) {
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", false, false)
 		tmpl := configMapToSystemTemplate(cm, "my-org")
-		if tmpl.GatewayNamespace != DefaultGatewayNamespace {
-			t.Errorf("expected default gateway namespace %q, got %q", DefaultGatewayNamespace, tmpl.GatewayNamespace)
+		if tmpl.Enabled {
+			t.Error("expected enabled=false")
 		}
 	})
 }

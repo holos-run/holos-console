@@ -52,7 +52,7 @@ const mockTemplates = [
     description: 'Allows gateway HTTPRoutes to reference project Services',
     cueTemplate: '// reference grant template',
     mandatory: true,
-    gatewayNamespace: 'istio-ingress',
+    enabled: false,
   },
   {
     name: 'optional-template',
@@ -61,7 +61,7 @@ const mockTemplates = [
     description: 'An optional system template',
     cueTemplate: '// optional template',
     mandatory: false,
-    gatewayNamespace: 'istio-ingress',
+    enabled: false,
   },
 ]
 
@@ -163,10 +163,10 @@ describe('SystemTemplateDetailPage', () => {
     expect(screen.getByText('Mandatory')).toBeInTheDocument()
   })
 
-  it('renders gateway namespace', () => {
+  it('renders template display name', () => {
     setupDetailMocks(Role.OWNER)
     render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
-    expect(screen.getByText('istio-ingress')).toBeInTheDocument()
+    expect(screen.getByText('ReferenceGrant')).toBeInTheDocument()
   })
 
   it('shows Save button for org OWNER', () => {

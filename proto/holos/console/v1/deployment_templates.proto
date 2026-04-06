@@ -12,6 +12,7 @@ service DeploymentTemplateService {
   rpc UpdateDeploymentTemplate(UpdateDeploymentTemplateRequest) returns (UpdateDeploymentTemplateResponse);
   rpc DeleteDeploymentTemplate(DeleteDeploymentTemplateRequest) returns (DeleteDeploymentTemplateResponse);
   rpc RenderDeploymentTemplate(RenderDeploymentTemplateRequest) returns (RenderDeploymentTemplateResponse);
+  rpc CloneDeploymentTemplate(CloneDeploymentTemplateRequest) returns (CloneDeploymentTemplateResponse);
 }
 
 // DeploymentDefaults carries optional default values that a template provides
@@ -129,4 +130,22 @@ message RenderDeploymentTemplateResponse {
   // rendered_json is the pretty-printed JSON representation of all rendered
   // resources as a JSON array.
   string rendered_json = 2;
+}
+
+// CloneDeploymentTemplateRequest copies an existing deployment template to a new name.
+// The clone inherits the CUE template and other fields from the source.
+message CloneDeploymentTemplateRequest {
+  // source_name is the name of the template to copy.
+  string source_name = 1;
+  // project is the project that owns the source template.
+  string project = 2;
+  // name is the DNS label slug for the new template.
+  string name = 3;
+  // display_name is the human-readable name for the new template.
+  string display_name = 4;
+}
+
+message CloneDeploymentTemplateResponse {
+  // name is the name of the newly created template.
+  string name = 1;
 }

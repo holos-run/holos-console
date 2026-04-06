@@ -417,6 +417,66 @@ export declare type RenderDeploymentTemplateResponse = Message<"holos.console.v1
 export declare const RenderDeploymentTemplateResponseSchema: GenMessage<RenderDeploymentTemplateResponse>;
 
 /**
+ * CloneDeploymentTemplateRequest copies an existing deployment template to a new name.
+ * The clone inherits the CUE template and other fields from the source.
+ *
+ * @generated from message holos.console.v1.CloneDeploymentTemplateRequest
+ */
+export declare type CloneDeploymentTemplateRequest = Message<"holos.console.v1.CloneDeploymentTemplateRequest"> & {
+  /**
+   * source_name is the name of the template to copy.
+   *
+   * @generated from field: string source_name = 1;
+   */
+  sourceName: string;
+
+  /**
+   * project is the project that owns the source template.
+   *
+   * @generated from field: string project = 2;
+   */
+  project: string;
+
+  /**
+   * name is the DNS label slug for the new template.
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * display_name is the human-readable name for the new template.
+   *
+   * @generated from field: string display_name = 4;
+   */
+  displayName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CloneDeploymentTemplateRequest.
+ * Use `create(CloneDeploymentTemplateRequestSchema)` to create a new message.
+ */
+export declare const CloneDeploymentTemplateRequestSchema: GenMessage<CloneDeploymentTemplateRequest>;
+
+/**
+ * @generated from message holos.console.v1.CloneDeploymentTemplateResponse
+ */
+export declare type CloneDeploymentTemplateResponse = Message<"holos.console.v1.CloneDeploymentTemplateResponse"> & {
+  /**
+   * name is the name of the newly created template.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CloneDeploymentTemplateResponse.
+ * Use `create(CloneDeploymentTemplateResponseSchema)` to create a new message.
+ */
+export declare const CloneDeploymentTemplateResponseSchema: GenMessage<CloneDeploymentTemplateResponse>;
+
+/**
  * DeploymentTemplateService manages CUE-based deployment templates.
  *
  * @generated from service holos.console.v1.DeploymentTemplateService
@@ -469,6 +529,14 @@ export declare const DeploymentTemplateService: GenService<{
     methodKind: "unary";
     input: typeof RenderDeploymentTemplateRequestSchema;
     output: typeof RenderDeploymentTemplateResponseSchema;
+  },
+  /**
+   * @generated from rpc holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate
+   */
+  cloneDeploymentTemplate: {
+    methodKind: "unary";
+    input: typeof CloneDeploymentTemplateRequestSchema;
+    output: typeof CloneDeploymentTemplateResponseSchema;
   },
 }>;
 

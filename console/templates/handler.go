@@ -271,6 +271,53 @@ func (h *Handler) DeleteDeploymentTemplate(
 	return connect.NewResponse(&consolev1.DeleteDeploymentTemplateResponse{}), nil
 }
 
+// CloneDeploymentTemplate copies an existing deployment template to a new name.
+func (h *Handler) CloneDeploymentTemplate(
+	ctx context.Context,
+	req *connect.Request[consolev1.CloneDeploymentTemplateRequest],
+) (*connect.Response[consolev1.CloneDeploymentTemplateResponse], error) {
+	project := req.Msg.Project
+	sourceName := req.Msg.SourceName
+	newName := req.Msg.Name
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if sourceName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source_name is required"))
+	}
+	if err := validateTemplateName(newName); err != nil {
+		return nil, err
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesWrite); err != nil {
+		return nil, err
+	}
+
+	_, err := h.k8s.CloneTemplate(ctx, project, sourceName, newName, req.Msg.DisplayName)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "deployment template cloned",
+		slog.String("action", "deployment_template_clone"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", project),
+		slog.String("source_name", sourceName),
+		slog.String("name", newName),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CloneDeploymentTemplateResponse{
+		Name: newName,
+	}), nil
+}
+
 // RenderDeploymentTemplate evaluates a CUE template unified with a CUE input
 // string and returns the rendered Kubernetes resource manifests as
 // multi-document YAML and a pretty-printed JSON array.

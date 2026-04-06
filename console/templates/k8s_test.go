@@ -338,3 +338,40 @@ func TestDeleteTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestCloneTemplate(t *testing.T) {
+	t.Run("copies CUE template and description from source", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app template", "package deployment\nfoo: true\n")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cloned, err := k8s.CloneTemplate(context.Background(), "my-project", "web-app", "web-app-copy", "Web App Copy")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if cloned.Name != "web-app-copy" {
+			t.Errorf("expected name 'web-app-copy', got %q", cloned.Name)
+		}
+		if cloned.Annotations[DisplayNameAnnotation] != "Web App Copy" {
+			t.Errorf("expected display name 'Web App Copy', got %q", cloned.Annotations[DisplayNameAnnotation])
+		}
+		if cloned.Annotations[DescriptionAnnotation] != "A web app template" {
+			t.Errorf("expected description from source, got %q", cloned.Annotations[DescriptionAnnotation])
+		}
+		if cloned.Data[CueTemplateKey] != "package deployment\nfoo: true\n" {
+			t.Errorf("expected CUE template from source, got %q", cloned.Data[CueTemplateKey])
+		}
+	})
+
+	t.Run("returns error when source does not exist", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		_, err := k8s.CloneTemplate(context.Background(), "my-project", "nonexistent", "copy", "Copy")
+		if err == nil {
+			t.Fatal("expected error when source does not exist")
+		}
+	})
+}
