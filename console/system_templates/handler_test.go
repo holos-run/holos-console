@@ -56,7 +56,7 @@ func viewerGrants(email string) *stubOrgResolver {
 }
 
 
-const validCue = `package system_template
+const validCue = `package deployment
 
 #Input: {}
 `
@@ -64,7 +64,7 @@ const validCue = `package system_template
 func TestListSystemTemplatesHandler(t *testing.T) {
 	t.Run("returns templates for org OWNER", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -99,8 +99,13 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 		if resp.Msg.Templates[0].Name != DefaultReferenceGrantName {
 			t.Errorf("expected seeded template name %q, got %q", DefaultReferenceGrantName, resp.Msg.Templates[0].Name)
 		}
-		if !resp.Msg.Templates[0].Mandatory {
-			t.Error("expected seeded template to be mandatory")
+		// The seeded HTTPRoute template is not mandatory — it is opt-in per deployment.
+		if resp.Msg.Templates[0].Mandatory {
+			t.Error("expected seeded HTTPRoute template to not be mandatory (opt-in per deployment)")
+		}
+		// The seeded template starts disabled so org owners can configure it first.
+		if resp.Msg.Templates[0].Enabled {
+			t.Error("expected seeded HTTPRoute template to be disabled by default")
 		}
 	})
 
@@ -134,7 +139,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 func TestGetSystemTemplateHandler(t *testing.T) {
 	t.Run("returns template for org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -348,7 +353,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("renders default ReferenceGrant template", func(t *testing.T) {
+	t.Run("renders default HTTPRoute system template with mock input", func(t *testing.T) {
 		email := "owner@example.com"
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
@@ -357,8 +362,9 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 
 		ctx := authedCtx(email, nil)
 		systemInput := `system: {
-	project:   "my-project"
-	namespace: "prj-my-project"
+	project:          "my-project"
+	namespace:        "prj-my-project"
+	gatewayNamespace: "istio-ingress"
 	claims: {
 		iss:            "https://example.com"
 		sub:            "user-123"
@@ -368,27 +374,35 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		email_verified: true
 	}
 }`
-		// The default template still accepts gatewayNamespace as a CUE input.
-		// When not provided, the CUE default "istio-ingress" is used.
-		userInput := `input: {}`
+		// Mock input values allow standalone preview of the HTTPRoute system template.
+		// At actual deploy time the template is unified with the real deployment template.
+		userInput := `input: {
+	name:  "my-app"
+	image: "nginx"
+	tag:   "latest"
+}`
 		resp, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{
 			CueTemplate:    DefaultReferenceGrantTemplate,
 			CueSystemInput: systemInput,
 			CueInput:       userInput,
 		}))
 		if err != nil {
-			t.Fatalf("expected no error rendering default template, got %v", err)
+			t.Fatalf("expected no error rendering default HTTPRoute template, got %v", err)
 		}
 		if resp.Msg.RenderedYaml == "" {
-			t.Error("expected non-empty YAML for default ReferenceGrant template")
+			t.Error("expected non-empty YAML for default HTTPRoute system template")
 		}
-		// Verify ReferenceGrant is in the output.
-		if !contains(resp.Msg.RenderedYaml, "ReferenceGrant") {
-			t.Errorf("expected 'ReferenceGrant' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+		// Verify HTTPRoute is in the output.
+		if !contains(resp.Msg.RenderedYaml, "HTTPRoute") {
+			t.Errorf("expected 'HTTPRoute' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
-		// The CUE default value "istio-ingress" should appear in the rendered YAML.
+		// The mock input.name "my-app" should appear in the rendered YAML.
+		if !contains(resp.Msg.RenderedYaml, "my-app") {
+			t.Errorf("expected 'my-app' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+		}
+		// The gatewayNamespace "istio-ingress" should appear in the rendered YAML.
 		if !contains(resp.Msg.RenderedYaml, "istio-ingress") {
-			t.Errorf("expected 'istio-ingress' (CUE default) in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+			t.Errorf("expected 'istio-ingress' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
 	})
 }
@@ -497,7 +511,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 }
 
 func TestSeedDefaultTemplates(t *testing.T) {
-	t.Run("seeds reference-grant template with mandatory=true", func(t *testing.T) {
+	t.Run("seeds HTTPRoute example template with mandatory=false and enabled=false", func(t *testing.T) {
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -511,8 +525,9 @@ func TestSeedDefaultTemplates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected seeded ConfigMap, got %v", err)
 		}
-		if cm.Annotations[MandatoryAnnotation] != "true" {
-			t.Errorf("expected mandatory annotation 'true', got %q", cm.Annotations[MandatoryAnnotation])
+		// The seeded HTTPRoute template is opt-in (not mandatory) and starts disabled.
+		if cm.Annotations[MandatoryAnnotation] != "false" {
+			t.Errorf("expected mandatory annotation 'false' for seeded HTTPRoute template, got %q", cm.Annotations[MandatoryAnnotation])
 		}
 		if cm.Annotations[EnabledAnnotation] != "false" {
 			t.Errorf("expected enabled annotation 'false' for seeded template, got %q", cm.Annotations[EnabledAnnotation])

@@ -43,9 +43,9 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 	}
 
 	for _, cm := range templates {
-		// Only apply mandatory templates.
+		// Only apply templates that are both mandatory AND enabled.
 		tmpl := configMapToSystemTemplate(&cm, org)
-		if !tmpl.Mandatory {
+		if !tmpl.Mandatory || !tmpl.Enabled {
 			continue
 		}
 

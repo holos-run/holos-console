@@ -49,9 +49,14 @@ package deployment
 // These values are derived from authenticated context (project namespace resolution
 // and OIDC token claims) and are never supplied by the user.
 #System: {
-	project:   string
-	namespace: string
-	claims:    #Claims
+	project:          string
+	namespace:        string
+	// gatewayNamespace is the namespace containing the Gateway resource. It is
+	// used in ReferenceGrant specs to allow HTTPRoute resources from that namespace
+	// to reference Services in the project namespace.
+	// Defaults to "istio-ingress" per Istio's recommended Helm install convention.
+	gatewayNamespace: string | *"istio-ingress"
+	claims:           #Claims
 }
 
 input:  #Input
@@ -185,6 +190,33 @@ output: {
 				spec: {
 					selector: "app.kubernetes.io/name": input.name
 					ports: [{port: 80, targetPort: "http", name: "http"}]
+				}
+			}
+
+			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
+			// reference Service resources in the project namespace.
+			// This enables system templates (such as the example HTTPRoute template)
+			// to expose deployments via the gateway.
+			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
+			ReferenceGrant: "allow-gateway-httproute": {
+				apiVersion: "gateway.networking.k8s.io/v1beta1"
+				kind:       "ReferenceGrant"
+				metadata: {
+					name:        "allow-gateway-httproute"
+					namespace:   system.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					from: [{
+						group:     "gateway.networking.k8s.io"
+						kind:      "HTTPRoute"
+						namespace: system.gatewayNamespace
+					}]
+					to: [{
+						group: ""
+						kind:  "Service"
+					}]
 				}
 			}
 		}

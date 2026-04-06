@@ -52,9 +52,10 @@ package deployment
 
 // #System defines the trusted system-provided fields set by the console backend.
 #System: {
-  project:   string
-  namespace: string
-  claims:    #Claims
+  project:          string
+  namespace:        string
+  gatewayNamespace: string | *"istio-ingress"
+  claims:           #Claims
 }
 
 input:  #Input
@@ -154,8 +155,9 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [previewOpen, setPreviewOpen] = useState(false)
 
   const previewCueSystemInput = `system: {
-\tproject:   "${projectName}"
-\tnamespace: "holos-prj-${projectName}"
+\tproject:          "${projectName}"
+\tnamespace:        "holos-prj-${projectName}"
+\tgatewayNamespace: "istio-ingress"
 \tclaims: {
 \t\tiss:            "https://login.example.com"
 \t\tsub:            "user-abc123"

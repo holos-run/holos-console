@@ -68,9 +68,10 @@ package deployment
 }
 
 #System: {
-    project:   string
-    namespace: string
-    claims:    #Claims
+    project:          string
+    namespace:        string
+    gatewayNamespace: string | *"istio-ingress"
+    claims:           #Claims
 }
 
 input:  #Input
@@ -361,9 +362,10 @@ authenticated context.
 }
 
 #System: {
-    project:   string    // parent project name
-    namespace: string    // resolved K8s namespace (from Resolver.ProjectNamespace())
-    claims:    #Claims   // OIDC ID token claims of the authenticated user
+    project:          string             // parent project name
+    namespace:        string             // resolved K8s namespace (from Resolver.ProjectNamespace())
+    gatewayNamespace: string | *"istio-ingress" // namespace of the gateway (for ReferenceGrant/HTTPRoute)
+    claims:           #Claims            // OIDC ID token claims of the authenticated user
 }
 ```
 
@@ -385,6 +387,7 @@ authenticated context.
 |------------------------|---------------|-------------|
 | `project`              | `string`      | Parent project name. |
 | `namespace`            | `string`      | Kubernetes namespace resolved from the project name. Computed by the server using `Resolver.ProjectNamespace()`. |
+| `gatewayNamespace`     | `string`      | Kubernetes namespace of the gateway resource (default: `"istio-ingress"`). Used in ReferenceGrant `from` stanzas and HTTPRoute `parentRefs`. |
 | `claims.iss`           | `string`      | OIDC issuer URL (e.g. `https://dex.example.com`). |
 | `claims.sub`           | `string`      | OIDC subject (unique user ID). |
 | `claims.exp`           | `int`         | Token expiration time as Unix epoch seconds. |
@@ -604,7 +607,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 |------|---------|
 | `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions nested under `output.namespacedResources`/`output.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
-| `console/system_templates/default_referencegrant.cue` | Built-in mandatory system template that produces a `ReferenceGrant` allowing HTTPRoute resources in project namespaces to reference the org's gateway. Embedded via `console/system_templates/embed.go` and seeded into the org namespace ConfigMap on first `ListSystemTemplates` access. |
+| `console/system_templates/default_referencegrant.cue` | Built-in example HTTPRoute system template using `package deployment`. References `input.name` and `system.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Seeded as disabled (not mandatory) on first `ListSystemTemplates` access. Embedded via `console/system_templates/embed.go`. |
 
 ### Go Rendering Pipeline
 
@@ -613,8 +616,9 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `UserInput` to JSON and fills `"input"`, marshals `SystemInput` and fills `"system"`, walks structured `output.namespacedResources`/`output.clusterResources` fields (and optionally `output.systemNamespacedResources`/`output.systemClusterResources`), validates. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: compiles CUE source, unifies with a raw CUE input string at the top level, extracts `system.namespace` from the unified value. |
-| `console/deployments/render.go` | `ClaimsInput`, `SystemInput`, `UserInput` structs — split Go representation of template inputs. `SystemInput` (project, namespace, claims) is trusted backend context; `UserInput` (name, image, tag, etc.) is user-supplied. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — unifies zero or more system template CUE sources with the deployment template by concatenating them (same package) before compilation, then fills in system and user inputs. Used at deploy time to produce both user and system resources in a single evaluation. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates CUE source with a raw CUE input string before compilation so cross-references (e.g. input.name used in system templates) resolve correctly. Extracts `system.namespace` from the compiled value. |
+| `console/deployments/render.go` | `ClaimsInput`, `SystemInput`, `UserInput` structs — split Go representation of template inputs. `SystemInput` (project, namespace, gatewayNamespace, claims) is trusted backend context; `UserInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` reads from `output.*` paths, dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
@@ -632,14 +636,14 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `console/system_templates/handler.go` | `SystemTemplateService` handler — CRUD and render for org-scoped system templates stored as ConfigMaps. Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`. |
-| `console/system_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `system-template` resource-type label, `mandatory` and `gateway-namespace` annotations. Seeds `default_referencegrant.cue` on first `ListSystemTemplates`. |
-| `console/system_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatorySystemTemplates()` — called by the projects service after project namespace creation to apply all mandatory system templates into the new project namespace. |
+| `console/system_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `system-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListSystemTemplates`. `ListEnabledSystemTemplateSources()` returns CUE sources for enabled templates (satisfies `deployments.SystemTemplateProvider`). |
+| `console/system_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatorySystemTemplates()` — called by the projects service after project namespace creation to apply templates that are both `mandatory=true` AND `enabled=true`. |
 
 ### Deployment Service
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create/Update flow — builds `SystemInput` from authenticated context and `UserInput` from API request fields, calls `Render()`, then `Apply()`. |
+| `console/deployments/handler.go` | Create/Update flow — builds `SystemInput` (including `GatewayNamespace`) from authenticated context and `UserInput` from API request fields, calls `renderResources()` (which unifies enabled system templates via `RenderWithSystemTemplates`), then `Apply()`. |
 | `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 

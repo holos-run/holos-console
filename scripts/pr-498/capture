@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Capture screenshots for PR #498: system template unification
+# This PR changes the CUE template system to use package deployment
+# and adds gatewayNamespace to #System schema.
+#
+# The frontend changes are in the CUE template editor defaults:
+# - #System schema in DEFAULT_CUE_TEMPLATE now includes gatewayNamespace
+# - Preview system inputs in template editors include gatewayNamespace
+# - System template defaultUserInput includes mock deployment values
+#
+# We capture the system templates page and deployment template editor
+# to visually verify these changes are reflected in the UI.
+
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-498}"
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:9001}"
+
+echo "Capturing screenshots for PR #498 to $SCREENSHOT_DIR..."
+
+# Navigate to the profile page as a sanity check
+agent-browser navigate "$BACKEND_URL/profile"
+agent-browser screenshot "$SCREENSHOT_DIR/01-profile.png"
+echo "Captured profile page"
