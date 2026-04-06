@@ -81,6 +81,19 @@ export function useDeleteSystemTemplate(org: string) {
   })
 }
 
+export function useCloneSystemTemplate(org: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(SystemTemplateService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
+      client.cloneSystemTemplate({ org, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
+    },
+  })
+}
+
 export function useRenderSystemTemplate(
   cueTemplate: string,
   cueInput = '',

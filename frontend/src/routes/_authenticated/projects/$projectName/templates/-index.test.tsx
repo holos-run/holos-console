@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -18,6 +19,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/deployment-templates', () => ({
   useListDeploymentTemplates: vi.fn(),
   useDeleteDeploymentTemplate: vi.fn(),
+  useCloneDeploymentTemplate: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -26,7 +28,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListDeploymentTemplates, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListDeploymentTemplates, useDeleteDeploymentTemplate, useCloneDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplatesPage } from './index'
@@ -38,6 +40,7 @@ function makeTemplate(name: string, description = '', displayName = '') {
 function setupMocks(templates = [makeTemplate('web-app', 'Standard web app')], userRole = Role.OWNER) {
   ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: templates, isLoading: false, error: null })
   ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+  ;(useCloneDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }), isPending: false })
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
 }
 
@@ -115,8 +118,71 @@ describe('DeploymentTemplatesPage', () => {
   it('shows error state when fetch fails', () => {
     ;(useListDeploymentTemplates as Mock).mockReturnValue({ data: undefined, isLoading: false, error: new Error('fetch failed') })
     ;(useDeleteDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
+    ;(useCloneDeploymentTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
     render(<DeploymentTemplatesPage />)
     expect(screen.getByText(/fetch failed/)).toBeInTheDocument()
+  })
+
+  describe('clone action', () => {
+    it('renders clone buttons for templates (owner)', () => {
+      setupMocks([makeTemplate('web-app'), makeTemplate('worker')], Role.OWNER)
+      render(<DeploymentTemplatesPage />)
+      const cloneButtons = screen.getAllByRole('button', { name: /clone/i })
+      expect(cloneButtons.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('renders clone buttons for templates (editor)', () => {
+      setupMocks([makeTemplate('web-app')], Role.EDITOR)
+      render(<DeploymentTemplatesPage />)
+      expect(screen.getByRole('button', { name: /clone web-app/i })).toBeInTheDocument()
+    })
+
+    it('renders clone buttons for templates (viewer)', () => {
+      setupMocks([makeTemplate('web-app')], Role.VIEWER)
+      render(<DeploymentTemplatesPage />)
+      expect(screen.getByRole('button', { name: /clone web-app/i })).toBeInTheDocument()
+    })
+
+    it('clicking clone opens dialog', async () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplatesPage />)
+      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('confirming clone calls cloneDeploymentTemplate', async () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplatesPage />)
+      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
+      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
+      await user.clear(nameInput)
+      await user.type(nameInput, 'web-app-copy')
+      const displayNameInput = screen.getByRole('textbox', { name: /display name/i })
+      await user.clear(displayNameInput)
+      await user.type(displayNameInput, 'Web App Copy')
+      await user.click(screen.getByRole('button', { name: /^clone$/i }))
+      const mutateAsync = (useCloneDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+          sourceName: 'web-app',
+          name: 'web-app-copy',
+          displayName: 'Web App Copy',
+        }))
+      })
+    })
+
+    it('cancel closes clone dialog without saving', async () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplatesPage />)
+      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
+      await user.click(screen.getByRole('button', { name: /cancel/i }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      const mutateAsync = (useCloneDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
   })
 })

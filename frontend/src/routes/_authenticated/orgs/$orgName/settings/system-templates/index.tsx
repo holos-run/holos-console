@@ -82,6 +82,15 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
                           Mandatory
                         </Badge>
                       )}
+                      {tmpl.enabled ? (
+                        <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
+                          Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Disabled
+                        </Badge>
+                      )}
                     </div>
                     {tmpl.description && (
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{tmpl.description}</p>

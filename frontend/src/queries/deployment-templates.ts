@@ -81,6 +81,19 @@ export function useDeleteDeploymentTemplate(project: string) {
   })
 }
 
+export function useCloneDeploymentTemplate(project: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
+      client.cloneDeploymentTemplate({ project, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: templateListKey(project) })
+    },
+  })
+}
+
 export function useRenderDeploymentTemplate(
   cueTemplate: string,
   cueInput = '',

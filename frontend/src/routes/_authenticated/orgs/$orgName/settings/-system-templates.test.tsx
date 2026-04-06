@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -20,6 +21,7 @@ vi.mock('@/queries/system-templates', () => ({
   useListSystemTemplates: vi.fn(),
   useGetSystemTemplate: vi.fn(),
   useUpdateSystemTemplate: vi.fn(),
+  useCloneSystemTemplate: vi.fn(),
   useRenderSystemTemplate: vi.fn(),
 }))
 
@@ -37,6 +39,7 @@ import {
   useListSystemTemplates,
   useGetSystemTemplate,
   useUpdateSystemTemplate,
+  useCloneSystemTemplate,
   useRenderSystemTemplate,
 } from '@/queries/system-templates'
 import { useGetOrganization } from '@/queries/organizations'
@@ -61,7 +64,7 @@ const mockTemplates = [
     description: 'An optional system template',
     cueTemplate: '// optional template',
     mandatory: false,
-    enabled: false,
+    enabled: true,
   },
 ]
 
@@ -73,14 +76,19 @@ function setupListMocks() {
   })
 }
 
-function setupDetailMocks(userRole = Role.OWNER) {
+function setupDetailMocks(userRole = Role.OWNER, templateOverride?: Partial<typeof mockTemplates[0]>) {
+  const template = { ...mockTemplates[0], ...templateOverride }
   ;(useGetSystemTemplate as Mock).mockReturnValue({
-    data: mockTemplates[0],
+    data: template,
     isPending: false,
     error: null,
   })
   ;(useUpdateSystemTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
+  ;(useCloneSystemTemplate as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }),
     isPending: false,
   })
   ;(useRenderSystemTemplate as Mock).mockReturnValue({
@@ -127,6 +135,18 @@ describe('SystemTemplatesListPage', () => {
     })
     render(<SystemTemplatesListPage orgName="test-org" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
+  })
+
+  it('shows enabled badge for enabled templates', () => {
+    setupListMocks()
+    render(<SystemTemplatesListPage orgName="test-org" />)
+    expect(screen.getByText('Enabled')).toBeInTheDocument()
+  })
+
+  it('shows disabled badge for disabled templates', () => {
+    setupListMocks()
+    render(<SystemTemplatesListPage orgName="test-org" />)
+    expect(screen.getByText('Disabled')).toBeInTheDocument()
   })
 
   it('shows skeleton while loading', () => {
@@ -194,9 +214,115 @@ describe('SystemTemplateDetailPage', () => {
       error: null,
     })
     ;(useUpdateSystemTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useCloneSystemTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new' }), isPending: false })
     ;(useRenderSystemTemplate as Mock).mockReturnValue({ data: undefined, error: null, isFetching: false })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
     render(<SystemTemplateDetailPage orgName="test-org" templateName="optional-template" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
+  })
+
+  describe('enabled toggle', () => {
+    it('shows enabled toggle for org OWNER', () => {
+      setupDetailMocks(Role.OWNER)
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      expect(screen.getByRole('switch', { name: /enabled/i })).toBeInTheDocument()
+    })
+
+    it('toggle is checked when template is enabled', () => {
+      setupDetailMocks(Role.OWNER, { enabled: true })
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      const toggle = screen.getByRole('switch', { name: /enabled/i })
+      expect(toggle).toHaveAttribute('data-state', 'checked')
+    })
+
+    it('toggle is unchecked when template is disabled', () => {
+      setupDetailMocks(Role.OWNER, { enabled: false })
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      const toggle = screen.getByRole('switch', { name: /enabled/i })
+      expect(toggle).toHaveAttribute('data-state', 'unchecked')
+    })
+
+    it('clicking toggle calls updateSystemTemplate with new enabled state', async () => {
+      setupDetailMocks(Role.OWNER, { enabled: false })
+      const user = userEvent.setup()
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      const toggle = screen.getByRole('switch', { name: /enabled/i })
+      await user.click(toggle)
+      const mutateAsync = (useUpdateSystemTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
+      })
+    })
+
+    it('toggle is disabled for org VIEWER', () => {
+      setupDetailMocks(Role.VIEWER)
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      const toggle = screen.getByRole('switch', { name: /enabled/i })
+      expect(toggle).toBeDisabled()
+    })
+  })
+
+  describe('clone button', () => {
+    it('shows clone button for org OWNER', () => {
+      setupDetailMocks(Role.OWNER)
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      expect(screen.getByRole('button', { name: /clone/i })).toBeInTheDocument()
+    })
+
+    it('shows clone button for org VIEWER (clone is read-only action)', () => {
+      setupDetailMocks(Role.VIEWER)
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      expect(screen.getByRole('button', { name: /clone/i })).toBeInTheDocument()
+    })
+
+    it('clicking clone opens dialog', async () => {
+      setupDetailMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      await user.click(screen.getByRole('button', { name: /clone/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('clone dialog has name and display name fields', async () => {
+      setupDetailMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      await user.click(screen.getByRole('button', { name: /clone/i }))
+      expect(screen.getByRole('textbox', { name: /^name$/i })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /display name/i })).toBeInTheDocument()
+    })
+
+    it('confirming clone calls cloneSystemTemplate', async () => {
+      setupDetailMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      await user.click(screen.getByRole('button', { name: /clone/i }))
+      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
+      await user.clear(nameInput)
+      await user.type(nameInput, 'new-template')
+      const displayNameInput = screen.getByRole('textbox', { name: /display name/i })
+      await user.clear(displayNameInput)
+      await user.type(displayNameInput, 'New Template')
+      await user.click(screen.getByRole('button', { name: /^clone$/i }))
+      const mutateAsync = (useCloneSystemTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+          sourceName: 'reference-grant',
+          name: 'new-template',
+          displayName: 'New Template',
+        }))
+      })
+    })
+
+    it('cancel closes clone dialog without saving', async () => {
+      setupDetailMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<SystemTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
+      await user.click(screen.getByRole('button', { name: /clone/i }))
+      await user.click(screen.getByRole('button', { name: /cancel/i }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      const mutateAsync = (useCloneSystemTemplate as Mock).mock.results[0].value.mutateAsync
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
   })
 })

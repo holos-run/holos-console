@@ -3,6 +3,8 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -21,9 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListDeploymentTemplates, useDeleteDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListDeploymentTemplates, useDeleteDeploymentTemplate, useCloneDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
@@ -48,9 +50,15 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const { data: templates = [], isLoading, error } = useListDeploymentTemplates(projectName)
   const { data: project } = useGetProject(projectName)
   const deleteMutation = useDeleteDeploymentTemplate(projectName)
+  const cloneMutation = useCloneDeploymentTemplate(projectName)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [cloneOpen, setCloneOpen] = useState(false)
+  const [cloneSource, setCloneSource] = useState<string | null>(null)
+  const [cloneName, setCloneName] = useState('')
+  const [cloneDisplayName, setCloneDisplayName] = useState('')
+  const [cloneError, setCloneError] = useState<string | null>(null)
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -65,6 +73,31 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
       toast.success('Template deleted')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleOpenClone = (sourceName: string) => {
+    setCloneSource(sourceName)
+    setCloneName('')
+    setCloneDisplayName('')
+    setCloneError(null)
+    setCloneOpen(true)
+  }
+
+  const handleCloneConfirm = async () => {
+    if (!cloneSource) return
+    setCloneError(null)
+    try {
+      await cloneMutation.mutateAsync({
+        sourceName: cloneSource,
+        name: cloneName,
+        displayName: cloneDisplayName,
+      })
+      toast.success(`Cloned to "${cloneName}"`)
+      setCloneOpen(false)
+      setCloneSource(null)
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -148,6 +181,14 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`clone ${template.name}`}
+                          onClick={() => handleOpenClone(template.name)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
                         {canWrite && (
                           <Link
                             to="/projects/$projectName/templates/$templateName"
@@ -193,6 +234,50 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
             <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Clone Deployment Template</DialogTitle>
+            <DialogDescription>
+              Create a copy of &quot;{cloneSource}&quot; with a new name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clone-name">Name</Label>
+              <Input
+                id="clone-name"
+                aria-label="Name"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder="my-template-copy"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clone-display-name">Display Name</Label>
+              <Input
+                id="clone-display-name"
+                aria-label="Display Name"
+                value={cloneDisplayName}
+                onChange={(e) => setCloneDisplayName(e.target.value)}
+                placeholder="My Template Copy"
+              />
+            </div>
+          </div>
+          {cloneError && (
+            <Alert variant="destructive">
+              <AlertDescription>{cloneError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCloneOpen(false)}>Cancel</Button>
+            <Button onClick={handleCloneConfirm} disabled={cloneMutation.isPending || !cloneName}>
+              {cloneMutation.isPending ? 'Cloning...' : 'Clone'}
             </Button>
           </DialogFooter>
         </DialogContent>
