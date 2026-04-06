@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
+import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,10 +35,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/$deploymentName')({
@@ -67,6 +69,7 @@ export function DeploymentDetailPage({
   const { data: deployment, isPending, error } = useGetDeployment(projectName, deploymentName)
   const { data: status } = useGetDeploymentStatus(projectName, deploymentName, { refetchInterval: 5000 })
   const { data: project } = useGetProject(projectName)
+  const { data: preview, isPending: isPreviewPending } = useGetDeploymentRenderPreview(projectName, deploymentName)
 
   const [tailLines, setTailLines] = useState<number>(100)
   const [previous, setPrevious] = useState(false)
@@ -288,6 +291,52 @@ export function DeploymentDetailPage({
               </Table>
             </div>
           )}
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium">Template Preview</h3>
+            <Separator />
+            {isPreviewPending ? (
+              <div className="space-y-4">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-64 w-full" />
+              </div>
+            ) : preview ? (
+              <CueTemplateEditor
+                cueTemplate={preview.cueTemplate}
+                onChange={() => {}}
+                readOnly={true}
+                defaultSystemInput={preview.cueSystemInput}
+                defaultUserInput={preview.cueUserInput}
+                useRenderFn={useRenderDeploymentTemplate}
+              />
+            ) : null}
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium">grpcurl Command</h3>
+            <Separator />
+            <p className="text-xs text-muted-foreground">
+              Invoke the render preview RPC directly from the command line using grpcurl.
+            </p>
+            <div className="relative">
+              <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+                {`grpcurl -plaintext \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  localhost:8443 \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
+              </pre>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Copy grpcurl command"
+                className="absolute top-2 right-2 h-7 w-7"
+                onClick={() => {
+                  const cmd = `grpcurl -plaintext \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  localhost:8443 \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
+                  navigator.clipboard.writeText(cmd)
+                  toast.success('Copied to clipboard')
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
