@@ -60,36 +60,39 @@ input:  #Input
 	...
 }
 
-// namespaced organizes resources that live within a Kubernetes namespace.
-namespaced: #Namespaced & {
-	(system.namespace): {
-		// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
-		// reference Service resources in the project namespace.
-		// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
-		ReferenceGrant: "allow-gateway-httproute": {
-			apiVersion: "gateway.networking.k8s.io/v1beta1"
-			kind:       "ReferenceGrant"
-			metadata: {
-				name:      "allow-gateway-httproute"
-				namespace: system.namespace
-				labels: {
-					"app.kubernetes.io/managed-by": "console.holos.run"
+// output collects all rendered Kubernetes resources.
+output: {
+	// namespacedResources organizes resources that live within a Kubernetes namespace.
+	namespacedResources: #Namespaced & {
+		(system.namespace): {
+			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
+			// reference Service resources in the project namespace.
+			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
+			ReferenceGrant: "allow-gateway-httproute": {
+				apiVersion: "gateway.networking.k8s.io/v1beta1"
+				kind:       "ReferenceGrant"
+				metadata: {
+					name:      "allow-gateway-httproute"
+					namespace: system.namespace
+					labels: {
+						"app.kubernetes.io/managed-by": "console.holos.run"
+					}
 				}
-			}
-			spec: {
-				from: [{
-					group:     "gateway.networking.k8s.io"
-					kind:      "HTTPRoute"
-					namespace: input.gatewayNamespace
-				}]
-				to: [{
-					group: ""
-					kind:  "Service"
-				}]
+				spec: {
+					from: [{
+						group:     "gateway.networking.k8s.io"
+						kind:      "HTTPRoute"
+						namespace: input.gatewayNamespace
+					}]
+					to: [{
+						group: ""
+						kind:  "Service"
+					}]
+				}
 			}
 		}
 	}
-}
 
-// cluster organizes cluster-scoped resources (none for this template).
-cluster: #Cluster & {}
+	// clusterResources organizes cluster-scoped resources (none for this template).
+	clusterResources: #Cluster & {}
+}

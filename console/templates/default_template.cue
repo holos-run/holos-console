@@ -117,76 +117,80 @@ _envSpec: [for e in input.env {
 	...
 }
 
-// namespaced organizes resources that live within a Kubernetes namespace.
+// output collects all rendered Kubernetes resources.
+// namespacedResources organizes resources that live within a Kubernetes namespace.
 // The struct key path (namespace/Kind/name) must match the resource metadata.
-namespaced: #Namespaced & {
-	(system.namespace): {
-		// ServiceAccount provides a Kubernetes identity for the pods.
-		ServiceAccount: (input.name): {
-			apiVersion: "v1"
-			kind:       "ServiceAccount"
-			metadata: {
-				name:        input.name
-				namespace:   system.namespace
-				labels:      _labels
-				annotations: _annotations
+// clusterResources organizes cluster-scoped resources.
+output: {
+	namespacedResources: #Namespaced & {
+		(system.namespace): {
+			// ServiceAccount provides a Kubernetes identity for the pods.
+			ServiceAccount: (input.name): {
+				apiVersion: "v1"
+				kind:       "ServiceAccount"
+				metadata: {
+					name:        input.name
+					namespace:   system.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
 			}
-		}
 
-		// Deployment runs the container image.
-		Deployment: (input.name): {
-			apiVersion: "apps/v1"
-			kind:       "Deployment"
-			metadata: {
-				name:        input.name
-				namespace:   system.namespace
-				labels:      _labels
-				annotations: _annotations
-			}
-			spec: {
-				replicas: 1
-				selector: matchLabels: "app.kubernetes.io/name": input.name
-				template: {
-					metadata: labels: _labels
-					spec: {
-						serviceAccountName: input.name
-						containers: [{
-							name:  input.name
-							image: input.image + ":" + input.tag
-							if len(_envSpec) > 0 {
-								env: _envSpec
-							}
-							ports: [{containerPort: input.port, name: "http"}]
-							if input.command != _|_ {
-								command: input.command
-							}
-							if input.args != _|_ {
-								args: input.args
-							}
-						}]
+			// Deployment runs the container image.
+			Deployment: (input.name): {
+				apiVersion: "apps/v1"
+				kind:       "Deployment"
+				metadata: {
+					name:        input.name
+					namespace:   system.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					replicas: 1
+					selector: matchLabels: "app.kubernetes.io/name": input.name
+					template: {
+						metadata: labels: _labels
+						spec: {
+							serviceAccountName: input.name
+							containers: [{
+								name:  input.name
+								image: input.image + ":" + input.tag
+								if len(_envSpec) > 0 {
+									env: _envSpec
+								}
+								ports: [{containerPort: input.port, name: "http"}]
+								if input.command != _|_ {
+									command: input.command
+								}
+								if input.args != _|_ {
+									args: input.args
+								}
+							}]
+						}
 					}
 				}
 			}
-		}
 
-		// Service exposes port 80 → container port input.port (named "http").
-		Service: (input.name): {
-			apiVersion: "v1"
-			kind:       "Service"
-			metadata: {
-				name:        input.name
-				namespace:   system.namespace
-				labels:      _labels
-				annotations: _annotations
-			}
-			spec: {
-				selector: "app.kubernetes.io/name": input.name
-				ports: [{port: 80, targetPort: "http", name: "http"}]
+			// Service exposes port 80 → container port input.port (named "http").
+			Service: (input.name): {
+				apiVersion: "v1"
+				kind:       "Service"
+				metadata: {
+					name:        input.name
+					namespace:   system.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					selector: "app.kubernetes.io/name": input.name
+					ports: [{port: 80, targetPort: "http", name: "http"}]
+				}
 			}
 		}
 	}
-}
 
-// cluster organizes cluster-scoped resources. Initially empty; extended as
-// cluster resource support is added.
-cluster: #Cluster & {}
+	// clusterResources organizes cluster-scoped resources. Initially empty;
+	// extended as cluster resource support is added.
+	clusterResources: #Cluster & {}
+}
