@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #479: system templates UI
+set -euo pipefail
+
+# PR_SCREENSHOT_DIR and HOLOS_BACKEND_URL are set by browser-capture-pr
+
+# Capture the org settings page (shows new System Templates section)
+agent-browser navigate --url "${HOLOS_BACKEND_URL}/orgs/default/settings" \
+  --screenshot "${PR_SCREENSHOT_DIR}/org-settings-system-templates-link.png" || true
+
+# Capture the system templates list page
+agent-browser navigate --url "${HOLOS_BACKEND_URL}/orgs/default/settings/system-templates" \
+  --screenshot "${PR_SCREENSHOT_DIR}/system-templates-list.png" || true
