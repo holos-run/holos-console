@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// adapterStructuredTemplate uses the namespaced/cluster structured output format
-// with the new system/input split structure.
+// adapterStructuredTemplate uses the output.namespacedResources/output.clusterResources structured output format
+// with the system/input split structure.
 const adapterStructuredTemplate = `
 package deployment
 
@@ -27,41 +27,42 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-namespaced: (system.namespace): {
-	ServiceAccount: (input.name): {
-		apiVersion: "v1"
-		kind:       "ServiceAccount"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels:    _labels
+output: {
+	namespacedResources: (system.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels:    _labels
+			}
 		}
-	}
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels:    _labels
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: _labels
-				spec: {
-					serviceAccountName: input.name
-					containers: [{
-						name:  input.name
-						image: input.image + ":" + input.tag
-					}]
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: {
+						serviceAccountName: input.name
+						containers: [{
+							name:  input.name
+							image: input.image + ":" + input.tag
+						}]
+					}
 				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // adapterInvalidTemplate contains invalid CUE syntax.
@@ -82,20 +83,21 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: "other-namespace"
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: "other-namespace"
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // adapterSystemInput builds a CUE system input string for the adapter tests.
