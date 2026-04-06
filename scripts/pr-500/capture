@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Capture visual verification screenshots for PR #500
+# Environment variables set by scripts/browser-capture-pr:
+#   HOLOS_BACKEND_URL - https://localhost:<port>
+#   PR_SCREENSHOT_DIR - docs/screenshots/pr-500/
+
+set -euo pipefail
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-500/}"
+
+mkdir -p "$SCREENSHOT_DIR"
+
+echo "Logging in..."
+scripts/browser-login
+
+echo "Capturing system templates list page with enabled/disabled badges..."
+agent-browser navigate "$BACKEND_URL/orgs/acme/settings/system-templates" \
+  --screenshot "$SCREENSHOT_DIR/system-templates-list.png"
+
+echo "Capturing system template detail page with enabled toggle and clone button..."
+agent-browser navigate "$BACKEND_URL/orgs/acme/settings/system-templates/reference-grant" \
+  --screenshot "$SCREENSHOT_DIR/system-template-detail-enabled-toggle.png"
+
+echo "Screenshots saved to $SCREENSHOT_DIR"
