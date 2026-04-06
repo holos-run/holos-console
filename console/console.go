@@ -299,7 +299,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
-		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier)
+		// sysTemplatesK8s is reused here to provide system template sources during
+		// deployment render; the same K8sClient satisfies SystemTemplateProvider
+		// via ListEnabledSystemTemplateSources.
+		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).
+			WithOrgProvider(projectsK8s).
+			WithSystemTemplateProvider(sysTemplatesK8s)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

@@ -43,8 +43,8 @@ func TestDefaultTemplate(t *testing.T) {
 		t.Fatalf("default template render failed: %v", err)
 	}
 
-	if len(resources) != 3 {
-		t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d", len(resources))
+	if len(resources) != 4 {
+		t.Fatalf("expected 4 resources (ServiceAccount, Deployment, Service, ReferenceGrant), got %d", len(resources))
 	}
 
 	kindSet := make(map[string]bool)
@@ -63,7 +63,7 @@ func TestDefaultTemplate(t *testing.T) {
 		}
 	}
 
-	for _, kind := range []string{"ServiceAccount", "Deployment", "Service"} {
+	for _, kind := range []string{"ServiceAccount", "Deployment", "Service", "ReferenceGrant"} {
 		if !kindSet[kind] {
 			t.Errorf("expected resource of kind %q", kind)
 		}
@@ -352,9 +352,9 @@ func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 		t.Fatalf("default template render failed: %v", err)
 	}
 
-	// Default template produces 3 namespaced resources: ServiceAccount, Deployment, Service.
-	if len(resources) != 3 {
-		t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d", len(resources))
+	// Default template produces 4 namespaced resources: ServiceAccount, Deployment, Service, ReferenceGrant.
+	if len(resources) != 4 {
+		t.Fatalf("expected 4 resources (ServiceAccount, Deployment, Service, ReferenceGrant), got %d", len(resources))
 	}
 
 	kindSet := make(map[string]bool)
@@ -372,13 +372,13 @@ func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 			t.Errorf("resource %s/%s: expected namespace %q, got %q", r.GetKind(), r.GetName(), namespace, r.GetNamespace())
 		}
 
-		// Every resource must have the expected name.
-		if r.GetName() != user.Name {
+		// ServiceAccount, Deployment, and Service use input.name; ReferenceGrant has a fixed name.
+		if r.GetKind() != "ReferenceGrant" && r.GetName() != user.Name {
 			t.Errorf("resource %s: expected name %q, got %q", r.GetKind(), user.Name, r.GetName())
 		}
 	}
 
-	for _, kind := range []string{"ServiceAccount", "Deployment", "Service"} {
+	for _, kind := range []string{"ServiceAccount", "Deployment", "Service", "ReferenceGrant"} {
 		if !kindSet[kind] {
 			t.Errorf("expected resource of kind %q", kind)
 		}

@@ -231,6 +231,16 @@ func GetOrganization(ns *corev1.Namespace) string {
 	return ns.Labels[resolver.OrganizationLabel]
 }
 
+// GetProjectOrg returns the organization name for the given project.
+// Returns an empty string if the project is not associated with an organization.
+func (c *K8sClient) GetProjectOrg(ctx context.Context, project string) (string, error) {
+	ns, err := c.GetProject(ctx, project)
+	if err != nil {
+		return "", fmt.Errorf("getting project %q: %w", project, err)
+	}
+	return GetOrganization(ns), nil
+}
+
 // GetDisplayName returns the display-name annotation value from a namespace.
 func GetDisplayName(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {

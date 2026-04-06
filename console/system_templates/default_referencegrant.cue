@@ -1,98 +1,49 @@
-// package system_template is the required CUE package declaration.
-package system_template
+// package deployment is the required CUE package declaration for system templates.
+// System templates use the same package as deployment templates so they can
+// reference deployment template identifiers (input, system, _labels, etc.)
+// when unified at deploy time.
+package deployment
 
-// #Claims carries the OIDC ID token claims of the authenticated user.
-// These values are set by the console backend from the verified JWT and are
-// never supplied directly by the user.
-#Claims: {
-	iss:            string
-	sub:            string
-	exp:            int
-	iat:            int
-	email:          string
-	email_verified: bool
-	name?:          string
-	groups?: [...string]
-	... // allow provider-specific claims
-}
-
-// #System defines the trusted system-provided fields set by the console backend.
-// These values are derived from authenticated context (project namespace resolution
-// and OIDC token claims) and are never supplied by the user.
-#System: {
-	project:   string
-	namespace: string
-	claims:    #Claims
-}
-
-// #Input defines template-specific user or system-configured inputs.
-#Input: {
-	// gatewayNamespace is the Kubernetes namespace that contains the Gateway
-	// resource. HTTPRoute resources in this namespace will be granted
-	// permission to reference Services in the project namespace.
-	// Defaults to "istio-ingress" per Istio's recommended Helm install
-	// convention (https://istio.io/latest/docs/setup/additional-setup/gateway/).
-	gatewayNamespace: string | *"istio-ingress"
-}
-
-system: #System
-input:  #Input
-
-// #Namespaced constrains namespaced resource struct keys to match resource metadata.
-// Structure: namespaced.<namespace>.<Kind>.<name>
-#Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
-	kind: Kind
-	metadata: {
-		name:      Name
-		namespace: Namespace
-		...
-	}
-	...
-}
-
-// #Cluster constrains cluster-scoped resource struct keys to match resource metadata.
-#Cluster: [Kind=string]: [Name=string]: {
-	kind: Kind
-	metadata: {
-		name: Name
-		...
-	}
-	...
-}
-
-// output collects all rendered Kubernetes resources.
+// output contributes system-managed Kubernetes resources.
+// System templates define resources under systemNamespacedResources and
+// systemClusterResources so they do not conflict with the deployment template's
+// namespacedResources and clusterResources fields.
 output: {
-	// namespacedResources organizes resources that live within a Kubernetes namespace.
-	namespacedResources: #Namespaced & {
-		(system.namespace): {
-			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
-			// reference Service resources in the project namespace.
-			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
-			ReferenceGrant: "allow-gateway-httproute": {
-				apiVersion: "gateway.networking.k8s.io/v1beta1"
-				kind:       "ReferenceGrant"
-				metadata: {
-					name:      "allow-gateway-httproute"
-					namespace: system.namespace
-					labels: {
-						"app.kubernetes.io/managed-by": "console.holos.run"
-					}
+	// systemNamespacedResources organizes system-managed namespaced resources.
+	systemNamespacedResources: (system.namespace): {
+		// HTTPRoute exposes the deployment's Service via the gateway.
+		// It routes all traffic from the gateway to the Service named input.name
+		// on port 80 (the Service port, which forwards to containerPort input.port).
+		// See: https://gateway-api.sigs.k8s.io/api-types/httproute/
+		HTTPRoute: (input.name): {
+			apiVersion: "gateway.networking.k8s.io/v1"
+			kind:       "HTTPRoute"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
 				}
-				spec: {
-					from: [{
-						group:     "gateway.networking.k8s.io"
-						kind:      "HTTPRoute"
-						namespace: input.gatewayNamespace
+			}
+			spec: {
+				parentRefs: [{
+					group:     "gateway.networking.k8s.io"
+					kind:      "Gateway"
+					namespace: system.gatewayNamespace
+					// Change "default" to the name of your Gateway resource.
+					name:      "default"
+				}]
+				rules: [{
+					backendRefs: [{
+						name: input.name
+						port: 80
 					}]
-					to: [{
-						group: ""
-						kind:  "Service"
-					}]
-				}
+				}]
 			}
 		}
 	}
 
-	// clusterResources organizes cluster-scoped resources (none for this template).
-	clusterResources: #Cluster & {}
+	// systemClusterResources organizes system-managed cluster-scoped resources (none for this template).
+	systemClusterResources: {}
 }

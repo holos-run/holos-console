@@ -167,21 +167,46 @@ func (k *K8sClient) CloneSystemTemplate(ctx context.Context, org, sourceName, ne
 	)
 }
 
-// SeedDefaultTemplates seeds the built-in ReferenceGrant system template into
+// SeedDefaultTemplates seeds the built-in HTTPRoute system template into
 // the org namespace if no system templates exist. This is called on first List
-// to avoid a separate migration step.
+// to avoid a separate migration step. The template is seeded as disabled so
+// that org owners can review and configure it (e.g., set the Gateway name)
+// before enabling it.
 func (k *K8sClient) SeedDefaultTemplates(ctx context.Context, org string) error {
 	_, err := k.CreateSystemTemplate(
 		ctx,
 		org,
 		DefaultReferenceGrantName,
-		"ReferenceGrant",
-		"Allows HTTPRoute resources in the gateway namespace to reference Services in the project namespace.",
+		"HTTPRoute",
+		"Exposes a deployment's Service via an HTTPRoute through the gateway. Requires a ReferenceGrant in the project namespace (provided by the default deployment template).",
 		DefaultReferenceGrantTemplate,
-		true,  // mandatory
-		false, // enabled (starts disabled by default)
+		false, // not mandatory: HTTPRoute is opt-in per deployment
+		false, // disabled: configure the Gateway name before enabling
 	)
 	return err
+}
+
+// ListEnabledSystemTemplateSources returns the CUE source strings for all enabled
+// system templates in the org. Disabled templates are excluded. This method
+// satisfies the deployments.SystemTemplateProvider interface via structural typing.
+func (k *K8sClient) ListEnabledSystemTemplateSources(ctx context.Context, org string) ([]string, error) {
+	cms, err := k.ListSystemTemplates(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	var sources []string
+	for _, cm := range cms {
+		tmpl := configMapToSystemTemplate(&cm, org)
+		if !tmpl.Enabled {
+			continue
+		}
+		src := cm.Data[CueTemplateKey]
+		if src == "" {
+			continue
+		}
+		sources = append(sources, src)
+	}
+	return sources, nil
 }
 
 // configMapToSystemTemplate converts a Kubernetes ConfigMap to a SystemTemplate protobuf message.

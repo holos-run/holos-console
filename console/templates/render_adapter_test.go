@@ -273,8 +273,8 @@ func TestCueRendererAdapter_WithDefaultTemplate(t *testing.T) {
 		t.Fatalf("expected no error rendering default template, got %v", err)
 	}
 
-	if len(resources) != 3 {
-		t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d", len(resources))
+	if len(resources) != 4 {
+		t.Fatalf("expected 4 resources (ServiceAccount, Deployment, Service, ReferenceGrant), got %d", len(resources))
 	}
 
 	allYAML := ""
@@ -285,7 +285,7 @@ func TestCueRendererAdapter_WithDefaultTemplate(t *testing.T) {
 		allYAML += r.YAML
 	}
 
-	for _, kind := range []string{"ServiceAccount", "Deployment", "Service"} {
+	for _, kind := range []string{"ServiceAccount", "Deployment", "Service", "ReferenceGrant"} {
 		if !strings.Contains(allYAML, kind) {
 			t.Errorf("expected YAML to contain resource of kind %q", kind)
 		}

@@ -348,7 +348,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("renders default ReferenceGrant template", func(t *testing.T) {
+	t.Run("renders default HTTPRoute system template with mock input", func(t *testing.T) {
 		email := "owner@example.com"
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
@@ -357,8 +357,9 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 
 		ctx := authedCtx(email, nil)
 		systemInput := `system: {
-	project:   "my-project"
-	namespace: "prj-my-project"
+	project:          "my-project"
+	namespace:        "prj-my-project"
+	gatewayNamespace: "istio-ingress"
 	claims: {
 		iss:            "https://example.com"
 		sub:            "user-123"
@@ -368,27 +369,35 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		email_verified: true
 	}
 }`
-		// The default template still accepts gatewayNamespace as a CUE input.
-		// When not provided, the CUE default "istio-ingress" is used.
-		userInput := `input: {}`
+		// Mock input values allow standalone preview of the HTTPRoute system template.
+		// At actual deploy time the template is unified with the real deployment template.
+		userInput := `input: {
+	name:  "my-app"
+	image: "nginx"
+	tag:   "latest"
+}`
 		resp, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{
 			CueTemplate:    DefaultReferenceGrantTemplate,
 			CueSystemInput: systemInput,
 			CueInput:       userInput,
 		}))
 		if err != nil {
-			t.Fatalf("expected no error rendering default template, got %v", err)
+			t.Fatalf("expected no error rendering default HTTPRoute template, got %v", err)
 		}
 		if resp.Msg.RenderedYaml == "" {
-			t.Error("expected non-empty YAML for default ReferenceGrant template")
+			t.Error("expected non-empty YAML for default HTTPRoute system template")
 		}
-		// Verify ReferenceGrant is in the output.
-		if !contains(resp.Msg.RenderedYaml, "ReferenceGrant") {
-			t.Errorf("expected 'ReferenceGrant' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+		// Verify HTTPRoute is in the output.
+		if !contains(resp.Msg.RenderedYaml, "HTTPRoute") {
+			t.Errorf("expected 'HTTPRoute' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
-		// The CUE default value "istio-ingress" should appear in the rendered YAML.
+		// The mock input.name "my-app" should appear in the rendered YAML.
+		if !contains(resp.Msg.RenderedYaml, "my-app") {
+			t.Errorf("expected 'my-app' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+		}
+		// The gatewayNamespace "istio-ingress" should appear in the rendered YAML.
 		if !contains(resp.Msg.RenderedYaml, "istio-ingress") {
-			t.Errorf("expected 'istio-ingress' (CUE default) in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+			t.Errorf("expected 'istio-ingress' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
 	})
 }

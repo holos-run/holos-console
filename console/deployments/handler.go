@@ -49,6 +49,19 @@ type TemplateResolver interface {
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
 	Render(ctx context.Context, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error)
+	// RenderWithSystemTemplates unifies one or more system template CUE sources
+	// with the deployment template before filling in system and user inputs.
+	RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error)
+}
+
+// OrgProvider resolves the organization for a project.
+type OrgProvider interface {
+	GetProjectOrg(ctx context.Context, project string) (string, error)
+}
+
+// SystemTemplateProvider lists enabled system template CUE sources for an org.
+type SystemTemplateProvider interface {
+	ListEnabledSystemTemplateSources(ctx context.Context, org string) ([]string, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -60,13 +73,15 @@ type ResourceApplier interface {
 // Handler implements the DeploymentService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentServiceHandler
-	k8s              *K8sClient
-	projectResolver  ProjectResolver
-	settingsResolver SettingsResolver
-	templateResolver TemplateResolver
-	renderer         Renderer
-	applier          ResourceApplier
-	logReader        LogReader
+	k8s                    *K8sClient
+	projectResolver        ProjectResolver
+	settingsResolver       SettingsResolver
+	templateResolver       TemplateResolver
+	renderer               Renderer
+	applier                ResourceApplier
+	logReader              LogReader
+	orgProvider            OrgProvider
+	systemTemplateProvider SystemTemplateProvider
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -79,6 +94,54 @@ func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolve
 		renderer:         renderer,
 		applier:          applier,
 	}
+}
+
+// WithOrgProvider configures the handler with an OrgProvider for resolving
+// the organization a project belongs to. Required for system template unification.
+func (h *Handler) WithOrgProvider(op OrgProvider) *Handler {
+	h.orgProvider = op
+	return h
+}
+
+// WithSystemTemplateProvider configures the handler with a SystemTemplateProvider
+// for loading enabled system templates at render time.
+func (h *Handler) WithSystemTemplateProvider(stp SystemTemplateProvider) *Handler {
+	h.systemTemplateProvider = stp
+	return h
+}
+
+// renderResources renders deployment resources, unifying with enabled system
+// templates when an OrgProvider and SystemTemplateProvider are configured.
+// If neither is configured, falls back to Render (deployment template only).
+func (h *Handler) renderResources(ctx context.Context, project, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+	if h.orgProvider == nil || h.systemTemplateProvider == nil {
+		return h.renderer.Render(ctx, cueSource, system, user)
+	}
+
+	org, err := h.orgProvider.GetProjectOrg(ctx, project)
+	if err != nil {
+		slog.WarnContext(ctx, "could not resolve org for project, skipping system template unification",
+			slog.String("project", project),
+			slog.Any("error", err),
+		)
+		return h.renderer.Render(ctx, cueSource, system, user)
+	}
+	if org == "" {
+		// Project is not associated with an org; no system templates apply.
+		return h.renderer.Render(ctx, cueSource, system, user)
+	}
+
+	systemSources, err := h.systemTemplateProvider.ListEnabledSystemTemplateSources(ctx, org)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list enabled system templates, skipping system template unification",
+			slog.String("project", project),
+			slog.String("org", org),
+			slog.Any("error", err),
+		)
+		return h.renderer.Render(ctx, cueSource, system, user)
+	}
+
+	return h.renderer.RenderWithSystemTemplates(ctx, cueSource, systemSources, system, user)
 }
 
 // ListDeployments returns all deployments in a project.
@@ -266,7 +329,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    req.Msg.Port,
 		}
-		resources, renderErr := h.renderer.Render(ctx, cueSource, system, user)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, system, user)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment",
 				slog.String("project", project),
@@ -376,7 +439,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsInputs(updated),
 			Port:    portFromConfigMap(updated),
 		}
-		resources, renderErr := h.renderer.Render(ctx, cueSource, system, user)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, system, user)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),

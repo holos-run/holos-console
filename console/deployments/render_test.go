@@ -1040,6 +1040,290 @@ output: {
 }
 `
 
+// gatewayNamespaceTemplate uses system.gatewayNamespace in an annotation to verify propagation.
+const gatewayNamespaceTemplate = `
+package deployment
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+system: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string | *"istio-ingress"
+	claims: {
+		iss:            string
+		sub:            string
+		exp:            int
+		iat:            int
+		email:          string
+		email_verified: bool
+	}
+}
+
+output: {
+	namespacedResources: (system.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:        input.name
+				namespace:   system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+				annotations: {
+					"test.holos.run/gateway-namespace": system.gatewayNamespace
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// TestCueRenderer_GatewayNamespace verifies that gatewayNamespace in SystemInput
+// is propagated into CUE templates via system.gatewayNamespace.
+func TestCueRenderer_GatewayNamespace(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("explicit gatewayNamespace is propagated to template", func(t *testing.T) {
+		system := SystemInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "custom-gateway-ns",
+			Claims: ClaimsInput{
+				Iss:           "https://example.com",
+				Sub:           "u1",
+				Exp:           9999999999,
+				Iat:           1000000000,
+				Email:         "test@example.com",
+				EmailVerified: true,
+			},
+		}
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, UserInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		annotations := resources[0].GetAnnotations()
+		got := annotations["test.holos.run/gateway-namespace"]
+		if got != "custom-gateway-ns" {
+			t.Errorf("expected gateway-namespace annotation=%q, got %q", "custom-gateway-ns", got)
+		}
+	})
+
+	t.Run("empty gatewayNamespace defaults to istio-ingress in CUE", func(t *testing.T) {
+		// When GatewayNamespace is empty (zero value), the JSON field is omitted (omitempty),
+		// so the CUE default value "istio-ingress" is applied.
+		system := SystemInput{
+			Project:   "my-project",
+			Namespace: namespace,
+			// GatewayNamespace is intentionally left empty
+			Claims: ClaimsInput{
+				Iss:           "https://example.com",
+				Sub:           "u1",
+				Exp:           9999999999,
+				Iat:           1000000000,
+				Email:         "test@example.com",
+				EmailVerified: true,
+			},
+		}
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, UserInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		annotations := resources[0].GetAnnotations()
+		got := annotations["test.holos.run/gateway-namespace"]
+		if got != "istio-ingress" {
+			t.Errorf("expected default gateway-namespace annotation=%q, got %q", "istio-ingress", got)
+		}
+	})
+}
+
+// systemUnificationTemplate is a system template (package deployment) that defines
+// output.systemNamespacedResources using input.name from the deployment template input.
+// This simulates what an HTTPRoute system template would look like.
+const systemUnificationTemplate = `
+package deployment
+
+output: {
+	systemNamespacedResources: (system.namespace): {
+		ServiceAccount: "system-from-\(input.name)": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "system-from-\(input.name)"
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+		}
+	}
+	systemClusterResources: {}
+}
+`
+
+// deploymentTemplateForUnification is a simple deployment template used to test unification.
+const deploymentTemplateForUnification = `
+package deployment
+
+input: #Input
+system: #System
+
+#Input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+#System: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string | *"istio-ingress"
+	claims: {
+		iss:            string
+		sub:            string
+		exp:            int
+		iat:            int
+		email:          string
+		email_verified: bool
+	}
+}
+
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// TestCueRenderer_SystemTemplateUnification verifies that a system template CUE source
+// can be unified with a deployment template and that input.name is accessible in the
+// system template's output.systemNamespacedResources.
+func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	system := SystemInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: "istio-ingress",
+		Claims: ClaimsInput{
+			Iss:           "https://example.com",
+			Sub:           "u1",
+			Exp:           9999999999,
+			Iat:           1000000000,
+			Email:         "test@example.com",
+			EmailVerified: true,
+		},
+	}
+	user := UserInput{
+		Name:  "web-app",
+		Image: "nginx",
+		Tag:   "1.25",
+	}
+
+	t.Run("system template resources are included when unified with deployment template", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+			deploymentTemplateForUnification,
+			[]string{systemUnificationTemplate},
+			system, user,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from system template.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (Deployment + system ServiceAccount), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		kindSet := make(map[string]bool)
+		nameSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+			nameSet[r.GetName()] = true
+		}
+		if !kindSet["Deployment"] {
+			t.Error("expected Deployment resource from deployment template")
+		}
+		if !kindSet["ServiceAccount"] {
+			t.Error("expected ServiceAccount resource from system template")
+		}
+		if !nameSet["system-from-web-app"] {
+			t.Errorf("expected system template to use input.name='web-app', got names: %v", nameSet)
+		}
+	})
+
+	t.Run("no system templates returns only deployment resources", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+			deploymentTemplateForUnification,
+			nil,
+			system, user,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource (Deployment only), got %d", len(resources))
+		}
+		if resources[0].GetKind() != "Deployment" {
+			t.Errorf("expected Deployment, got %q", resources[0].GetKind())
+		}
+	})
+}
+
+// resourceKinds returns the Kind/Name pairs for a slice of resources (for test diagnostics).
+func resourceKinds(resources []unstructured.Unstructured) []string {
+	var out []string
+	for _, r := range resources {
+		out = append(out, r.GetKind()+"/"+r.GetName())
+	}
+	return out
+}
+
 // TestCueRenderer_SystemOutputFields verifies that output.systemNamespacedResources
 // and output.systemClusterResources are read and validated correctly.
 func TestCueRenderer_SystemOutputFields(t *testing.T) {

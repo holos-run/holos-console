@@ -104,6 +104,13 @@ func (s *stubRenderer) Render(_ context.Context, _ string, system SystemInput, u
 	return s.resources, s.err
 }
 
+func (s *stubRenderer) RenderWithSystemTemplates(_ context.Context, _ string, _ []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+	s.called = true
+	s.lastSystem = system
+	s.lastUser = user
+	return s.resources, s.err
+}
+
 // stubApplier implements Applier for tests.
 type stubApplier struct {
 	applyCalled   bool
