@@ -137,6 +137,10 @@ const (
 	// Narrowly-scoped permission for enabling/disabling deployments on a project.
 	// Granted to org-level OWNERs via cascade; designed for future project-level grants.
 	Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE Permission = 31
+	// PERMISSION_SYSTEM_DEPLOYMENTS_EDIT allows creating, updating, and deleting
+	// system templates. Granted only to org-level OWNERs via cascade — not
+	// inherited by project-level OWNERs.
+	Permission_PERMISSION_SYSTEM_DEPLOYMENTS_EDIT Permission = 32
 )
 
 // Enum value maps for Permission.
@@ -174,6 +178,7 @@ var (
 		29: "PERMISSION_PROJECT_SETTINGS_READ",
 		30: "PERMISSION_PROJECT_SETTINGS_WRITE",
 		31: "PERMISSION_PROJECT_DEPLOYMENTS_ENABLE",
+		32: "PERMISSION_SYSTEM_DEPLOYMENTS_EDIT",
 	}
 	Permission_value = map[string]int32{
 		"PERMISSION_UNSPECIFIED":                 0,
@@ -208,6 +213,7 @@ var (
 		"PERMISSION_PROJECT_SETTINGS_READ":       29,
 		"PERMISSION_PROJECT_SETTINGS_WRITE":      30,
 		"PERMISSION_PROJECT_DEPLOYMENTS_ENABLE":  31,
+		"PERMISSION_SYSTEM_DEPLOYMENTS_EDIT":     32,
 	}
 )
 
@@ -248,7 +254,7 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_EDITOR\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x03*\xe7\b\n" +
+	"ROLE_OWNER\x10\x03*\x8f\t\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -283,7 +289,8 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"%PERMISSION_DEPLOYMENT_TEMPLATES_ADMIN\x10\x1c\x12$\n" +
 	" PERMISSION_PROJECT_SETTINGS_READ\x10\x1d\x12%\n" +
 	"!PERMISSION_PROJECT_SETTINGS_WRITE\x10\x1e\x12)\n" +
-	"%PERMISSION_PROJECT_DEPLOYMENTS_ENABLE\x10\x1fBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"%PERMISSION_PROJECT_DEPLOYMENTS_ENABLE\x10\x1f\x12&\n" +
+	"\"PERMISSION_SYSTEM_DEPLOYMENTS_EDIT\x10 BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_rbac_proto_rawDescOnce sync.Once

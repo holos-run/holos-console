@@ -259,6 +259,15 @@ export enum Permission {
    * @generated from enum value: PERMISSION_PROJECT_DEPLOYMENTS_ENABLE = 31;
    */
   PROJECT_DEPLOYMENTS_ENABLE = 31,
+
+  /**
+   * PERMISSION_SYSTEM_DEPLOYMENTS_EDIT allows creating, updating, and deleting
+   * system templates. Granted only to org-level OWNERs via cascade — not
+   * inherited by project-level OWNERs.
+   *
+   * @generated from enum value: PERMISSION_SYSTEM_DEPLOYMENTS_EDIT = 32;
+   */
+  SYSTEM_DEPLOYMENTS_EDIT = 32,
 }
 
 /**
