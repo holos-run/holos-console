@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
+import { Check, Pencil, X, Table2, Braces, ChevronRight } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
@@ -312,6 +312,24 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               onSave={handleSaveDefaultSharing}
               isSaving={updateOrganizationDefaultSharing.isPending}
             />
+
+            {/* System Templates section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium">System Templates</h3>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                System templates are automatically applied to new projects in this organization.
+              </p>
+              <Link
+                to="/orgs/$orgName/settings/system-templates"
+                params={{ orgName }}
+                aria-label="System Templates"
+                className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
+              >
+                <span className="text-sm">Manage System Templates</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </div>
 
             {/* Danger Zone */}
             {isOwner && (
