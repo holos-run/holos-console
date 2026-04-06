@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -542,6 +544,147 @@ func (h *Handler) ListNamespaceConfigMaps(
 
 	return connect.NewResponse(&consolev1.ListNamespaceConfigMapsResponse{
 		ConfigMaps: configMaps,
+	}), nil
+}
+
+// GetDeploymentRenderPreview returns the CUE template source, system input,
+// user input, and rendered output for a deployment.
+func (h *Handler) GetDeploymentRenderPreview(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetDeploymentRenderPreviewRequest],
+) (*connect.Response[consolev1.GetDeploymentRenderPreviewResponse], error) {
+	project := req.Msg.Project
+	name := req.Msg.Name
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	// Look up the deployment record.
+	cm, err := h.k8s.GetDeployment(ctx, project, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Look up the template CUE source.
+	templateName := cm.Data[TemplateKey]
+	if templateName == "" {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("deployment %q has no template configured", name))
+	}
+	if h.templateResolver == nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("template resolver not configured"))
+	}
+	tmplCM, err := h.templateResolver.GetTemplate(ctx, project, templateName)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
+	}
+	cueTemplate := tmplCM.Data[cueTemplateKey]
+
+	// Build system input from authenticated claims and resolved namespace.
+	ns := h.k8s.Resolver.ProjectNamespace(project)
+	system := SystemInput{
+		Project:   project,
+		Namespace: ns,
+		Claims: ClaimsInput{
+			Iss:           claims.Iss,
+			Sub:           claims.Sub,
+			Exp:           claims.Exp,
+			Iat:           claims.Iat,
+			Email:         claims.Email,
+			EmailVerified: claims.EmailVerified,
+			Name:          claims.Name,
+			Groups:        claims.Roles,
+		},
+	}
+
+	// Build user input from the deployment's stored fields.
+	user := UserInput{
+		Name:    name,
+		Image:   cm.Data[ImageKey],
+		Tag:     cm.Data[TagKey],
+		Command: commandFromConfigMap(cm),
+		Args:    argsFromConfigMap(cm),
+		Env:     envFromConfigMapAsInputs(cm),
+		Port:    portFromConfigMap(cm),
+	}
+
+	// Format system and user inputs as CUE strings.
+	systemJSON, err := json.Marshal(system)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding system input: %w", err))
+	}
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding user input: %w", err))
+	}
+	cueSystemInput := fmt.Sprintf("system: %s", string(systemJSON))
+	cueUserInput := fmt.Sprintf("input: %s", string(userJSON))
+
+	// Render the template to produce YAML and JSON output.
+	var renderedYAML, renderedJSON string
+	if h.renderer != nil {
+		resources, renderErr := h.renderer.Render(ctx, cueTemplate, system, user)
+		if renderErr != nil {
+			slog.WarnContext(ctx, "render failed during deployment preview",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", renderErr),
+			)
+			// Return the inputs even if render fails — the frontend can display the error.
+			return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
+				CueTemplate:    cueTemplate,
+				CueSystemInput: cueSystemInput,
+				CueUserInput:   cueUserInput,
+			}), nil
+		}
+
+		var buf strings.Builder
+		objects := make([]map[string]any, 0, len(resources))
+		for i, r := range resources {
+			if i > 0 {
+				buf.WriteString("---\n")
+			}
+			yamlBytes, yamlErr := yaml.Marshal(r.Object)
+			if yamlErr == nil {
+				buf.WriteString(string(yamlBytes))
+			}
+			if r.Object != nil {
+				objects = append(objects, r.Object)
+			}
+		}
+		renderedYAML = buf.String()
+
+		jsonBytes, jsonErr := json.MarshalIndent(objects, "", "  ")
+		if jsonErr == nil {
+			renderedJSON = string(jsonBytes)
+		}
+	}
+
+	slog.InfoContext(ctx, "deployment render preview",
+		slog.String("action", "deployment_render_preview"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", project),
+		slog.String("name", name),
+		slog.String("sub", claims.Sub),
+	)
+
+	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
+		CueTemplate:    cueTemplate,
+		CueSystemInput: cueSystemInput,
+		CueUserInput:   cueUserInput,
+		RenderedYaml:   renderedYAML,
+		RenderedJson:   renderedJSON,
 	}), nil
 }
 
