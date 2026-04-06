@@ -547,16 +547,17 @@ Cluster resources additionally require:
 
 Templates may only produce namespaced resources of these kinds:
 
-| Kind             | API Group                     |
-|------------------|-------------------------------|
-| `Deployment`     | `apps/v1`                     |
-| `Service`        | `v1`                          |
-| `ServiceAccount` | `v1`                          |
-| `Role`           | `rbac.authorization.k8s.io/v1`|
-| `RoleBinding`    | `rbac.authorization.k8s.io/v1`|
-| `HTTPRoute`      | `gateway.networking.k8s.io/v1`|
-| `ConfigMap`      | `v1`                          |
-| `Secret`         | `v1`                          |
+| Kind             | API Group                          |
+|------------------|------------------------------------|
+| `Deployment`     | `apps/v1`                          |
+| `Service`        | `v1`                               |
+| `ServiceAccount` | `v1`                               |
+| `Role`           | `rbac.authorization.k8s.io/v1`     |
+| `RoleBinding`    | `rbac.authorization.k8s.io/v1`     |
+| `HTTPRoute`      | `gateway.networking.k8s.io/v1`     |
+| `ReferenceGrant` | `gateway.networking.k8s.io/v1beta1`|
+| `ConfigMap`      | `v1`                               |
+| `Secret`         | `v1`                               |
 
 The cluster allowlist is initially empty. Cluster-scoped kind support will be
 added incrementally.
@@ -593,6 +594,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 |------|---------|
 | `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
+| `console/system_templates/default_referencegrant.cue` | Built-in mandatory system template that produces a `ReferenceGrant` allowing HTTPRoute resources in project namespaces to reference the org's gateway. Embedded via `console/system_templates/embed.go` and seeded into the org namespace ConfigMap on first `ListSystemTemplates` access. |
 
 ### Go Rendering Pipeline
 
@@ -615,6 +617,14 @@ Two render paths exist — one for the deployment service and one for the templa
 | `console/templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `deployment-template` resource-type label. |
 | `console/templates/render_adapter.go` | `CueRendererAdapter` — wraps `deployments.CueRenderer` to produce YAML and structured object data for the template preview RPC. |
 
+### System Template Service
+
+| File | Purpose |
+|------|---------|
+| `console/system_templates/handler.go` | `SystemTemplateService` handler — CRUD and render for org-scoped system templates stored as ConfigMaps. Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`. |
+| `console/system_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `system-template` resource-type label, `mandatory` and `gateway-namespace` annotations. Seeds `default_referencegrant.cue` on first `ListSystemTemplates`. |
+| `console/system_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatorySystemTemplates()` — called by the projects service after project namespace creation to apply all mandatory system templates into the new project namespace. |
+
 ### Deployment Service
 
 | File | Purpose |
@@ -629,6 +639,7 @@ Two render paths exist — one for the deployment service and one for the templa
 |------|---------|
 | `proto/holos/console/v1/deployments.proto` | `Deployment`, `EnvVar`, `SecretKeyRef`, `ConfigMapKeyRef` messages; `DeploymentService` RPCs. |
 | `proto/holos/console/v1/deployment_templates.proto` | `DeploymentTemplate` message; `DeploymentTemplateService` RPCs including `RenderDeploymentTemplate`. |
+| `proto/holos/console/v1/system_templates.proto` | `SystemTemplate` message; `SystemTemplateService` RPCs including `RenderSystemTemplate`. |
 
 ### Generated Code
 

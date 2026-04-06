@@ -149,6 +149,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as annotations on the project Namespace; deployments toggle requires org-level OWNER via `PERMISSION_PROJECT_DEPLOYMENTS_ENABLE`
   - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue`. Templates use the structured `namespaced`/`cluster` output format (see `docs/cue-template-guide.md`). Templates can carry `DeploymentDefaults` (image, tag, command, args, env, port) that pre-fill the Create Deployment form. The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`). The default template adds a `console.holos.run/deployer-email` annotation to all resources from `system.claims.email`.
+  - `system_templates/` - SystemTemplateService managing org-scoped CUE templates stored as K8s ConfigMaps in the org namespace. System templates differ from deployment templates in that they can be marked mandatory, causing them to be automatically applied to every project namespace at creation time. Includes `MandatoryTemplateApplier` which is called by the projects service after a project namespace is created. Embeds `default_referencegrant.cue` as the built-in mandatory template that creates a `ReferenceGrant` allowing HTTPRoute resources in project namespaces to reference the gateway. Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` (org-level OWNER only via `OrgCascadeSystemTemplatePerms`).
   - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `namespaced`/`cluster` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, and listing project-namespace Secrets/ConfigMaps for env var references. CUE render uses split `SystemInput` (project, namespace, claims) and `UserInput` (name, image, tag, etc.) — see `docs/cue-template-guide.md`.
   - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` - Protobuf source files
@@ -158,6 +159,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `holos/console/v1/project_settings.proto` - ProjectSettingsService
   - `holos/console/v1/deployment_templates.proto` - DeploymentTemplateService
   - `holos/console/v1/deployments.proto` - DeploymentService
+  - `holos/console/v1/system_templates.proto` - SystemTemplateService
   - `holos/console/v1/rbac.proto` - Role definitions (VIEWER, EDITOR, OWNER)
   - `holos/console/v1/version.proto` - VersionService
 - `gen/` - Generated protobuf Go code (do not edit)
@@ -236,6 +238,8 @@ Organization creation is controlled by `--disable-org-creation`, `--org-creator-
 The `--roles-claim` flag (default `"groups"`) configures which OIDC token claim is used to extract role memberships. This allows integration with identity providers that use non-standard claim names (e.g., `realm_roles`).
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
+
+`PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` is required to create, update, or delete system templates. It is granted only to org-level OWNERs via the `OrgCascadeSystemTemplatePerms` cascade table in `console/rbac/rbac.go`.
 
 ### Code Generation
 
