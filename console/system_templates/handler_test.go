@@ -58,15 +58,13 @@ func viewerGrants(email string) *stubOrgResolver {
 
 const validCue = `package system_template
 
-#Input: {
-	gatewayNamespace: string | *"istio-ingress"
-}
+#Input: {}
 `
 
 func TestListSystemTemplatesHandler(t *testing.T) {
 	t.Run("returns templates for org OWNER", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -136,7 +134,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 func TestGetSystemTemplateHandler(t *testing.T) {
 	t.Run("returns template for org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package system_template\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -166,13 +164,13 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 
 		ctx := authedCtx(email, nil)
 		resp, err := h.CreateSystemTemplate(ctx, connect.NewRequest(&consolev1.CreateSystemTemplateRequest{
-			Name:             "ref-grant",
-			Org:              "my-org",
-			DisplayName:      "ReferenceGrant",
-			Description:      "desc",
-			CueTemplate:      validCue,
-			Mandatory:        true,
-			GatewayNamespace: "istio-ingress",
+			Name:        "ref-grant",
+			Org:         "my-org",
+			DisplayName: "ReferenceGrant",
+			Description: "desc",
+			CueTemplate: validCue,
+			Mandatory:   true,
+			Enabled:     false,
 		}))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -228,18 +226,18 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 func TestUpdateSystemTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to update", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
-		newGateway := "custom-gateway"
+		enabled := true
 		ctx := authedCtx(email, nil)
 		_, err := h.UpdateSystemTemplate(ctx, connect.NewRequest(&consolev1.UpdateSystemTemplateRequest{
-			Name:             "ref-grant",
-			Org:              "my-org",
-			GatewayNamespace: &newGateway,
+			Name:    "ref-grant",
+			Org:     "my-org",
+			Enabled: &enabled,
 		}))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -248,18 +246,18 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 
 	t.Run("denies org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
 
-		newGateway := "custom-gateway"
+		enabled := true
 		ctx := authedCtx(email, nil)
 		_, err := h.UpdateSystemTemplate(ctx, connect.NewRequest(&consolev1.UpdateSystemTemplateRequest{
-			Name:             "ref-grant",
-			Org:              "my-org",
-			GatewayNamespace: &newGateway,
+			Name:    "ref-grant",
+			Org:     "my-org",
+			Enabled: &enabled,
 		}))
 		if err == nil {
 			t.Fatal("expected permission denied error for VIEWER")
@@ -270,7 +268,7 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 func TestDeleteSystemTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to delete", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -288,7 +286,7 @@ func TestDeleteSystemTemplateHandler(t *testing.T) {
 
 	t.Run("denies org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, "istio-ingress")
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -370,7 +368,9 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		email_verified: true
 	}
 }`
-		userInput := `input: gatewayNamespace: "istio-ingress"`
+		// The default template still accepts gatewayNamespace as a CUE input.
+		// When not provided, the CUE default "istio-ingress" is used.
+		userInput := `input: {}`
 		resp, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{
 			CueTemplate:    DefaultReferenceGrantTemplate,
 			CueSystemInput: systemInput,
@@ -386,8 +386,9 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		if !contains(resp.Msg.RenderedYaml, "ReferenceGrant") {
 			t.Errorf("expected 'ReferenceGrant' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
+		// The CUE default value "istio-ingress" should appear in the rendered YAML.
 		if !contains(resp.Msg.RenderedYaml, "istio-ingress") {
-			t.Errorf("expected 'istio-ingress' in rendered YAML, got: %s", resp.Msg.RenderedYaml)
+			t.Errorf("expected 'istio-ingress' (CUE default) in rendered YAML, got: %s", resp.Msg.RenderedYaml)
 		}
 	})
 }
@@ -395,6 +396,104 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 // contains checks if s contains substr.
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
+}
+
+func TestCloneSystemTemplateHandler(t *testing.T) {
+	t.Run("allows org OWNER to clone", func(t *testing.T) {
+		email := "owner@example.com"
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
+		ns := orgNS("my-org")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
+
+		ctx := authedCtx(email, nil)
+		resp, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+			SourceName:  "ref-grant",
+			Org:         "my-org",
+			Name:        "ref-grant-copy",
+			DisplayName: "ReferenceGrant Copy",
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "ref-grant-copy" {
+			t.Errorf("expected name 'ref-grant-copy', got %q", resp.Msg.Name)
+		}
+	})
+
+	t.Run("clone starts with enabled=false", func(t *testing.T) {
+		email := "owner@example.com"
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
+		ns := orgNS("my-org")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
+
+		ctx := authedCtx(email, nil)
+		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+			SourceName:  "ref-grant",
+			Org:         "my-org",
+			Name:        "ref-grant-copy",
+			DisplayName: "ReferenceGrant Copy",
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		clonedCM, err := fakeClient.CoreV1().ConfigMaps("org-my-org").Get(context.Background(), "ref-grant-copy", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected cloned ConfigMap, got %v", err)
+		}
+		if clonedCM.Annotations[EnabledAnnotation] != "false" {
+			t.Errorf("expected cloned template to start with enabled=false, got %q", clonedCM.Annotations[EnabledAnnotation])
+		}
+	})
+
+	t.Run("denies org VIEWER", func(t *testing.T) {
+		email := "viewer@example.com"
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		ns := orgNS("my-org")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
+
+		ctx := authedCtx(email, nil)
+		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+			SourceName:  "ref-grant",
+			Org:         "my-org",
+			Name:        "ref-grant-copy",
+			DisplayName: "ReferenceGrant Copy",
+		}))
+		if err == nil {
+			t.Fatal("expected permission denied error for VIEWER")
+		}
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", err)
+		}
+	})
+
+	t.Run("returns error when source does not exist", func(t *testing.T) {
+		email := "owner@example.com"
+		ns := orgNS("my-org")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
+
+		ctx := authedCtx(email, nil)
+		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+			SourceName:  "nonexistent",
+			Org:         "my-org",
+			Name:        "copy",
+			DisplayName: "Copy",
+		}))
+		if err == nil {
+			t.Fatal("expected error when source does not exist")
+		}
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", err)
+		}
+	})
 }
 
 func TestSeedDefaultTemplates(t *testing.T) {
@@ -415,8 +514,8 @@ func TestSeedDefaultTemplates(t *testing.T) {
 		if cm.Annotations[MandatoryAnnotation] != "true" {
 			t.Errorf("expected mandatory annotation 'true', got %q", cm.Annotations[MandatoryAnnotation])
 		}
-		if cm.Annotations[GatewayNsAnnotation] != "istio-ingress" {
-			t.Errorf("expected gateway-namespace 'istio-ingress', got %q", cm.Annotations[GatewayNsAnnotation])
+		if cm.Annotations[EnabledAnnotation] != "false" {
+			t.Errorf("expected enabled annotation 'false' for seeded template, got %q", cm.Annotations[EnabledAnnotation])
 		}
 		if cm.Data[CueTemplateKey] == "" {
 			t.Error("expected non-empty CUE template")

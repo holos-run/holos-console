@@ -35,7 +35,7 @@ func (s *stubResourceApplier) Apply(_ context.Context, namespace, deploymentName
 
 func TestApplyMandatorySystemTemplates_AppliesMandatoryTemplates(t *testing.T) {
 	ns := orgNS("my-org")
-	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, "istio-ingress")
+	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{}
@@ -72,7 +72,7 @@ func TestApplyMandatorySystemTemplates_AppliesMandatoryTemplates(t *testing.T) {
 func TestApplyMandatorySystemTemplates_SkipsNonMandatoryTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=false — should not be applied.
-	cm := sysTemplateConfigMap("my-org", "optional-template", "Optional", "desc", DefaultReferenceGrantTemplate, false, "istio-ingress")
+	cm := sysTemplateConfigMap("my-org", "optional-template", "Optional", "desc", DefaultReferenceGrantTemplate, false, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{}
@@ -111,7 +111,7 @@ func TestApplyMandatorySystemTemplates_NoTemplates(t *testing.T) {
 
 func TestApplyMandatorySystemTemplates_ApplierErrorPropagates(t *testing.T) {
 	ns := orgNS("my-org")
-	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, "istio-ingress")
+	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{err: fmt.Errorf("apply failed")}
@@ -127,7 +127,7 @@ func TestApplyMandatorySystemTemplates_ApplierErrorPropagates(t *testing.T) {
 
 func TestApplyMandatorySystemTemplates_NilApplierSkips(t *testing.T) {
 	ns := orgNS("my-org")
-	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, "istio-ingress")
+	cm := sysTemplateConfigMap("my-org", DefaultReferenceGrantName, "ReferenceGrant", "desc", DefaultReferenceGrantTemplate, true, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	// nil applier — should log a warning and skip without error.
