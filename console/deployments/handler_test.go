@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -914,3 +915,123 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		}
 	})
 }
+
+// TestHandler_GetDeploymentRenderPreview tests the GetDeploymentRenderPreview RPC.
+func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
+	t.Run("viewer can get render preview", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.CueTemplate == "" {
+			t.Error("expected non-empty cue_template")
+		}
+		if resp.Msg.CueSystemInput == "" {
+			t.Error("expected non-empty cue_system_input")
+		}
+		if resp.Msg.CueUserInput == "" {
+			t.Error("expected non-empty cue_user_input")
+		}
+	})
+
+	t.Run("returns NotFound for missing deployment", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "does-not-exist",
+		})
+		_, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for missing deployment")
+		}
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("returns NotFound when template not found", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		errResolver := &stubTemplateResolver{err: fmt.Errorf("template not found")}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, errResolver, &stubRenderer{}, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		_, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err == nil {
+			t.Fatal("expected error when template not found")
+		}
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects unauthenticated request", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		handler := defaultHandler(fakeClient, &stubProjectResolver{})
+
+		ctx := context.Background()
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		_, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for unauthenticated request")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("response contains system and user input fields", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// System input should contain project name.
+		if !containsStr(resp.Msg.CueSystemInput, "my-project") {
+			t.Errorf("expected cue_system_input to contain project name, got: %q", resp.Msg.CueSystemInput)
+		}
+		// User input should contain deployment name and image.
+		if !containsStr(resp.Msg.CueUserInput, "web-app") {
+			t.Errorf("expected cue_user_input to contain deployment name, got: %q", resp.Msg.CueUserInput)
+		}
+		if !containsStr(resp.Msg.CueUserInput, "nginx") {
+			t.Errorf("expected cue_user_input to contain image, got: %q", resp.Msg.CueUserInput)
+		}
+	})
+}
+

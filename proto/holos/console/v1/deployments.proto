@@ -19,6 +19,10 @@ service DeploymentService {
   rpc ListNamespaceSecrets(ListNamespaceSecretsRequest) returns (ListNamespaceSecretsResponse);
   // ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
   rpc ListNamespaceConfigMaps(ListNamespaceConfigMapsRequest) returns (ListNamespaceConfigMapsResponse);
+  // GetDeploymentRenderPreview returns the CUE template source, system input,
+  // user input, and rendered output for a deployment. This gives the frontend
+  // everything needed to display the template preview on the deployment detail page.
+  rpc GetDeploymentRenderPreview(GetDeploymentRenderPreviewRequest) returns (GetDeploymentRenderPreviewResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -226,4 +230,24 @@ message ListNamespaceConfigMapsRequest {
 
 message ListNamespaceConfigMapsResponse {
   repeated NamespaceResource config_maps = 1;
+}
+
+message GetDeploymentRenderPreviewRequest {
+  // project is the project that owns the deployment.
+  string project = 1;
+  // name is the deployment name.
+  string name = 2;
+}
+
+message GetDeploymentRenderPreviewResponse {
+  // cue_template is the CUE template source used to render the deployment.
+  string cue_template = 1;
+  // cue_system_input is the system-provided CUE input (project, namespace, claims) in CUE format.
+  string cue_system_input = 2;
+  // cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
+  string cue_user_input = 3;
+  // rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
+  string rendered_yaml = 4;
+  // rendered_json is the rendered Kubernetes manifests as a JSON array.
+  string rendered_json = 5;
 }

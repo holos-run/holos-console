@@ -781,6 +781,77 @@ export declare type ListNamespaceConfigMapsResponse = Message<"holos.console.v1.
 export declare const ListNamespaceConfigMapsResponseSchema: GenMessage<ListNamespaceConfigMapsResponse>;
 
 /**
+ * @generated from message holos.console.v1.GetDeploymentRenderPreviewRequest
+ */
+export declare type GetDeploymentRenderPreviewRequest = Message<"holos.console.v1.GetDeploymentRenderPreviewRequest"> & {
+  /**
+   * project is the project that owns the deployment.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * name is the deployment name.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentRenderPreviewRequest.
+ * Use `create(GetDeploymentRenderPreviewRequestSchema)` to create a new message.
+ */
+export declare const GetDeploymentRenderPreviewRequestSchema: GenMessage<GetDeploymentRenderPreviewRequest>;
+
+/**
+ * @generated from message holos.console.v1.GetDeploymentRenderPreviewResponse
+ */
+export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.v1.GetDeploymentRenderPreviewResponse"> & {
+  /**
+   * cue_template is the CUE template source used to render the deployment.
+   *
+   * @generated from field: string cue_template = 1;
+   */
+  cueTemplate: string;
+
+  /**
+   * cue_system_input is the system-provided CUE input (project, namespace, claims) in CUE format.
+   *
+   * @generated from field: string cue_system_input = 2;
+   */
+  cueSystemInput: string;
+
+  /**
+   * cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
+   *
+   * @generated from field: string cue_user_input = 3;
+   */
+  cueUserInput: string;
+
+  /**
+   * rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
+   *
+   * @generated from field: string rendered_yaml = 4;
+   */
+  renderedYaml: string;
+
+  /**
+   * rendered_json is the rendered Kubernetes manifests as a JSON array.
+   *
+   * @generated from field: string rendered_json = 5;
+   */
+  renderedJson: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentRenderPreviewResponse.
+ * Use `create(GetDeploymentRenderPreviewResponseSchema)` to create a new message.
+ */
+export declare const GetDeploymentRenderPreviewResponseSchema: GenMessage<GetDeploymentRenderPreviewResponse>;
+
+/**
  * DeploymentPhase represents the lifecycle phase of a deployment.
  *
  * @generated from enum holos.console.v1.DeploymentPhase
@@ -902,6 +973,18 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof ListNamespaceConfigMapsRequestSchema;
     output: typeof ListNamespaceConfigMapsResponseSchema;
+  },
+  /**
+   * GetDeploymentRenderPreview returns the CUE template source, system input,
+   * user input, and rendered output for a deployment. This gives the frontend
+   * everything needed to display the template preview on the deployment detail page.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.GetDeploymentRenderPreview
+   */
+  getDeploymentRenderPreview: {
+    methodKind: "unary";
+    input: typeof GetDeploymentRenderPreviewRequestSchema;
+    output: typeof GetDeploymentRenderPreviewResponseSchema;
   },
 }>;
 
