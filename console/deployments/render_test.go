@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// structuredTemplate uses the namespaced/cluster structured output format.
+// structuredTemplate uses the output.namespacedResources/output.clusterResources structured output format.
 const structuredTemplate = `
 package deployment
 
@@ -27,41 +27,42 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-namespaced: (system.namespace): {
-	ServiceAccount: (input.name): {
-		apiVersion: "v1"
-		kind:       "ServiceAccount"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels:    _labels
+output: {
+	namespacedResources: (system.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels:    _labels
+			}
 		}
-	}
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels:    _labels
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: _labels
-				spec: {
-					serviceAccountName: input.name
-					containers: [{
-						name:  input.name
-						image: input.image + ":" + input.tag
-					}]
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: {
+						serviceAccountName: input.name
+						containers: [{
+							name:  input.name
+							image: input.image + ":" + input.tag
+						}]
+					}
 				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // structuredCrossNamespaceTemplate tries to set metadata.namespace to a different value than the struct key.
@@ -79,20 +80,21 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: "other-namespace"
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: "other-namespace"
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // structuredMissingManagedByTemplate is missing the required managed-by label.
@@ -110,19 +112,20 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // validTemplate produces a single Deployment resource using structured output.
@@ -140,32 +143,33 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: {
-				"app.kubernetes.io/managed-by": "console.holos.run"
-				"app.kubernetes.io/name":       input.name
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
 			}
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: "app.kubernetes.io/name": input.name
-				spec: containers: [{
-					name:  input.name
-					image: input.image + ":" + input.tag
-				}]
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // crossNamespaceTemplate tries to write into a different namespace using structured output.
@@ -183,20 +187,21 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: "other-namespace"
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: "other-namespace"
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // disallowedKindTemplate uses a kind not in the allowlist (structured output).
@@ -214,20 +219,21 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Job: (input.name): {
-		apiVersion: "batch/v1"
-		kind:       "Job"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+output: {
+	namespacedResources: (system.namespace): {
+		Job: (input.name): {
+			apiVersion: "batch/v1"
+			kind:       "Job"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // missingManagedByTemplate is missing the required managed-by label (structured output).
@@ -245,19 +251,20 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+			}
+			spec: {}
 		}
-		spec: {}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // invalidCUETemplate contains invalid CUE syntax.
@@ -296,30 +303,31 @@ _annotations: {
 	"console.holos.run/deployer-email": system.claims.email
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:        input.name
-			namespace:   system.namespace
-			labels:      _labels
-			annotations: _annotations
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: _labels
-				spec: containers: [{
-					name:  input.name
-					image: input.image + ":" + input.tag
-				}]
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:        input.name
+				namespace:   system.namespace
+				labels:      _labels
+				annotations: _annotations
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 func defaultSystem(namespace string) SystemInput {
@@ -451,38 +459,39 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: {
-				"app.kubernetes.io/managed-by": "console.holos.run"
-				"app.kubernetes.io/name":       input.name
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
 			}
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: "app.kubernetes.io/name": input.name
-				spec: containers: [{
-					name:  input.name
-					image: input.image + ":" + input.tag
-					if len(input.command) > 0 {
-						command: input.command
-					}
-					if len(input.args) > 0 {
-						args: input.args
-					}
-				}]
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+						if len(input.command) > 0 {
+							command: input.command
+						}
+						if len(input.args) > 0 {
+							args: input.args
+						}
+					}]
+				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 // envTemplate renders env vars into a container spec (structured output).
@@ -501,35 +510,36 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: {
-				"app.kubernetes.io/managed-by": "console.holos.run"
-				"app.kubernetes.io/name":       input.name
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
 			}
-		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: "app.kubernetes.io/name": input.name
-				spec: containers: [{
-					name:  input.name
-					image: input.image + ":" + input.tag
-					if len(input.env) > 0 {
-						env: input.env
-					}
-				}]
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+						if len(input.env) > 0 {
+							env: input.env
+						}
+					}]
+				}
 			}
 		}
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 func TestCueRenderer_Env(t *testing.T) {
@@ -673,49 +683,50 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: {
-				"app.kubernetes.io/managed-by": "console.holos.run"
-				"app.kubernetes.io/name":       input.name
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+						ports: [{containerPort: input.port, name: "http"}]
+					}]
+				}
 			}
 		}
-		spec: {
-			selector: matchLabels: "app.kubernetes.io/name": input.name
-			template: {
-				metadata: labels: "app.kubernetes.io/name": input.name
-				spec: containers: [{
-					name:  input.name
-					image: input.image + ":" + input.tag
-					ports: [{containerPort: input.port, name: "http"}]
-				}]
+		Service: (input.name): {
+			apiVersion: "v1"
+			kind:       "Service"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: "app.kubernetes.io/name": input.name
+				ports: [{port: 80, targetPort: "http", name: "http"}]
 			}
 		}
 	}
-	Service: (input.name): {
-		apiVersion: "v1"
-		kind:       "Service"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: {
-				"app.kubernetes.io/managed-by": "console.holos.run"
-				"app.kubernetes.io/name":       input.name
-			}
-		}
-		spec: {
-			selector: "app.kubernetes.io/name": input.name
-			ports: [{port: 80, targetPort: "http", name: "http"}]
-		}
-	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
 func TestCueRenderer_Port(t *testing.T) {
@@ -819,34 +830,35 @@ system: {
 	namespace: string
 }
 
-namespaced: (system.namespace): {
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: replicas: 1
 		}
-		spec: replicas: 1
-	}
-	// Duplicate: same Kind/name with an incompatible replicas value.
-	Deployment: (input.name): {
-		apiVersion: "apps/v1"
-		kind:       "Deployment"
-		metadata: {
-			name:      input.name
-			namespace: system.namespace
-			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		// Duplicate: same Kind/name with an incompatible replicas value.
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: replicas: 2
 		}
-		spec: replicas: 2
 	}
+	clusterResources: {}
 }
-
-cluster: {}
 `
 
-// TestCueRenderer_StructuredOutput tests the namespaced/cluster structured output format.
+// TestCueRenderer_StructuredOutput tests the output.namespacedResources/output.clusterResources structured output format.
 func TestCueRenderer_StructuredOutput(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
@@ -965,6 +977,100 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 		}
 		if resources[0].GetNamespace() != namespace {
 			t.Errorf("expected namespace %q, got %q", namespace, resources[0].GetNamespace())
+		}
+	})
+}
+
+// systemOutputTemplate uses output.systemNamespacedResources to simulate a
+// system template that provides system-managed resources alongside user resources.
+const systemOutputTemplate = `
+package deployment
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+system: {
+	project:   string
+	namespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+output: {
+	namespacedResources: (system.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: system.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+	systemNamespacedResources: (system.namespace): {
+		ServiceAccount: "system-sa": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "system-sa"
+				namespace: system.namespace
+				labels:    _labels
+			}
+		}
+	}
+	systemClusterResources: {}
+}
+`
+
+// TestCueRenderer_SystemOutputFields verifies that output.systemNamespacedResources
+// and output.systemClusterResources are read and validated correctly.
+func TestCueRenderer_SystemOutputFields(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("systemNamespacedResources resources are included in output", func(t *testing.T) {
+		resources, err := renderer.Render(context.Background(), systemOutputTemplate,
+			SystemInput{Project: "my-project", Namespace: namespace},
+			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect 2 resources: Deployment from namespacedResources + ServiceAccount from systemNamespacedResources.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (Deployment + ServiceAccount), got %d", len(resources))
+		}
+
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+			if r.GetNamespace() != namespace {
+				t.Errorf("resource %s/%s: expected namespace %q, got %q", r.GetKind(), r.GetName(), namespace, r.GetNamespace())
+			}
+		}
+		if !kindSet["Deployment"] {
+			t.Error("expected Deployment resource from namespacedResources")
+		}
+		if !kindSet["ServiceAccount"] {
+			t.Error("expected ServiceAccount resource from systemNamespacedResources")
 		}
 	})
 }

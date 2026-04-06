@@ -131,7 +131,7 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 }
 
 // evaluate performs synchronous CUE template evaluation.
-// Templates must use the structured namespaced/cluster output format.
+// Templates must use the structured output format under the output: key.
 // The system input (project, namespace, claims) and user input (name, image,
 // tag, etc.) are encoded separately and unified with the template.
 func evaluate(cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
@@ -174,10 +174,10 @@ func evaluate(cueSource string, system SystemInput, user UserInput) ([]unstructu
 		return nil, fmt.Errorf("unifying template with system input: %w", err)
 	}
 
-	// Require the structured namespaced/cluster output format.
-	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	// Require the structured output format: output.namespacedResources must exist.
+	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
 	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
-		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
+		return nil, fmt.Errorf("template must define 'output.namespacedResources' (structured output format required)")
 	}
 
 	return evaluateStructured(unified, system.Namespace)
@@ -220,10 +220,10 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 		return nil, fmt.Errorf("unifying template with input: %w", err)
 	}
 
-	// Require the structured namespaced/cluster output format.
-	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	// Require the structured output format: output.namespacedResources must exist.
+	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
 	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
-		return nil, fmt.Errorf("template must define a 'namespaced' field (structured output format required)")
+		return nil, fmt.Errorf("template must define 'output.namespacedResources' (structured output format required)")
 	}
 
 	// Extract the expected namespace from the unified system value.
@@ -239,110 +239,162 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 	return evaluateStructured(unified, expectedNamespace)
 }
 
-// evaluateStructured walks the namespaced and cluster structured output fields
-// and returns validated Kubernetes resources.
+// evaluateStructured walks the output.namespacedResources, output.clusterResources,
+// output.systemNamespacedResources, and output.systemClusterResources structured
+// output fields and returns validated Kubernetes resources.
 //
-// namespaced structure: namespaced.<namespace>.<Kind>.<name>
-// cluster structure:    cluster.<Kind>.<name>
+// namespacedResources structure: output.namespacedResources.<namespace>.<Kind>.<name>
+// clusterResources structure:    output.clusterResources.<Kind>.<name>
+// systemNamespacedResources and systemClusterResources follow the same structure
+// but are only populated by system template evaluations.
 func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 
-	// Walk namespaced resources: namespaced.<namespace>.<Kind>.<name>
-	namespacedValue := unified.LookupPath(cue.ParsePath("namespaced"))
+	// Walk output.namespacedResources: output.namespacedResources.<namespace>.<Kind>.<name>
+	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
 	if namespacedValue.Err() == nil && namespacedValue.Exists() {
-		nsIter, err := namespacedValue.Fields()
+		resources, err := walkNamespacedResources(namespacedValue, expectedNamespace, "output.namespacedResources")
 		if err != nil {
-			return nil, fmt.Errorf("iterating namespaced keys: %w", err)
+			return nil, err
 		}
-		for nsIter.Next() {
-			nsKey := nsIter.Selector().Unquoted()
-			kindIter, err := nsIter.Value().Fields()
-			if err != nil {
-				return nil, fmt.Errorf("iterating Kind keys under namespace %q: %w", nsKey, err)
-			}
-			for kindIter.Next() {
-				kindKey := kindIter.Selector().Unquoted()
-				nameIter, err := kindIter.Value().Fields()
-				if err != nil {
-					return nil, fmt.Errorf("iterating name keys under %q/%q: %w", nsKey, kindKey, err)
-				}
-				for nameIter.Next() {
-					nameKey := nameIter.Selector().Unquoted()
-					var raw map[string]any
-					if err := nameIter.Value().Decode(&raw); err != nil {
-						return nil, fmt.Errorf("decoding namespaced/%s/%s/%s: %w", nsKey, kindKey, nameKey, err)
-					}
-					u := unstructured.Unstructured{Object: raw}
-
-					// Enforce struct-key / metadata consistency.
-					if u.GetNamespace() != nsKey {
-						return nil, fmt.Errorf("namespaced/%s/%s/%s: metadata.namespace %q does not match struct key %q",
-							nsKey, kindKey, nameKey, u.GetNamespace(), nsKey)
-					}
-					if u.GetKind() != kindKey {
-						return nil, fmt.Errorf("namespaced/%s/%s/%s: kind %q does not match struct key %q",
-							nsKey, kindKey, nameKey, u.GetKind(), kindKey)
-					}
-					if u.GetName() != nameKey {
-						return nil, fmt.Errorf("namespaced/%s/%s/%s: metadata.name %q does not match struct key %q",
-							nsKey, kindKey, nameKey, u.GetName(), nameKey)
-					}
-
-					// Enforce project namespace constraint.
-					if u.GetNamespace() != expectedNamespace {
-						return nil, fmt.Errorf("namespaced resource %s/%s: namespace %q does not match project namespace %q",
-							u.GetKind(), u.GetName(), u.GetNamespace(), expectedNamespace)
-					}
-
-					// Run common resource validations.
-					if err := validateResource(u); err != nil {
-						return nil, err
-					}
-
-					result = append(result, u)
-				}
-			}
-		}
+		result = append(result, resources...)
 	}
 
-	// Walk cluster-scoped resources: cluster.<Kind>.<name>
-	clusterValue := unified.LookupPath(cue.ParsePath("cluster"))
+	// Walk output.clusterResources: output.clusterResources.<Kind>.<name>
+	clusterValue := unified.LookupPath(cue.ParsePath("output.clusterResources"))
 	if clusterValue.Err() == nil && clusterValue.Exists() {
-		kindIter, err := clusterValue.Fields()
+		resources, err := walkClusterResources(clusterValue, "output.clusterResources")
 		if err != nil {
-			return nil, fmt.Errorf("iterating cluster Kind keys: %w", err)
+			return nil, err
+		}
+		result = append(result, resources...)
+	}
+
+	// Walk output.systemNamespacedResources (populated by system templates).
+	sysNamespacedValue := unified.LookupPath(cue.ParsePath("output.systemNamespacedResources"))
+	if sysNamespacedValue.Err() == nil && sysNamespacedValue.Exists() {
+		resources, err := walkNamespacedResources(sysNamespacedValue, expectedNamespace, "output.systemNamespacedResources")
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resources...)
+	}
+
+	// Walk output.systemClusterResources (populated by system templates).
+	sysClusterValue := unified.LookupPath(cue.ParsePath("output.systemClusterResources"))
+	if sysClusterValue.Err() == nil && sysClusterValue.Exists() {
+		resources, err := walkClusterResources(sysClusterValue, "output.systemClusterResources")
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resources...)
+	}
+
+	return result, nil
+}
+
+// walkNamespacedResources iterates a namespaced resource map of the form
+// <namespace>.<Kind>.<name> and returns validated Kubernetes resources.
+// All resources must reside in expectedNamespace.
+func walkNamespacedResources(namespacedValue cue.Value, expectedNamespace, fieldPath string) ([]unstructured.Unstructured, error) {
+	var result []unstructured.Unstructured
+
+	nsIter, err := namespacedValue.Fields()
+	if err != nil {
+		return nil, fmt.Errorf("iterating %s keys: %w", fieldPath, err)
+	}
+	for nsIter.Next() {
+		nsKey := nsIter.Selector().Unquoted()
+		kindIter, err := nsIter.Value().Fields()
+		if err != nil {
+			return nil, fmt.Errorf("iterating Kind keys under %s/%s: %w", fieldPath, nsKey, err)
 		}
 		for kindIter.Next() {
 			kindKey := kindIter.Selector().Unquoted()
 			nameIter, err := kindIter.Value().Fields()
 			if err != nil {
-				return nil, fmt.Errorf("iterating name keys under cluster/%q: %w", kindKey, err)
+				return nil, fmt.Errorf("iterating name keys under %s/%s/%s: %w", fieldPath, nsKey, kindKey, err)
 			}
 			for nameIter.Next() {
 				nameKey := nameIter.Selector().Unquoted()
 				var raw map[string]any
 				if err := nameIter.Value().Decode(&raw); err != nil {
-					return nil, fmt.Errorf("decoding cluster/%s/%s: %w", kindKey, nameKey, err)
+					return nil, fmt.Errorf("decoding %s/%s/%s/%s: %w", fieldPath, nsKey, kindKey, nameKey, err)
 				}
 				u := unstructured.Unstructured{Object: raw}
 
 				// Enforce struct-key / metadata consistency.
+				if u.GetNamespace() != nsKey {
+					return nil, fmt.Errorf("%s/%s/%s/%s: metadata.namespace %q does not match struct key %q",
+						fieldPath, nsKey, kindKey, nameKey, u.GetNamespace(), nsKey)
+				}
 				if u.GetKind() != kindKey {
-					return nil, fmt.Errorf("cluster/%s/%s: kind %q does not match struct key %q",
-						kindKey, nameKey, u.GetKind(), kindKey)
+					return nil, fmt.Errorf("%s/%s/%s/%s: kind %q does not match struct key %q",
+						fieldPath, nsKey, kindKey, nameKey, u.GetKind(), kindKey)
 				}
 				if u.GetName() != nameKey {
-					return nil, fmt.Errorf("cluster/%s/%s: metadata.name %q does not match struct key %q",
-						kindKey, nameKey, u.GetName(), nameKey)
+					return nil, fmt.Errorf("%s/%s/%s/%s: metadata.name %q does not match struct key %q",
+						fieldPath, nsKey, kindKey, nameKey, u.GetName(), nameKey)
 				}
 
-				// Cluster-scoped resources must NOT have a namespace.
-				if u.GetNamespace() != "" {
-					return nil, fmt.Errorf("cluster resource %s/%s: must not have metadata.namespace", kindKey, nameKey)
+				// Enforce project namespace constraint.
+				if u.GetNamespace() != expectedNamespace {
+					return nil, fmt.Errorf("%s resource %s/%s: namespace %q does not match project namespace %q",
+						fieldPath, u.GetKind(), u.GetName(), u.GetNamespace(), expectedNamespace)
+				}
+
+				// Run common resource validations.
+				if err := validateResource(u); err != nil {
+					return nil, err
 				}
 
 				result = append(result, u)
 			}
+		}
+	}
+
+	return result, nil
+}
+
+// walkClusterResources iterates a cluster-scoped resource map of the form
+// <Kind>.<name> and returns validated Kubernetes resources.
+func walkClusterResources(clusterValue cue.Value, fieldPath string) ([]unstructured.Unstructured, error) {
+	var result []unstructured.Unstructured
+
+	kindIter, err := clusterValue.Fields()
+	if err != nil {
+		return nil, fmt.Errorf("iterating %s Kind keys: %w", fieldPath, err)
+	}
+	for kindIter.Next() {
+		kindKey := kindIter.Selector().Unquoted()
+		nameIter, err := kindIter.Value().Fields()
+		if err != nil {
+			return nil, fmt.Errorf("iterating name keys under %s/%s: %w", fieldPath, kindKey, err)
+		}
+		for nameIter.Next() {
+			nameKey := nameIter.Selector().Unquoted()
+			var raw map[string]any
+			if err := nameIter.Value().Decode(&raw); err != nil {
+				return nil, fmt.Errorf("decoding %s/%s/%s: %w", fieldPath, kindKey, nameKey, err)
+			}
+			u := unstructured.Unstructured{Object: raw}
+
+			// Enforce struct-key / metadata consistency.
+			if u.GetKind() != kindKey {
+				return nil, fmt.Errorf("%s/%s/%s: kind %q does not match struct key %q",
+					fieldPath, kindKey, nameKey, u.GetKind(), kindKey)
+			}
+			if u.GetName() != nameKey {
+				return nil, fmt.Errorf("%s/%s/%s: metadata.name %q does not match struct key %q",
+					fieldPath, kindKey, nameKey, u.GetName(), nameKey)
+			}
+
+			// Cluster-scoped resources must NOT have a namespace.
+			if u.GetNamespace() != "" {
+				return nil, fmt.Errorf("%s resource %s/%s: must not have metadata.namespace", fieldPath, kindKey, nameKey)
+			}
+
+			result = append(result, u)
 		}
 	}
 
