@@ -1,8 +1,9 @@
 # CUE Deployment Template Guide
 
 This guide covers the interface between deployment fields and CUE templates in
-holos-console. It explains the inputs the console provides, the output structure
-the console reads, and the validation constraints enforced at render time.
+holos-console. It explains how to write a custom template to deploy your app,
+and provides reference material on the inputs, output structure, and validation
+constraints enforced at render time.
 
 ## Overview
 
@@ -17,6 +18,300 @@ When a user creates or updates a deployment, the console:
 
 The architectural decision to use structured output is recorded in
 [ADR 012](adrs/012-structured-resource-output.md).
+
+## Writing a Custom Template
+
+This section walks through deploying a web service end-to-end: from a complete
+working template to making it accessible outside the cluster.
+
+### Complete Template Example
+
+The template below mirrors the built-in default. It produces a `ServiceAccount`,
+a `Deployment`, and a `Service` — everything needed to run a container and reach
+it from inside the cluster.
+
+```cue
+package deployment
+
+#KeyRef: {
+    name: string
+    key:  string
+}
+
+#EnvVar: {
+    name:               string
+    value?:             string
+    secretKeyRef?:      #KeyRef
+    configMapKeyRef?:   #KeyRef
+}
+
+#Input: {
+    name:    string & =~"^[a-z][a-z0-9-]*$"
+    image:   string
+    tag:     string
+    command?: [...string]
+    args?: [...string]
+    env:  [...#EnvVar] | *[]
+    port: int & >0 & <=65535 | *8080
+}
+
+#Claims: {
+    iss:            string
+    sub:            string
+    exp:            int
+    iat:            int
+    email:          string
+    email_verified: bool
+    name?:          string
+    groups?: [...string]
+    ... // allow provider-specific claims
+}
+
+#System: {
+    project:   string
+    namespace: string
+    claims:    #Claims
+}
+
+input:  #Input
+system: #System
+
+_labels: {
+    "app.kubernetes.io/name":       input.name
+    "app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+_annotations: {
+    "console.holos.run/deployer-email": system.claims.email
+}
+
+_envSpec: [for e in input.env {
+    name: e.name
+    if e.value != _|_ {
+        value: e.value
+    }
+    if e.secretKeyRef != _|_ {
+        valueFrom: secretKeyRef: {
+            name: e.secretKeyRef.name
+            key:  e.secretKeyRef.key
+        }
+    }
+    if e.configMapKeyRef != _|_ {
+        valueFrom: configMapKeyRef: {
+            name: e.configMapKeyRef.name
+            key:  e.configMapKeyRef.key
+        }
+    }
+}]
+
+#Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name:      Name
+        namespace: Namespace
+        ...
+    }
+    ...
+}
+
+#Cluster: [Kind=string]: [Name=string]: {
+    kind: Kind
+    metadata: {
+        name: Name
+        ...
+    }
+    ...
+}
+
+namespaced: #Namespaced & {
+    (system.namespace): {
+        ServiceAccount: (input.name): {
+            apiVersion: "v1"
+            kind:       "ServiceAccount"
+            metadata: {
+                name:        input.name
+                namespace:   system.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+        }
+
+        Deployment: (input.name): {
+            apiVersion: "apps/v1"
+            kind:       "Deployment"
+            metadata: {
+                name:        input.name
+                namespace:   system.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+            spec: {
+                replicas: 1
+                selector: matchLabels: "app.kubernetes.io/name": input.name
+                template: {
+                    metadata: labels: _labels
+                    spec: {
+                        serviceAccountName: input.name
+                        containers: [{
+                            name:  input.name
+                            image: input.image + ":" + input.tag
+                            if len(_envSpec) > 0 {
+                                env: _envSpec
+                            }
+                            ports: [{containerPort: input.port, name: "http"}]
+                            if input.command != _|_ {
+                                command: input.command
+                            }
+                            if input.args != _|_ {
+                                args: input.args
+                            }
+                        }]
+                    }
+                }
+            }
+        }
+
+        Service: (input.name): {
+            apiVersion: "v1"
+            kind:       "Service"
+            metadata: {
+                name:        input.name
+                namespace:   system.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+            spec: {
+                selector: "app.kubernetes.io/name": input.name
+                ports: [{port: 80, targetPort: "http", name: "http"}]
+            }
+        }
+    }
+}
+
+cluster: #Cluster & {}
+```
+
+### Port Flow
+
+The `input.port` field is the container port your application listens on
+(default `8080`). The template wires it through to the `Service` so that
+Kubernetes can route traffic correctly:
+
+```
+input.port  (e.g. 8080)
+  → container: ports: [{containerPort: input.port, name: "http"}]
+  → Service:   ports: [{port: 80, targetPort: "http", name: "http"}]
+  → HTTPRoute: backendRef: {name: input.name, port: 80}   // optional, for external access
+```
+
+The container port is given the name `"http"`. The Service then targets that
+named port (`targetPort: "http"`) rather than a hard-coded number, so changing
+`input.port` only requires updating one place in the template.
+
+### Networking: Cluster-Internal and External Access
+
+**Cluster-internal access** is provided automatically by the `Service`. Once the
+deployment is created, any workload inside the cluster can reach it at:
+
+```
+http://<name>.<namespace>.svc.cluster.local
+```
+
+No additional configuration is needed.
+
+**External access** (traffic from outside the cluster) requires an `HTTPRoute`
+pointing to a `Gateway`. The Gateway controller and a `Gateway` resource must
+already exist in the cluster — ask your platform team for the gateway name and
+namespace.
+
+Add the following resource to your template's `namespaced` block when external
+access is needed:
+
+```cue
+HTTPRoute: (input.name): {
+    apiVersion: "gateway.networking.k8s.io/v1"
+    kind:       "HTTPRoute"
+    metadata: {
+        name:        input.name
+        namespace:   system.namespace
+        labels:      _labels
+        annotations: _annotations
+    }
+    spec: {
+        parentRefs: [{
+            name:      "prod-gateway"   // name of the Gateway in your cluster
+            namespace: "infra"          // namespace where the Gateway lives
+        }]
+        rules: [{
+            backendRefs: [{
+                name: input.name
+                port: 80
+            }]
+        }]
+    }
+}
+```
+
+Replace `"prod-gateway"` and `"infra"` with the actual gateway name and
+namespace in your cluster. The `backendRef` port `80` matches the `Service`
+port defined above — do not use `input.port` here.
+
+`HTTPRoute` is in the allowed kinds list, so no other configuration is needed.
+
+### Guidelines
+
+1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
+2. **Always declare `input: #Input` and `system: #System`** — these are the unification points where the console injects user and system parameters respectively.
+3. **Always declare `namespaced` and `cluster` output fields** — the console requires the structured output format.
+4. **Always include the managed-by label** on every resource or validation will reject the render.
+5. **Set `metadata.namespace` to `system.namespace`** on every namespaced resource — cross-namespace resources are rejected.
+6. **Match struct keys to metadata** — `namespaced.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
+7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
+8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
+9. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
+
+### Previewing Your Template
+
+Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
+deployment. This accepts a `cue_template` (raw CUE source) and a `cue_input`
+(valid CUE source that supplies concrete values for template parameters),
+returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
+a pretty-printed JSON array (`rendered_json`). Useful for validating templates
+during authoring.
+
+The RPC accepts two separate CUE input fields:
+
+- `cue_system_input` — trusted system context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
+- `cue_input` — user-provided deployment parameters (name, image, tag, env, etc.)
+
+Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available.
+
+Example `cue_system_input` (trusted, set from authenticated context):
+
+```cue
+system: {
+    project:   "my-project"
+    namespace: "holos-prj-my-project"
+    claims: {
+        iss:            "https://dex.example.com"
+        sub:            "user-123"
+        exp:            9999999999
+        iat:            1700000000
+        email:          "user@example.com"
+        email_verified: true
+    }
+}
+```
+
+Example `cue_input` (user-provided parameters):
+
+```cue
+input: {
+    name:  "my-app"
+    image: "ghcr.io/example/my-app"
+    tag:   "v1.0.0"
+}
+```
 
 ## Template Input
 
@@ -286,201 +581,6 @@ This label is used for cleanup when a deployment is deleted.
 
 CUE template evaluation is capped at **5 seconds**. Templates that exceed this
 limit are rejected.
-
-## Writing a Custom Template
-
-### Minimal Template
-
-```cue
-package deployment
-
-#KeyRef: {
-    name: string
-    key:  string
-}
-
-#EnvVar: {
-    name:               string
-    value?:             string
-    secretKeyRef?:      #KeyRef
-    configMapKeyRef?:   #KeyRef
-}
-
-#Input: {
-    name:    string & =~"^[a-z][a-z0-9-]*$"
-    image:   string
-    tag:     string
-    command?: [...string]
-    args?: [...string]
-    env:  [...#EnvVar] | *[]
-    port: int & >0 & <=65535 | *8080
-}
-
-#Claims: {
-    iss:            string
-    sub:            string
-    exp:            int
-    iat:            int
-    email:          string
-    email_verified: bool
-    name?:          string
-    groups?: [...string]
-    ... // allow provider-specific claims
-}
-
-#System: {
-    project:   string
-    namespace: string
-    claims:    #Claims
-}
-
-input:  #Input
-system: #System
-
-_annotations: {
-    "console.holos.run/deployer-email": system.claims.email
-}
-
-_labels: {
-    "app.kubernetes.io/name":       input.name
-    "app.kubernetes.io/managed-by": "console.holos.run"
-}
-
-// #Namespaced constrains struct keys to match resource metadata.
-#Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
-    kind: Kind
-    metadata: {
-        name:      Name
-        namespace: Namespace
-        ...
-    }
-    ...
-}
-
-// #Cluster constrains cluster-scoped struct keys to match resource metadata.
-#Cluster: [Kind=string]: [Name=string]: {
-    kind: Kind
-    metadata: {
-        name: Name
-        ...
-    }
-    ...
-}
-
-namespaced: #Namespaced & {
-    (system.namespace): {
-        Deployment: (input.name): {
-            apiVersion: "apps/v1"
-            kind:       "Deployment"
-            metadata: {
-                name:        input.name
-                namespace:   system.namespace
-                labels:      _labels
-                annotations: _annotations
-            }
-            spec: {
-                replicas: 1
-                selector: matchLabels: "app.kubernetes.io/name": input.name
-                template: {
-                    metadata: labels: _labels
-                    spec: containers: [{
-                        name:  input.name
-                        image: input.image + ":" + input.tag
-                    }]
-                }
-            }
-        }
-    }
-}
-
-cluster: #Cluster & {}
-```
-
-### Guidelines
-
-1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
-2. **Always declare `input: #Input` and `system: #System`** — these are the unification points where the console injects user and system parameters respectively.
-3. **Always declare `namespaced` and `cluster` output fields** — the console requires the structured output format.
-4. **Always include the managed-by label** on every resource or validation will reject the render.
-5. **Set `metadata.namespace` to `system.namespace`** on every namespaced resource — cross-namespace resources are rejected.
-6. **Match struct keys to metadata** — `namespaced.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
-7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
-8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
-
-### Previewing Templates
-
-Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
-deployment. This accepts a `cue_template` (raw CUE source) and a `cue_input`
-(valid CUE source that supplies concrete values for template parameters),
-returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
-a pretty-printed JSON array (`rendered_json`). Useful for validating templates
-during authoring.
-
-The RPC accepts two separate CUE input fields:
-
-- `cue_system_input` — trusted system context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
-- `cue_input` — user-provided deployment parameters (name, image, tag, env, etc.)
-
-Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available.
-
-Example `cue_system_input` (trusted, set from authenticated context):
-
-```cue
-system: {
-    project:   "my-project"
-    namespace: "holos-prj-my-project"
-    claims: {
-        iss:            "https://dex.example.com"
-        sub:            "user-123"
-        exp:            9999999999
-        iat:            1700000000
-        email:          "user@example.com"
-        email_verified: true
-    }
-}
-```
-
-Example `cue_input` (user-provided parameters):
-
-```cue
-input: {
-    name:  "my-app"
-    image: "ghcr.io/example/my-app"
-    tag:   "v1.0.0"
-}
-```
-
-## Implemented: System / User Input Split
-
-The template interface enforces a trust boundary between system-provided and
-user-supplied inputs. This split is fully implemented:
-
-- **`system`** — trusted values set unconditionally by the console backend from
-  the verified JWT and K8s namespace resolver. Templates reference `system.claims`
-  for the authenticated user's identity and `system.namespace` for the resolved
-  project namespace.
-- **`input`** — user-provided deployment parameters (name, image, tag, env, port,
-  etc.) drawn from the API request fields.
-
-The `system.claims` field provides identity for audit and policy annotations.
-A future `platform` field for org-wide policy defaults (security contexts,
-resource limits, admission labels) remains a separate planned extension.
-
-## Planned Extensions
-
-### Platform Input
-
-A future `platform` field will carry org-wide policy defaults such as security
-contexts, resource limits, and admission labels. These values would be set by
-the console backend from organization-level configuration, extending the same
-trust boundary as `system` without mixing them into user-supplied `input`.
-
-### Cluster Resource Support
-
-The `cluster` output field is defined but the allowlist of permitted cluster-scoped
-Kind values is initially empty. Cluster-scoped kinds (e.g., `Namespace`,
-`ClusterRole`, `ClusterRoleBinding`) will be added incrementally as the
-authorization model for cluster-level operations is established.
 
 ## Appendix: Source Code Reference
 
