@@ -92,34 +92,36 @@ _annotations: {
   ...
 }
 
-namespaced: #Namespaced & {
-  (system.namespace): {
-    Deployment: (input.name): {
-      apiVersion: "apps/v1"
-      kind:       "Deployment"
-      metadata: {
-        name:        input.name
-        namespace:   system.namespace
-        labels:      _labels
-        annotations: _annotations
-      }
-      spec: {
-        replicas: 1
-        selector: matchLabels: "app.kubernetes.io/name": input.name
-        template: {
-          metadata: labels: _labels
-          spec: containers: [{
-            name:  input.name
-            image: input.image + ":" + input.tag
-            ports: [{containerPort: input.port, name: "http"}]
-          }]
+// output collects all rendered Kubernetes resources.
+output: {
+  namespacedResources: #Namespaced & {
+    (system.namespace): {
+      Deployment: (input.name): {
+        apiVersion: "apps/v1"
+        kind:       "Deployment"
+        metadata: {
+          name:        input.name
+          namespace:   system.namespace
+          labels:      _labels
+          annotations: _annotations
+        }
+        spec: {
+          replicas: 1
+          selector: matchLabels: "app.kubernetes.io/name": input.name
+          template: {
+            metadata: labels: _labels
+            spec: containers: [{
+              name:  input.name
+              image: input.image + ":" + input.tag
+              ports: [{containerPort: input.port, name: "http"}]
+            }]
+          }
         }
       }
     }
   }
+  clusterResources: #Cluster & {}
 }
-
-cluster: #Cluster & {}
 `
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/new')({
