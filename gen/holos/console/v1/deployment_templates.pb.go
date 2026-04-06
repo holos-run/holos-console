@@ -862,6 +862,125 @@ func (x *RenderDeploymentTemplateResponse) GetRenderedJson() string {
 	return ""
 }
 
+// CloneDeploymentTemplateRequest copies an existing deployment template to a new name.
+// The clone inherits the CUE template and other fields from the source.
+type CloneDeploymentTemplateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// source_name is the name of the template to copy.
+	SourceName string `protobuf:"bytes,1,opt,name=source_name,json=sourceName,proto3" json:"source_name,omitempty"`
+	// project is the project that owns the source template.
+	Project string `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
+	// name is the DNS label slug for the new template.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// display_name is the human-readable name for the new template.
+	DisplayName   string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneDeploymentTemplateRequest) Reset() {
+	*x = CloneDeploymentTemplateRequest{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneDeploymentTemplateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneDeploymentTemplateRequest) ProtoMessage() {}
+
+func (x *CloneDeploymentTemplateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneDeploymentTemplateRequest.ProtoReflect.Descriptor instead.
+func (*CloneDeploymentTemplateRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CloneDeploymentTemplateRequest) GetSourceName() string {
+	if x != nil {
+		return x.SourceName
+	}
+	return ""
+}
+
+func (x *CloneDeploymentTemplateRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+func (x *CloneDeploymentTemplateRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CloneDeploymentTemplateRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+type CloneDeploymentTemplateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the newly created template.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneDeploymentTemplateResponse) Reset() {
+	*x = CloneDeploymentTemplateResponse{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneDeploymentTemplateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneDeploymentTemplateResponse) ProtoMessage() {}
+
+func (x *CloneDeploymentTemplateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneDeploymentTemplateResponse.ProtoReflect.Descriptor instead.
+func (*CloneDeploymentTemplateResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CloneDeploymentTemplateResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 var File_holos_console_v1_deployment_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
@@ -921,14 +1040,23 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\tcue_input\x18\x06 \x01(\tR\bcueInput\"l\n" +
 	" RenderDeploymentTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
-	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson2\xa5\x06\n" +
+	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson\"\x92\x01\n" +
+	"\x1eCloneDeploymentTemplateRequest\x12\x1f\n" +
+	"\vsource_name\x18\x01 \x01(\tR\n" +
+	"sourceName\x12\x18\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"5\n" +
+	"\x1fCloneDeploymentTemplateResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name2\xa5\a\n" +
 	"\x19DeploymentTemplateService\x12~\n" +
 	"\x17ListDeploymentTemplates\x120.holos.console.v1.ListDeploymentTemplatesRequest\x1a1.holos.console.v1.ListDeploymentTemplatesResponse\x12x\n" +
 	"\x15GetDeploymentTemplate\x12..holos.console.v1.GetDeploymentTemplateRequest\x1a/.holos.console.v1.GetDeploymentTemplateResponse\x12\x81\x01\n" +
 	"\x18CreateDeploymentTemplate\x121.holos.console.v1.CreateDeploymentTemplateRequest\x1a2.holos.console.v1.CreateDeploymentTemplateResponse\x12\x81\x01\n" +
 	"\x18UpdateDeploymentTemplate\x121.holos.console.v1.UpdateDeploymentTemplateRequest\x1a2.holos.console.v1.UpdateDeploymentTemplateResponse\x12\x81\x01\n" +
 	"\x18DeleteDeploymentTemplate\x121.holos.console.v1.DeleteDeploymentTemplateRequest\x1a2.holos.console.v1.DeleteDeploymentTemplateResponse\x12\x81\x01\n" +
-	"\x18RenderDeploymentTemplate\x121.holos.console.v1.RenderDeploymentTemplateRequest\x1a2.holos.console.v1.RenderDeploymentTemplateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x18RenderDeploymentTemplate\x121.holos.console.v1.RenderDeploymentTemplateRequest\x1a2.holos.console.v1.RenderDeploymentTemplateResponse\x12~\n" +
+	"\x17CloneDeploymentTemplate\x120.holos.console.v1.CloneDeploymentTemplateRequest\x1a1.holos.console.v1.CloneDeploymentTemplateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_deployment_templates_proto_rawDescOnce sync.Once
@@ -942,7 +1070,7 @@ func file_holos_console_v1_deployment_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_deployment_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_holos_console_v1_deployment_templates_proto_goTypes = []any{
 	(*DeploymentDefaults)(nil),               // 0: holos.console.v1.DeploymentDefaults
 	(*DeploymentTemplate)(nil),               // 1: holos.console.v1.DeploymentTemplate
@@ -958,10 +1086,12 @@ var file_holos_console_v1_deployment_templates_proto_goTypes = []any{
 	(*DeleteDeploymentTemplateResponse)(nil), // 11: holos.console.v1.DeleteDeploymentTemplateResponse
 	(*RenderDeploymentTemplateRequest)(nil),  // 12: holos.console.v1.RenderDeploymentTemplateRequest
 	(*RenderDeploymentTemplateResponse)(nil), // 13: holos.console.v1.RenderDeploymentTemplateResponse
-	(*EnvVar)(nil),                           // 14: holos.console.v1.EnvVar
+	(*CloneDeploymentTemplateRequest)(nil),   // 14: holos.console.v1.CloneDeploymentTemplateRequest
+	(*CloneDeploymentTemplateResponse)(nil),  // 15: holos.console.v1.CloneDeploymentTemplateResponse
+	(*EnvVar)(nil),                           // 16: holos.console.v1.EnvVar
 }
 var file_holos_console_v1_deployment_templates_proto_depIdxs = []int32{
-	14, // 0: holos.console.v1.DeploymentDefaults.env:type_name -> holos.console.v1.EnvVar
+	16, // 0: holos.console.v1.DeploymentDefaults.env:type_name -> holos.console.v1.EnvVar
 	0,  // 1: holos.console.v1.DeploymentTemplate.defaults:type_name -> holos.console.v1.DeploymentDefaults
 	1,  // 2: holos.console.v1.ListDeploymentTemplatesResponse.templates:type_name -> holos.console.v1.DeploymentTemplate
 	1,  // 3: holos.console.v1.GetDeploymentTemplateResponse.template:type_name -> holos.console.v1.DeploymentTemplate
@@ -973,14 +1103,16 @@ var file_holos_console_v1_deployment_templates_proto_depIdxs = []int32{
 	8,  // 9: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:input_type -> holos.console.v1.UpdateDeploymentTemplateRequest
 	10, // 10: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:input_type -> holos.console.v1.DeleteDeploymentTemplateRequest
 	12, // 11: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:input_type -> holos.console.v1.RenderDeploymentTemplateRequest
-	3,  // 12: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
-	5,  // 13: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
-	7,  // 14: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
-	9,  // 15: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
-	11, // 16: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
-	13, // 17: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
+	14, // 12: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:input_type -> holos.console.v1.CloneDeploymentTemplateRequest
+	3,  // 13: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
+	5,  // 14: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
+	7,  // 15: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
+	9,  // 16: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
+	11, // 17: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
+	13, // 18: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
+	15, // 19: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:output_type -> holos.console.v1.CloneDeploymentTemplateResponse
+	13, // [13:20] is the sub-list for method output_type
+	6,  // [6:13] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -1000,7 +1132,7 @@ func file_holos_console_v1_deployment_templates_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_deployment_templates_proto_rawDesc), len(file_holos_console_v1_deployment_templates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

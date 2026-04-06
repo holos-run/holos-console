@@ -61,14 +61,13 @@ export declare type SystemTemplate = Message<"holos.console.v1.SystemTemplate"> 
   mandatory: boolean;
 
   /**
-   * gateway_namespace is the name of the gateway namespace used by templates
-   * that need to reference a cross-namespace Gateway (e.g. for ReferenceGrant
-   * resources). Defaults to "istio-ingress" per Istio's recommended Helm
-   * install convention (https://istio.io/latest/docs/setup/additional-setup/gateway/).
+   * enabled indicates whether this template is active. Disabled templates are
+   * not applied to new project namespaces even if mandatory is true.
+   * Defaults to false (proto3 zero value) — new templates start disabled.
    *
-   * @generated from field: string gateway_namespace = 7;
+   * @generated from field: bool enabled = 7;
    */
-  gatewayNamespace: string;
+  enabled: boolean;
 };
 
 /**
@@ -181,11 +180,9 @@ export declare type CreateSystemTemplateRequest = Message<"holos.console.v1.Crea
   mandatory: boolean;
 
   /**
-   * gateway_namespace defaults to "istio-ingress" when empty.
-   *
-   * @generated from field: string gateway_namespace = 7;
+   * @generated from field: bool enabled = 7;
    */
-  gatewayNamespace: string;
+  enabled: boolean;
 };
 
 /**
@@ -245,9 +242,9 @@ export declare type UpdateSystemTemplateRequest = Message<"holos.console.v1.Upda
   mandatory?: boolean;
 
   /**
-   * @generated from field: optional string gateway_namespace = 7;
+   * @generated from field: optional bool enabled = 7;
    */
-  gatewayNamespace?: string;
+  enabled?: boolean;
 };
 
 /**
@@ -300,6 +297,66 @@ export declare type DeleteSystemTemplateResponse = Message<"holos.console.v1.Del
  * Use `create(DeleteSystemTemplateResponseSchema)` to create a new message.
  */
 export declare const DeleteSystemTemplateResponseSchema: GenMessage<DeleteSystemTemplateResponse>;
+
+/**
+ * CloneSystemTemplateRequest copies an existing system template to a new name.
+ * The clone inherits the CUE template and other fields from the source.
+ *
+ * @generated from message holos.console.v1.CloneSystemTemplateRequest
+ */
+export declare type CloneSystemTemplateRequest = Message<"holos.console.v1.CloneSystemTemplateRequest"> & {
+  /**
+   * source_name is the name of the template to copy.
+   *
+   * @generated from field: string source_name = 1;
+   */
+  sourceName: string;
+
+  /**
+   * org is the organization that owns the source template.
+   *
+   * @generated from field: string org = 2;
+   */
+  org: string;
+
+  /**
+   * name is the DNS label slug for the new template.
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * display_name is the human-readable name for the new template.
+   *
+   * @generated from field: string display_name = 4;
+   */
+  displayName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CloneSystemTemplateRequest.
+ * Use `create(CloneSystemTemplateRequestSchema)` to create a new message.
+ */
+export declare const CloneSystemTemplateRequestSchema: GenMessage<CloneSystemTemplateRequest>;
+
+/**
+ * @generated from message holos.console.v1.CloneSystemTemplateResponse
+ */
+export declare type CloneSystemTemplateResponse = Message<"holos.console.v1.CloneSystemTemplateResponse"> & {
+  /**
+   * name is the name of the newly created template.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CloneSystemTemplateResponse.
+ * Use `create(CloneSystemTemplateResponseSchema)` to create a new message.
+ */
+export declare const CloneSystemTemplateResponseSchema: GenMessage<CloneSystemTemplateResponse>;
 
 /**
  * RenderSystemTemplateRequest evaluates a CUE system template unified with CUE
@@ -427,6 +484,14 @@ export declare const SystemTemplateService: GenService<{
     methodKind: "unary";
     input: typeof RenderSystemTemplateRequestSchema;
     output: typeof RenderSystemTemplateResponseSchema;
+  },
+  /**
+   * @generated from rpc holos.console.v1.SystemTemplateService.CloneSystemTemplate
+   */
+  cloneSystemTemplate: {
+    methodKind: "unary";
+    input: typeof CloneSystemTemplateRequestSchema;
+    output: typeof CloneSystemTemplateResponseSchema;
   },
 }>;
 

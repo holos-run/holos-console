@@ -38,13 +38,12 @@ type SystemTemplate struct {
 	// mandatory indicates that this template is automatically rendered and
 	// applied to every project namespace at project creation time.
 	Mandatory bool `protobuf:"varint,6,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
-	// gateway_namespace is the name of the gateway namespace used by templates
-	// that need to reference a cross-namespace Gateway (e.g. for ReferenceGrant
-	// resources). Defaults to "istio-ingress" per Istio's recommended Helm
-	// install convention (https://istio.io/latest/docs/setup/additional-setup/gateway/).
-	GatewayNamespace string `protobuf:"bytes,7,opt,name=gateway_namespace,json=gatewayNamespace,proto3" json:"gateway_namespace,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// enabled indicates whether this template is active. Disabled templates are
+	// not applied to new project namespaces even if mandatory is true.
+	// Defaults to false (proto3 zero value) — new templates start disabled.
+	Enabled       bool `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SystemTemplate) Reset() {
@@ -119,11 +118,11 @@ func (x *SystemTemplate) GetMandatory() bool {
 	return false
 }
 
-func (x *SystemTemplate) GetGatewayNamespace() string {
+func (x *SystemTemplate) GetEnabled() bool {
 	if x != nil {
-		return x.GatewayNamespace
+		return x.Enabled
 	}
-	return ""
+	return false
 }
 
 type ListSystemTemplatesRequest struct {
@@ -311,17 +310,16 @@ func (x *GetSystemTemplateResponse) GetTemplate() *SystemTemplate {
 }
 
 type CreateSystemTemplateRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Org         string                 `protobuf:"bytes,2,opt,name=org,proto3" json:"org,omitempty"`
-	DisplayName string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	Description string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	CueTemplate string                 `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
-	Mandatory   bool                   `protobuf:"varint,6,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
-	// gateway_namespace defaults to "istio-ingress" when empty.
-	GatewayNamespace string `protobuf:"bytes,7,opt,name=gateway_namespace,json=gatewayNamespace,proto3" json:"gateway_namespace,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Org           string                 `protobuf:"bytes,2,opt,name=org,proto3" json:"org,omitempty"`
+	DisplayName   string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	CueTemplate   string                 `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
+	Mandatory     bool                   `protobuf:"varint,6,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	Enabled       bool                   `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSystemTemplateRequest) Reset() {
@@ -396,11 +394,11 @@ func (x *CreateSystemTemplateRequest) GetMandatory() bool {
 	return false
 }
 
-func (x *CreateSystemTemplateRequest) GetGatewayNamespace() string {
+func (x *CreateSystemTemplateRequest) GetEnabled() bool {
 	if x != nil {
-		return x.GatewayNamespace
+		return x.Enabled
 	}
-	return ""
+	return false
 }
 
 type CreateSystemTemplateResponse struct {
@@ -448,16 +446,16 @@ func (x *CreateSystemTemplateResponse) GetName() string {
 }
 
 type UpdateSystemTemplateRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Org              string                 `protobuf:"bytes,2,opt,name=org,proto3" json:"org,omitempty"`
-	DisplayName      *string                `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
-	Description      *string                `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
-	CueTemplate      *string                `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3,oneof" json:"cue_template,omitempty"`
-	Mandatory        *bool                  `protobuf:"varint,6,opt,name=mandatory,proto3,oneof" json:"mandatory,omitempty"`
-	GatewayNamespace *string                `protobuf:"bytes,7,opt,name=gateway_namespace,json=gatewayNamespace,proto3,oneof" json:"gateway_namespace,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Org           string                 `protobuf:"bytes,2,opt,name=org,proto3" json:"org,omitempty"`
+	DisplayName   *string                `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
+	Description   *string                `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	CueTemplate   *string                `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3,oneof" json:"cue_template,omitempty"`
+	Mandatory     *bool                  `protobuf:"varint,6,opt,name=mandatory,proto3,oneof" json:"mandatory,omitempty"`
+	Enabled       *bool                  `protobuf:"varint,7,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateSystemTemplateRequest) Reset() {
@@ -532,11 +530,11 @@ func (x *UpdateSystemTemplateRequest) GetMandatory() bool {
 	return false
 }
 
-func (x *UpdateSystemTemplateRequest) GetGatewayNamespace() string {
-	if x != nil && x.GatewayNamespace != nil {
-		return *x.GatewayNamespace
+func (x *UpdateSystemTemplateRequest) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
 	}
-	return ""
+	return false
 }
 
 type UpdateSystemTemplateResponse struct {
@@ -663,6 +661,125 @@ func (*DeleteSystemTemplateResponse) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{10}
 }
 
+// CloneSystemTemplateRequest copies an existing system template to a new name.
+// The clone inherits the CUE template and other fields from the source.
+type CloneSystemTemplateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// source_name is the name of the template to copy.
+	SourceName string `protobuf:"bytes,1,opt,name=source_name,json=sourceName,proto3" json:"source_name,omitempty"`
+	// org is the organization that owns the source template.
+	Org string `protobuf:"bytes,2,opt,name=org,proto3" json:"org,omitempty"`
+	// name is the DNS label slug for the new template.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// display_name is the human-readable name for the new template.
+	DisplayName   string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneSystemTemplateRequest) Reset() {
+	*x = CloneSystemTemplateRequest{}
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneSystemTemplateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneSystemTemplateRequest) ProtoMessage() {}
+
+func (x *CloneSystemTemplateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneSystemTemplateRequest.ProtoReflect.Descriptor instead.
+func (*CloneSystemTemplateRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CloneSystemTemplateRequest) GetSourceName() string {
+	if x != nil {
+		return x.SourceName
+	}
+	return ""
+}
+
+func (x *CloneSystemTemplateRequest) GetOrg() string {
+	if x != nil {
+		return x.Org
+	}
+	return ""
+}
+
+func (x *CloneSystemTemplateRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CloneSystemTemplateRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+type CloneSystemTemplateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the name of the newly created template.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneSystemTemplateResponse) Reset() {
+	*x = CloneSystemTemplateResponse{}
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneSystemTemplateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneSystemTemplateResponse) ProtoMessage() {}
+
+func (x *CloneSystemTemplateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneSystemTemplateResponse.ProtoReflect.Descriptor instead.
+func (*CloneSystemTemplateResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CloneSystemTemplateResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 // RenderSystemTemplateRequest evaluates a CUE system template unified with CUE
 // input values and returns the rendered Kubernetes resource manifests as
 // multi-document YAML and as a pretty-printed JSON array.
@@ -684,7 +801,7 @@ type RenderSystemTemplateRequest struct {
 
 func (x *RenderSystemTemplateRequest) Reset() {
 	*x = RenderSystemTemplateRequest{}
-	mi := &file_holos_console_v1_system_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +813,7 @@ func (x *RenderSystemTemplateRequest) String() string {
 func (*RenderSystemTemplateRequest) ProtoMessage() {}
 
 func (x *RenderSystemTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_system_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +826,7 @@ func (x *RenderSystemTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderSystemTemplateRequest.ProtoReflect.Descriptor instead.
 func (*RenderSystemTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{11}
+	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RenderSystemTemplateRequest) GetCueTemplate() string {
@@ -748,7 +865,7 @@ type RenderSystemTemplateResponse struct {
 
 func (x *RenderSystemTemplateResponse) Reset() {
 	*x = RenderSystemTemplateResponse{}
-	mi := &file_holos_console_v1_system_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -760,7 +877,7 @@ func (x *RenderSystemTemplateResponse) String() string {
 func (*RenderSystemTemplateResponse) ProtoMessage() {}
 
 func (x *RenderSystemTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_system_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_system_templates_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -773,7 +890,7 @@ func (x *RenderSystemTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderSystemTemplateResponse.ProtoReflect.Descriptor instead.
 func (*RenderSystemTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{12}
+	return file_holos_console_v1_system_templates_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RenderSystemTemplateResponse) GetRenderedYaml() string {
@@ -794,15 +911,15 @@ var File_holos_console_v1_system_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_system_templates_proto_rawDesc = "" +
 	"\n" +
-	"'holos/console/v1/system_templates.proto\x12\x10holos.console.v1\x1a+holos/console/v1/deployment_templates.proto\x1a\x1bholos/console/v1/rbac.proto\"\xe9\x01\n" +
+	"'holos/console/v1/system_templates.proto\x12\x10holos.console.v1\x1a+holos/console/v1/deployment_templates.proto\x1a\x1bholos/console/v1/rbac.proto\"\xd6\x01\n" +
 	"\x0eSystemTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12\x1c\n" +
-	"\tmandatory\x18\x06 \x01(\bR\tmandatory\x12+\n" +
-	"\x11gateway_namespace\x18\a \x01(\tR\x10gatewayNamespace\".\n" +
+	"\tmandatory\x18\x06 \x01(\bR\tmandatory\x12\x18\n" +
+	"\aenabled\x18\a \x01(\bR\aenabled\".\n" +
 	"\x1aListSystemTemplatesRequest\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\"]\n" +
 	"\x1bListSystemTemplatesResponse\x12>\n" +
@@ -811,50 +928,60 @@ const file_holos_console_v1_system_templates_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\"Y\n" +
 	"\x19GetSystemTemplateResponse\x12<\n" +
-	"\btemplate\x18\x01 \x01(\v2 .holos.console.v1.SystemTemplateR\btemplate\"\xf6\x01\n" +
+	"\btemplate\x18\x01 \x01(\v2 .holos.console.v1.SystemTemplateR\btemplate\"\xe3\x01\n" +
 	"\x1bCreateSystemTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12\x1c\n" +
-	"\tmandatory\x18\x06 \x01(\bR\tmandatory\x12+\n" +
-	"\x11gateway_namespace\x18\a \x01(\tR\x10gatewayNamespace\"2\n" +
+	"\tmandatory\x18\x06 \x01(\bR\tmandatory\x12\x18\n" +
+	"\aenabled\x18\a \x01(\bR\aenabled\"2\n" +
 	"\x1cCreateSystemTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xe5\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc8\x02\n" +
 	"\x1bUpdateSystemTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\x12&\n" +
 	"\fdisplay_name\x18\x03 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
 	"\vdescription\x18\x04 \x01(\tH\x01R\vdescription\x88\x01\x01\x12&\n" +
 	"\fcue_template\x18\x05 \x01(\tH\x02R\vcueTemplate\x88\x01\x01\x12!\n" +
-	"\tmandatory\x18\x06 \x01(\bH\x03R\tmandatory\x88\x01\x01\x120\n" +
-	"\x11gateway_namespace\x18\a \x01(\tH\x04R\x10gatewayNamespace\x88\x01\x01B\x0f\n" +
+	"\tmandatory\x18\x06 \x01(\bH\x03R\tmandatory\x88\x01\x01\x12\x1d\n" +
+	"\aenabled\x18\a \x01(\bH\x04R\aenabled\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_descriptionB\x0f\n" +
 	"\r_cue_templateB\f\n" +
 	"\n" +
-	"_mandatoryB\x14\n" +
-	"\x12_gateway_namespace\"\x1e\n" +
+	"_mandatoryB\n" +
+	"\n" +
+	"\b_enabled\"\x1e\n" +
 	"\x1cUpdateSystemTemplateResponse\"C\n" +
 	"\x1bDeleteSystemTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\"\x1e\n" +
-	"\x1cDeleteSystemTemplateResponse\"\x87\x01\n" +
+	"\x1cDeleteSystemTemplateResponse\"\x86\x01\n" +
+	"\x1aCloneSystemTemplateRequest\x12\x1f\n" +
+	"\vsource_name\x18\x01 \x01(\tR\n" +
+	"sourceName\x12\x10\n" +
+	"\x03org\x18\x02 \x01(\tR\x03org\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"1\n" +
+	"\x1bCloneSystemTemplateResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x87\x01\n" +
 	"\x1bRenderSystemTemplateRequest\x12!\n" +
 	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12(\n" +
 	"\x10cue_system_input\x18\a \x01(\tR\x0ecueSystemInput\x12\x1b\n" +
 	"\tcue_input\x18\x06 \x01(\tR\bcueInput\"h\n" +
 	"\x1cRenderSystemTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
-	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson2\xd5\x05\n" +
+	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson2\xc9\x06\n" +
 	"\x15SystemTemplateService\x12r\n" +
 	"\x13ListSystemTemplates\x12,.holos.console.v1.ListSystemTemplatesRequest\x1a-.holos.console.v1.ListSystemTemplatesResponse\x12l\n" +
 	"\x11GetSystemTemplate\x12*.holos.console.v1.GetSystemTemplateRequest\x1a+.holos.console.v1.GetSystemTemplateResponse\x12u\n" +
 	"\x14CreateSystemTemplate\x12-.holos.console.v1.CreateSystemTemplateRequest\x1a..holos.console.v1.CreateSystemTemplateResponse\x12u\n" +
 	"\x14UpdateSystemTemplate\x12-.holos.console.v1.UpdateSystemTemplateRequest\x1a..holos.console.v1.UpdateSystemTemplateResponse\x12u\n" +
 	"\x14DeleteSystemTemplate\x12-.holos.console.v1.DeleteSystemTemplateRequest\x1a..holos.console.v1.DeleteSystemTemplateResponse\x12u\n" +
-	"\x14RenderSystemTemplate\x12-.holos.console.v1.RenderSystemTemplateRequest\x1a..holos.console.v1.RenderSystemTemplateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x14RenderSystemTemplate\x12-.holos.console.v1.RenderSystemTemplateRequest\x1a..holos.console.v1.RenderSystemTemplateResponse\x12r\n" +
+	"\x13CloneSystemTemplate\x12,.holos.console.v1.CloneSystemTemplateRequest\x1a-.holos.console.v1.CloneSystemTemplateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_system_templates_proto_rawDescOnce sync.Once
@@ -868,7 +995,7 @@ func file_holos_console_v1_system_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_system_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_system_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_holos_console_v1_system_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_holos_console_v1_system_templates_proto_goTypes = []any{
 	(*SystemTemplate)(nil),               // 0: holos.console.v1.SystemTemplate
 	(*ListSystemTemplatesRequest)(nil),   // 1: holos.console.v1.ListSystemTemplatesRequest
@@ -881,8 +1008,10 @@ var file_holos_console_v1_system_templates_proto_goTypes = []any{
 	(*UpdateSystemTemplateResponse)(nil), // 8: holos.console.v1.UpdateSystemTemplateResponse
 	(*DeleteSystemTemplateRequest)(nil),  // 9: holos.console.v1.DeleteSystemTemplateRequest
 	(*DeleteSystemTemplateResponse)(nil), // 10: holos.console.v1.DeleteSystemTemplateResponse
-	(*RenderSystemTemplateRequest)(nil),  // 11: holos.console.v1.RenderSystemTemplateRequest
-	(*RenderSystemTemplateResponse)(nil), // 12: holos.console.v1.RenderSystemTemplateResponse
+	(*CloneSystemTemplateRequest)(nil),   // 11: holos.console.v1.CloneSystemTemplateRequest
+	(*CloneSystemTemplateResponse)(nil),  // 12: holos.console.v1.CloneSystemTemplateResponse
+	(*RenderSystemTemplateRequest)(nil),  // 13: holos.console.v1.RenderSystemTemplateRequest
+	(*RenderSystemTemplateResponse)(nil), // 14: holos.console.v1.RenderSystemTemplateResponse
 }
 var file_holos_console_v1_system_templates_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.ListSystemTemplatesResponse.templates:type_name -> holos.console.v1.SystemTemplate
@@ -892,15 +1021,17 @@ var file_holos_console_v1_system_templates_proto_depIdxs = []int32{
 	5,  // 4: holos.console.v1.SystemTemplateService.CreateSystemTemplate:input_type -> holos.console.v1.CreateSystemTemplateRequest
 	7,  // 5: holos.console.v1.SystemTemplateService.UpdateSystemTemplate:input_type -> holos.console.v1.UpdateSystemTemplateRequest
 	9,  // 6: holos.console.v1.SystemTemplateService.DeleteSystemTemplate:input_type -> holos.console.v1.DeleteSystemTemplateRequest
-	11, // 7: holos.console.v1.SystemTemplateService.RenderSystemTemplate:input_type -> holos.console.v1.RenderSystemTemplateRequest
-	2,  // 8: holos.console.v1.SystemTemplateService.ListSystemTemplates:output_type -> holos.console.v1.ListSystemTemplatesResponse
-	4,  // 9: holos.console.v1.SystemTemplateService.GetSystemTemplate:output_type -> holos.console.v1.GetSystemTemplateResponse
-	6,  // 10: holos.console.v1.SystemTemplateService.CreateSystemTemplate:output_type -> holos.console.v1.CreateSystemTemplateResponse
-	8,  // 11: holos.console.v1.SystemTemplateService.UpdateSystemTemplate:output_type -> holos.console.v1.UpdateSystemTemplateResponse
-	10, // 12: holos.console.v1.SystemTemplateService.DeleteSystemTemplate:output_type -> holos.console.v1.DeleteSystemTemplateResponse
-	12, // 13: holos.console.v1.SystemTemplateService.RenderSystemTemplate:output_type -> holos.console.v1.RenderSystemTemplateResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
+	13, // 7: holos.console.v1.SystemTemplateService.RenderSystemTemplate:input_type -> holos.console.v1.RenderSystemTemplateRequest
+	11, // 8: holos.console.v1.SystemTemplateService.CloneSystemTemplate:input_type -> holos.console.v1.CloneSystemTemplateRequest
+	2,  // 9: holos.console.v1.SystemTemplateService.ListSystemTemplates:output_type -> holos.console.v1.ListSystemTemplatesResponse
+	4,  // 10: holos.console.v1.SystemTemplateService.GetSystemTemplate:output_type -> holos.console.v1.GetSystemTemplateResponse
+	6,  // 11: holos.console.v1.SystemTemplateService.CreateSystemTemplate:output_type -> holos.console.v1.CreateSystemTemplateResponse
+	8,  // 12: holos.console.v1.SystemTemplateService.UpdateSystemTemplate:output_type -> holos.console.v1.UpdateSystemTemplateResponse
+	10, // 13: holos.console.v1.SystemTemplateService.DeleteSystemTemplate:output_type -> holos.console.v1.DeleteSystemTemplateResponse
+	14, // 14: holos.console.v1.SystemTemplateService.RenderSystemTemplate:output_type -> holos.console.v1.RenderSystemTemplateResponse
+	12, // 15: holos.console.v1.SystemTemplateService.CloneSystemTemplate:output_type -> holos.console.v1.CloneSystemTemplateResponse
+	9,  // [9:16] is the sub-list for method output_type
+	2,  // [2:9] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -920,7 +1051,7 @@ func file_holos_console_v1_system_templates_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_system_templates_proto_rawDesc), len(file_holos_console_v1_system_templates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -51,6 +51,9 @@ const (
 	// SystemTemplateServiceRenderSystemTemplateProcedure is the fully-qualified name of the
 	// SystemTemplateService's RenderSystemTemplate RPC.
 	SystemTemplateServiceRenderSystemTemplateProcedure = "/holos.console.v1.SystemTemplateService/RenderSystemTemplate"
+	// SystemTemplateServiceCloneSystemTemplateProcedure is the fully-qualified name of the
+	// SystemTemplateService's CloneSystemTemplate RPC.
+	SystemTemplateServiceCloneSystemTemplateProcedure = "/holos.console.v1.SystemTemplateService/CloneSystemTemplate"
 )
 
 // SystemTemplateServiceClient is a client for the holos.console.v1.SystemTemplateService service.
@@ -61,6 +64,7 @@ type SystemTemplateServiceClient interface {
 	UpdateSystemTemplate(context.Context, *connect.Request[v1.UpdateSystemTemplateRequest]) (*connect.Response[v1.UpdateSystemTemplateResponse], error)
 	DeleteSystemTemplate(context.Context, *connect.Request[v1.DeleteSystemTemplateRequest]) (*connect.Response[v1.DeleteSystemTemplateResponse], error)
 	RenderSystemTemplate(context.Context, *connect.Request[v1.RenderSystemTemplateRequest]) (*connect.Response[v1.RenderSystemTemplateResponse], error)
+	CloneSystemTemplate(context.Context, *connect.Request[v1.CloneSystemTemplateRequest]) (*connect.Response[v1.CloneSystemTemplateResponse], error)
 }
 
 // NewSystemTemplateServiceClient constructs a client for the holos.console.v1.SystemTemplateService
@@ -110,6 +114,12 @@ func NewSystemTemplateServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(systemTemplateServiceMethods.ByName("RenderSystemTemplate")),
 			connect.WithClientOptions(opts...),
 		),
+		cloneSystemTemplate: connect.NewClient[v1.CloneSystemTemplateRequest, v1.CloneSystemTemplateResponse](
+			httpClient,
+			baseURL+SystemTemplateServiceCloneSystemTemplateProcedure,
+			connect.WithSchema(systemTemplateServiceMethods.ByName("CloneSystemTemplate")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -121,6 +131,7 @@ type systemTemplateServiceClient struct {
 	updateSystemTemplate *connect.Client[v1.UpdateSystemTemplateRequest, v1.UpdateSystemTemplateResponse]
 	deleteSystemTemplate *connect.Client[v1.DeleteSystemTemplateRequest, v1.DeleteSystemTemplateResponse]
 	renderSystemTemplate *connect.Client[v1.RenderSystemTemplateRequest, v1.RenderSystemTemplateResponse]
+	cloneSystemTemplate  *connect.Client[v1.CloneSystemTemplateRequest, v1.CloneSystemTemplateResponse]
 }
 
 // ListSystemTemplates calls holos.console.v1.SystemTemplateService.ListSystemTemplates.
@@ -153,6 +164,11 @@ func (c *systemTemplateServiceClient) RenderSystemTemplate(ctx context.Context, 
 	return c.renderSystemTemplate.CallUnary(ctx, req)
 }
 
+// CloneSystemTemplate calls holos.console.v1.SystemTemplateService.CloneSystemTemplate.
+func (c *systemTemplateServiceClient) CloneSystemTemplate(ctx context.Context, req *connect.Request[v1.CloneSystemTemplateRequest]) (*connect.Response[v1.CloneSystemTemplateResponse], error) {
+	return c.cloneSystemTemplate.CallUnary(ctx, req)
+}
+
 // SystemTemplateServiceHandler is an implementation of the holos.console.v1.SystemTemplateService
 // service.
 type SystemTemplateServiceHandler interface {
@@ -162,6 +178,7 @@ type SystemTemplateServiceHandler interface {
 	UpdateSystemTemplate(context.Context, *connect.Request[v1.UpdateSystemTemplateRequest]) (*connect.Response[v1.UpdateSystemTemplateResponse], error)
 	DeleteSystemTemplate(context.Context, *connect.Request[v1.DeleteSystemTemplateRequest]) (*connect.Response[v1.DeleteSystemTemplateResponse], error)
 	RenderSystemTemplate(context.Context, *connect.Request[v1.RenderSystemTemplateRequest]) (*connect.Response[v1.RenderSystemTemplateResponse], error)
+	CloneSystemTemplate(context.Context, *connect.Request[v1.CloneSystemTemplateRequest]) (*connect.Response[v1.CloneSystemTemplateResponse], error)
 }
 
 // NewSystemTemplateServiceHandler builds an HTTP handler from the service implementation. It
@@ -207,6 +224,12 @@ func NewSystemTemplateServiceHandler(svc SystemTemplateServiceHandler, opts ...c
 		connect.WithSchema(systemTemplateServiceMethods.ByName("RenderSystemTemplate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemTemplateServiceCloneSystemTemplateHandler := connect.NewUnaryHandler(
+		SystemTemplateServiceCloneSystemTemplateProcedure,
+		svc.CloneSystemTemplate,
+		connect.WithSchema(systemTemplateServiceMethods.ByName("CloneSystemTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.SystemTemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemTemplateServiceListSystemTemplatesProcedure:
@@ -221,6 +244,8 @@ func NewSystemTemplateServiceHandler(svc SystemTemplateServiceHandler, opts ...c
 			systemTemplateServiceDeleteSystemTemplateHandler.ServeHTTP(w, r)
 		case SystemTemplateServiceRenderSystemTemplateProcedure:
 			systemTemplateServiceRenderSystemTemplateHandler.ServeHTTP(w, r)
+		case SystemTemplateServiceCloneSystemTemplateProcedure:
+			systemTemplateServiceCloneSystemTemplateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,4 +277,8 @@ func (UnimplementedSystemTemplateServiceHandler) DeleteSystemTemplate(context.Co
 
 func (UnimplementedSystemTemplateServiceHandler) RenderSystemTemplate(context.Context, *connect.Request[v1.RenderSystemTemplateRequest]) (*connect.Response[v1.RenderSystemTemplateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SystemTemplateService.RenderSystemTemplate is not implemented"))
+}
+
+func (UnimplementedSystemTemplateServiceHandler) CloneSystemTemplate(context.Context, *connect.Request[v1.CloneSystemTemplateRequest]) (*connect.Response[v1.CloneSystemTemplateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.SystemTemplateService.CloneSystemTemplate is not implemented"))
 }

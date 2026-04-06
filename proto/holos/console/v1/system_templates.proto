@@ -15,6 +15,7 @@ service SystemTemplateService {
   rpc UpdateSystemTemplate(UpdateSystemTemplateRequest) returns (UpdateSystemTemplateResponse);
   rpc DeleteSystemTemplate(DeleteSystemTemplateRequest) returns (DeleteSystemTemplateResponse);
   rpc RenderSystemTemplate(RenderSystemTemplateRequest) returns (RenderSystemTemplateResponse);
+  rpc CloneSystemTemplate(CloneSystemTemplateRequest) returns (CloneSystemTemplateResponse);
 }
 
 // SystemTemplate is a CUE template stored in an org namespace ConfigMap that
@@ -33,11 +34,10 @@ message SystemTemplate {
   // mandatory indicates that this template is automatically rendered and
   // applied to every project namespace at project creation time.
   bool mandatory = 6;
-  // gateway_namespace is the name of the gateway namespace used by templates
-  // that need to reference a cross-namespace Gateway (e.g. for ReferenceGrant
-  // resources). Defaults to "istio-ingress" per Istio's recommended Helm
-  // install convention (https://istio.io/latest/docs/setup/additional-setup/gateway/).
-  string gateway_namespace = 7;
+  // enabled indicates whether this template is active. Disabled templates are
+  // not applied to new project namespaces even if mandatory is true.
+  // Defaults to false (proto3 zero value) — new templates start disabled.
+  bool enabled = 7;
 }
 
 message ListSystemTemplatesRequest {
@@ -64,8 +64,7 @@ message CreateSystemTemplateRequest {
   string description = 4;
   string cue_template = 5;
   bool mandatory = 6;
-  // gateway_namespace defaults to "istio-ingress" when empty.
-  string gateway_namespace = 7;
+  bool enabled = 7;
 }
 
 message CreateSystemTemplateResponse {
@@ -79,7 +78,7 @@ message UpdateSystemTemplateRequest {
   optional string description = 4;
   optional string cue_template = 5;
   optional bool mandatory = 6;
-  optional string gateway_namespace = 7;
+  optional bool enabled = 7;
 }
 
 message UpdateSystemTemplateResponse {}
@@ -90,6 +89,24 @@ message DeleteSystemTemplateRequest {
 }
 
 message DeleteSystemTemplateResponse {}
+
+// CloneSystemTemplateRequest copies an existing system template to a new name.
+// The clone inherits the CUE template and other fields from the source.
+message CloneSystemTemplateRequest {
+  // source_name is the name of the template to copy.
+  string source_name = 1;
+  // org is the organization that owns the source template.
+  string org = 2;
+  // name is the DNS label slug for the new template.
+  string name = 3;
+  // display_name is the human-readable name for the new template.
+  string display_name = 4;
+}
+
+message CloneSystemTemplateResponse {
+  // name is the name of the newly created template.
+  string name = 1;
+}
 
 // RenderSystemTemplateRequest evaluates a CUE system template unified with CUE
 // input values and returns the rendered Kubernetes resource manifests as
