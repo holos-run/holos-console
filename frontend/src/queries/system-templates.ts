@@ -46,7 +46,7 @@ export function useCreateSystemTemplate(org: string) {
   const client = useMemo(() => createClient(SystemTemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName: string; description: string; cueTemplate: string; mandatory: boolean; gatewayNamespace: string }) =>
+    mutationFn: (params: { name: string; displayName: string; description: string; cueTemplate: string; mandatory: boolean; enabled: boolean }) =>
       client.createSystemTemplate({ org, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
@@ -59,7 +59,7 @@ export function useUpdateSystemTemplate(org: string, name: string) {
   const client = useMemo(() => createClient(SystemTemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { displayName?: string; description?: string; cueTemplate?: string; mandatory?: boolean; gatewayNamespace?: string }) =>
+    mutationFn: (params: { displayName?: string; description?: string; cueTemplate?: string; mandatory?: boolean; enabled?: boolean }) =>
       client.updateSystemTemplate({ org, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })

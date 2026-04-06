@@ -50,8 +50,7 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
   const canWrite = userRole === Role.OWNER
 
   const defaultSystemInput = `system: {\n  project:   "example-project"\n  namespace: "prj-example-project"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
-  const gatewayNamespace = template?.gatewayNamespace ?? 'istio-ingress'
-  const defaultUserInput = `input: gatewayNamespace: "${gatewayNamespace}"`
+  const defaultUserInput = `input: {}`
 
   const handleSave = async () => {
     try {
@@ -113,11 +112,6 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
           <div className="flex items-center gap-2">
             <span className="w-36 text-sm text-muted-foreground shrink-0">Name</span>
             <span className="text-sm font-mono">{templateName}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="w-36 text-sm text-muted-foreground shrink-0">Gateway Namespace</span>
-            <span className="text-sm font-mono">{gatewayNamespace}</span>
           </div>
 
           {template?.description && (

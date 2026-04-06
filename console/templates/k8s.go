@@ -144,6 +144,32 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, di
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
 
+// CloneTemplate copies an existing deployment template to a new name.
+// The clone inherits the CUE template, description, and defaults from the source.
+func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
+	source, err := k.GetTemplate(ctx, project, sourceName)
+	if err != nil {
+		return nil, fmt.Errorf("getting source deployment template for clone: %w", err)
+	}
+	// Extract defaults from source if present.
+	var defaults *consolev1.DeploymentDefaults
+	if rawJSON, ok := source.Data[DefaultsKey]; ok && rawJSON != "" {
+		var d consolev1.DeploymentDefaults
+		if err := json.Unmarshal([]byte(rawJSON), &d); err == nil {
+			defaults = &d
+		}
+	}
+	return k.CreateTemplate(
+		ctx,
+		project,
+		newName,
+		newDisplayName,
+		source.Annotations[DescriptionAnnotation],
+		source.Data[CueTemplateKey],
+		defaults,
+	)
+}
+
 // DeleteTemplate deletes a deployment template ConfigMap.
 func (k *K8sClient) DeleteTemplate(ctx context.Context, project, name string) error {
 	ns := k.Resolver.ProjectNamespace(project)

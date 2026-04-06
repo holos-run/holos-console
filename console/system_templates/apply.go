@@ -74,13 +74,8 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 			}
 		}
 
-		// Build UserInput with gateway_namespace from the template.
-		userInput := systemTemplateUserInput{
-			GatewayNamespace: tmpl.GatewayNamespace,
-		}
-		if userInput.GatewayNamespace == "" {
-			userInput.GatewayNamespace = DefaultGatewayNamespace
-		}
+		// Build UserInput for the template.
+		userInput := systemTemplateUserInput{}
 
 		// Encode both inputs as a combined CUE value.
 		systemJSON, err := json.Marshal(systemInput)
@@ -127,6 +122,4 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 
 // systemTemplateUserInput carries the user-configurable input for system templates.
 // The field name must match the CUE #Input struct field name in the template.
-type systemTemplateUserInput struct {
-	GatewayNamespace string `json:"gatewayNamespace"`
-}
+type systemTemplateUserInput struct{}

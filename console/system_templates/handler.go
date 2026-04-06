@@ -184,7 +184,7 @@ func (h *Handler) CreateSystemTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.CreateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.GatewayNamespace)
+	_, err := h.k8s.CreateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -233,7 +233,7 @@ func (h *Handler) UpdateSystemTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.GatewayNamespace)
+	_, err := h.k8s.UpdateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -287,6 +287,53 @@ func (h *Handler) DeleteSystemTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.DeleteSystemTemplateResponse{}), nil
+}
+
+// CloneSystemTemplate copies an existing system template to a new name.
+func (h *Handler) CloneSystemTemplate(
+	ctx context.Context,
+	req *connect.Request[consolev1.CloneSystemTemplateRequest],
+) (*connect.Response[consolev1.CloneSystemTemplateResponse], error) {
+	org := req.Msg.Org
+	sourceName := req.Msg.SourceName
+	newName := req.Msg.Name
+	if org == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
+	}
+	if sourceName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source_name is required"))
+	}
+	if err := validateTemplateName(newName); err != nil {
+		return nil, err
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkOrgEditAccess(ctx, claims, org); err != nil {
+		return nil, err
+	}
+
+	_, err := h.k8s.CloneSystemTemplate(ctx, org, sourceName, newName, req.Msg.DisplayName)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "system template cloned",
+		slog.String("action", "system_template_clone"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("org", org),
+		slog.String("source_name", sourceName),
+		slog.String("name", newName),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CloneSystemTemplateResponse{
+		Name: newName,
+	}), nil
 }
 
 // RenderSystemTemplate evaluates a CUE system template and returns rendered manifests.
