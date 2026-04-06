@@ -19,6 +19,7 @@ var allowedKindSet = map[string]bool{
 	"Role":           true,
 	"RoleBinding":    true,
 	"HTTPRoute":      true,
+	"ReferenceGrant": true,
 	"ConfigMap":      true,
 	"Secret":         true,
 }

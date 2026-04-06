@@ -29,6 +29,7 @@ var allowedKinds = map[string]schema.GroupVersionResource{
 	"Role":           {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
 	"RoleBinding":    {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
 	"HTTPRoute":      {Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes"},
+	"ReferenceGrant": {Group: "gateway.networking.k8s.io", Version: "v1beta1", Resource: "referencegrants"},
 	"ConfigMap":      {Group: "", Version: "v1", Resource: "configmaps"},
 	"Secret":         {Group: "", Version: "v1", Resource: "secrets"},
 }

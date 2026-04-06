@@ -639,3 +639,65 @@ func TestCheckAccessGrants(t *testing.T) {
 		}
 	})
 }
+
+func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
+	t.Run("org OWNER has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+			t.Error("org OWNER should have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT via cascade")
+		}
+	})
+
+	t.Run("org EDITOR does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+			t.Error("org EDITOR should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
+		}
+	})
+
+	t.Run("org VIEWER does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+			t.Error("org VIEWER should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
+		}
+	})
+
+	t.Run("CheckCascadeAccess grants OWNER", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"owner@example.com",
+			nil,
+			map[string]string{"owner@example.com": "owner"},
+			nil,
+			PermissionSystemDeploymentsEdit,
+			OrgCascadeSystemTemplatePerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted for org OWNER, got %v", err)
+		}
+	})
+
+	t.Run("CheckCascadeAccess denies VIEWER", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"viewer@example.com",
+			nil,
+			map[string]string{"viewer@example.com": "viewer"},
+			nil,
+			PermissionSystemDeploymentsEdit,
+			OrgCascadeSystemTemplatePerms,
+		)
+		if err == nil {
+			t.Error("expected access denied for org VIEWER, got nil")
+		}
+	})
+
+	t.Run("CheckCascadeAccess denies EDITOR", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"editor@example.com",
+			nil,
+			map[string]string{"editor@example.com": "editor"},
+			nil,
+			PermissionSystemDeploymentsEdit,
+			OrgCascadeSystemTemplatePerms,
+		)
+		if err == nil {
+			t.Error("expected access denied for org EDITOR, got nil")
+		}
+	})
+}

@@ -61,6 +61,10 @@ const (
 	PermissionProjectSettingsWrite = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_WRITE
 
 	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
+
+	// PermissionSystemDeploymentsEdit allows creating, updating, and deleting
+	// system templates. Granted only to org-level OWNERs via OrgCascadeSystemTemplatePerms.
+	PermissionSystemDeploymentsEdit = consolev1.Permission_PERMISSION_SYSTEM_DEPLOYMENTS_EDIT
 )
 
 // rolePermissions defines which permissions each role has.
@@ -338,6 +342,16 @@ var ProjectCascadeTemplatePerms = CascadeTable{
 var OrgCascadeProjectSettingsPerms = CascadeTable{
 	RoleOwner: {
 		PermissionProjectDeploymentsEnable: true,
+	},
+}
+
+// OrgCascadeSystemTemplatePerms defines what system template permissions each
+// org role grants via cascade. Only org-level OWNERs can create, update, and
+// delete system templates — this permission is intentionally not inherited by
+// project-level OWNERs.
+var OrgCascadeSystemTemplatePerms = CascadeTable{
+	RoleOwner: {
+		PermissionSystemDeploymentsEdit: true,
 	},
 }
 
