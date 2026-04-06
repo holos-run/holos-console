@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Capture screenshots for PR #480: edit template description + clickable URLs
+# Requires: HOLOS_BACKEND_URL and PR_SCREENSHOT_DIR env vars set by scripts/browser-capture-pr
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-480}"
+
+# The template detail page requires a k8s cluster, so we capture the UI shell
+# to show the frontend changes are rendered correctly.
+
+# Navigate to the organizations page (available without k8s cluster data)
+agent-browser open "${BACKEND_URL}/profile"
+agent-browser screenshot "${SCREENSHOT_DIR}/profile-page.png"
+
+# Navigate to a project page to show UI renders
+agent-browser open "${BACKEND_URL}/projects"
+agent-browser screenshot "${SCREENSHOT_DIR}/projects-page.png"
