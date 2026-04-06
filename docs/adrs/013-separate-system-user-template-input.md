@@ -162,7 +162,7 @@ The `system` field is filled before CUE evaluation using the same
 - **Foundation for platform input.** The two-field pattern (`system`, `input`)
   establishes the convention for a future third field (`platform: #PlatformInput`)
   for platform-mandated configuration, consistent with the direction indicated in
-  ADR 012 and the planned extensions section of the CUE template guide.
+  ADR 012.
 
 ### Negative
 
