@@ -336,7 +336,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 }
 
 // TestDefaultTemplate_StructuredOutput verifies the default template uses the
-// namespaced/cluster structured output format defined in ADR 012.
+// output.namespacedResources/output.clusterResources structured output format.
 func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"

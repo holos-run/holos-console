@@ -12,7 +12,7 @@ When a user creates or updates a deployment, the console:
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
 2. Builds a `SystemInput` (project, namespace, claims) from authenticated server context and a `UserInput` (name, image, tag, etc.) from the API request fields.
 3. Evaluates the CUE template by unifying `UserInput` at the `input` path and `SystemInput` at the `system` path.
-4. Reads the `namespaced` and `cluster` output fields from the evaluated CUE value.
+4. Reads the `output.namespacedResources` and `output.clusterResources` fields from the evaluated CUE value.
 5. Validates each resource against safety constraints.
 6. Applies the validated resources to Kubernetes via server-side apply.
 
@@ -123,72 +123,74 @@ _envSpec: [for e in input.env {
     ...
 }
 
-namespaced: #Namespaced & {
-    (system.namespace): {
-        ServiceAccount: (input.name): {
-            apiVersion: "v1"
-            kind:       "ServiceAccount"
-            metadata: {
-                name:        input.name
-                namespace:   system.namespace
-                labels:      _labels
-                annotations: _annotations
+// output collects all rendered Kubernetes resources.
+output: {
+    namespacedResources: #Namespaced & {
+        (system.namespace): {
+            ServiceAccount: (input.name): {
+                apiVersion: "v1"
+                kind:       "ServiceAccount"
+                metadata: {
+                    name:        input.name
+                    namespace:   system.namespace
+                    labels:      _labels
+                    annotations: _annotations
+                }
             }
-        }
 
-        Deployment: (input.name): {
-            apiVersion: "apps/v1"
-            kind:       "Deployment"
-            metadata: {
-                name:        input.name
-                namespace:   system.namespace
-                labels:      _labels
-                annotations: _annotations
-            }
-            spec: {
-                replicas: 1
-                selector: matchLabels: "app.kubernetes.io/name": input.name
-                template: {
-                    metadata: labels: _labels
-                    spec: {
-                        serviceAccountName: input.name
-                        containers: [{
-                            name:  input.name
-                            image: input.image + ":" + input.tag
-                            if len(_envSpec) > 0 {
-                                env: _envSpec
-                            }
-                            ports: [{containerPort: input.port, name: "http"}]
-                            if input.command != _|_ {
-                                command: input.command
-                            }
-                            if input.args != _|_ {
-                                args: input.args
-                            }
-                        }]
+            Deployment: (input.name): {
+                apiVersion: "apps/v1"
+                kind:       "Deployment"
+                metadata: {
+                    name:        input.name
+                    namespace:   system.namespace
+                    labels:      _labels
+                    annotations: _annotations
+                }
+                spec: {
+                    replicas: 1
+                    selector: matchLabels: "app.kubernetes.io/name": input.name
+                    template: {
+                        metadata: labels: _labels
+                        spec: {
+                            serviceAccountName: input.name
+                            containers: [{
+                                name:  input.name
+                                image: input.image + ":" + input.tag
+                                if len(_envSpec) > 0 {
+                                    env: _envSpec
+                                }
+                                ports: [{containerPort: input.port, name: "http"}]
+                                if input.command != _|_ {
+                                    command: input.command
+                                }
+                                if input.args != _|_ {
+                                    args: input.args
+                                }
+                            }]
+                        }
                     }
                 }
             }
-        }
 
-        Service: (input.name): {
-            apiVersion: "v1"
-            kind:       "Service"
-            metadata: {
-                name:        input.name
-                namespace:   system.namespace
-                labels:      _labels
-                annotations: _annotations
-            }
-            spec: {
-                selector: "app.kubernetes.io/name": input.name
-                ports: [{port: 80, targetPort: "http", name: "http"}]
+            Service: (input.name): {
+                apiVersion: "v1"
+                kind:       "Service"
+                metadata: {
+                    name:        input.name
+                    namespace:   system.namespace
+                    labels:      _labels
+                    annotations: _annotations
+                }
+                spec: {
+                    selector: "app.kubernetes.io/name": input.name
+                    ports: [{port: 80, targetPort: "http", name: "http"}]
+                }
             }
         }
     }
+    clusterResources: #Cluster & {}
 }
-
-cluster: #Cluster & {}
 ```
 
 ### Port Flow
@@ -224,7 +226,7 @@ pointing to a `Gateway`. The Gateway controller and a `Gateway` resource must
 already exist in the cluster — ask your platform team for the gateway name and
 namespace.
 
-Add the following resource to your template's `namespaced` block when external
+Add the following resource to your template's `output.namespacedResources` block when external
 access is needed:
 
 ```cue
@@ -262,10 +264,10 @@ port defined above — do not use `input.port` here.
 
 1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
 2. **Always declare `input: #Input` and `system: #System`** — these are the unification points where the console injects user and system parameters respectively.
-3. **Always declare `namespaced` and `cluster` output fields** — the console requires the structured output format.
+3. **Always declare `output.namespacedResources` and `output.clusterResources` output fields** — the console requires the structured output format.
 4. **Always include the managed-by label** on every resource or validation will reject the render.
 5. **Set `metadata.namespace` to `system.namespace`** on every namespaced resource — cross-namespace resources are rejected.
-6. **Match struct keys to metadata** — `namespaced.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
+6. **Match struct keys to metadata** — `output.namespacedResources.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
 7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
 9. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
@@ -439,13 +441,13 @@ Each environment variable has exactly one value source:
 
 ## Template Output
 
-The console reads two structured fields from the evaluated CUE template:
+The console reads structured fields nested under `output` from the evaluated CUE template:
 
-### `namespaced` Field
+### `output.namespacedResources` Field
 
 ```cue
-// Structure: namespaced.<namespace>.<Kind>.<name>
-namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+// Structure: output.namespacedResources.<namespace>.<Kind>.<name>
+output: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: {
         name:      Name
@@ -456,16 +458,16 @@ namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
 }
 ```
 
-The `namespaced` field organizes resources that live within a Kubernetes
+The `output.namespacedResources` field organizes resources that live within a Kubernetes
 namespace. Resources are indexed by namespace, then by Kind, then by name. This
 three-level nesting enforces uniqueness per Kind/name within a namespace at the
 CUE level — duplicates cause a CUE evaluation error before any Kubernetes call.
 
-### `cluster` Field
+### `output.clusterResources` Field
 
 ```cue
-// Structure: cluster.<Kind>.<name>
-cluster: [Kind=string]: [Name=string]: {
+// Structure: output.clusterResources.<Kind>.<name>
+output: clusterResources: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: {
         name: Name
@@ -475,20 +477,27 @@ cluster: [Kind=string]: [Name=string]: {
 }
 ```
 
-The `cluster` field organizes cluster-scoped resources (resources without a
+The `output.clusterResources` field organizes cluster-scoped resources (resources without a
 namespace, such as `Namespace`, `ClusterRole`, or `ClusterRoleBinding`). The
 initial implementation keeps the cluster allowlist empty; it will be extended
 incrementally as cluster resource support is added.
+
+### `output.systemNamespacedResources` and `output.systemClusterResources` Fields
+
+These fields follow the same structure as `namespacedResources` and `clusterResources`
+respectively, but are reserved for system template evaluations. User-authored deployment
+templates should NOT define these fields. The render engine reads them when present but
+does not require them.
 
 ### Struct Key Consistency
 
 CUE constraints enforce that the struct path keys match the resource metadata:
 
-- `namespaced.<namespace>` must match `metadata.namespace`
-- `namespaced.<namespace>.<Kind>` must match `kind`
-- `namespaced.<namespace>.<Kind>.<name>` must match `metadata.name`
-- `cluster.<Kind>` must match `kind`
-- `cluster.<Kind>.<name>` must match `metadata.name`
+- `output.namespacedResources.<namespace>` must match `metadata.namespace`
+- `output.namespacedResources.<namespace>.<Kind>` must match `kind`
+- `output.namespacedResources.<namespace>.<Kind>.<name>` must match `metadata.name`
+- `output.clusterResources.<Kind>` must match `kind`
+- `output.clusterResources.<Kind>.<name>` must match `metadata.name`
 
 A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 
@@ -497,36 +506,37 @@ A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 The default template produces three namespaced resources:
 
 ```cue
-namespaced: (system.namespace): {
-    ServiceAccount: (input.name): {
-        apiVersion: "v1"
-        kind:       "ServiceAccount"
-        metadata: {
-            name:      input.name
-            namespace: system.namespace
-            labels:    _labels
+output: {
+    namespacedResources: (system.namespace): {
+        ServiceAccount: (input.name): {
+            apiVersion: "v1"
+            kind:       "ServiceAccount"
+            metadata: {
+                name:      input.name
+                namespace: system.namespace
+                labels:    _labels
+            }
+        }
+        Deployment: (input.name): {
+            apiVersion: "apps/v1"
+            kind:       "Deployment"
+            metadata: { ... }
+            spec: { ... }
+        }
+        Service: (input.name): {
+            apiVersion: "v1"
+            kind:       "Service"
+            metadata: { ... }
+            spec: { ... }
         }
     }
-    Deployment: (input.name): {
-        apiVersion: "apps/v1"
-        kind:       "Deployment"
-        metadata: { ... }
-        spec: { ... }
-    }
-    Service: (input.name): {
-        apiVersion: "v1"
-        kind:       "Service"
-        metadata: { ... }
-        spec: { ... }
-    }
+    clusterResources: {}
 }
-
-cluster: {}
 ```
 
 ## Validation Constraints
 
-Every resource collected from `namespaced` and `cluster` must satisfy these
+Every resource collected from `output.namespacedResources` and `output.clusterResources` must satisfy these
 constraints or the render is rejected. These are enforced in Go after CUE
 evaluation, not in CUE itself.
 
@@ -592,7 +602,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 | File | Purpose |
 |------|---------|
-| `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions. Embedded into the Go binary via `console/templates/embed.go`. |
+| `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions nested under `output.namespacedResources`/`output.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
 | `console/system_templates/default_referencegrant.cue` | Built-in mandatory system template that produces a `ReferenceGrant` allowing HTTPRoute resources in project namespaces to reference the org's gateway. Embedded via `console/system_templates/embed.go` and seeded into the org namespace ConfigMap on first `ListSystemTemplates` access. |
 
@@ -602,10 +612,10 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `UserInput` to JSON and fills `"input"`, marshals `SystemInput` and fills `"system"`, walks structured `namespaced`/`cluster` output fields, validates. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `UserInput` to JSON and fills `"input"`, marshals `SystemInput` and fills `"system"`, walks structured `output.namespacedResources`/`output.clusterResources` fields (and optionally `output.systemNamespacedResources`/`output.systemClusterResources`), validates. |
 | `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: compiles CUE source, unifies with a raw CUE input string at the top level, extracts `system.namespace` from the unified value. |
 | `console/deployments/render.go` | `ClaimsInput`, `SystemInput`, `UserInput` structs — split Go representation of template inputs. `SystemInput` (project, namespace, claims) is trusted backend context; `UserInput` (name, image, tag, etc.) is user-supplied. |
-| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` adds namespace-match and struct-key consistency checks. |
+| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` reads from `output.*` paths, dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
 

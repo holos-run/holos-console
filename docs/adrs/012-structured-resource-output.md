@@ -40,15 +40,15 @@ but has limitations:
 
 ## Decisions
 
-### 1. Output resources are organized into two categories: namespaced and cluster.
+### 1. Output resources are organized into two categories: namespaced and cluster, nested under `output`.
 
-The template output is refactored from a flat `resources` list to two
-structured fields:
+The template output is refactored from a flat `resources` list to structured
+fields nested under `output`:
 
 ```cue
-// namespaced organizes resources that live within a Kubernetes namespace.
-// Structure: namespaced.<namespace>.<Kind>.<name>
-namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+// output.namespacedResources organizes resources that live within a Kubernetes namespace.
+// Structure: output.namespacedResources.<namespace>.<Kind>.<name>
+output: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
     apiVersion: string
     kind:       Kind
     metadata: {
@@ -59,9 +59,9 @@ namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
     ...
 }
 
-// cluster organizes resources that are cluster-scoped (no namespace).
-// Structure: cluster.<Kind>.<name>
-cluster: [Kind=string]: [Name=string]: {
+// output.clusterResources organizes resources that are cluster-scoped (no namespace).
+// Structure: output.clusterResources.<Kind>.<name>
+output: clusterResources: [Kind=string]: [Name=string]: {
     apiVersion: string
     kind:       Kind
     metadata: {
@@ -72,16 +72,20 @@ cluster: [Kind=string]: [Name=string]: {
 }
 ```
 
+System templates additionally use `output.systemNamespacedResources` and
+`output.systemClusterResources` (same structure) for system-managed resources.
+User deployment templates should NOT define these system fields.
+
 ### 2. Namespaced resources use a three-level nested struct.
 
 Namespaced resources are organized as:
 
 ```
-namespaced.<namespace>.<Kind>.<name>
+output.namespacedResources.<namespace>.<Kind>.<name>
 ```
 
-For example, `namespaced.example.Deployment.myapp` represents the `myapp`
-Deployment in the `example` namespace. This structure:
+For example, `output.namespacedResources.example.Deployment.myapp` represents
+the `myapp` Deployment in the `example` namespace. This structure:
 
 - Enforces uniqueness per Kind/name within a namespace at the CUE level.
 - Groups related resources by namespace, making multi-namespace templates
@@ -92,36 +96,39 @@ Deployment in the `example` namespace. This structure:
 Example:
 
 ```cue
-namespaced: (system.namespace): {
-    ServiceAccount: (input.name): {
-        apiVersion: "v1"
-        kind:       "ServiceAccount"
-        metadata: {
-            name:      input.name
-            namespace: system.namespace
-            labels:    _labels
+output: {
+    namespacedResources: (system.namespace): {
+        ServiceAccount: (input.name): {
+            apiVersion: "v1"
+            kind:       "ServiceAccount"
+            metadata: {
+                name:      input.name
+                namespace: system.namespace
+                labels:    _labels
+            }
+        }
+        Deployment: (input.name): {
+            apiVersion: "apps/v1"
+            kind:       "Deployment"
+            metadata: {
+                name:      input.name
+                namespace: system.namespace
+                labels:    _labels
+            }
+            spec: { ... }
+        }
+        Service: (input.name): {
+            apiVersion: "v1"
+            kind:       "Service"
+            metadata: {
+                name:      input.name
+                namespace: system.namespace
+                labels:    _labels
+            }
+            spec: { ... }
         }
     }
-    Deployment: (input.name): {
-        apiVersion: "apps/v1"
-        kind:       "Deployment"
-        metadata: {
-            name:      input.name
-            namespace: system.namespace
-            labels:    _labels
-        }
-        spec: { ... }
-    }
-    Service: (input.name): {
-        apiVersion: "v1"
-        kind:       "Service"
-        metadata: {
-            name:      input.name
-            namespace: system.namespace
-            labels:    _labels
-        }
-        spec: { ... }
-    }
+    clusterResources: {}
 }
 ```
 
@@ -130,51 +137,56 @@ namespaced: (system.namespace): {
 Cluster resources are organized as:
 
 ```
-cluster.<Kind>.<name>
+output.clusterResources.<Kind>.<name>
 ```
 
-For example, `cluster.Namespace.example` represents the `example` Namespace.
-Cluster resources have no namespace key since they are not scoped to one.
+For example, `output.clusterResources.Namespace.example` represents the
+`example` Namespace. Cluster resources have no namespace key since they are
+not scoped to one.
 
 Example:
 
 ```cue
-cluster: {
-    Namespace: (system.namespace): {
-        apiVersion: "v1"
-        kind:       "Namespace"
-        metadata: {
-            name:   system.namespace
-            labels: _labels
+output: {
+    clusterResources: {
+        Namespace: (system.namespace): {
+            apiVersion: "v1"
+            kind:       "Namespace"
+            metadata: {
+                name:   system.namespace
+                labels: _labels
+            }
         }
-    }
-    ClusterRoleBinding: "\(input.name)-psp": {
-        apiVersion: "rbac.authorization.k8s.io/v1"
-        kind:       "ClusterRoleBinding"
-        metadata: {
-            name:   "\(input.name)-psp"
-            labels: _labels
+        ClusterRoleBinding: "\(input.name)-psp": {
+            apiVersion: "rbac.authorization.k8s.io/v1"
+            kind:       "ClusterRoleBinding"
+            metadata: {
+                name:   "\(input.name)-psp"
+                labels: _labels
+            }
+            // ...
         }
-        // ...
     }
 }
 ```
 
-### 4. The Go renderer walks both output fields.
+### 4. The Go renderer walks all output fields.
 
 The `CueRenderer` is updated to:
 
-1. Look up `namespaced` — iterate namespace keys, then Kind keys, then name
+1. Look up `output.namespacedResources` — iterate namespace keys, then Kind keys, then name
    keys, collecting each leaf as an `unstructured.Unstructured`.
-2. Look up `cluster` — iterate Kind keys, then name keys, collecting each leaf.
-3. Apply separate validation rules:
+2. Look up `output.clusterResources` — iterate Kind keys, then name keys, collecting each leaf.
+3. Optionally look up `output.systemNamespacedResources` and `output.systemClusterResources`
+   (same iteration pattern; present in system template evaluations).
+4. Apply separate validation rules:
    - **Namespaced resources**: must have `metadata.namespace` matching the
      struct key and the project namespace (unless multi-namespace is enabled in
      a future extension). Kind must be in the namespaced allowlist.
    - **Cluster resources**: must NOT have `metadata.namespace`. Kind must be in
      the cluster allowlist (initially empty; extended as cluster resource
      support is added).
-4. Return both sets of resources for the `Applier` to handle.
+5. Return all collected resources for the `Applier` to handle.
 
 ### 5. The flat `resources` list is removed.
 
@@ -187,7 +199,7 @@ yet released, there is no backwards-compatibility requirement. All templates
 CUE constraints ensure the struct keys match the resource metadata:
 
 ```cue
-namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
+output: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: {
         name:      Name
@@ -195,7 +207,7 @@ namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
     }
 }
 
-cluster: [Kind=string]: [Name=string]: {
+output: clusterResources: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: name: Name
 }
@@ -213,9 +225,10 @@ CUE evaluation error, caught before any Kubernetes API call.
 - **Clear separation of concerns.** Namespaced vs. cluster resources have
   distinct validation rules and apply strategies.
 - **Foundation for platform input.** Platform-mandated cluster resources
-  (ClusterRole, ResourceQuota, etc.) have a natural home in the `cluster`
-  field.
-- **Self-documenting paths.** `namespaced.holos-prj-api.Deployment.myapp` is
+  (ClusterRole, ResourceQuota, etc.) have a natural home in the `output.clusterResources`
+  field. System templates use `output.systemNamespacedResources` and
+  `output.systemClusterResources` for resources managed outside user control.
+- **Self-documenting paths.** `output.namespacedResources.holos-prj-api.Deployment.myapp` is
   immediately readable — you know the namespace, kind, and name from the path.
 
 ### Negative
@@ -228,7 +241,7 @@ CUE evaluation error, caught before any Kubernetes API call.
 
 ### Risks
 
-- **Multi-namespace templates.** The `namespaced` struct key allows resources
+- **Multi-namespace templates.** The `output.namespacedResources` struct key allows resources
   in multiple namespaces, but the current validation restricts all namespaced
   resources to the project namespace. If this restriction is relaxed in the
   future, careful RBAC checks per namespace will be needed.
