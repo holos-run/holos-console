@@ -508,6 +508,30 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 			t.Errorf("expected CodeNotFound, got %v", err)
 		}
 	})
+
+	t.Run("returns error when target name already exists", func(t *testing.T) {
+		email := "owner@example.com"
+		source := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		target := sysTemplateConfigMap("my-org", "ref-grant-copy", "ReferenceGrant Copy", "desc", validCue, false, false)
+		ns := orgNS("my-org")
+		fakeClient := fake.NewClientset(ns, source, target)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
+
+		ctx := authedCtx(email, nil)
+		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+			SourceName:  "ref-grant",
+			Org:         "my-org",
+			Name:        "ref-grant-copy",
+			DisplayName: "ReferenceGrant Copy",
+		}))
+		if err == nil {
+			t.Fatal("expected error when target name already exists")
+		}
+		if connect.CodeOf(err) != connect.CodeAlreadyExists {
+			t.Errorf("expected CodeAlreadyExists, got %v", err)
+		}
+	})
 }
 
 func TestSeedDefaultTemplates(t *testing.T) {

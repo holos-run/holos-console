@@ -560,6 +560,177 @@ func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
 	})
 }
 
+func TestHandler_CloneDeploymentTemplate(t *testing.T) {
+	t.Run("editor can clone template", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "web-app",
+			Name:        "web-app-copy",
+			DisplayName: "Web App Copy",
+		})
+		resp, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "web-app-copy" {
+			t.Errorf("expected name 'web-app-copy', got %q", resp.Msg.Name)
+		}
+	})
+
+	t.Run("clone inherits CUE template and description from source", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "original description", validCue)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "web-app",
+			Name:        "web-app-copy",
+			DisplayName: "Web App Copy",
+		})
+		_, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		clonedCM, err := fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app-copy", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected cloned ConfigMap, got %v", err)
+		}
+		if clonedCM.Data[CueTemplateKey] != validCue {
+			t.Errorf("expected CUE template from source, got %q", clonedCM.Data[CueTemplateKey])
+		}
+		if clonedCM.Annotations[DescriptionAnnotation] != "original description" {
+			t.Errorf("expected description from source, got %q", clonedCM.Annotations[DescriptionAnnotation])
+		}
+		if clonedCM.Annotations[DisplayNameAnnotation] != "Web App Copy" {
+			t.Errorf("expected display name 'Web App Copy', got %q", clonedCM.Annotations[DisplayNameAnnotation])
+		}
+	})
+
+	t.Run("returns error when source does not exist", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "nonexistent",
+			Name:        "copy",
+			DisplayName: "Copy",
+		})
+		_, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error when source does not exist")
+		}
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			t.Errorf("expected CodeNotFound, got %v", err)
+		}
+	})
+
+	t.Run("returns error when target name already exists", func(t *testing.T) {
+		ns := projectNS("my-project")
+		source := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
+		target := templateConfigMap("my-project", "web-app-copy", "Web App Copy", "desc", validCue)
+		fakeClient := fake.NewClientset(ns, source, target)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "web-app",
+			Name:        "web-app-copy",
+			DisplayName: "Web App Copy",
+		})
+		_, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected error when target name already exists")
+		}
+		if connect.CodeOf(err) != connect.CodeAlreadyExists {
+			t.Errorf("expected CodeAlreadyExists, got %v", err)
+		}
+	})
+
+	t.Run("viewer cannot clone template", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("viewer@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "web-app",
+			Name:        "web-app-copy",
+			DisplayName: "Web App Copy",
+		})
+		_, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err == nil {
+			t.Fatal("expected permission denied error for viewer")
+		}
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("expected CodePermissionDenied, got %v", err)
+		}
+	})
+
+	t.Run("clone inherits defaults from source", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
+		cm.Data[DefaultsKey] = `{"image":"ghcr.io/example/app","tag":"v1.0"}`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, nil)
+
+		ctx := authedCtx("editor@example.com", nil)
+		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
+			Project:     "my-project",
+			SourceName:  "web-app",
+			Name:        "web-app-copy",
+			DisplayName: "Web App Copy",
+		})
+		_, err := handler.CloneDeploymentTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		clonedCM, err := fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app-copy", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected cloned ConfigMap, got %v", err)
+		}
+		rawDefaults, ok := clonedCM.Data[DefaultsKey]
+		if !ok {
+			t.Fatalf("expected %q key in cloned ConfigMap", DefaultsKey)
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(rawDefaults), &got); err != nil {
+			t.Fatalf("defaults.json is not valid JSON: %v", err)
+		}
+		if got["image"] != "ghcr.io/example/app" {
+			t.Errorf("expected image from source defaults, got %v", got["image"])
+		}
+	})
+}
+
 func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 	const validCueSrc = `package deployment
 #Input: { name: string }
