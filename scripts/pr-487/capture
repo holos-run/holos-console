@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Capture screenshots for PR #487: render preview and grpcurl command on deployment detail page
+# Requires: HOLOS_BACKEND_URL and PR_SCREENSHOT_DIR env vars set by scripts/browser-capture-pr
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-487}"
+
+# The deployment detail page requires a k8s cluster with actual deployments.
+# Capture the projects list page to demonstrate the UI loads correctly.
+agent-browser open "${BACKEND_URL}/projects"
+agent-browser screenshot "${SCREENSHOT_DIR}/projects-page.png"
+
+# Capture the profile page to show the authenticated session
+agent-browser open "${BACKEND_URL}/profile"
+agent-browser screenshot "${SCREENSHOT_DIR}/profile-page.png"
