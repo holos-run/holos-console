@@ -300,6 +300,86 @@ describe('DeploymentTemplateDetailPage', () => {
     )
   })
 
+  describe('edit description dialog', () => {
+    it('shows edit description button for owner', () => {
+      setupMocks(Role.OWNER)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByRole('button', { name: /edit description/i })).toBeInTheDocument()
+    })
+
+    it('shows edit description button for editor', () => {
+      setupMocks(Role.EDITOR)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByRole('button', { name: /edit description/i })).toBeInTheDocument()
+    })
+
+    it('does not show edit description button for viewer', () => {
+      setupMocks(Role.VIEWER)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.queryByRole('button', { name: /edit description/i })).not.toBeInTheDocument()
+    })
+
+    it('opens edit description dialog on pencil click', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit description/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /description/i })).toBeInTheDocument()
+    })
+
+    it('pre-fills dialog textarea with current description', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit description/i }))
+      const textarea = screen.getByRole('textbox', { name: /description/i }) as HTMLTextAreaElement
+      expect(textarea.value).toBe('Standard web application')
+    })
+
+    it('save description calls updateMutation with new description', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit description/i }))
+      const textarea = screen.getByRole('textbox', { name: /description/i })
+      await user.clear(textarea)
+      await user.type(textarea, 'Updated description')
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ description: 'Updated description' }),
+        )
+      })
+    })
+
+    it('cancel closes dialog without saving', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit description/i }))
+      await user.click(screen.getByRole('button', { name: /cancel/i }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      const mutateAsync = (useUpdateDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('renders description URLs as links', () => {
+      setupMocks(Role.OWNER, { description: 'See https://example.com for details' })
+      render(<DeploymentTemplateDetailPage />)
+      const link = screen.getByRole('link', { name: /https:\/\/example\.com/ })
+      expect(link).toBeInTheDocument()
+      expect(link).toHaveAttribute('href', 'https://example.com')
+    })
+
+    it('shows No description when description is empty', () => {
+      setupMocks(Role.OWNER, { description: '' })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByText('No description')).toBeInTheDocument()
+    })
+  })
+
   describe('render status indicator', () => {
     it('shows fresh indicator when not stale, not rendering, and no error', async () => {
       setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')

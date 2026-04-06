@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { Pencil } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
@@ -18,6 +21,7 @@ import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
+import { LinkifiedText } from '@/components/linkified-text'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,
@@ -47,6 +51,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [descEditOpen, setDescEditOpen] = useState(false)
+  const [draftDescription, setDraftDescription] = useState('')
+  const [descEditError, setDescEditError] = useState<string | null>(null)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -80,6 +87,22 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
       setDeleteOpen(false)
       navigate({ to: '/projects/$projectName/templates', params: { projectName } })
     } catch { /* error shown via mutation */ }
+  }
+
+  const handleOpenDescEdit = () => {
+    setDraftDescription(template?.description ?? '')
+    setDescEditError(null)
+    setDescEditOpen(true)
+  }
+
+  const handleSaveDescription = async () => {
+    try {
+      await updateMutation.mutateAsync({ description: draftDescription })
+      toast.success('Saved')
+      setDescEditOpen(false)
+    } catch (err) {
+      setDescEditError(err instanceof Error ? err.message : String(err))
+    }
   }
 
   if (isPending) {
@@ -124,12 +147,25 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               <span className="text-sm font-mono">{templateName}</span>
             </div>
 
-            {template?.description && (
-              <div className="flex items-start gap-2">
-                <span className="w-32 text-sm text-muted-foreground shrink-0 pt-0.5">Description</span>
-                <span className="text-sm">{template.description}</span>
+            <div className="flex items-start gap-2">
+              <span className="w-32 text-sm text-muted-foreground shrink-0 pt-0.5">Description</span>
+              <div className="flex items-start gap-1 flex-1">
+                {template?.description ? (
+                  <span className="text-sm"><LinkifiedText text={template.description} /></span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">No description</span>
+                )}
+                {canWrite && (
+                  <button
+                    aria-label="edit description"
+                    onClick={handleOpenDescEdit}
+                    className="ml-1 p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -158,6 +194,38 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={descEditOpen} onOpenChange={setDescEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Description</DialogTitle>
+            <DialogDescription>
+              Update the description for template &quot;{templateName}&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="desc-edit-textarea">Description</Label>
+            <Textarea
+              id="desc-edit-textarea"
+              aria-label="Description"
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+              rows={4}
+            />
+          </div>
+          {descEditError && (
+            <Alert variant="destructive">
+              <AlertDescription>{descEditError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDescEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveDescription} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
