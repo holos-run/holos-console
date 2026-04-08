@@ -1,6 +1,3 @@
-// package deployment is the required CUE package declaration.
-package deployment
-
 // #KeyRef identifies a key within a Kubernetes Secret or ConfigMap.
 #KeyRef: {
 	name: string
@@ -45,22 +42,22 @@ package deployment
 	... // allow provider-specific claims
 }
 
-// #System defines the trusted system-provided fields set by the console backend.
+// #Platform defines the trusted platform-provided fields set by the console backend.
 // These values are derived from authenticated context (project namespace resolution
 // and OIDC token claims) and are never supplied by the user.
-#System: {
+#Platform: {
 	project:          string
 	namespace:        string
 	// gatewayNamespace is the namespace containing the Gateway resource. It is
 	// used in ReferenceGrant specs to allow HTTPRoute resources from that namespace
 	// to reference Services in the project namespace.
-	// Defaults to "istio-ingress" per Istio's recommended Helm install convention.
-	gatewayNamespace: string | *"istio-ingress"
+	gatewayNamespace: string
+	organization:     string
 	claims:           #Claims
 }
 
-input:  #Input
-system: #System
+input:    #Input
+platform: #Platform
 
 // _labels are the standard labels required on every resource.
 // app.kubernetes.io/managed-by MUST equal "console.holos.run" or the
@@ -74,7 +71,7 @@ _labels: {
 // console.holos.run/deployer-email records the identity of the user
 // who last rendered and applied this resource.
 _annotations: {
-	"console.holos.run/deployer-email": system.claims.email
+	"console.holos.run/deployer-email": platform.claims.email
 }
 
 // _envSpec transforms the env input into Kubernetes container env format.
@@ -122,20 +119,20 @@ _envSpec: [for e in input.env {
 	...
 }
 
-// output collects all rendered Kubernetes resources.
+// projectResources collects all rendered Kubernetes resources.
 // namespacedResources organizes resources that live within a Kubernetes namespace.
 // The struct key path (namespace/Kind/name) must match the resource metadata.
 // clusterResources organizes cluster-scoped resources.
-output: {
+projectResources: {
 	namespacedResources: #Namespaced & {
-		(system.namespace): {
+		(platform.namespace): {
 			// ServiceAccount provides a Kubernetes identity for the pods.
 			ServiceAccount: (input.name): {
 				apiVersion: "v1"
 				kind:       "ServiceAccount"
 				metadata: {
 					name:        input.name
-					namespace:   system.namespace
+					namespace:   platform.namespace
 					labels:      _labels
 					annotations: _annotations
 				}
@@ -147,7 +144,7 @@ output: {
 				kind:       "Deployment"
 				metadata: {
 					name:        input.name
-					namespace:   system.namespace
+					namespace:   platform.namespace
 					labels:      _labels
 					annotations: _annotations
 				}
@@ -183,7 +180,7 @@ output: {
 				kind:       "Service"
 				metadata: {
 					name:        input.name
-					namespace:   system.namespace
+					namespace:   platform.namespace
 					labels:      _labels
 					annotations: _annotations
 				}
@@ -203,7 +200,7 @@ output: {
 				kind:       "ReferenceGrant"
 				metadata: {
 					name:        "allow-gateway-httproute"
-					namespace:   system.namespace
+					namespace:   platform.namespace
 					labels:      _labels
 					annotations: _annotations
 				}
@@ -211,7 +208,7 @@ output: {
 					from: [{
 						group:     "gateway.networking.k8s.io"
 						kind:      "HTTPRoute"
-						namespace: system.gatewayNamespace
+						namespace: platform.gatewayNamespace
 					}]
 					to: [{
 						group: ""

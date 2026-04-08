@@ -25,7 +25,7 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 // cueSystemInput may be empty when the template does not require system values.
 func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error) {
 	// Combine cueSystemInput and cueInput into a single CUE document so that
-	// both "system" and "input" top-level fields are available to the template.
+	// both "platform" and "input" top-level fields are available to the template.
 	combined := cueSystemInput
 	if combined != "" && cueInput != "" {
 		combined = combined + "\n" + cueInput

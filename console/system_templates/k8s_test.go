@@ -73,7 +73,7 @@ func TestListSystemTemplates(t *testing.T) {
 
 	t.Run("returns templates with correct label", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "#Input: {}\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -93,7 +93,7 @@ func TestListSystemTemplates(t *testing.T) {
 func TestGetSystemTemplate(t *testing.T) {
 	t.Run("returns existing template", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "A test template", "#Input: {}\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -104,7 +104,7 @@ func TestGetSystemTemplate(t *testing.T) {
 		if result.Name != "ref-grant" {
 			t.Errorf("expected name 'ref-grant', got %q", result.Name)
 		}
-		if result.Data[CueTemplateKey] != "package deployment\n" {
+		if result.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", result.Data[CueTemplateKey])
 		}
 	})
@@ -127,7 +127,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package deployment\n", true, true)
+		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "#Input: {}\n", true, true)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -146,7 +146,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		if cm.Annotations[EnabledAnnotation] != "true" {
 			t.Errorf("expected enabled annotation 'true', got %q", cm.Annotations[EnabledAnnotation])
 		}
-		if cm.Data[CueTemplateKey] != "package deployment\n" {
+		if cm.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
 		}
 	})
@@ -156,7 +156,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "package deployment\n", false, false)
+		cm, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "A test template", "#Input: {}\n", false, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -170,7 +170,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		_, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
+		_, err := k8s.CreateSystemTemplate(context.Background(), "my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -188,7 +188,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 func TestUpdateSystemTemplate(t *testing.T) {
 	t.Run("updates mandatory flag", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", false, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", false, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -204,7 +204,7 @@ func TestUpdateSystemTemplate(t *testing.T) {
 
 	t.Run("updates enabled flag", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -234,7 +234,7 @@ func TestUpdateSystemTemplate(t *testing.T) {
 func TestDeleteSystemTemplate(t *testing.T) {
 	t.Run("deletes existing template", func(t *testing.T) {
 		ns := orgNS("my-org")
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -263,7 +263,7 @@ func TestDeleteSystemTemplate(t *testing.T) {
 
 func TestConfigMapToSystemTemplate(t *testing.T) {
 	t.Run("reads mandatory and enabled flags correctly", func(t *testing.T) {
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, true)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, true)
 		tmpl := configMapToSystemTemplate(cm, "my-org")
 		if !tmpl.Mandatory {
 			t.Error("expected mandatory=true")
@@ -277,7 +277,7 @@ func TestConfigMapToSystemTemplate(t *testing.T) {
 	})
 
 	t.Run("reads enabled=false when annotation is false", func(t *testing.T) {
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", false, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", false, false)
 		tmpl := configMapToSystemTemplate(cm, "my-org")
 		if tmpl.Enabled {
 			t.Error("expected enabled=false")

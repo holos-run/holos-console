@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 )
 
 // allowedKindSet is the set of resource kinds that CUE templates may produce.
@@ -28,77 +29,12 @@ var allowedKindSet = map[string]bool{
 // renderTimeout is the maximum time allowed for CUE template evaluation.
 const renderTimeout = 5 * time.Second
 
-// KeyRefInput identifies a key within a Kubernetes Secret or ConfigMap.
-type KeyRefInput struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
-}
-
-// EnvVarInput represents a container environment variable passed to CUE templates.
-// Exactly one of Value, SecretKeyRef, or ConfigMapKeyRef should be set.
-type EnvVarInput struct {
-	Name            string       `json:"name"`
-	Value           string       `json:"value,omitempty"`
-	SecretKeyRef    *KeyRefInput `json:"secretKeyRef,omitempty"`
-	ConfigMapKeyRef *KeyRefInput `json:"configMapKeyRef,omitempty"`
-}
-
-// ClaimsInput carries OIDC ID token claims passed to CUE templates.
-type ClaimsInput struct {
-	Iss           string   `json:"iss"`
-	Sub           string   `json:"sub"`
-	Aud           string   `json:"aud,omitempty"`
-	Exp           int64    `json:"exp"`
-	Iat           int64    `json:"iat"`
-	Email         string   `json:"email"`
-	EmailVerified bool     `json:"email_verified"`
-	Name          string   `json:"name,omitempty"`
-	Groups        []string `json:"groups,omitempty"`
-}
-
-// SystemInput contains trusted values set by the console backend.
-// These values are derived from authenticated context (project namespace
-// resolution and OIDC token claims) and are not supplied by the user.
-type SystemInput struct {
-	Project          string      `json:"project"`
-	Namespace        string      `json:"namespace"`
-	GatewayNamespace string      `json:"gatewayNamespace,omitempty"`
-	Claims           ClaimsInput `json:"claims"`
-}
-
-// UserInput contains user-provided deployment parameters.
-type UserInput struct {
-	Name    string        `json:"name"`
-	Image   string        `json:"image"`
-	Tag     string        `json:"tag"`
-	Command []string      `json:"command,omitempty"`
-	Args    []string      `json:"args,omitempty"`
-	Env     []EnvVarInput `json:"env,omitempty"`
-	Port    int32         `json:"port,omitempty"`
-}
-
-// stripPackageDecl removes the first "package <name>" line from a CUE source
-// string. This is used when concatenating multiple CUE files that all share the
-// same package declaration; only the first file needs to declare the package.
-func stripPackageDecl(src string) string {
-	lines := strings.Split(src, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "package ") {
-			// Remove this line and return the rest.
-			rest := lines[i+1:]
-			return strings.Join(rest, "\n")
-		}
-	}
-	return src
-}
-
 // CueRenderer evaluates CUE templates with deployment parameters.
 type CueRenderer struct{}
 
-// Render evaluates the CUE template with the given system and user inputs and
+// Render evaluates the CUE template with the given platform and project inputs and
 // returns a list of K8s resource manifests as unstructured objects.
-func (r *CueRenderer) Render(ctx context.Context, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	// Enforce evaluation timeout.
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
@@ -110,7 +46,7 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, system Syste
 	}
 	ch := make(chan result, 1)
 	go func() {
-		resources, err := evaluate(cueSource, system, user)
+		resources, err := evaluate(cueSource, platform, project)
 		ch <- result{resources, err}
 	}()
 
@@ -124,11 +60,11 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, system Syste
 
 // RenderWithSystemTemplates evaluates the deployment template unified with zero or
 // more system template CUE sources. Each system template is unified with the
-// deployment template before filling in the system and user inputs.
-// System templates contribute resources via output.systemNamespacedResources and
-// output.systemClusterResources; the deployment template contributes resources via
-// output.namespacedResources and output.clusterResources.
-func (r *CueRenderer) RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+// deployment template before filling in the platform and project inputs.
+// System templates contribute resources via platformResources.namespacedResources and
+// platformResources.clusterResources; the deployment template contributes resources via
+// projectResources.namespacedResources and projectResources.clusterResources.
+func (r *CueRenderer) RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
 
@@ -138,7 +74,7 @@ func (r *CueRenderer) RenderWithSystemTemplates(ctx context.Context, deploymentC
 	}
 	ch := make(chan result, 1)
 	go func() {
-		resources, err := evaluateWithSystemTemplates(deploymentCUE, systemCUESources, system, user)
+		resources, err := evaluateWithSystemTemplates(deploymentCUE, systemCUESources, platform, project)
 		ch <- result{resources, err}
 	}()
 
@@ -178,27 +114,22 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 
 // evaluateWithSystemTemplates performs synchronous CUE template evaluation of a
 // deployment template unified with zero or more system template CUE sources.
-// All CUE sources share the same package (package deployment) and are concatenated
-// before compilation so that system templates can reference top-level identifiers
-// (input, system, _labels, etc.) defined by the deployment template.
-// System templates contribute resources via output.systemNamespacedResources and
-// output.systemClusterResources; the deployment template contributes resources via
-// output.namespacedResources and output.clusterResources.
-func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+// All CUE sources are concatenated before compilation so that system templates
+// can reference top-level identifiers (input, platform, _labels, etc.) defined
+// by the deployment template.
+// System templates contribute resources via platformResources.namespacedResources and
+// platformResources.clusterResources; the deployment template contributes resources via
+// projectResources.namespacedResources and projectResources.clusterResources.
+func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
-	// Concatenate all CUE sources. System templates use the same package as
-	// deployment templates (package deployment) and may reference identifiers
-	// defined in the deployment template (input, system, _labels, etc.).
+	// Concatenate all CUE sources. System templates may reference identifiers
+	// defined in the deployment template (input, platform, _labels, etc.).
 	// Combining them into a single compilation unit allows those cross-references
 	// to resolve correctly.
 	combined := deploymentCUE
 	for _, sysSrc := range systemCUESources {
-		// Strip the package declaration from system template sources since the
-		// deployment template already declares the package. We preserve the rest
-		// of the source (constraints, output fields, etc.).
-		stripped := stripPackageDecl(sysSrc)
-		combined = combined + "\n" + stripped
+		combined = combined + "\n" + sysSrc
 	}
 
 	unified := cueCtx.CompileString(combined)
@@ -206,50 +137,50 @@ func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string
 		return nil, fmt.Errorf("invalid CUE template (deployment + system templates): %w", err)
 	}
 
-	// Encode user input as JSON then compile to a CUE value and unify at "input".
-	inputJSON, err := json.Marshal(user)
+	// Encode project input as JSON then compile to a CUE value and unify at "input".
+	inputJSON, err := json.Marshal(project)
 	if err != nil {
-		return nil, fmt.Errorf("encoding user input: %w", err)
+		return nil, fmt.Errorf("encoding project input: %w", err)
 	}
 	inputValue := cueCtx.CompileBytes(inputJSON)
 	if err := inputValue.Err(); err != nil {
-		return nil, fmt.Errorf("compiling user input: %w", err)
+		return nil, fmt.Errorf("compiling project input: %w", err)
 	}
 
-	// Encode system input as JSON then compile to a CUE value and unify at "system".
-	systemJSON, err := json.Marshal(system)
+	// Encode platform input as JSON then compile to a CUE value and unify at "platform".
+	platformJSON, err := json.Marshal(platform)
 	if err != nil {
-		return nil, fmt.Errorf("encoding system input: %w", err)
+		return nil, fmt.Errorf("encoding platform input: %w", err)
 	}
-	systemValue := cueCtx.CompileBytes(systemJSON)
-	if err := systemValue.Err(); err != nil {
-		return nil, fmt.Errorf("compiling system input: %w", err)
+	platformValue := cueCtx.CompileBytes(platformJSON)
+	if err := platformValue.Err(); err != nil {
+		return nil, fmt.Errorf("compiling platform input: %w", err)
 	}
 
 	// Unify template with inputs.
 	unified = unified.FillPath(cue.ParsePath("input"), inputValue)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("unifying template with user input: %w", err)
+		return nil, fmt.Errorf("unifying template with project input: %w", err)
 	}
-	unified = unified.FillPath(cue.ParsePath("system"), systemValue)
+	unified = unified.FillPath(cue.ParsePath("platform"), platformValue)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("unifying template with system input: %w", err)
+		return nil, fmt.Errorf("unifying template with platform input: %w", err)
 	}
 
-	// Require the structured output format: output.namespacedResources must exist.
-	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
+	// Require the structured output format: projectResources.namespacedResources must exist.
+	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
-		return nil, fmt.Errorf("deployment template must define 'output.namespacedResources' (structured output format required)")
+		return nil, fmt.Errorf("deployment template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructured(unified, system.Namespace)
+	return evaluateStructured(unified, platform.Namespace)
 }
 
 // evaluate performs synchronous CUE template evaluation.
-// Templates must use the structured output format under the output: key.
-// The system input (project, namespace, claims) and user input (name, image,
+// Templates must use the structured output format under projectResources.
+// The platform input (project, namespace, claims) and project input (name, image,
 // tag, etc.) are encoded separately and unified with the template.
-func evaluate(cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
 	// Compile the template source.
@@ -258,62 +189,59 @@ func evaluate(cueSource string, system SystemInput, user UserInput) ([]unstructu
 		return nil, fmt.Errorf("invalid CUE template: %w", err)
 	}
 
-	// Encode user input as JSON then compile to a CUE value and unify at "input".
-	inputJSON, err := json.Marshal(user)
+	// Encode project input as JSON then compile to a CUE value and unify at "input".
+	inputJSON, err := json.Marshal(project)
 	if err != nil {
-		return nil, fmt.Errorf("encoding user input: %w", err)
+		return nil, fmt.Errorf("encoding project input: %w", err)
 	}
 	inputValue := cueCtx.CompileBytes(inputJSON)
 	if err := inputValue.Err(); err != nil {
-		return nil, fmt.Errorf("compiling user input: %w", err)
+		return nil, fmt.Errorf("compiling project input: %w", err)
 	}
 
-	// Encode system input as JSON then compile to a CUE value and unify at "system".
-	systemJSON, err := json.Marshal(system)
+	// Encode platform input as JSON then compile to a CUE value and unify at "platform".
+	platformJSON, err := json.Marshal(platform)
 	if err != nil {
-		return nil, fmt.Errorf("encoding system input: %w", err)
+		return nil, fmt.Errorf("encoding platform input: %w", err)
 	}
-	systemValue := cueCtx.CompileBytes(systemJSON)
-	if err := systemValue.Err(); err != nil {
-		return nil, fmt.Errorf("compiling system input: %w", err)
+	platformValue := cueCtx.CompileBytes(platformJSON)
+	if err := platformValue.Err(); err != nil {
+		return nil, fmt.Errorf("compiling platform input: %w", err)
 	}
 
-	// Unify template with the user input at the "input" path and system input
-	// at the "system" path.
+	// Unify template with the project input at the "input" path and platform input
+	// at the "platform" path.
 	unified := tmpl.FillPath(cue.ParsePath("input"), inputValue)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("unifying template with user input: %w", err)
+		return nil, fmt.Errorf("unifying template with project input: %w", err)
 	}
-	unified = unified.FillPath(cue.ParsePath("system"), systemValue)
+	unified = unified.FillPath(cue.ParsePath("platform"), platformValue)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("unifying template with system input: %w", err)
+		return nil, fmt.Errorf("unifying template with platform input: %w", err)
 	}
 
-	// Require the structured output format: output.namespacedResources must exist.
-	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
+	// Require the structured output format: projectResources.namespacedResources must exist.
+	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	if namespacedValue.Err() != nil || !namespacedValue.Exists() {
-		return nil, fmt.Errorf("template must define 'output.namespacedResources' (structured output format required)")
+		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructured(unified, system.Namespace)
+	return evaluateStructured(unified, platform.Namespace)
 }
 
 // evaluateWithCueInput performs synchronous CUE template evaluation using a raw
 // CUE string as input.  The cueInput is a CUE document that provides both
-// "input" (user-provided values) and "system" (trusted backend values) at the
+// "input" (user-provided values) and "platform" (trusted backend values) at the
 // top level.  The template source and input are compiled together so that
 // cross-references (e.g. input.name used in the template) resolve correctly.
-// The expected namespace is derived from system.namespace in the unified value.
+// The expected namespace is derived from platform.namespace in the unified value.
 func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
 	// Compile the template source together with the CUE input document.
 	// Concatenating them in a single compilation unit allows the template to
-	// reference top-level identifiers (input.name, system.namespace, etc.)
+	// reference top-level identifiers (input.name, platform.namespace, etc.)
 	// provided by the input document.
-	// The cueInput is bare CUE (no package declaration); we strip the
-	// package declaration from cueSource before appending to avoid duplicate
-	// package clauses in the combined source.
 	combined := cueSource + "\n" + cueInput
 	unified := cueCtx.CompileString(combined)
 	if err := unified.Err(); err != nil {
@@ -321,74 +249,74 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 	}
 
 	// Require the structured output format.
-	// System templates define output.systemNamespacedResources; deployment
-	// templates define output.namespacedResources.  At minimum one of these
-	// must exist.  For system template standalone preview we check for either.
-	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
-	sysNamespacedValue := unified.LookupPath(cue.ParsePath("output.systemNamespacedResources"))
+	// Platform templates define platformResources.namespacedResources; project
+	// templates define projectResources.namespacedResources.  At minimum one of
+	// these must exist.  For platform template standalone preview we check for either.
+	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
+	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
 	if (namespacedValue.Err() != nil || !namespacedValue.Exists()) &&
-		(sysNamespacedValue.Err() != nil || !sysNamespacedValue.Exists()) {
-		return nil, fmt.Errorf("template must define 'output.namespacedResources' or 'output.systemNamespacedResources' (structured output format required)")
+		(platformNamespacedValue.Err() != nil || !platformNamespacedValue.Exists()) {
+		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' or 'platformResources.namespacedResources' (structured output format required)")
 	}
 
-	// Extract the expected namespace from the unified system value.
-	nsValue := unified.LookupPath(cue.ParsePath("system.namespace"))
+	// Extract the expected namespace from the unified platform value.
+	nsValue := unified.LookupPath(cue.ParsePath("platform.namespace"))
 	if nsValue.Err() != nil || !nsValue.Exists() {
-		return nil, fmt.Errorf("cue_input must provide a 'system.namespace' field")
+		return nil, fmt.Errorf("cue_input must provide a 'platform.namespace' field")
 	}
 	expectedNamespace, err := nsValue.String()
 	if err != nil {
-		return nil, fmt.Errorf("system.namespace must be a concrete string: %w", err)
+		return nil, fmt.Errorf("platform.namespace must be a concrete string: %w", err)
 	}
 
 	return evaluateStructured(unified, expectedNamespace)
 }
 
-// evaluateStructured walks the output.namespacedResources, output.clusterResources,
-// output.systemNamespacedResources, and output.systemClusterResources structured
-// output fields and returns validated Kubernetes resources.
+// evaluateStructured walks the projectResources.namespacedResources,
+// projectResources.clusterResources, platformResources.namespacedResources, and
+// platformResources.clusterResources structured output fields and returns
+// validated Kubernetes resources.
 //
-// namespacedResources structure: output.namespacedResources.<namespace>.<Kind>.<name>
-// clusterResources structure:    output.clusterResources.<Kind>.<name>
-// systemNamespacedResources and systemClusterResources follow the same structure
-// but are only populated by system template evaluations.
+// namespacedResources structure: projectResources.namespacedResources.<namespace>.<Kind>.<name>
+// clusterResources structure:    projectResources.clusterResources.<Kind>.<name>
+// platformResources follow the same structure but are populated by platform template evaluations.
 func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 
-	// Walk output.namespacedResources: output.namespacedResources.<namespace>.<Kind>.<name>
-	namespacedValue := unified.LookupPath(cue.ParsePath("output.namespacedResources"))
+	// Walk projectResources.namespacedResources: <namespace>.<Kind>.<name>
+	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	if namespacedValue.Err() == nil && namespacedValue.Exists() {
-		resources, err := walkNamespacedResources(namespacedValue, expectedNamespace, "output.namespacedResources")
+		resources, err := walkNamespacedResources(namespacedValue, expectedNamespace, "projectResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, resources...)
 	}
 
-	// Walk output.clusterResources: output.clusterResources.<Kind>.<name>
-	clusterValue := unified.LookupPath(cue.ParsePath("output.clusterResources"))
+	// Walk projectResources.clusterResources: <Kind>.<name>
+	clusterValue := unified.LookupPath(cue.ParsePath("projectResources.clusterResources"))
 	if clusterValue.Err() == nil && clusterValue.Exists() {
-		resources, err := walkClusterResources(clusterValue, "output.clusterResources")
+		resources, err := walkClusterResources(clusterValue, "projectResources.clusterResources")
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, resources...)
 	}
 
-	// Walk output.systemNamespacedResources (populated by system templates).
-	sysNamespacedValue := unified.LookupPath(cue.ParsePath("output.systemNamespacedResources"))
-	if sysNamespacedValue.Err() == nil && sysNamespacedValue.Exists() {
-		resources, err := walkNamespacedResources(sysNamespacedValue, expectedNamespace, "output.systemNamespacedResources")
+	// Walk platformResources.namespacedResources (populated by platform templates).
+	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
+	if platformNamespacedValue.Err() == nil && platformNamespacedValue.Exists() {
+		resources, err := walkNamespacedResources(platformNamespacedValue, expectedNamespace, "platformResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, resources...)
 	}
 
-	// Walk output.systemClusterResources (populated by system templates).
-	sysClusterValue := unified.LookupPath(cue.ParsePath("output.systemClusterResources"))
-	if sysClusterValue.Err() == nil && sysClusterValue.Exists() {
-		resources, err := walkClusterResources(sysClusterValue, "output.systemClusterResources")
+	// Walk platformResources.clusterResources (populated by platform templates).
+	platformClusterValue := unified.LookupPath(cue.ParsePath("platformResources.clusterResources"))
+	if platformClusterValue.Err() == nil && platformClusterValue.Exists() {
+		resources, err := walkClusterResources(platformClusterValue, "platformResources.clusterResources")
 		if err != nil {
 			return nil, err
 		}
