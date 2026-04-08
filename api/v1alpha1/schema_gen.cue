@@ -140,9 +140,10 @@
 #Resource: {...}
 
 // PlatformResources holds resources managed by platform and security engineers.
-// These resources typically live outside the project namespace (e.g., in the
-// gateway namespace or at cluster scope) or are platform-mandated resources
-// within the project namespace that project templates cannot override.
+// The renderer reads platformResources only from templates at the folder level
+// or above. A project-level template may define values under platformResources,
+// but the renderer does not read them — this is a hard boundary enforced in Go
+// code (ADR 016 Decision 6).
 #PlatformResources: {
 	// NamespacedResources maps namespace -> kind -> name -> resource manifest.
 	namespacedResources?: {[string]: [string]: [string]: #Resource}  @go(NamespacedResources,map[string]map[string]map[string]Resource)
@@ -152,8 +153,9 @@
 }
 
 // ProjectResources holds resources managed by product engineers.
-// These resources live within the project namespace. A project-level template
-// writes to this collection.
+// Templates at any level can define values for projectResources. In CUE, all
+// values — concrete data, constraints, types — are unified together. There is
+// no separate "constrain" operation; it is all unification (ADR 016 Decision 6).
 #ProjectResources: {
 	// NamespacedResources maps namespace -> kind -> name -> resource manifest.
 	namespacedResources?: {[string]: [string]: [string]: #Resource}  @go(NamespacedResources,map[string]map[string]map[string]Resource)
