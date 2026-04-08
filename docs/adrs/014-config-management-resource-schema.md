@@ -131,7 +131,11 @@ A Folder is a Namespace with `console.holos.run/resource-type: folder` and a
 parent reference via `console.holos.run/parent: {parent-namespace}`. Projects
 reference their parent folder (or org, if no folders exist) via the same label.
 The hierarchy depth is limited to 3 folder levels between an organization and a
-project.
+project. This limit is based on the experience of Google Cloud IAM, where
+hierarchies deeper than 3 levels become difficult to comprehend and reason
+about. In practice, it is rare for organizations to need more than 3 levels of
+folder hierarchy for project resources. Deeper hierarchies also increase load on
+the Kubernetes API server — each level in the walk requires a Namespace read.
 
 This hierarchy is traversed at template evaluation time to collect and unify
 templates from every level. It is also traversed at authorization time to
@@ -555,14 +559,6 @@ api/
   the generated CUE schema, and by `make generate` catching generation
   failures before they reach a build.
 
-- **Folder depth limit.** The 3-folder limit is based on the experience of
-  Google Cloud IAM, where hierarchies deeper than 3 levels become difficult to
-  comprehend and reason about for the people managing them. In practice, it is
-  rare for organizations to need more than 3 levels of folder hierarchy for
-  project resources. Deeper hierarchies also increase load on the Kubernetes
-  API server — each level in the walk requires a Namespace read. The limit can
-  be increased in a future version without schema changes, but doing so should
-  be weighed against the cognitive and operational costs.
 
 ## References
 
