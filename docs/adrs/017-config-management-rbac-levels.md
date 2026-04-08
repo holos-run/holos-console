@@ -1,4 +1,4 @@
-# ADR 016: Configuration Management RBAC Levels
+# ADR 017: Configuration Management RBAC Levels
 
 ## Status
 
@@ -438,6 +438,7 @@ Viewer and above.
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
-- [ADR 014: Configuration Management Resource Schema](014-config-management-resource-schema.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
 - [ADR 015: Configuration Management RBAC Levels (revoked)](015-config-management-rbac-levels.md)
+- [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions

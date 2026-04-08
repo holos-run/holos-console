@@ -2,7 +2,7 @@
 
 ## Status
 
-Revoked by [ADR 016](016-config-management-rbac-levels.md)
+Revoked by [ADR 017](017-config-management-rbac-levels.md)
 
 ## Context
 
