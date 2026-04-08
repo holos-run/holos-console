@@ -36,6 +36,7 @@ go.work.sum
 # Build output
 bin/
 .claude/*.local.json
+.claude/worktrees/
 certs/tls.crt
 certs/tls.key
 console/dist/
