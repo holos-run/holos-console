@@ -538,9 +538,10 @@ schema (prepended by the renderer), they have full access to all `input.*` and
 `platform.*` fields — including `input.name`, `input.port`, `platform.namespace`,
 and `platform.gatewayNamespace`.
 
-System templates contribute their resources to `platformResources.namespacedResources`
-and `platformResources.clusterResources` so that they do not conflict with the project
-template's `projectResources.namespacedResources` and `projectResources.clusterResources` fields.
+System templates may define resources under `platformResources` and/or `projectResources`
+(ADR 016 Decision 8). The built-in example and operator-managed resources conventionally
+use `platformResources` to signal their intent, but there is no rigid separation — all
+template output is unified by CUE before the renderer reads either collection.
 
 **Operator Guarantees**
 
@@ -575,9 +576,9 @@ example. When enabled, it adds an `HTTPRoute` to `platformResources.namespacedRe
 that routes all gateway traffic to the deployment's `Service`:
 
 ```cue
-// platformResources contributes platform-managed Kubernetes resources.
-// Platform templates define resources under platformResources so they do not
-// conflict with the project template's projectResources fields.
+// platformResources holds platform-managed Kubernetes resources.
+// Any template at any level can define values for both platformResources and
+// projectResources — the renderer reads both collections via RenderWithSystemTemplates.
 platformResources: {
     // namespacedResources organizes platform-managed namespaced resources.
     namespacedResources: (platform.namespace): {

@@ -1,7 +1,7 @@
 package v1alpha1
 
 // Resource is an unstructured Kubernetes resource manifest.
-type Resource map[string]interface{}
+type Resource map[string]any
 
 // PlatformResources holds resources managed by platform and security engineers.
 // The renderer reads platformResources only from templates at the folder level
