@@ -1322,13 +1322,16 @@ func resourceKinds(resources []unstructured.Unstructured) []string {
 	return out
 }
 
-// TestCueRenderer_SystemOutputFields verifies that platformResources.namespacedResources
-// and platformResources.clusterResources are read and validated correctly.
-func TestCueRenderer_SystemOutputFields(t *testing.T) {
+// TestCueRenderer_LevelBasedResourceReading verifies the ADR 016 Decision 8
+// hard boundary: evaluate() (project-level) must NOT read platformResources,
+// while evaluateWithSystemTemplates() (org/folder level) reads both collections.
+func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
-	t.Run("systemNamespacedResources resources are included in output", func(t *testing.T) {
+	// Render() uses evaluate() — the project-level path. Per ADR 016, it must
+	// NOT read platformResources even if the template defines them.
+	t.Run("Render does not read platformResources (project-level boundary)", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), systemOutputTemplate,
 			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
@@ -1336,11 +1339,34 @@ func TestCueRenderer_SystemOutputFields(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// Expect 2 resources: Deployment from namespacedResources + ServiceAccount from systemNamespacedResources.
-		if len(resources) != 2 {
-			t.Fatalf("expected 2 resources (Deployment + ServiceAccount), got %d", len(resources))
+		// Expect only 1 resource: the Deployment from projectResources.
+		// The ServiceAccount defined in platformResources must be ignored.
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource (Deployment only, platformResources ignored), got %d: %v",
+				len(resources), resourceKinds(resources))
 		}
+		if resources[0].GetKind() != "Deployment" {
+			t.Errorf("expected Deployment, got %q", resources[0].GetKind())
+		}
+	})
 
+	// RenderWithSystemTemplates() uses evaluateWithSystemTemplates() — the
+	// org/folder level path. It must read BOTH projectResources and platformResources.
+	t.Run("RenderWithSystemTemplates reads both projectResources and platformResources", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+			systemOutputTemplate,
+			nil, // no additional system templates; the deployment template itself defines platformResources
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect 2 resources: Deployment from projectResources + ServiceAccount from platformResources.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (Deployment + ServiceAccount), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
 		kindSet := make(map[string]bool)
 		for _, r := range resources {
 			kindSet[r.GetKind()] = true
@@ -1349,10 +1375,10 @@ func TestCueRenderer_SystemOutputFields(t *testing.T) {
 			}
 		}
 		if !kindSet["Deployment"] {
-			t.Error("expected Deployment resource from namespacedResources")
+			t.Error("expected Deployment resource from projectResources")
 		}
 		if !kindSet["ServiceAccount"] {
-			t.Error("expected ServiceAccount resource from systemNamespacedResources")
+			t.Error("expected ServiceAccount resource from platformResources")
 		}
 	})
 }

@@ -14,19 +14,18 @@ When a user creates or updates a deployment, the console:
 3. Builds a `PlatformInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `ProjectInput` (name, image, tag, etc.) from the API request fields.
 4. Prepends the generated CUE schema (produced from `api/v1alpha1` Go types via `cue get go`) before compiling templates. The renderer concatenates all template sources into a single compilation unit.
 5. Fills `ProjectInput` at the `input` path and `PlatformInput` at the `platform` path.
-6. Reads all four output fields from the evaluated CUE value:
-   - `projectResources.namespacedResources` — project-controlled namespaced resources
-   - `projectResources.clusterResources` — project-controlled cluster-scoped resources
-   - `platformResources.namespacedResources` — platform-controlled namespaced resources (from system templates)
-   - `platformResources.clusterResources` — platform-controlled cluster-scoped resources (from system templates)
+6. Reads structured output fields based on the render level (ADR 016 Decision 8):
+   - Always reads `projectResources.namespacedResources` and `projectResources.clusterResources`.
+   - When system templates are present (organization/folder level), also reads `platformResources.namespacedResources` and `platformResources.clusterResources`.
+   - At the project level (`Render()`), `platformResources` is intentionally skipped — a project template that defines `platformResources` fields has no effect.
 7. Validates each resource against safety constraints.
 8. Applies the validated resources to Kubernetes via server-side apply.
 
 The architectural decision to use structured output is recorded in
 [ADR 012](adrs/012-structured-resource-output.md), refined by
-[ADR 014](adrs/014-config-management-resource-schema.md). The decision to split
+[ADR 016](adrs/016-config-management-resource-schema.md). The decision to split
 platform and project inputs is recorded in
-[ADR 013](adrs/013-separate-system-user-template-input.md), extended by ADR 014.
+[ADR 013](adrs/013-separate-system-user-template-input.md), extended by ADR 016.
 
 ## Writing a Custom Template
 
@@ -301,7 +300,7 @@ port defined above — do not use `input.port` here.
 8. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 9. **Never place project or namespace in `input`** — these are platform-provided values available at `platform.project` and `platform.namespace`.
 10. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
-11. **Never define `platformResources` in a user deployment template** — these fields are reserved for system templates and are managed by the platform operator.
+11. **Never define `platformResources` in a user deployment template** — the project-level renderer does not read `platformResources` (ADR 016 Decision 8). Any values defined there are silently ignored. Platform resources are defined in system templates evaluated at the organization/folder level.
 
 ### Previewing Your Template
 
@@ -548,14 +547,17 @@ template's `projectResources.namespacedResources` and `projectResources.clusterR
 Resources placed in `platformResources.namespacedResources` and
 `platformResources.clusterResources` by system templates are:
 
-- **Not modifiable by user templates** — user-authored deployment templates cannot
-  override or replace resources in the `platformResources` fields. The fields are
-  explicitly separate, so CUE unification does not allow a user template to conflict
-  with a system template's output.
+- **Not produced by project-level templates** — the renderer enforces a hard boundary
+  (ADR 016 Decision 8) in Go code: when rendering a project-level template (`Render()`),
+  it does not read `platformResources` from the evaluated CUE value. A project template
+  that defines `platformResources` fields is valid CUE but the values are silently
+  ignored. Only the organization/folder-level path (`RenderWithSystemTemplates()`) reads
+  both collections.
 - **Always applied alongside user resources** — the render engine collects resources
-  from all four output fields together and applies them in a single server-side apply
-  pass. This guarantees that operator-required resources (e.g., `HTTPRoute`, network
-  policies) are always present whenever the deployment is applied.
+  from all four output fields at the organization/folder level and applies them in a
+  single server-side apply pass. This guarantees that operator-required resources
+  (e.g., `HTTPRoute`, network policies) are always present whenever the deployment
+  is applied.
 
 **Operator Constraints via System Templates**
 
@@ -753,11 +755,11 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: prepends generated schema (`api/v1alpha1.GeneratedSchema`), compiles CUE source, marshals `ProjectInput` to JSON and fills `"input"`, marshals `PlatformInput` and fills `"platform"`, walks structured `projectResources.namespacedResources`/`projectResources.clusterResources` fields (and optionally `platformResources.namespacedResources`/`platformResources.clusterResources`), validates. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — unifies zero or more system template CUE sources with the deployment template by concatenating them before compilation, prepends generated schema, then fills in platform and project inputs. Used at deploy time to produce both project and platform resources in a single evaluation. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in system templates) resolve correctly. Extracts `platform.namespace` from the compiled value. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — project-level render path: prepends generated schema, compiles CUE source, fills `"input"` and `"platform"`, then calls `evaluateStructured(..., false)` which reads only `projectResources` (ADR 016 Decision 8 hard boundary — `platformResources` is intentionally skipped). |
+| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — organization/folder-level render path: unifies system template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in system templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
 | `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
-| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` reads from `projectResources.*` and `platformResources.*` paths, dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
+| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
 
