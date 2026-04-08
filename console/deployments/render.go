@@ -61,9 +61,8 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1a
 // RenderWithSystemTemplates evaluates the deployment template unified with zero or
 // more system template CUE sources. Each system template is unified with the
 // deployment template before filling in the platform and project inputs.
-// System templates contribute resources via platformResources.namespacedResources and
-// platformResources.clusterResources; the deployment template contributes resources via
-// projectResources.namespacedResources and projectResources.clusterResources.
+// All templates can define values for both projectResources and platformResources.
+// The renderer reads both collections when system templates are present (organization/folder level).
 func (r *CueRenderer) RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
@@ -117,9 +116,8 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 // All CUE sources are concatenated before compilation so that system templates
 // can reference top-level identifiers (input, platform, _labels, etc.) defined
 // by the deployment template.
-// System templates contribute resources via platformResources.namespacedResources and
-// platformResources.clusterResources; the deployment template contributes resources via
-// projectResources.namespacedResources and projectResources.clusterResources.
+// All templates can define values for both projectResources and platformResources.
+// The renderer reads both collections at the organization/folder level (ADR 016).
 func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -174,13 +172,15 @@ func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string
 		return nil, fmt.Errorf("deployment template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructured(unified, platform.Namespace)
+	return evaluateStructured(unified, platform.Namespace, true)
 }
 
 // evaluate performs synchronous CUE template evaluation.
 // Templates must use the structured output format under projectResources.
 // The platform input (project, namespace, claims) and project input (name, image,
 // tag, etc.) are encoded separately and unified with the template.
+// This is the project-level render path. Per ADR 016, the renderer does not read
+// platformResources from project-level templates.
 func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -231,7 +231,8 @@ func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha
 		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructured(unified, platform.Namespace)
+	// Project-level render: do not read platformResources (ADR 016 Decision 8).
+	return evaluateStructured(unified, platform.Namespace, false)
 }
 
 // evaluateWithCueInput performs synchronous CUE template evaluation using a raw
@@ -275,18 +276,29 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 		return nil, fmt.Errorf("platform.namespace must be a concrete string: %w", err)
 	}
 
-	return evaluateStructured(unified, expectedNamespace)
+	// Preview mode reads both collections (ADR 016 Decision 8).
+	return evaluateStructured(unified, expectedNamespace, true)
 }
 
-// evaluateStructured walks the projectResources.namespacedResources,
-// projectResources.clusterResources, platformResources.namespacedResources, and
-// platformResources.clusterResources structured output fields and returns
-// validated Kubernetes resources.
+// evaluateStructured walks the structured output fields of a unified CUE value
+// and returns validated Kubernetes resources.
 //
-// namespacedResources structure: projectResources.namespacedResources.<namespace>.<Kind>.<name>
-// clusterResources structure:    projectResources.clusterResources.<Kind>.<name>
-// platformResources follow the same structure but are populated by platform template evaluations.
-func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstructured.Unstructured, error) {
+// It always reads projectResources (project-level resources):
+//
+//	projectResources.namespacedResources.<namespace>.<Kind>.<name>
+//	projectResources.clusterResources.<Kind>.<name>
+//
+// When readPlatformResources is true, it also reads platformResources
+// (organization/folder-level resources):
+//
+//	platformResources.namespacedResources.<namespace>.<Kind>.<name>
+//	platformResources.clusterResources.<Kind>.<name>
+//
+// Per ADR 016 Decision 8, the project-level render path passes false so that a
+// project template cannot produce platformResources. Organization and folder
+// level paths pass true to read both collections. This is a hard boundary
+// enforced in Go code, not in CUE.
+func evaluateStructured(unified cue.Value, expectedNamespace string, readPlatformResources bool) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 
 	// Walk projectResources.namespacedResources: <namespace>.<Kind>.<name>
@@ -309,7 +321,12 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 		result = append(result, resources...)
 	}
 
-	// Walk platformResources.namespacedResources (populated by platform templates).
+	if !readPlatformResources {
+		return result, nil
+	}
+
+	// Walk platformResources.namespacedResources (populated by organization/folder templates;
+	// skipped for project-level rendering).
 	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
 	if platformNamespacedValue.Err() == nil && platformNamespacedValue.Exists() {
 		resources, err := walkNamespacedResources(platformNamespacedValue, expectedNamespace, "platformResources.namespacedResources")
@@ -319,7 +336,8 @@ func evaluateStructured(unified cue.Value, expectedNamespace string) ([]unstruct
 		result = append(result, resources...)
 	}
 
-	// Walk platformResources.clusterResources (populated by platform templates).
+	// Walk platformResources.clusterResources (populated by organization/folder templates;
+	// skipped for project-level rendering).
 	platformClusterValue := unified.LookupPath(cue.ParsePath("platformResources.clusterResources"))
 	if platformClusterValue.Err() == nil && platformClusterValue.Exists() {
 		resources, err := walkClusterResources(platformClusterValue, "platformResources.clusterResources")
@@ -467,4 +485,3 @@ func validateResource(u unstructured.Unstructured) error {
 
 	return nil
 }
-
