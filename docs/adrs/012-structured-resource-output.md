@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — refined by [ADR 014](014-config-management-resource-schema.md)
 
 ## Context
 
