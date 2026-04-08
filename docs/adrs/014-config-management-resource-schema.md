@@ -250,7 +250,55 @@ to template authors who are not familiar with Kubernetes concepts:
 - **platformResources** — "resources for the platform" (HTTPRoutes in the
   gateway namespace, NetworkPolicies, ReferenceGrants)
 
-### 7. CUE unification merges templates from all hierarchy levels.
+### 7. Templates do not declare a CUE package clause.
+
+User-authored templates are plain CUE source without a `package` declaration.
+The Go renderer controls the package name by prepending it before compilation
+or by assigning files to a `build.Instance` where it sets the package.
+
+Template authors write:
+
+```cue
+// No package clause — the renderer handles this.
+
+_labels: {
+    "app.kubernetes.io/name":       input.name
+    "app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: (platform.namespace): {
+    Deployment: (input.name): { ... }
+}
+```
+
+They do **not** write `package deployment` or any other package declaration.
+
+**Rationale.** The CUE language spec makes the package clause optional — files
+without one are valid CUE and can be compiled with `cue.Context.CompileString`,
+`CompileBytes`, or added to a `build.Instance` via `AddFile`. The
+`cue.Value.Unify` operation is package-agnostic: it works regardless of whether
+the source values had package clauses, different package names, or no package at
+all. This means the Go renderer can compile each template independently and
+unify the results without requiring templates to agree on (or even declare) a
+package name.
+
+Keeping the package clause out of user-authored templates has three benefits:
+
+1. **Simpler authoring.** Template authors do not need to know what CUE packages
+   are or remember which package name to use. One less thing to get wrong.
+
+2. **Renderer control.** The Go code owns the package namespace. If the internal
+   compilation strategy changes (e.g., switching from string concatenation to
+   `build.Instance.AddFile`, or changing the package name), no user templates
+   need to be updated.
+
+3. **Eliminates a current pain point.** The existing codebase has a
+   `stripPackageDecl` function in `console/deployments/render.go` that removes
+   `package deployment` lines before concatenating system templates with
+   deployment templates. Removing the requirement at the source eliminates this
+   workaround entirely.
+
+### 8. CUE unification merges templates from all hierarchy levels.
 
 At evaluation time, the console collects templates from every level in the
 hierarchy (organization, folders, project) and unifies them into a single CUE
@@ -264,27 +312,113 @@ Organization templates   ──┐
       Project template   ──┘
 ```
 
-Each template declares `package deployment` and can reference `platform.*` and
-`input.*` fields. Templates from different levels contribute to different output
-collections based on their level:
+Every template can reference `platform.*` and `input.*` fields. Templates from
+different levels write to different output collections and may constrain
+each other:
 
-| Template level  | Can write to          | Cannot write to        |
+| Template level  | Writes to             | Can constrain          |
 |-----------------|-----------------------|------------------------|
 | Organization    | platformResources     | projectResources       |
 | Folder          | platformResources     | projectResources       |
-| Project         | projectResources      | platformResources      |
+| Project         | projectResources      | (nothing above it)     |
 
-This separation is enforced by the Go renderer, which reads each collection
-from the appropriate CUE path. A project-level template that attempts to define
+**Writing** means defining concrete resources (a Deployment, a Service, an
+HTTPRoute). **Constraining** means adding CUE type constraints that resources
+defined at a lower level must satisfy — for example, closing the set of allowed
+Kinds, requiring a label, or setting a minimum replica count.
+
+Organization and folder templates can explicitly unify with `projectResources`
+to add constraints. This is the mechanism by which platform engineers control
+what project-level templates are allowed to produce (see Decision 9).
+
+The Go renderer reads each collection from the appropriate CUE path after
+unification. A project-level template that attempts to define
 `platformResources` fields has no effect because the renderer does not read
-`platformResources` from the project template's contribution.
+`platformResources` from the project template's contribution. This is a hard
+boundary enforced by the renderer, not by CUE.
 
 **Constraint flow is one-directional**: higher-level templates can add CUE
-constraints to `projectResources` (e.g., requiring a label on all Deployments)
-but project templates cannot constrain `platformResources`. This is also
-enforced by CUE evaluation order in the renderer.
+constraints to `projectResources` (e.g., requiring a label on all Deployments,
+restricting allowed Kinds) but project templates cannot constrain
+`platformResources`. This is enforced by CUE evaluation order in the renderer.
 
-### 8. The top-level Platform type composes all of the above.
+### 9. Platform templates close the projectResources struct to restrict allowed resource kinds.
+
+A product engineer's project template can define any CUE value under
+`projectResources`. Without constraints, nothing prevents a project template
+from producing a `ClusterRole`, a `ClusterRoleBinding`, or any other dangerous
+resource kind. The Go renderer validates allowed kinds after evaluation (see
+the allowed kinds list in `console/deployments/apply.go`), but that is a
+last-resort safety net — errors at apply time are late and opaque compared to
+errors at CUE evaluation time.
+
+Platform templates solve this by closing the `projectResources` struct at the
+organization or folder level. A closed struct in CUE rejects any field not
+explicitly allowed. When a platform template closes `projectResources` to a
+specific set of Kind keys, any project template that tries to add a resource of
+a disallowed Kind fails at CUE evaluation time with a clear error — before any
+Kubernetes API call.
+
+**Example: restricting project resources to safe kinds.** An organization-level
+platform template defines the allowed Kind keys:
+
+```cue
+// Platform template (org level): close projectResources to safe kinds only.
+//
+// This constraint is unified with the project template at evaluation time.
+// If a project template defines a Kind not listed here, CUE evaluation fails.
+
+import "list"
+
+// _allowedKinds defines the set of resource kinds that project templates may
+// produce. Closing the struct to these kinds prevents project authors from
+// creating dangerous resources like ClusterRole or ClusterRoleBinding.
+_allowedKinds: ["ConfigMap", "Deployment", "Secret", "Service", "ServiceAccount"]
+
+projectResources: [_]: {
+    for kind in _allowedKinds {
+        (kind): _
+    }
+}
+```
+
+With this constraint in place, a project template that tries to produce a
+`ClusterRoleBinding`:
+
+```cue
+projectResources: (platform.namespace): {
+    ClusterRoleBinding: "escalate": { ... }
+}
+```
+
+fails at CUE evaluation time:
+
+```
+projectResources.<ns>.ClusterRoleBinding: field not allowed
+```
+
+**Why CUE-level enforcement matters.** The Go renderer's allowed-kinds
+validation (in `apply.go`) is a hard safety net that catches any resource kind
+the renderer does not know how to apply. But it operates after CUE evaluation
+completes — the template author sees a Go-level error, not a CUE-level error.
+By closing the struct in a platform template, the restriction is visible in the
+CUE schema, reported as a CUE evaluation error with the exact field path, and
+testable in the template preview RPC before any deployment. It also means the
+allowed set is configurable per-organization or per-folder, not hardcoded in Go.
+
+**Layered enforcement.** The two enforcement points are complementary:
+
+| Layer            | What it enforces                          | When it runs       |
+|------------------|-------------------------------------------|--------------------|
+| Platform template (CUE) | Allowed Kind keys in `projectResources`, configurable per org/folder | CUE evaluation time |
+| Go renderer (`apply.go`) | Hard-coded Kind allowlist and GVR mapping | After CUE evaluation, before Kubernetes apply |
+
+A Kind must pass both layers. The CUE constraint is the primary control —
+platform engineers manage it. The Go allowlist is the fallback — it catches
+anything the CUE constraint missed (e.g., if no platform template is defined)
+and ensures the renderer has a GVR mapping for every Kind it applies.
+
+### 10. The top-level Platform type composes all of the above.
 
 ```go
 // Platform is the top-level resource type for the configuration management API.
@@ -317,7 +451,7 @@ type PlatformSpec struct {
 }
 ```
 
-### 9. The Renderer interface is version-agnostic.
+### 11. The Renderer interface is version-agnostic.
 
 The consumer package defines a `Renderer` interface that all versioned types
 must satisfy:
@@ -349,7 +483,7 @@ from the serialized configuration, selects the correct versioned type, and calls
 `Render()`. All subsequent processing uses the version-agnostic
 `ResourceOutput`.
 
-### 10. Package layout.
+### 12. Package layout.
 
 ```
 api/

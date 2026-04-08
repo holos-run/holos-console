@@ -119,12 +119,16 @@ project-level template. When a project template defines fields under
 `platformResources`, they are ignored by the renderer. This is a hard boundary,
 not a CUE constraint — the renderer simply does not read the field.
 
-**Constraints flow downward**: A folder-level template can add CUE constraints
-to `projectResources` (e.g., `output.projectResources: [_]: [_]: [_]:
-metadata: labels: "team": string`). This constraint is unified with the project
-template at evaluation time. If the project template does not satisfy the
-constraint, CUE evaluation fails with a clear error before any Kubernetes API
-call. Constraints cannot flow upward: a project template cannot constrain
+**Constraints flow downward**: Organization and folder templates can explicitly
+unify with `projectResources` to add CUE constraints that project templates must
+satisfy. For example, a platform template can close the `projectResources`
+struct to restrict which resource Kinds a project template may produce — if a
+project template tries to add a `ClusterRoleBinding`, CUE evaluation fails
+before any Kubernetes API call (see ADR 014, Decision 9 for the full mechanism
+and examples). Platform templates can also require labels, set minimum replica
+counts, or enforce any other structural constraint on project resources.
+
+Constraints cannot flow upward: a project template cannot constrain
 `platformResources`.
 
 ### 4. Permissions cascade downward through the hierarchy, highest role wins.
