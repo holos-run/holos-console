@@ -6,10 +6,9 @@ import (
 	"testing"
 )
 
-// adapterStructuredTemplate uses the output.namespacedResources/output.clusterResources structured output format
+// adapterStructuredTemplate uses the projectResources.namespacedResources/projectResources.clusterResources structured output format
 // with the system/input split structure.
 const adapterStructuredTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -17,7 +16,7 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
@@ -27,14 +26,14 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: (input.name): {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 		}
@@ -43,7 +42,7 @@ output: {
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 			spec: {
@@ -70,7 +69,6 @@ const adapterInvalidTemplate = `this is { not valid cue !!!`
 
 // adapterCrossNamespaceTemplate tries to place a resource in a different namespace.
 const adapterCrossNamespaceTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -78,13 +76,13 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
@@ -100,11 +98,13 @@ output: {
 }
 `
 
-// adapterSystemInput builds a CUE system input string for the adapter tests.
+// adapterSystemInput builds a CUE platform input string for the adapter tests.
 func adapterSystemInput(project, namespace string) string {
-	return `system: {
-	project:   "` + project + `"
-	namespace: "` + namespace + `"
+	return `platform: {
+	project:          "` + project + `"
+	namespace:        "` + namespace + `"
+	gatewayNamespace: "istio-ingress"
+	organization:     ""
 }`
 }
 
@@ -120,9 +120,11 @@ func adapterUserInput(name, image, tag string) string {
 // adapterSystemInputWithClaims builds a CUE system input string with full claims for templates
 // that use system.claims (e.g., the default template).
 func adapterSystemInputWithClaims(project, namespace string) string {
-	return `system: {
-	project:   "` + project + `"
-	namespace: "` + namespace + `"
+	return `platform: {
+	project:          "` + project + `"
+	namespace:        "` + namespace + `"
+	gatewayNamespace: "istio-ingress"
+	organization:     ""
 	claims: {
 		iss:            "https://dex.example.com"
 		sub:            "test-user-sub"

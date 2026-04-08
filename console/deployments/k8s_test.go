@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -258,10 +259,10 @@ func TestCreateDeployment_Env(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		env := []EnvVarInput{
+		env := []v1alpha1.EnvVar{
 			{Name: "FOO", Value: "bar"},
-			{Name: "FROM_SECRET", SecretKeyRef: &KeyRefInput{Name: "mysecret", Key: "mykey"}},
-			{Name: "FROM_CM", ConfigMapKeyRef: &KeyRefInput{Name: "mycm", Key: "mykey"}},
+			{Name: "FROM_SECRET", SecretKeyRef: &v1alpha1.KeyRef{Name: "mysecret", Key: "mykey"}},
+			{Name: "FROM_CM", ConfigMapKeyRef: &v1alpha1.KeyRef{Name: "mycm", Key: "mykey"}},
 		}
 		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, env, 0)
 		if err != nil {
@@ -271,7 +272,7 @@ func TestCreateDeployment_Env(t *testing.T) {
 		if !ok {
 			t.Fatal("expected env key to be present")
 		}
-		var got []EnvVarInput
+		var got []v1alpha1.EnvVar
 		if err := json.Unmarshal([]byte(raw), &got); err != nil {
 			t.Fatalf("expected valid JSON in env key, got error: %v", err)
 		}
@@ -311,7 +312,7 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		env := []EnvVarInput{
+		env := []v1alpha1.EnvVar{
 			{Name: "PORT", Value: "8080"},
 		}
 		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, env, nil)
@@ -322,7 +323,7 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		if !ok {
 			t.Fatal("expected env key to be present after update")
 		}
-		var got []EnvVarInput
+		var got []v1alpha1.EnvVar
 		if err := json.Unmarshal([]byte(raw), &got); err != nil {
 			t.Fatalf("unexpected JSON error: %v", err)
 		}

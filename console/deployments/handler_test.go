@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -79,7 +80,6 @@ func fakeTemplate(name string) *corev1.ConfigMap {
 			// because tests use stubRenderer. Matches the structured output format for
 			// consistency with the production template.
 			"template.cue": `
-package deployment
 input: { name: string, image: string, tag: string, project: string, namespace: string }
 namespaced: {}
 cluster: {}
@@ -90,24 +90,24 @@ cluster: {}
 
 // stubRenderer implements Renderer for tests.
 type stubRenderer struct {
-	resources  []unstructured.Unstructured
-	err        error
-	called     bool
-	lastSystem SystemInput
-	lastUser   UserInput
+	resources    []unstructured.Unstructured
+	err          error
+	called       bool
+	lastPlatform v1alpha1.PlatformInput
+	lastProject  v1alpha1.ProjectInput
 }
 
-func (s *stubRenderer) Render(_ context.Context, _ string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	s.called = true
-	s.lastSystem = system
-	s.lastUser = user
+	s.lastPlatform = platform
+	s.lastProject = project
 	return s.resources, s.err
 }
 
-func (s *stubRenderer) RenderWithSystemTemplates(_ context.Context, _ string, _ []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) RenderWithSystemTemplates(_ context.Context, _ string, _ []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	s.called = true
-	s.lastSystem = system
-	s.lastUser = user
+	s.lastPlatform = platform
+	s.lastProject = project
 	return s.resources, s.err
 }
 
@@ -729,14 +729,14 @@ func TestHandler_EnvVarRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastUser.Env) != 2 {
-			t.Fatalf("expected 2 env vars in renderer input, got %d", len(renderer.lastUser.Env))
+		if len(renderer.lastProject.Env) != 2 {
+			t.Fatalf("expected 2 env vars in renderer input, got %d", len(renderer.lastProject.Env))
 		}
-		if renderer.lastUser.Env[0].Name != "FOO" || renderer.lastUser.Env[0].Value != "bar" {
-			t.Errorf("unexpected first env var: %+v", renderer.lastUser.Env[0])
+		if renderer.lastProject.Env[0].Name != "FOO" || renderer.lastProject.Env[0].Value != "bar" {
+			t.Errorf("unexpected first env var: %+v", renderer.lastProject.Env[0])
 		}
-		if renderer.lastUser.Env[1].Name != "FROM_SECRET" || renderer.lastUser.Env[1].SecretKeyRef == nil {
-			t.Errorf("unexpected second env var: %+v", renderer.lastUser.Env[1])
+		if renderer.lastProject.Env[1].Name != "FROM_SECRET" || renderer.lastProject.Env[1].SecretKeyRef == nil {
+			t.Errorf("unexpected second env var: %+v", renderer.lastProject.Env[1])
 		}
 	})
 
@@ -762,8 +762,8 @@ func TestHandler_EnvVarRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastUser.Env) != 1 || renderer.lastUser.Env[0].Name != "PORT" {
-			t.Errorf("expected env [PORT=8080] from stored data, got %v", renderer.lastUser.Env)
+		if len(renderer.lastProject.Env) != 1 || renderer.lastProject.Env[0].Name != "PORT" {
+			t.Errorf("expected env [PORT=8080] from stored data, got %v", renderer.lastProject.Env)
 		}
 	})
 }
@@ -797,14 +797,14 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if !applier.applyCalled {
 			t.Error("expected applier.Apply to be called on CreateDeployment")
 		}
-		if renderer.lastUser.Name != "web-app" {
-			t.Errorf("expected input name 'web-app', got %q", renderer.lastUser.Name)
+		if renderer.lastProject.Name != "web-app" {
+			t.Errorf("expected input name 'web-app', got %q", renderer.lastProject.Name)
 		}
-		if renderer.lastUser.Image != "nginx" {
-			t.Errorf("expected input image 'nginx', got %q", renderer.lastUser.Image)
+		if renderer.lastProject.Image != "nginx" {
+			t.Errorf("expected input image 'nginx', got %q", renderer.lastProject.Image)
 		}
-		if renderer.lastUser.Tag != "1.25" {
-			t.Errorf("expected input tag '1.25', got %q", renderer.lastUser.Tag)
+		if renderer.lastProject.Tag != "1.25" {
+			t.Errorf("expected input tag '1.25', got %q", renderer.lastProject.Tag)
 		}
 	})
 
@@ -859,11 +859,11 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastUser.Command) != 1 || renderer.lastUser.Command[0] != "myapp" {
-			t.Errorf("expected command [myapp], got %v", renderer.lastUser.Command)
+		if len(renderer.lastProject.Command) != 1 || renderer.lastProject.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp], got %v", renderer.lastProject.Command)
 		}
-		if len(renderer.lastUser.Args) != 2 || renderer.lastUser.Args[0] != "--port" || renderer.lastUser.Args[1] != "8080" {
-			t.Errorf("expected args [--port 8080], got %v", renderer.lastUser.Args)
+		if len(renderer.lastProject.Args) != 2 || renderer.lastProject.Args[0] != "--port" || renderer.lastProject.Args[1] != "8080" {
+			t.Errorf("expected args [--port 8080], got %v", renderer.lastProject.Args)
 		}
 	})
 
@@ -890,11 +890,11 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(renderer.lastUser.Command) != 1 || renderer.lastUser.Command[0] != "myapp" {
-			t.Errorf("expected command [myapp] from stored data, got %v", renderer.lastUser.Command)
+		if len(renderer.lastProject.Command) != 1 || renderer.lastProject.Command[0] != "myapp" {
+			t.Errorf("expected command [myapp] from stored data, got %v", renderer.lastProject.Command)
 		}
-		if len(renderer.lastUser.Args) != 2 || renderer.lastUser.Args[0] != "--port" {
-			t.Errorf("expected args [--port 8080] from stored data, got %v", renderer.lastUser.Args)
+		if len(renderer.lastProject.Args) != 2 || renderer.lastProject.Args[0] != "--port" {
+			t.Errorf("expected args [--port 8080] from stored data, got %v", renderer.lastProject.Args)
 		}
 	})
 

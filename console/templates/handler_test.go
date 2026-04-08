@@ -45,8 +45,7 @@ func authedCtx(email string, roles []string) context.Context {
 	})
 }
 
-const validCue = `package deployment
-
+const validCue = `
 #Input: {
 	name: string
 }
@@ -732,7 +731,7 @@ func TestHandler_CloneDeploymentTemplate(t *testing.T) {
 }
 
 func TestHandler_RenderDeploymentTemplate(t *testing.T) {
-	const validCueSrc = `package deployment
+	const validCueSrc = `
 #Input: { name: string }
 `
 

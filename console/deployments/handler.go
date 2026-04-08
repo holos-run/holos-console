@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -46,12 +47,15 @@ type TemplateResolver interface {
 	GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error)
 }
 
+// DefaultGatewayNamespace is the default namespace for the ingress gateway.
+const DefaultGatewayNamespace = "istio-ingress"
+
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error)
+	Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
 	// RenderWithSystemTemplates unifies one or more system template CUE sources
-	// with the deployment template before filling in system and user inputs.
-	RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error)
+	// with the deployment template before filling in platform and project inputs.
+	RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
 }
 
 // OrgProvider resolves the organization for a project.
@@ -113,9 +117,9 @@ func (h *Handler) WithSystemTemplateProvider(stp SystemTemplateProvider) *Handle
 // renderResources renders deployment resources, unifying with enabled system
 // templates when an OrgProvider and SystemTemplateProvider are configured.
 // If neither is configured, falls back to Render (deployment template only).
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, system SystemInput, user UserInput) ([]unstructured.Unstructured, error) {
+func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	if h.orgProvider == nil || h.systemTemplateProvider == nil {
-		return h.renderer.Render(ctx, cueSource, system, user)
+		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
 	org, err := h.orgProvider.GetProjectOrg(ctx, project)
@@ -124,11 +128,11 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 			slog.String("project", project),
 			slog.Any("error", err),
 		)
-		return h.renderer.Render(ctx, cueSource, system, user)
+		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 	if org == "" {
 		// Project is not associated with an org; no system templates apply.
-		return h.renderer.Render(ctx, cueSource, system, user)
+		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
 	systemSources, err := h.systemTemplateProvider.ListEnabledSystemTemplateSources(ctx, org)
@@ -138,10 +142,10 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 			slog.String("org", org),
 			slog.Any("error", err),
 		)
-		return h.renderer.Render(ctx, cueSource, system, user)
+		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	return h.renderer.RenderWithSystemTemplates(ctx, cueSource, systemSources, system, user)
+	return h.renderer.RenderWithSystemTemplates(ctx, cueSource, systemSources, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.
@@ -306,30 +310,17 @@ func (h *Handler) CreateDeployment(
 	// Render and apply the deployment resources.
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		system := SystemInput{
-			Project:   project,
-			Namespace: ns,
-			Claims: ClaimsInput{
-				Iss:           claims.Iss,
-				Sub:           claims.Sub,
-				Exp:           claims.Exp,
-				Iat:           claims.Iat,
-				Email:         claims.Email,
-				EmailVerified: claims.EmailVerified,
-				Name:          claims.Name,
-				Groups:        claims.Roles,
-			},
-		}
-		user := UserInput{
+		platformIn := h.buildPlatformInput(project, ns, claims)
+		projectIn := v1alpha1.ProjectInput{
 			Name:    name,
 			Image:   req.Msg.Image,
 			Tag:     req.Msg.Tag,
 			Command: req.Msg.Command,
 			Args:    req.Msg.Args,
 			Env:     envInputs,
-			Port:    req.Msg.Port,
+			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, system, user)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment",
 				slog.String("project", project),
@@ -416,30 +407,17 @@ func (h *Handler) UpdateDeployment(
 		}
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		system := SystemInput{
-			Project:   project,
-			Namespace: ns,
-			Claims: ClaimsInput{
-				Iss:           claims.Iss,
-				Sub:           claims.Sub,
-				Exp:           claims.Exp,
-				Iat:           claims.Iat,
-				Email:         claims.Email,
-				EmailVerified: claims.EmailVerified,
-				Name:          claims.Name,
-				Groups:        claims.Roles,
-			},
-		}
-		user := UserInput{
+		platformIn := h.buildPlatformInput(project, ns, claims)
+		projectIn := v1alpha1.ProjectInput{
 			Name:    name,
 			Image:   image,
 			Tag:     tag,
 			Command: commandFromConfigMap(updated),
 			Args:    argsFromConfigMap(updated),
-			Env:     envFromConfigMapAsInputs(updated),
-			Port:    portFromConfigMap(updated),
+			Env:     envFromConfigMapAsV1alpha1(updated),
+			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, system, user)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -654,50 +632,37 @@ func (h *Handler) GetDeploymentRenderPreview(
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
 
-	// Build system input from authenticated claims and resolved namespace.
+	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
-	system := SystemInput{
-		Project:   project,
-		Namespace: ns,
-		Claims: ClaimsInput{
-			Iss:           claims.Iss,
-			Sub:           claims.Sub,
-			Exp:           claims.Exp,
-			Iat:           claims.Iat,
-			Email:         claims.Email,
-			EmailVerified: claims.EmailVerified,
-			Name:          claims.Name,
-			Groups:        claims.Roles,
-		},
-	}
+	platformIn := h.buildPlatformInput(project, ns, claims)
 
-	// Build user input from the deployment's stored fields.
-	user := UserInput{
+	// Build project input from the deployment's stored fields.
+	projectIn := v1alpha1.ProjectInput{
 		Name:    name,
 		Image:   cm.Data[ImageKey],
 		Tag:     cm.Data[TagKey],
 		Command: commandFromConfigMap(cm),
 		Args:    argsFromConfigMap(cm),
-		Env:     envFromConfigMapAsInputs(cm),
-		Port:    portFromConfigMap(cm),
+		Env:     envFromConfigMapAsV1alpha1(cm),
+		Port:    defaultPort(portFromConfigMap(cm)),
 	}
 
-	// Format system and user inputs as CUE strings.
-	systemJSON, err := json.Marshal(system)
+	// Format platform and project inputs as CUE strings.
+	platformJSON, err := json.Marshal(platformIn)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding system input: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding platform input: %w", err))
 	}
-	userJSON, err := json.Marshal(user)
+	projectJSON, err := json.Marshal(projectIn)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding user input: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding project input: %w", err))
 	}
-	cueSystemInput := fmt.Sprintf("system: %s", string(systemJSON))
-	cueUserInput := fmt.Sprintf("input: %s", string(userJSON))
+	cueSystemInput := fmt.Sprintf("platform: %s", string(platformJSON))
+	cueUserInput := fmt.Sprintf("input: %s", string(projectJSON))
 
 	// Render the template to produce YAML and JSON output.
 	var renderedYAML, renderedJSON string
 	if h.renderer != nil {
-		resources, renderErr := h.renderer.Render(ctx, cueTemplate, system, user)
+		resources, renderErr := h.renderer.Render(ctx, cueTemplate, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -813,13 +778,13 @@ func argsFromConfigMap(cm *corev1.ConfigMap) []string {
 	return stringSliceFromConfigMap(cm, ArgsKey)
 }
 
-// envFromConfigMapAsInputs reads the JSON-encoded env vars from a ConfigMap as EnvVarInput slice.
-func envFromConfigMapAsInputs(cm *corev1.ConfigMap) []EnvVarInput {
+// envFromConfigMapAsV1alpha1 reads the JSON-encoded env vars from a ConfigMap as v1alpha1.EnvVar slice.
+func envFromConfigMapAsV1alpha1(cm *corev1.ConfigMap) []v1alpha1.EnvVar {
 	raw, ok := cm.Data[EnvKey]
 	if !ok || raw == "" {
 		return nil
 	}
-	var inputs []EnvVarInput
+	var inputs []v1alpha1.EnvVar
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
 		return nil
 	}
@@ -832,19 +797,19 @@ func envFromConfigMap(cm *corev1.ConfigMap) []*consolev1.EnvVar {
 	if !ok || raw == "" {
 		return nil
 	}
-	var inputs []EnvVarInput
+	var inputs []v1alpha1.EnvVar
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
 		return nil
 	}
 	result := make([]*consolev1.EnvVar, 0, len(inputs))
 	for _, e := range inputs {
-		result = append(result, envVarInputToProto(e))
+		result = append(result, envVarToProto(e))
 	}
 	return result
 }
 
-// envVarInputToProto converts an EnvVarInput to a proto EnvVar message.
-func envVarInputToProto(e EnvVarInput) *consolev1.EnvVar {
+// envVarToProto converts a v1alpha1.EnvVar to a proto EnvVar message.
+func envVarToProto(e v1alpha1.EnvVar) *consolev1.EnvVar {
 	ev := &consolev1.EnvVar{Name: e.Name}
 	switch {
 	case e.SecretKeyRef != nil:
@@ -861,17 +826,17 @@ func envVarInputToProto(e EnvVarInput) *consolev1.EnvVar {
 	return ev
 }
 
-// protoToEnvVarInput converts a proto EnvVar message to an EnvVarInput.
-func protoToEnvVarInput(e *consolev1.EnvVar) EnvVarInput {
-	input := EnvVarInput{Name: e.GetName()}
+// protoToEnvVar converts a proto EnvVar message to a v1alpha1.EnvVar.
+func protoToEnvVar(e *consolev1.EnvVar) v1alpha1.EnvVar {
+	input := v1alpha1.EnvVar{Name: e.GetName()}
 	switch src := e.GetSource().(type) {
 	case *consolev1.EnvVar_SecretKeyRef:
 		if src.SecretKeyRef != nil {
-			input.SecretKeyRef = &KeyRefInput{Name: src.SecretKeyRef.GetName(), Key: src.SecretKeyRef.GetKey()}
+			input.SecretKeyRef = &v1alpha1.KeyRef{Name: src.SecretKeyRef.GetName(), Key: src.SecretKeyRef.GetKey()}
 		}
 	case *consolev1.EnvVar_ConfigMapKeyRef:
 		if src.ConfigMapKeyRef != nil {
-			input.ConfigMapKeyRef = &KeyRefInput{Name: src.ConfigMapKeyRef.GetName(), Key: src.ConfigMapKeyRef.GetKey()}
+			input.ConfigMapKeyRef = &v1alpha1.KeyRef{Name: src.ConfigMapKeyRef.GetName(), Key: src.ConfigMapKeyRef.GetKey()}
 		}
 	case *consolev1.EnvVar_Value:
 		input.Value = src.Value
@@ -879,24 +844,24 @@ func protoToEnvVarInput(e *consolev1.EnvVar) EnvVarInput {
 	return input
 }
 
-// validateEnvVars validates a list of proto EnvVar messages and converts them to EnvVarInput.
+// validateEnvVars validates a list of proto EnvVar messages and converts them to v1alpha1.EnvVar.
 // Returns an error if any env var has an empty name.
-func validateEnvVars(envVars []*consolev1.EnvVar) ([]EnvVarInput, error) {
+func validateEnvVars(envVars []*consolev1.EnvVar) ([]v1alpha1.EnvVar, error) {
 	if len(envVars) == 0 {
 		return nil, nil
 	}
-	result := make([]EnvVarInput, 0, len(envVars))
+	result := make([]v1alpha1.EnvVar, 0, len(envVars))
 	for _, e := range envVars {
 		if e.GetName() == "" {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("env var name must not be empty"))
 		}
-		result = append(result, protoToEnvVarInput(e))
+		result = append(result, protoToEnvVar(e))
 	}
 	return result, nil
 }
 
 // portFromConfigMap reads the port integer from a ConfigMap data key.
-func portFromConfigMap(cm *corev1.ConfigMap) int32 {
+func portFromConfigMap(cm *corev1.ConfigMap) int {
 	raw, ok := cm.Data[PortKey]
 	if !ok || raw == "" {
 		return 0
@@ -905,7 +870,37 @@ func portFromConfigMap(cm *corev1.ConfigMap) int32 {
 	if err != nil {
 		return 0
 	}
-	return int32(p)
+	return int(p)
+}
+
+// defaultPort returns port if non-zero, otherwise returns 8080.
+func defaultPort(port int) int {
+	if port == 0 {
+		return 8080
+	}
+	return port
+}
+
+// buildPlatformInput constructs a v1alpha1.PlatformInput from handler context.
+func (h *Handler) buildPlatformInput(project, namespace string, claims *rpc.Claims) v1alpha1.PlatformInput {
+	pi := v1alpha1.PlatformInput{
+		Project:          project,
+		Namespace:        namespace,
+		GatewayNamespace: DefaultGatewayNamespace,
+	}
+	if claims != nil {
+		pi.Claims = v1alpha1.Claims{
+			Iss:           claims.Iss,
+			Sub:           claims.Sub,
+			Exp:           claims.Exp,
+			Iat:           claims.Iat,
+			Email:         claims.Email,
+			EmailVerified: claims.EmailVerified,
+			Name:          claims.Name,
+			Groups:        claims.Roles,
+		}
+	}
+	return pi
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.

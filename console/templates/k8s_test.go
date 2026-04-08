@@ -67,7 +67,7 @@ func TestListTemplates(t *testing.T) {
 
 	t.Run("returns templates with correct label", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web application template", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web application template", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -87,7 +87,7 @@ func TestListTemplates(t *testing.T) {
 func TestGetTemplate(t *testing.T) {
 	t.Run("returns existing template", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -98,7 +98,7 @@ func TestGetTemplate(t *testing.T) {
 		if result.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", result.Name)
 		}
-		if result.Data[CueTemplateKey] != "package deployment\n" {
+		if result.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", result.Data[CueTemplateKey])
 		}
 	})
@@ -121,7 +121,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", nil)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -137,7 +137,7 @@ func TestCreateTemplate(t *testing.T) {
 		if cm.Annotations[DescriptionAnnotation] != "A web app" {
 			t.Errorf("expected description 'A web app', got %q", cm.Annotations[DescriptionAnnotation])
 		}
-		if cm.Data[CueTemplateKey] != "package deployment\n" {
+		if cm.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
 		}
 
@@ -146,7 +146,7 @@ func TestCreateTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected ConfigMap to exist, got %v", err)
 		}
-		if got.Data[CueTemplateKey] != "package deployment\n" {
+		if got.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected persisted cue template, got %q", got.Data[CueTemplateKey])
 		}
 	})
@@ -160,7 +160,7 @@ func TestCreateTemplate(t *testing.T) {
 			Image: "ghcr.io/mccutchen/go-httpbin",
 			Tag:   "2.21",
 		}
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", defaults)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -186,7 +186,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "package deployment\n", nil)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -199,7 +199,7 @@ func TestCreateTemplate(t *testing.T) {
 func TestUpdateTemplate(t *testing.T) {
 	t.Run("updates display name only", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -219,11 +219,11 @@ func TestUpdateTemplate(t *testing.T) {
 
 	t.Run("updates cue template", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		newTemplate := "package deployment\n\n#Input: { name: string }\n"
+		newTemplate := "#Input: { name: string }\n"
 		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, &newTemplate, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -235,7 +235,7 @@ func TestUpdateTemplate(t *testing.T) {
 
 	t.Run("adds defaults on update", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -259,7 +259,7 @@ func TestUpdateTemplate(t *testing.T) {
 
 	t.Run("clears defaults on update when clearDefaults is true", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		// Pre-populate defaults.json
 		cm.Data[DefaultsKey] = `{"image":"old","tag":"old"}`
 		fakeClient := fake.NewClientset(ns, cm)
@@ -276,7 +276,7 @@ func TestUpdateTemplate(t *testing.T) {
 
 	t.Run("preserves existing defaults when not updating them", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		cm.Data[DefaultsKey] = `{"image":"preserved","tag":"v1"}`
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -311,7 +311,7 @@ func TestUpdateTemplate(t *testing.T) {
 func TestDeleteTemplate(t *testing.T) {
 	t.Run("deletes existing template", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "package deployment\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -342,7 +342,7 @@ func TestDeleteTemplate(t *testing.T) {
 func TestCloneTemplate(t *testing.T) {
 	t.Run("copies CUE template and description from source", func(t *testing.T) {
 		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app template", "package deployment\nfoo: true\n")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app template", "foo: true\n")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
@@ -359,7 +359,7 @@ func TestCloneTemplate(t *testing.T) {
 		if cloned.Annotations[DescriptionAnnotation] != "A web app template" {
 			t.Errorf("expected description from source, got %q", cloned.Annotations[DescriptionAnnotation])
 		}
-		if cloned.Data[CueTemplateKey] != "package deployment\nfoo: true\n" {
+		if cloned.Data[CueTemplateKey] != "foo: true\n" {
 			t.Errorf("expected CUE template from source, got %q", cloned.Data[CueTemplateKey])
 		}
 	})

@@ -56,15 +56,14 @@ func viewerGrants(email string) *stubOrgResolver {
 }
 
 
-const validCue = `package deployment
-
+const validCue = `
 #Input: {}
 `
 
 func TestListSystemTemplatesHandler(t *testing.T) {
 	t.Run("returns templates for org OWNER", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -139,7 +138,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 func TestGetSystemTemplateHandler(t *testing.T) {
 	t.Run("returns template for org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "package deployment\n", true, false)
+		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -361,10 +360,11 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), NewCueRendererAdapter())
 
 		ctx := authedCtx(email, nil)
-		systemInput := `system: {
+		systemInput := `platform: {
 	project:          "my-project"
 	namespace:        "prj-my-project"
 	gatewayNamespace: "istio-ingress"
+	organization:     ""
 	claims: {
 		iss:            "https://example.com"
 		sub:            "user-123"

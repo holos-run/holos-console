@@ -13,16 +13,16 @@ import (
 )
 
 // minimalSystemTemplate is a minimal system template for testing the
-// MandatoryTemplateApplier. It uses package deployment and only references
-// system.namespace (not input.*) so it can be rendered standalone at project
-// creation time without a deployment template or user input.
+// MandatoryTemplateApplier. It only references platform.namespace (not input.*)
+// so it can be rendered standalone at project creation time without a deployment
+// template or user input.
 const minimalSystemTemplate = `
-package deployment
 
-system: {
+platform: {
 	project:          string
 	namespace:        string
-	gatewayNamespace: string | *"istio-ingress"
+	gatewayNamespace: string
+	organization:     string
 	claims: {
 		iss:            string
 		sub:            string
@@ -39,16 +39,18 @@ input: {
 	tag:   string
 }
 
-output: {
+projectResources: {
 	namespacedResources: {}
 	clusterResources: {}
-	systemNamespacedResources: (system.namespace): {
+}
+platformResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: "system-sa": {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      "system-sa"
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       "system-sa"
@@ -56,7 +58,7 @@ output: {
 			}
 		}
 	}
-	systemClusterResources: {}
+	clusterResources: {}
 }
 `
 

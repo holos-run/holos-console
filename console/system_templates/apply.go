@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/rpc"
 )
@@ -31,7 +32,7 @@ func NewMandatoryTemplateApplier(k8s *K8sClient, renderer *deployments.CueRender
 }
 
 // ApplyMandatorySystemTemplates lists all mandatory system templates for the
-// org, renders each one using SystemInput derived from the project and caller
+// org, renders each one using PlatformInput derived from the project and caller
 // claims, and applies the rendered resources to the project namespace.
 //
 // If any template render or apply fails, an error is returned describing which
@@ -56,13 +57,14 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 			slog.String("template", tmpl.Name),
 		)
 
-		// Build SystemInput for the render.
-		systemInput := deployments.SystemInput{
-			Project:   project,
-			Namespace: projectNamespace,
+		// Build PlatformInput for the render.
+		platformInput := v1alpha1.PlatformInput{
+			Project:          project,
+			Namespace:        projectNamespace,
+			GatewayNamespace: deployments.DefaultGatewayNamespace,
 		}
 		if claims != nil {
-			systemInput.Claims = deployments.ClaimsInput{
+			platformInput.Claims = v1alpha1.Claims{
 				Iss:           claims.Iss,
 				Sub:           claims.Sub,
 				Exp:           claims.Exp,
@@ -78,17 +80,17 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 		userInput := systemTemplateUserInput{}
 
 		// Encode both inputs as a combined CUE value.
-		systemJSON, err := json.Marshal(systemInput)
+		platformJSON, err := json.Marshal(platformInput)
 		if err != nil {
-			return fmt.Errorf("encoding system input for template %q: %w", tmpl.Name, err)
+			return fmt.Errorf("encoding platform input for template %q: %w", tmpl.Name, err)
 		}
 		userJSON, err := json.Marshal(userInput)
 		if err != nil {
 			return fmt.Errorf("encoding user input for template %q: %w", tmpl.Name, err)
 		}
 
-		// Combine as CUE source: system: {...}, input: {...}
-		combinedCUE := fmt.Sprintf("system: %s\ninput: %s", string(systemJSON), string(userJSON))
+		// Combine as CUE source: platform: {...}, input: {...}
+		combinedCUE := fmt.Sprintf("platform: %s\ninput: %s", string(platformJSON), string(userJSON))
 
 		resources, err := a.renderer.RenderWithCueInput(ctx, tmpl.CueTemplate, combinedCUE)
 		if err != nil {

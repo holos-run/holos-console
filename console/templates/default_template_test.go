@@ -5,17 +5,19 @@ import (
 	"strings"
 	"testing"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/deployments"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// defaultSystemInput returns a SystemInput with all required fields populated,
+// defaultSystemInput returns a PlatformInput with all required fields populated,
 // including claims, for use in default template tests.
-func defaultSystemInput(namespace string) deployments.SystemInput {
-	return deployments.SystemInput{
-		Project:   "my-project",
-		Namespace: namespace,
-		Claims: deployments.ClaimsInput{
+func defaultSystemInput(namespace string) v1alpha1.PlatformInput {
+	return v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: deployments.DefaultGatewayNamespace,
+		Claims: v1alpha1.Claims{
 			Iss:           "https://dex.example.com",
 			Sub:           "test-user-sub",
 			Exp:           9999999999,
@@ -32,10 +34,11 @@ func TestDefaultTemplate(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
 	system := defaultSystemInput(namespace)
-	user := deployments.UserInput{
+	user := v1alpha1.ProjectInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
 		Tag:   "latest",
+		Port:  8080,
 	}
 
 	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
@@ -97,12 +100,13 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	system := defaultSystemInput(namespace)
 
 	t.Run("command and args appear in container spec", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:    "holos-console",
 			Image:   "ghcr.io/holos-run/holos-console",
 			Tag:     "latest",
 			Command: []string{"myapp"},
 			Args:    []string{"--port", "8080"},
+			Port:    8080,
 		}
 
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
@@ -136,10 +140,11 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	})
 
 	t.Run("command and args absent when not provided", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
+			Port:  8080,
 		}
 
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
@@ -179,10 +184,11 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	system := defaultSystemInput(namespace)
 
 	t.Run("no env vars renders without env field", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
+			Port:  8080,
 		}
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
@@ -209,11 +215,12 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("literal env var renders as value", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
-			Env:   []deployments.EnvVarInput{{Name: "FOO", Value: "bar"}},
+			Env:   []v1alpha1.EnvVar{{Name: "FOO", Value: "bar"}},
+			Port:  8080,
 		}
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
@@ -237,11 +244,12 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("secret ref renders as valueFrom.secretKeyRef", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
-			Env:   []deployments.EnvVarInput{{Name: "DB_PASS", SecretKeyRef: &deployments.KeyRefInput{Name: "my-secret", Key: "password"}}},
+			Env:   []v1alpha1.EnvVar{{Name: "DB_PASS", SecretKeyRef: &v1alpha1.KeyRef{Name: "my-secret", Key: "password"}}},
+			Port:  8080,
 		}
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
@@ -270,11 +278,12 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("configmap ref renders as valueFrom.configMapKeyRef", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
-			Env:   []deployments.EnvVarInput{{Name: "APP_MODE", ConfigMapKeyRef: &deployments.KeyRefInput{Name: "my-config", Key: "mode"}}},
+			Env:   []v1alpha1.EnvVar{{Name: "APP_MODE", ConfigMapKeyRef: &v1alpha1.KeyRef{Name: "my-config", Key: "mode"}}},
+			Port:  8080,
 		}
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
@@ -303,15 +312,16 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 	})
 
 	t.Run("mixed env var types render correctly", func(t *testing.T) {
-		user := deployments.UserInput{
+		user := v1alpha1.ProjectInput{
 			Name:  "holos-console",
 			Image: "ghcr.io/holos-run/holos-console",
 			Tag:   "latest",
-			Env: []deployments.EnvVarInput{
+			Env: []v1alpha1.EnvVar{
 				{Name: "FOO", Value: "bar"},
-				{Name: "DB_PASS", SecretKeyRef: &deployments.KeyRefInput{Name: "my-secret", Key: "password"}},
-				{Name: "APP_MODE", ConfigMapKeyRef: &deployments.KeyRefInput{Name: "my-config", Key: "mode"}},
+				{Name: "DB_PASS", SecretKeyRef: &v1alpha1.KeyRef{Name: "my-secret", Key: "password"}},
+				{Name: "APP_MODE", ConfigMapKeyRef: &v1alpha1.KeyRef{Name: "my-config", Key: "mode"}},
 			},
+			Port: 8080,
 		}
 		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 		if err != nil {
@@ -336,15 +346,16 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 }
 
 // TestDefaultTemplate_StructuredOutput verifies the default template uses the
-// output.namespacedResources/output.clusterResources structured output format.
+// projectResources.namespacedResources/projectResources.clusterResources structured output format.
 func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
 	system := defaultSystemInput(namespace)
-	user := deployments.UserInput{
+	user := v1alpha1.ProjectInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
 		Tag:   "latest",
+		Port:  8080,
 	}
 
 	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
@@ -391,10 +402,11 @@ func TestDefaultTemplate_DeployerEmailAnnotation(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
 	const deployerEmail = "deployer@example.com"
-	system := deployments.SystemInput{
-		Project:   "my-project",
-		Namespace: namespace,
-		Claims: deployments.ClaimsInput{
+	system := v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: deployments.DefaultGatewayNamespace,
+		Claims: v1alpha1.Claims{
 			Iss:           "https://dex.example.com",
 			Sub:           "test-user-sub",
 			Exp:           9999999999,
@@ -403,10 +415,11 @@ func TestDefaultTemplate_DeployerEmailAnnotation(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	user := deployments.UserInput{
+	user := v1alpha1.ProjectInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
 		Tag:   "latest",
+		Port:  8080,
 	}
 
 	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
@@ -436,10 +449,11 @@ func TestDefaultTemplate_ClaimsEmailInAnnotation(t *testing.T) {
 	emails := []string{"alice@example.com", "bob@corp.io", "svc-account@domain.org"}
 	for _, email := range emails {
 		t.Run(email, func(t *testing.T) {
-			system := deployments.SystemInput{
-				Project:   "my-project",
-				Namespace: namespace,
-				Claims: deployments.ClaimsInput{
+			system := v1alpha1.PlatformInput{
+				Project:          "my-project",
+				Namespace:        namespace,
+				GatewayNamespace: deployments.DefaultGatewayNamespace,
+				Claims: v1alpha1.Claims{
 					Iss:           "https://dex.example.com",
 					Sub:           "test-sub",
 					Exp:           9999999999,
@@ -448,10 +462,11 @@ func TestDefaultTemplate_ClaimsEmailInAnnotation(t *testing.T) {
 					EmailVerified: true,
 				},
 			}
-			user := deployments.UserInput{
+			user := v1alpha1.ProjectInput{
 				Name:  "holos-console",
 				Image: "ghcr.io/holos-run/holos-console",
 				Tag:   "latest",
+				Port:  8080,
 			}
 			resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
 			if err != nil {

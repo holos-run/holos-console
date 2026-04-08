@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 )
 
-// structuredTemplate uses the output.namespacedResources/output.clusterResources structured output format.
+// structuredTemplate uses the projectResources.namespacedResources/projectResources.clusterResources structured output format.
 const structuredTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -17,7 +18,7 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
@@ -27,14 +28,14 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: (input.name): {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 		}
@@ -43,7 +44,7 @@ output: {
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 			spec: {
@@ -67,7 +68,6 @@ output: {
 
 // structuredCrossNamespaceTemplate tries to set metadata.namespace to a different value than the struct key.
 const structuredCrossNamespaceTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -75,13 +75,13 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
@@ -99,7 +99,6 @@ output: {
 
 // structuredMissingManagedByTemplate is missing the required managed-by label.
 const structuredMissingManagedByTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -107,19 +106,19 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 			}
 			spec: {}
 		}
@@ -130,7 +129,6 @@ output: {
 
 // validTemplate produces a single Deployment resource using structured output.
 const validTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -138,19 +136,19 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -174,7 +172,6 @@ output: {
 
 // crossNamespaceTemplate tries to write into a different namespace using structured output.
 const crossNamespaceTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -182,13 +179,13 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
@@ -206,7 +203,6 @@ output: {
 
 // disallowedKindTemplate uses a kind not in the allowlist (structured output).
 const disallowedKindTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -214,19 +210,19 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Job: (input.name): {
 			apiVersion: "batch/v1"
 			kind:       "Job"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: "app.kubernetes.io/managed-by": "console.holos.run"
 			}
 			spec: {}
@@ -238,7 +234,6 @@ output: {
 
 // missingManagedByTemplate is missing the required managed-by label (structured output).
 const missingManagedByTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -246,19 +241,19 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 			}
 			spec: {}
 		}
@@ -270,10 +265,9 @@ output: {
 // invalidCUETemplate contains invalid CUE syntax.
 const invalidCUETemplate = `this is { not valid cue !!!`
 
-// claimsAnnotationTemplate is a template that uses system.claims.email in an annotation,
-// verifying that claims are propagated from SystemInput into the CUE evaluation.
+// claimsAnnotationTemplate is a template that uses platform.claims.email in an annotation,
+// verifying that claims are propagated from PlatformInput into the CUE evaluation.
 const claimsAnnotationTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -281,7 +275,7 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 	claims: {
@@ -300,17 +294,17 @@ _labels: {
 }
 
 _annotations: {
-	"console.holos.run/deployer-email": system.claims.email
+	"console.holos.run/deployer-email": platform.claims.email
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:        input.name
-				namespace:   system.namespace
+				namespace:   platform.namespace
 				labels:      _labels
 				annotations: _annotations
 			}
@@ -330,18 +324,20 @@ output: {
 }
 `
 
-func defaultSystem(namespace string) SystemInput {
-	return SystemInput{
-		Project:   "my-project",
-		Namespace: namespace,
+func defaultPlatform(namespace string) v1alpha1.PlatformInput {
+	return v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: DefaultGatewayNamespace,
 	}
 }
 
-func defaultUser() UserInput {
-	return UserInput{
+func defaultProject() v1alpha1.ProjectInput {
+	return v1alpha1.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
+		Port:  8080,
 	}
 }
 
@@ -350,7 +346,7 @@ func TestCueRenderer_Render(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("valid template produces expected resources", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), validTemplate, defaultSystem(namespace), defaultUser())
+		resources, err := renderer.Render(context.Background(), validTemplate, defaultPlatform(namespace), defaultProject())
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -374,28 +370,28 @@ func TestCueRenderer_Render(t *testing.T) {
 	})
 
 	t.Run("invalid CUE syntax returns error", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), invalidCUETemplate, defaultSystem(namespace), defaultUser())
+		_, err := renderer.Render(context.Background(), invalidCUETemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for invalid CUE syntax")
 		}
 	})
 
 	t.Run("cross-namespace resource rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), crossNamespaceTemplate, defaultSystem(namespace), defaultUser())
+		_, err := renderer.Render(context.Background(), crossNamespaceTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for cross-namespace resource")
 		}
 	})
 
 	t.Run("disallowed resource kind rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), disallowedKindTemplate, defaultSystem(namespace), defaultUser())
+		_, err := renderer.Render(context.Background(), disallowedKindTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for disallowed resource kind")
 		}
 	})
 
 	t.Run("missing managed-by label rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), missingManagedByTemplate, defaultSystem(namespace), defaultUser())
+		_, err := renderer.Render(context.Background(), missingManagedByTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for missing managed-by label")
 		}
@@ -404,7 +400,7 @@ func TestCueRenderer_Render(t *testing.T) {
 	t.Run("timeout enforced for slow evaluation", func(t *testing.T) {
 		// A valid template should not time out (5s limit, evaluation is fast).
 		ctx := context.Background()
-		_, err := renderer.Render(ctx, validTemplate, defaultSystem(namespace), defaultUser())
+		_, err := renderer.Render(ctx, validTemplate, defaultPlatform(namespace), defaultProject())
 		if err != nil {
 			t.Fatalf("fast template should not time out: %v", err)
 		}
@@ -412,8 +408,8 @@ func TestCueRenderer_Render(t *testing.T) {
 
 	t.Run("input values are available in template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), validTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v2.0.0"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v2.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -444,7 +440,6 @@ func TestCueRenderer_Render(t *testing.T) {
 
 // commandArgsTemplate renders command and args into a container spec (structured output).
 const commandArgsTemplate = `
-package deployment
 
 input: {
 	name:    string
@@ -454,19 +449,19 @@ input: {
 	args:    [...string] | *[]
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -496,7 +491,6 @@ output: {
 
 // envTemplate renders env vars into a container spec (structured output).
 const envTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -505,19 +499,19 @@ input: {
 	env: [...{name: string, value?: string, secretKeyRef?: {name: string, key: string}, configMapKeyRef?: {name: string, key: string}}] | *[]
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -548,8 +542,8 @@ func TestCueRenderer_Env(t *testing.T) {
 
 	t.Run("literal env var is passed to template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), envTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Env: []EnvVarInput{{Name: "FOO", Value: "bar"}}},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Env: []v1alpha1.EnvVar{{Name: "FOO", Value: "bar"}}},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -583,8 +577,8 @@ func TestCueRenderer_Env(t *testing.T) {
 
 	t.Run("empty env is omitted from template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), envTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -612,8 +606,8 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 
 	t.Run("command and args are passed to template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Command: []string{"/bin/sh", "-c"}, Args: []string{"echo hello"}},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Command: []string{"/bin/sh", "-c"}, Args: []string{"echo hello"}},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -641,8 +635,8 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 
 	t.Run("empty command and args are omitted", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -669,7 +663,6 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 
 // portTemplate renders a containerPort using input.port (structured output).
 const portTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -678,19 +671,19 @@ input: {
 	port:  int & >0 & <=65535 | *8080
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -713,7 +706,7 @@ output: {
 			kind:       "Service"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -735,8 +728,8 @@ func TestCueRenderer_Port(t *testing.T) {
 
 	t.Run("explicit port is used in containerPort", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), portTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 9090},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 9090},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -774,11 +767,12 @@ func TestCueRenderer_Port(t *testing.T) {
 		}
 	})
 
-	t.Run("zero port uses CUE default 8080", func(t *testing.T) {
-		// When Port is 0 (omitempty), the JSON omits the field and CUE applies default 8080.
+	t.Run("default port 8080 is applied by Go when port is unset", func(t *testing.T) {
+		// The Go handler defaults Port to 8080 before calling the renderer.
+		// This test verifies that Port: 8080 (the default) renders correctly.
 		resources, err := renderer.Render(context.Background(), portTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 0}, // zero → omitempty → CUE default applies
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -817,7 +811,6 @@ func TestCueRenderer_Port(t *testing.T) {
 // CUE struct semantics naturally enforce uniqueness — setting the same path
 // twice merges values or produces a conflict error if they are incompatible.
 const structuredDuplicateTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -825,19 +818,19 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: "app.kubernetes.io/managed-by": "console.holos.run"
 			}
 			spec: replicas: 1
@@ -848,7 +841,7 @@ output: {
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: "app.kubernetes.io/managed-by": "console.holos.run"
 			}
 			spec: replicas: 2
@@ -858,15 +851,15 @@ output: {
 }
 `
 
-// TestCueRenderer_StructuredOutput tests the output.namespacedResources/output.clusterResources structured output format.
+// TestCueRenderer_StructuredOutput tests the projectResources.namespacedResources/projectResources.clusterResources structured output format.
 func TestCueRenderer_StructuredOutput(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
 	t.Run("structured template produces expected resources", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), structuredTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -895,8 +888,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("structured template rejects cross-namespace resources", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredCrossNamespaceTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for cross-namespace resource")
@@ -905,8 +898,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("structured template rejects missing managed-by label", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredMissingManagedByTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for missing managed-by label")
@@ -915,8 +908,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("duplicate Kind/name with incompatible values causes CUE conflict", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredDuplicateTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for duplicate Kind/name with conflicting values")
@@ -924,18 +917,18 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 	})
 }
 
-// TestCueRenderer_ClaimsPropagation verifies that OIDC claims from SystemInput
-// are available inside the CUE template and that system.claims.email appears
+// TestCueRenderer_ClaimsPropagation verifies that OIDC claims from PlatformInput
+// are available inside the CUE template and that platform.claims.email appears
 // in rendered resource annotations.
 func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 	const deployerEmail = "alice@example.com"
 
-	system := SystemInput{
+	system := v1alpha1.PlatformInput{
 		Project:   "my-project",
 		Namespace: namespace,
-		Claims: ClaimsInput{
+		Claims: v1alpha1.Claims{
 			Iss:           "https://dex.example.com",
 			Sub:           "alice-sub",
 			Exp:           9999999999,
@@ -944,13 +937,14 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	user := UserInput{
+	user := v1alpha1.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
+		Port:  8080,
 	}
 
-	t.Run("system.claims.email appears in resource annotation", func(t *testing.T) {
+	t.Run("platform.claims.email appears in resource annotation", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -965,8 +959,8 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 		}
 	})
 
-	t.Run("system.namespace is used for namespace constraint not input.namespace", func(t *testing.T) {
-		// The claimsAnnotationTemplate uses system.namespace (not input.namespace)
+	t.Run("platform.namespace is used for namespace constraint not input.namespace", func(t *testing.T) {
+		// The claimsAnnotationTemplate uses platform.namespace (not input.namespace)
 		// for the namespaced struct key, confirming the split input architecture.
 		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
 		if err != nil {
@@ -981,10 +975,9 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 	})
 }
 
-// systemOutputTemplate uses output.systemNamespacedResources to simulate a
-// system template that provides system-managed resources alongside user resources.
+// systemOutputTemplate uses platformResources.namespacedResources to simulate a
+// platform template that provides platform-managed resources alongside project resources.
 const systemOutputTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -992,7 +985,7 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:   string
 	namespace: string
 }
@@ -1002,14 +995,14 @@ _labels: {
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 			spec: {
@@ -1025,24 +1018,25 @@ output: {
 		}
 	}
 	clusterResources: {}
-	systemNamespacedResources: (system.namespace): {
+}
+platformResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: "system-sa": {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      "system-sa"
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels:    _labels
 			}
 		}
 	}
-	systemClusterResources: {}
+	clusterResources: {}
 }
 `
 
-// gatewayNamespaceTemplate uses system.gatewayNamespace in an annotation to verify propagation.
+// gatewayNamespaceTemplate uses platform.gatewayNamespace in an annotation to verify propagation.
 const gatewayNamespaceTemplate = `
-package deployment
 
 input: {
 	name:  string
@@ -1050,10 +1044,11 @@ input: {
 	tag:   string
 }
 
-system: {
+platform: {
 	project:          string
 	namespace:        string
-	gatewayNamespace: string | *"istio-ingress"
+	gatewayNamespace: string
+	organization:     string
 	claims: {
 		iss:            string
 		sub:            string
@@ -1064,20 +1059,20 @@ system: {
 	}
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: (input.name): {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:        input.name
-				namespace:   system.namespace
+				namespace:   platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
 				}
 				annotations: {
-					"test.holos.run/gateway-namespace": system.gatewayNamespace
+					"test.holos.run/gateway-namespace": platform.gatewayNamespace
 				}
 			}
 		}
@@ -1086,18 +1081,18 @@ output: {
 }
 `
 
-// TestCueRenderer_GatewayNamespace verifies that gatewayNamespace in SystemInput
-// is propagated into CUE templates via system.gatewayNamespace.
+// TestCueRenderer_GatewayNamespace verifies that gatewayNamespace in PlatformInput
+// is propagated into CUE templates via platform.gatewayNamespace.
 func TestCueRenderer_GatewayNamespace(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
 	t.Run("explicit gatewayNamespace is propagated to template", func(t *testing.T) {
-		system := SystemInput{
+		system := v1alpha1.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
 			GatewayNamespace: "custom-gateway-ns",
-			Claims: ClaimsInput{
+			Claims: v1alpha1.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -1106,10 +1101,11 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, UserInput{
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha1.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
+			Port:  8080,
 		})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -1124,14 +1120,14 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 		}
 	})
 
-	t.Run("empty gatewayNamespace defaults to istio-ingress in CUE", func(t *testing.T) {
-		// When GatewayNamespace is empty (zero value), the JSON field is omitted (omitempty),
-		// so the CUE default value "istio-ingress" is applied.
-		system := SystemInput{
-			Project:   "my-project",
-			Namespace: namespace,
-			// GatewayNamespace is intentionally left empty
-			Claims: ClaimsInput{
+	t.Run("default gatewayNamespace istio-ingress is applied by Go", func(t *testing.T) {
+		// The Go handler defaults GatewayNamespace to "istio-ingress" before
+		// calling the renderer. This test verifies the default renders correctly.
+		system := v1alpha1.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: DefaultGatewayNamespace,
+			Claims: v1alpha1.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -1140,10 +1136,11 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, UserInput{
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha1.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
+			Port:  8080,
 		})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -1159,20 +1156,19 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 	})
 }
 
-// systemUnificationTemplate is a system template (package deployment) that defines
-// output.systemNamespacedResources using input.name from the deployment template input.
-// This simulates what an HTTPRoute system template would look like.
+// systemUnificationTemplate is a platform template that defines
+// platformResources.namespacedResources using input.name from the deployment template input.
+// This simulates what an HTTPRoute platform template would look like.
 const systemUnificationTemplate = `
-package deployment
 
-output: {
-	systemNamespacedResources: (system.namespace): {
+platformResources: {
+	namespacedResources: (platform.namespace): {
 		ServiceAccount: "system-from-\(input.name)": {
 			apiVersion: "v1"
 			kind:       "ServiceAccount"
 			metadata: {
 				name:      "system-from-\(input.name)"
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -1180,27 +1176,28 @@ output: {
 			}
 		}
 	}
-	systemClusterResources: {}
+	clusterResources: {}
 }
 `
 
 // deploymentTemplateForUnification is a simple deployment template used to test unification.
 const deploymentTemplateForUnification = `
-package deployment
 
 input: #Input
-system: #System
+platform: #Platform
 
 #Input: {
 	name:  string
 	image: string
 	tag:   string
+	port:  int
 }
 
-#System: {
+#Platform: {
 	project:          string
 	namespace:        string
-	gatewayNamespace: string | *"istio-ingress"
+	gatewayNamespace: string
+	organization:     string
 	claims: {
 		iss:            string
 		sub:            string
@@ -1211,14 +1208,14 @@ system: #System
 	}
 }
 
-output: {
-	namespacedResources: (system.namespace): {
+projectResources: {
+	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
 			metadata: {
 				name:      input.name
-				namespace: system.namespace
+				namespace: platform.namespace
 				labels: {
 					"app.kubernetes.io/managed-by": "console.holos.run"
 					"app.kubernetes.io/name":       input.name
@@ -1242,16 +1239,16 @@ output: {
 
 // TestCueRenderer_SystemTemplateUnification verifies that a system template CUE source
 // can be unified with a deployment template and that input.name is accessible in the
-// system template's output.systemNamespacedResources.
+// system template's platformResources.namespacedResources.
 func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
-	system := SystemInput{
+	system := v1alpha1.PlatformInput{
 		Project:          "my-project",
 		Namespace:        namespace,
 		GatewayNamespace: "istio-ingress",
-		Claims: ClaimsInput{
+		Claims: v1alpha1.Claims{
 			Iss:           "https://example.com",
 			Sub:           "u1",
 			Exp:           9999999999,
@@ -1260,10 +1257,11 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	user := UserInput{
+	user := v1alpha1.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
+		Port:  8080,
 	}
 
 	t.Run("system template resources are included when unified with deployment template", func(t *testing.T) {
@@ -1324,16 +1322,16 @@ func resourceKinds(resources []unstructured.Unstructured) []string {
 	return out
 }
 
-// TestCueRenderer_SystemOutputFields verifies that output.systemNamespacedResources
-// and output.systemClusterResources are read and validated correctly.
+// TestCueRenderer_SystemOutputFields verifies that platformResources.namespacedResources
+// and platformResources.clusterResources are read and validated correctly.
 func TestCueRenderer_SystemOutputFields(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
 	t.Run("systemNamespacedResources resources are included in output", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), systemOutputTemplate,
-			SystemInput{Project: "my-project", Namespace: namespace},
-			UserInput{Name: "web-app", Image: "nginx", Tag: "1.25"},
+			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
