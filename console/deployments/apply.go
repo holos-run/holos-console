@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -14,8 +15,6 @@ import (
 )
 
 const (
-	// OwnershipLabel tracks which deployment owns a resource.
-	OwnershipLabel = "console.holos.run/deployment"
 	// fieldManager is used for server-side apply.
 	fieldManager = "console.holos.run"
 )
@@ -55,7 +54,7 @@ func (a *Applier) Apply(ctx context.Context, namespace, deploymentName string, r
 		if labels == nil {
 			labels = make(map[string]string)
 		}
-		labels[OwnershipLabel] = deploymentName
+		labels[v1alpha1.AnnotationDeployment] = deploymentName
 		r.SetLabels(labels)
 
 		kind := r.GetKind()
@@ -95,7 +94,7 @@ func (a *Applier) Apply(ctx context.Context, namespace, deploymentName string, r
 
 // Cleanup deletes all K8s resources that carry the deployment ownership label.
 func (a *Applier) Cleanup(ctx context.Context, namespace, deploymentName string) error {
-	labelSelector := fmt.Sprintf("%s=%s", OwnershipLabel, deploymentName)
+	labelSelector := fmt.Sprintf("%s=%s", v1alpha1.AnnotationDeployment, deploymentName)
 
 	for kind, gvr := range allowedKinds {
 		list, err := a.client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{

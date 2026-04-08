@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -24,7 +25,7 @@ func projectNS(project string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-" + project,
 			Labels: map[string]string{
-				ManagedByLabel:             ManagedByValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      project,
 			},
@@ -105,7 +106,7 @@ func TestUpdateSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					ManagedByLabel: ManagedByValue,
+					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
 				},
 			},
 			Data: map[string][]byte{
@@ -199,7 +200,7 @@ func TestCreateSecret(t *testing.T) {
 		if result.Name != "new-secret" {
 			t.Errorf("expected name 'new-secret', got %q", result.Name)
 		}
-		if result.Labels[ManagedByLabel] != ManagedByValue {
+		if result.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 			t.Errorf("expected managed-by label, got %v", result.Labels)
 		}
 		// Verify share-users annotation
@@ -257,7 +258,7 @@ func TestDeleteSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					ManagedByLabel: ManagedByValue,
+					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
 				},
 			},
 		}
@@ -321,7 +322,7 @@ func TestGetShareUsers(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor"},{"principal":"bob@example.com","role":"viewer"}]`,
+					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"editor"},{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -344,7 +345,7 @@ func TestGetShareUsers(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor","nbf":1000,"exp":2000}]`,
+					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"editor","nbf":1000,"exp":2000}]`,
 				},
 			},
 		}
@@ -395,7 +396,7 @@ func TestGetShareUsers(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareUsersAnnotation: `{invalid`,
+					v1alpha1.AnnotationShareUsers: `{invalid`,
 				},
 			},
 		}
@@ -411,7 +412,7 @@ func TestGetShareRoles(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareRolesAnnotation: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
+					v1alpha1.AnnotationShareRoles: `[{"principal":"platform-team","role":"owner"},{"principal":"dev-team","role":"viewer"}]`,
 				},
 			},
 		}
@@ -459,7 +460,7 @@ func TestGetShareRoles(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					ShareRolesAnnotation: `not-json`,
+					v1alpha1.AnnotationShareRoles: `not-json`,
 				},
 			},
 		}
@@ -585,7 +586,7 @@ func TestGetDescription(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					DescriptionAnnotation: "Database credentials for production",
+					v1alpha1.AnnotationDescription: "Database credentials for production",
 				},
 			},
 		}
@@ -620,7 +621,7 @@ func TestGetURL(t *testing.T) {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					URLAnnotation: "https://example.com/service",
+					v1alpha1.AnnotationURL: "https://example.com/service",
 				},
 			},
 		}
@@ -679,10 +680,10 @@ func TestCreateSecretWithDescriptionAndURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if _, ok := result.Annotations[DescriptionAnnotation]; ok {
+		if _, ok := result.Annotations[v1alpha1.AnnotationDescription]; ok {
 			t.Error("expected no description annotation when empty")
 		}
-		if _, ok := result.Annotations[URLAnnotation]; ok {
+		if _, ok := result.Annotations[v1alpha1.AnnotationURL]; ok {
 			t.Error("expected no URL annotation when empty")
 		}
 	})
@@ -695,7 +696,7 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
 		}
@@ -722,10 +723,10 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
 				Annotations: map[string]string{
-					DescriptionAnnotation: "Original desc",
-					URLAnnotation:         "https://original.example.com",
+					v1alpha1.AnnotationDescription: "Original desc",
+					v1alpha1.AnnotationURL:         "https://original.example.com",
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -751,10 +752,10 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{ManagedByLabel: ManagedByValue},
+				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
 				Annotations: map[string]string{
-					DescriptionAnnotation: "Original desc",
-					URLAnnotation:         "https://original.example.com",
+					v1alpha1.AnnotationDescription: "Original desc",
+					v1alpha1.AnnotationURL:         "https://original.example.com",
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -767,10 +768,10 @@ func TestUpdateSecretWithDescriptionAndURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if _, ok := result.Annotations[DescriptionAnnotation]; ok {
+		if _, ok := result.Annotations[v1alpha1.AnnotationDescription]; ok {
 			t.Error("expected description annotation to be removed")
 		}
-		if _, ok := result.Annotations[URLAnnotation]; ok {
+		if _, ok := result.Annotations[v1alpha1.AnnotationURL]; ok {
 			t.Error("expected URL annotation to be removed")
 		}
 	})

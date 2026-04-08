@@ -22,7 +22,7 @@ func projectNS(project string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-" + project,
 			Labels: map[string]string{
-				ManagedByLabel:             ManagedByValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      project,
 			},
@@ -36,12 +36,12 @@ func deploymentConfigMap(project, name, image, tag, tmpl, displayName, descripti
 			Name:      name,
 			Namespace: "prj-" + project,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeployment,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
 			},
 		},
 		Data: map[string]string{
@@ -153,11 +153,11 @@ func TestCreateDeployment(t *testing.T) {
 		if cm.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", cm.Name)
 		}
-		if cm.Labels[ResourceTypeLabel] != ResourceTypeValue {
-			t.Errorf("expected label %q=%q, got %q", ResourceTypeLabel, ResourceTypeValue, cm.Labels[ResourceTypeLabel])
+		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeDeployment {
+			t.Errorf("expected label %q=%q, got %q", v1alpha1.LabelResourceType, v1alpha1.ResourceTypeDeployment, cm.Labels[v1alpha1.LabelResourceType])
 		}
-		if cm.Labels[ManagedByLabel] != ManagedByValue {
-			t.Errorf("expected label %q=%q, got %q", ManagedByLabel, ManagedByValue, cm.Labels[ManagedByLabel])
+		if cm.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
+			t.Errorf("expected label %q=%q, got %q", v1alpha1.LabelManagedBy, v1alpha1.ManagedByValue, cm.Labels[v1alpha1.LabelManagedBy])
 		}
 		if cm.Data[ImageKey] != "nginx" {
 			t.Errorf("expected image 'nginx', got %q", cm.Data[ImageKey])
@@ -168,11 +168,11 @@ func TestCreateDeployment(t *testing.T) {
 		if cm.Data[TemplateKey] != "default" {
 			t.Errorf("expected template 'default', got %q", cm.Data[TemplateKey])
 		}
-		if cm.Annotations[DisplayNameAnnotation] != "Web App" {
-			t.Errorf("expected displayName 'Web App', got %q", cm.Annotations[DisplayNameAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationDisplayName] != "Web App" {
+			t.Errorf("expected displayName 'Web App', got %q", cm.Annotations[v1alpha1.AnnotationDisplayName])
 		}
-		if cm.Annotations[DescriptionAnnotation] != "A web app" {
-			t.Errorf("expected description 'A web app', got %q", cm.Annotations[DescriptionAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationDescription] != "A web app" {
+			t.Errorf("expected description 'A web app', got %q", cm.Annotations[v1alpha1.AnnotationDescription])
 		}
 	})
 
@@ -232,11 +232,11 @@ func TestUpdateDeployment(t *testing.T) {
 		if updated.Data[TagKey] != "1.26" {
 			t.Errorf("expected tag '1.26', got %q", updated.Data[TagKey])
 		}
-		if updated.Annotations[DisplayNameAnnotation] != "Web App" {
-			t.Errorf("expected displayName unchanged 'Web App', got %q", updated.Annotations[DisplayNameAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationDisplayName] != "Web App" {
+			t.Errorf("expected displayName unchanged 'Web App', got %q", updated.Annotations[v1alpha1.AnnotationDisplayName])
 		}
-		if updated.Annotations[DescriptionAnnotation] != "updated desc" {
-			t.Errorf("expected description 'updated desc', got %q", updated.Annotations[DescriptionAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationDescription] != "updated desc" {
+			t.Errorf("expected description 'updated desc', got %q", updated.Annotations[v1alpha1.AnnotationDescription])
 		}
 	})
 
@@ -564,7 +564,7 @@ func TestListNamespaceConfigMaps(t *testing.T) {
 				Name:      "console-deployment",
 				Namespace: "prj-my-project",
 				Labels: map[string]string{
-					ResourceTypeLabel: "deployment",
+					v1alpha1.LabelResourceType: "deployment",
 				},
 			},
 			Data: map[string]string{"image": "nginx"},

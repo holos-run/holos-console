@@ -11,21 +11,22 @@ When a user creates or updates a deployment, the console:
 
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
 2. Loads all enabled `SystemTemplate` sources for the organization.
-3. Builds a `SystemInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `UserInput` (name, image, tag, etc.) from the API request fields.
-4. Unifies the deployment template with enabled system templates by concatenating them (they share the same `package deployment` declaration) before CUE compilation.
-5. Fills `UserInput` at the `input` path and `SystemInput` at the `system` path.
+3. Builds a `PlatformInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `ProjectInput` (name, image, tag, etc.) from the API request fields.
+4. Prepends the generated CUE schema (produced from `api/v1alpha1` Go types via `cue get go`) before compiling templates. The renderer concatenates all template sources into a single compilation unit.
+5. Fills `ProjectInput` at the `input` path and `PlatformInput` at the `platform` path.
 6. Reads all four output fields from the evaluated CUE value:
-   - `output.namespacedResources` — user-controlled namespaced resources
-   - `output.clusterResources` — user-controlled cluster-scoped resources
-   - `output.systemNamespacedResources` — operator-controlled namespaced resources (from system templates)
-   - `output.systemClusterResources` — operator-controlled cluster-scoped resources (from system templates)
+   - `projectResources.namespacedResources` — project-controlled namespaced resources
+   - `projectResources.clusterResources` — project-controlled cluster-scoped resources
+   - `platformResources.namespacedResources` — platform-controlled namespaced resources (from system templates)
+   - `platformResources.clusterResources` — platform-controlled cluster-scoped resources (from system templates)
 7. Validates each resource against safety constraints.
 8. Applies the validated resources to Kubernetes via server-side apply.
 
 The architectural decision to use structured output is recorded in
-[ADR 012](adrs/012-structured-resource-output.md). The decision to split
-system and user inputs is recorded in
-[ADR 013](adrs/013-separate-system-user-template-input.md).
+[ADR 012](adrs/012-structured-resource-output.md), refined by
+[ADR 014](adrs/014-config-management-resource-schema.md). The decision to split
+platform and project inputs is recorded in
+[ADR 013](adrs/013-separate-system-user-template-input.md), extended by ADR 014.
 
 ## Writing a Custom Template
 
@@ -34,199 +35,190 @@ working template to making it accessible outside the cluster.
 
 ### Complete Template Example
 
-The template below mirrors the built-in default. It produces a `ServiceAccount`,
+The template below is the actual built-in default. It produces a `ServiceAccount`,
 a `Deployment`, a `Service`, and a `ReferenceGrant` — everything needed to run a
 container, reach it from inside the cluster, and allow an HTTPRoute from the
 gateway namespace to reference the Service.
 
+Templates do **not** declare a `package` clause — the renderer prepends the
+generated schema and controls the CUE package. CUE type definitions (`#ProjectInput`,
+`#PlatformInput`, `#Claims`, `#EnvVar`, `#KeyRef`) are generated from Go types in
+`api/v1alpha1` via `cue get go` and are available automatically; do not redefine
+them in your template.
+
 ```cue
-package deployment
-
-#KeyRef: {
-    name: string
-    key:  string
+// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Additional CUE constraints narrow the generated types for this template.
+input: #ProjectInput & {
+	name: =~"^[a-z][a-z0-9-]*$" // DNS label
+	env:  [...#EnvVar] | *[]
+	port: >0 & <=65535 | *8080
 }
+platform: #PlatformInput
 
-#EnvVar: {
-    name:               string
-    value?:             string
-    secretKeyRef?:      #KeyRef
-    configMapKeyRef?:   #KeyRef
-}
-
-#Input: {
-    name:    string & =~"^[a-z][a-z0-9-]*$"
-    image:   string
-    tag:     string
-    command?: [...string]
-    args?: [...string]
-    env:  [...#EnvVar] | *[]
-    port: int & >0 & <=65535 | *8080
-}
-
-#Claims: {
-    iss:            string
-    sub:            string
-    exp:            int
-    iat:            int
-    email:          string
-    email_verified: bool
-    name?:          string
-    groups?: [...string]
-    ... // allow provider-specific claims
-}
-
-#System: {
-    project:          string
-    namespace:        string
-    gatewayNamespace: string | *"istio-ingress"
-    claims:           #Claims
-}
-
-input:  #Input
-system: #System
-
+// _labels are the standard labels required on every resource.
+// app.kubernetes.io/managed-by MUST equal "console.holos.run" or the
+// render will be rejected.
 _labels: {
-    "app.kubernetes.io/name":       input.name
-    "app.kubernetes.io/managed-by": "console.holos.run"
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
+// _annotations are standard annotations applied to every resource.
+// console.holos.run/deployer-email records the identity of the user
+// who last rendered and applied this resource.
 _annotations: {
-    "console.holos.run/deployer-email": system.claims.email
+	"console.holos.run/deployer-email": platform.claims.email
 }
 
+// _envSpec transforms the env input into Kubernetes container env format.
 _envSpec: [for e in input.env {
-    name: e.name
-    if e.value != _|_ {
-        value: e.value
-    }
-    if e.secretKeyRef != _|_ {
-        valueFrom: secretKeyRef: {
-            name: e.secretKeyRef.name
-            key:  e.secretKeyRef.key
-        }
-    }
-    if e.configMapKeyRef != _|_ {
-        valueFrom: configMapKeyRef: {
-            name: e.configMapKeyRef.name
-            key:  e.configMapKeyRef.key
-        }
-    }
+	name: e.name
+	if e.value != _|_ {
+		value: e.value
+	}
+	if e.secretKeyRef != _|_ {
+		valueFrom: secretKeyRef: {
+			name: e.secretKeyRef.name
+			key:  e.secretKeyRef.key
+		}
+	}
+	if e.configMapKeyRef != _|_ {
+		valueFrom: configMapKeyRef: {
+			name: e.configMapKeyRef.name
+			key:  e.configMapKeyRef.key
+		}
+	}
 }]
 
+// #Namespaced constrains namespaced resource struct keys to match resource metadata.
+// Structure: namespaced.<namespace>.<Kind>.<name>
+// The struct path keys must match the corresponding resource metadata fields.
 #Namespaced: [Namespace=string]: [Kind=string]: [Name=string]: {
-    kind: Kind
-    metadata: {
-        name:      Name
-        namespace: Namespace
-        ...
-    }
-    ...
+	kind: Kind
+	metadata: {
+		name:      Name
+		namespace: Namespace
+		...
+	}
+	...
 }
 
+// #Cluster constrains cluster-scoped resource struct keys to match resource metadata.
+// Structure: cluster.<Kind>.<name>
+// The struct path keys must match the corresponding resource metadata fields.
 #Cluster: [Kind=string]: [Name=string]: {
-    kind: Kind
-    metadata: {
-        name: Name
-        ...
-    }
-    ...
+	kind: Kind
+	metadata: {
+		name: Name
+		...
+	}
+	...
 }
 
-// output collects all rendered Kubernetes resources.
-output: {
-    namespacedResources: #Namespaced & {
-        (system.namespace): {
-            ServiceAccount: (input.name): {
-                apiVersion: "v1"
-                kind:       "ServiceAccount"
-                metadata: {
-                    name:        input.name
-                    namespace:   system.namespace
-                    labels:      _labels
-                    annotations: _annotations
-                }
-            }
+// projectResources collects all rendered Kubernetes resources.
+// namespacedResources organizes resources that live within a Kubernetes namespace.
+// The struct key path (namespace/Kind/name) must match the resource metadata.
+// clusterResources organizes cluster-scoped resources.
+projectResources: {
+	namespacedResources: #Namespaced & {
+		(platform.namespace): {
+			// ServiceAccount provides a Kubernetes identity for the pods.
+			ServiceAccount: (input.name): {
+				apiVersion: "v1"
+				kind:       "ServiceAccount"
+				metadata: {
+					name:        input.name
+					namespace:   platform.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+			}
 
-            Deployment: (input.name): {
-                apiVersion: "apps/v1"
-                kind:       "Deployment"
-                metadata: {
-                    name:        input.name
-                    namespace:   system.namespace
-                    labels:      _labels
-                    annotations: _annotations
-                }
-                spec: {
-                    replicas: 1
-                    selector: matchLabels: "app.kubernetes.io/name": input.name
-                    template: {
-                        metadata: labels: _labels
-                        spec: {
-                            serviceAccountName: input.name
-                            containers: [{
-                                name:  input.name
-                                image: input.image + ":" + input.tag
-                                if len(_envSpec) > 0 {
-                                    env: _envSpec
-                                }
-                                ports: [{containerPort: input.port, name: "http"}]
-                                if input.command != _|_ {
-                                    command: input.command
-                                }
-                                if input.args != _|_ {
-                                    args: input.args
-                                }
-                            }]
-                        }
-                    }
-                }
-            }
+			// Deployment runs the container image.
+			Deployment: (input.name): {
+				apiVersion: "apps/v1"
+				kind:       "Deployment"
+				metadata: {
+					name:        input.name
+					namespace:   platform.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					replicas: 1
+					selector: matchLabels: "app.kubernetes.io/name": input.name
+					template: {
+						metadata: labels: _labels
+						spec: {
+							serviceAccountName: input.name
+							containers: [{
+								name:  input.name
+								image: input.image + ":" + input.tag
+								if len(_envSpec) > 0 {
+									env: _envSpec
+								}
+								ports: [{containerPort: input.port, name: "http"}]
+								if input.command != _|_ {
+									command: input.command
+								}
+								if input.args != _|_ {
+									args: input.args
+								}
+							}]
+						}
+					}
+				}
+			}
 
-            Service: (input.name): {
-                apiVersion: "v1"
-                kind:       "Service"
-                metadata: {
-                    name:        input.name
-                    namespace:   system.namespace
-                    labels:      _labels
-                    annotations: _annotations
-                }
-                spec: {
-                    selector: "app.kubernetes.io/name": input.name
-                    ports: [{port: 80, targetPort: "http", name: "http"}]
-                }
-            }
+			// Service exposes port 80 → container port input.port (named "http").
+			Service: (input.name): {
+				apiVersion: "v1"
+				kind:       "Service"
+				metadata: {
+					name:        input.name
+					namespace:   platform.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					selector: "app.kubernetes.io/name": input.name
+					ports: [{port: 80, targetPort: "http", name: "http"}]
+				}
+			}
 
-            // ReferenceGrant allows HTTPRoute resources in the gateway namespace
-            // to reference Service resources in the project namespace.
-            // This enables system templates (such as the example HTTPRoute template)
-            // to expose deployments via the gateway without requiring changes to
-            // the user deployment template.
-            ReferenceGrant: "allow-gateway-httproute": {
-                apiVersion: "gateway.networking.k8s.io/v1beta1"
-                kind:       "ReferenceGrant"
-                metadata: {
-                    name:        "allow-gateway-httproute"
-                    namespace:   system.namespace
-                    labels:      _labels
-                    annotations: _annotations
-                }
-                spec: {
-                    from: [{
-                        group:     "gateway.networking.k8s.io"
-                        kind:      "HTTPRoute"
-                        namespace: system.gatewayNamespace
-                    }]
-                    to: [{
-                        group: ""
-                        kind:  "Service"
-                    }]
-                }
-            }
-        }
-    }
-    clusterResources: #Cluster & {}
+			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
+			// reference Service resources in the project namespace.
+			// This enables system templates (such as the example HTTPRoute template)
+			// to expose deployments via the gateway.
+			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
+			ReferenceGrant: "allow-gateway-httproute": {
+				apiVersion: "gateway.networking.k8s.io/v1beta1"
+				kind:       "ReferenceGrant"
+				metadata: {
+					name:        "allow-gateway-httproute"
+					namespace:   platform.namespace
+					labels:      _labels
+					annotations: _annotations
+				}
+				spec: {
+					from: [{
+						group:     "gateway.networking.k8s.io"
+						kind:      "HTTPRoute"
+						namespace: platform.gatewayNamespace
+					}]
+					to: [{
+						group: ""
+						kind:  "Service"
+					}]
+				}
+			}
+		}
+	}
+
+	// clusterResources organizes cluster-scoped resources. Initially empty;
+	// extended as cluster resource support is added.
+	clusterResources: #Cluster & {}
 }
 ```
 
@@ -263,7 +255,7 @@ pointing to a `Gateway`. The Gateway controller and a `Gateway` resource must
 already exist in the cluster — ask your platform team for the gateway name and
 namespace.
 
-Add the following resource to your template's `output.namespacedResources` block when external
+Add the following resource to your template's `projectResources.namespacedResources` block when external
 access is needed:
 
 ```cue
@@ -272,7 +264,7 @@ HTTPRoute: (input.name): {
     kind:       "HTTPRoute"
     metadata: {
         name:        input.name
-        namespace:   system.namespace
+        namespace:   platform.namespace
         labels:      _labels
         annotations: _annotations
     }
@@ -299,16 +291,17 @@ port defined above — do not use `input.port` here.
 
 ### Guidelines
 
-1. **Always declare `package deployment`** — the CUE evaluator expects this package name.
-2. **Always declare `input: #Input` and `system: #System`** — these are the unification points where the console injects user and system parameters respectively.
-3. **Always declare `output.namespacedResources` and `output.clusterResources` output fields** — the console requires the structured output format.
-4. **Always include the managed-by label** on every resource or validation will reject the render.
-5. **Set `metadata.namespace` to `system.namespace`** on every namespaced resource — cross-namespace resources are rejected.
-6. **Match struct keys to metadata** — `output.namespacedResources.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
-7. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
-8. **Never place project or namespace in `input`** — these are system-provided values available at `system.project` and `system.namespace`.
-9. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
-10. **Never define `output.systemNamespacedResources` or `output.systemClusterResources` in a user deployment template** — these fields are reserved for system templates and are managed by the platform operator.
+1. **Never declare a `package` clause** — the renderer prepends the generated schema and controls the CUE package. Templates with a `package` declaration will cause a compilation error.
+2. **Do not redefine `#ProjectInput`, `#PlatformInput`, `#Claims`, `#EnvVar`, or `#KeyRef`** — these types are generated from `api/v1alpha1` Go types via `cue get go` and are prepended by the renderer automatically.
+3. **Always declare `input: #ProjectInput` and `platform: #PlatformInput`** — these are the unification points where the console injects project and platform parameters respectively.
+4. **Always declare `projectResources.namespacedResources` and `projectResources.clusterResources` output fields** — the console requires the structured output format.
+5. **Always include the managed-by label** on every resource or validation will reject the render.
+6. **Set `metadata.namespace` to `platform.namespace`** on every namespaced resource — cross-namespace resources are rejected.
+7. **Match struct keys to metadata** — `projectResources.namespacedResources.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
+8. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
+9. **Never place project or namespace in `input`** — these are platform-provided values available at `platform.project` and `platform.namespace`.
+10. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
+11. **Never define `platformResources` in a user deployment template** — these fields are reserved for system templates and are managed by the platform operator.
 
 ### Previewing Your Template
 
@@ -321,15 +314,15 @@ during authoring.
 
 The RPC accepts two separate CUE input fields:
 
-- `cue_system_input` — trusted system context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
+- `cue_system_input` — trusted platform context (project, namespace, claims); populated by the backend from authenticated context when provided by the caller
 - `cue_input` — user-provided deployment parameters (name, image, tag, env, etc.)
 
-Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `system` and `input` top-level fields are available.
+Both are valid CUE source. The backend combines them into a single document before unifying with the template, so both `platform` and `input` top-level fields are available.
 
 Example `cue_system_input` (trusted, set from authenticated context):
 
 ```cue
-system: {
+platform: {
     project:   "my-project"
     namespace: "holos-prj-my-project"
     claims: {
@@ -357,35 +350,47 @@ input: {
 
 The console fills two separate CUE fields at render time:
 
-- **`input`** — user-provided deployment parameters (name, image, tag, etc.)
-- **`system`** — trusted values set by the console backend from authenticated context (project, namespace, OIDC claims)
+- **`input`** — project-provided deployment parameters (name, image, tag, etc.); typed as `#ProjectInput`
+- **`platform`** — trusted values set by the console backend from authenticated context (project, namespace, OIDC claims); typed as `#PlatformInput`
 
-This separation enforces a trust boundary: templates can reference `system.namespace` for the project namespace and `system.claims` for the authenticated user's identity without risk of user-supplied values overriding them.
+This separation enforces a trust boundary: templates can reference `platform.namespace` for the project namespace and `platform.claims` for the authenticated user's identity without risk of user-supplied values overriding them.
 
-### `#Input` Schema
+### `#ProjectInput` Schema
+
+The `#ProjectInput` type is **generated** from the `ProjectInput` Go struct in `api/v1alpha1/input.go` via `cue get go`. The renderer prepends this generated schema before compiling any template — do not redefine it in your template.
+
+The effective schema is:
 
 ```cue
-#Input: {
-    name:    string & =~"^[a-z][a-z0-9-]*$"  // DNS label, max 63 chars
-    image:   string                            // container image (no tag)
-    tag:     string                            // image tag
-    command?: [...string]                      // container ENTRYPOINT override
-    args?:   [...string]                       // container CMD override
-    env:     [...#EnvVar] | *[]                // environment variables
-    port:    int & >0 & <=65535 | *8080        // container port (default 8080)
+// Generated from api/v1alpha1.ProjectInput — do not redefine in templates.
+#ProjectInput: {
+    name:    string             // deployment name
+    image:   string             // container image repository (no tag)
+    tag:     string             // image tag
+    command?: [...string]       // container ENTRYPOINT override
+    args?:   [...string]        // container CMD override
+    env?:    [...#EnvVar]       // environment variables
+    port:    int                // container port (default applied by template)
 }
 ```
 
-### `#System` Schema
+### `#PlatformInput` Schema
 
-The `#System` definition groups the two trusted CUE definitions — `#Claims` and
-the outer `#System` struct — that the console backend fills unconditionally from
-authenticated context.
+The `#PlatformInput` type is **generated** from the `PlatformInput` Go struct in `api/v1alpha1/input.go` via `cue get go`. The `#Claims` type is similarly generated from `Claims`. The renderer prepends these generated schemas automatically.
+
+The effective schema is:
 
 ```cue
-// #Claims carries OIDC ID token claims of the authenticated user.
-// Standard claims are required; provider-specific claims are allowed via the
-// open struct (...) so templates remain compatible with any OIDC provider.
+// Generated from api/v1alpha1.PlatformInput — do not redefine in templates.
+#PlatformInput: {
+    project:          string             // parent project name
+    namespace:        string             // resolved K8s namespace (from Resolver.ProjectNamespace())
+    gatewayNamespace: string             // namespace of the gateway (for ReferenceGrant/HTTPRoute)
+    organization:     string             // parent organization name
+    claims:           #Claims            // OIDC ID token claims of the authenticated user
+}
+
+// Generated from api/v1alpha1.Claims — do not redefine in templates.
 #Claims: {
     iss:            string      // issuer URL
     sub:            string      // subject (unique user ID)
@@ -397,16 +402,9 @@ authenticated context.
     groups?: [...string]        // role memberships from the configured OIDC claim
     ...                         // allow provider-specific claims
 }
-
-#System: {
-    project:          string             // parent project name
-    namespace:        string             // resolved K8s namespace (from Resolver.ProjectNamespace())
-    gatewayNamespace: string | *"istio-ingress" // namespace of the gateway (for ReferenceGrant/HTTPRoute)
-    claims:           #Claims            // OIDC ID token claims of the authenticated user
-}
 ```
 
-### `#Input` Field Descriptions
+### `#ProjectInput` Field Descriptions
 
 | Field       | Type       | Required | Description |
 |-------------|------------|----------|-------------|
@@ -418,13 +416,14 @@ authenticated context.
 | `env`       | `[...#EnvVar]` | No  | Container environment variables. Defaults to `[]`. |
 | `port`      | `int`      | No       | Container port the application listens on. Must be between 1 and 65535. Defaults to `8080`. The default template names this port `"http"` and creates a Service that maps port 80 to this target. |
 
-### `#System` Field Descriptions
+### `#PlatformInput` Field Descriptions
 
 | Field                  | Type          | Description |
 |------------------------|---------------|-------------|
 | `project`              | `string`      | Parent project name. |
 | `namespace`            | `string`      | Kubernetes namespace resolved from the project name. Computed by the server using `Resolver.ProjectNamespace()`. |
 | `gatewayNamespace`     | `string`      | Kubernetes namespace of the gateway resource (default: `"istio-ingress"`). Used in ReferenceGrant `from` stanzas and HTTPRoute `parentRefs`. |
+| `organization`         | `string`      | Parent organization name. |
 | `claims.iss`           | `string`      | OIDC issuer URL (e.g. `https://dex.example.com`). |
 | `claims.sub`           | `string`      | OIDC subject (unique user ID). |
 | `claims.exp`           | `int`         | Token expiration time as Unix epoch seconds. |
@@ -436,13 +435,13 @@ authenticated context.
 
 ### Using Claims in Templates
 
-Templates can reference any `system.claims` field to annotate or configure
+Templates can reference any `platform.claims` field to annotate or configure
 resources with the identity of the user who last rendered the deployment. The
 default template uses this to stamp every resource with the deployer's email:
 
 ```cue
 _annotations: {
-    "console.holos.run/deployer-email": system.claims.email
+    "console.holos.run/deployer-email": platform.claims.email
 }
 ```
 
@@ -451,7 +450,7 @@ Apply these annotations in resource `metadata`:
 ```cue
 metadata: {
     name:        input.name
-    namespace:   system.namespace
+    namespace:   platform.namespace
     labels:      _labels
     annotations: _annotations
 }
@@ -463,9 +462,12 @@ constraint errors as long as the field is present in the token.
 
 ### `#EnvVar` Schema
 
+The `#EnvVar` and `#KeyRef` types are **generated** from Go structs in `api/v1alpha1/input.go` via `cue get go`. Do not redefine them in your template.
+
 Each environment variable has exactly one value source:
 
 ```cue
+// Generated from api/v1alpha1.EnvVar — do not redefine in templates.
 #EnvVar: {
     name:               string
     value?:             string       // literal value
@@ -473,6 +475,7 @@ Each environment variable has exactly one value source:
     configMapKeyRef?:   #KeyRef      // reference to a K8s ConfigMap key
 }
 
+// Generated from api/v1alpha1.KeyRef — do not redefine in templates.
 #KeyRef: {
     name: string   // Secret or ConfigMap name
     key:  string   // key within the resource
@@ -481,13 +484,13 @@ Each environment variable has exactly one value source:
 
 ## Template Output
 
-The console reads structured fields nested under `output` from the evaluated CUE template:
+The console reads structured fields nested under `projectResources` and `platformResources` from the evaluated CUE template:
 
-### `output.namespacedResources` Field
+### `projectResources.namespacedResources` Field
 
 ```cue
-// Structure: output.namespacedResources.<namespace>.<Kind>.<name>
-output: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
+// Structure: projectResources.namespacedResources.<namespace>.<Kind>.<name>
+projectResources: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: {
         name:      Name
@@ -498,16 +501,16 @@ output: namespacedResources: [Namespace=string]: [Kind=string]: [Name=string]: {
 }
 ```
 
-The `output.namespacedResources` field organizes resources that live within a Kubernetes
+The `projectResources.namespacedResources` field organizes resources that live within a Kubernetes
 namespace. Resources are indexed by namespace, then by Kind, then by name. This
 three-level nesting enforces uniqueness per Kind/name within a namespace at the
 CUE level — duplicates cause a CUE evaluation error before any Kubernetes call.
 
-### `output.clusterResources` Field
+### `projectResources.clusterResources` Field
 
 ```cue
-// Structure: output.clusterResources.<Kind>.<name>
-output: clusterResources: [Kind=string]: [Name=string]: {
+// Structure: projectResources.clusterResources.<Kind>.<name>
+projectResources: clusterResources: [Kind=string]: [Name=string]: {
     kind: Kind
     metadata: {
         name: Name
@@ -517,36 +520,36 @@ output: clusterResources: [Kind=string]: [Name=string]: {
 }
 ```
 
-The `output.clusterResources` field organizes cluster-scoped resources (resources without a
+The `projectResources.clusterResources` field organizes cluster-scoped resources (resources without a
 namespace, such as `Namespace`, `ClusterRole`, or `ClusterRoleBinding`). The
 initial implementation keeps the cluster allowlist empty; it will be extended
 incrementally as cluster resource support is added.
 
-### `output.systemNamespacedResources` and `output.systemClusterResources` Fields
+### `platformResources.namespacedResources` and `platformResources.clusterResources` Fields
 
-These fields follow the same structure as `namespacedResources` and `clusterResources`
+These fields follow the same structure as `projectResources.namespacedResources` and `projectResources.clusterResources`
 respectively, but are reserved for system template resources managed by the platform
 operator. User-authored deployment templates should NOT define these fields.
 
 **System Template Unification**
 
 At deploy time, the console unifies enabled system templates with the deployment
-template before CUE compilation. Because system templates share the same
-`package deployment` declaration, they have full access to all `input.*` and
-`system.*` fields defined by the deployment template — including `input.name`,
-`input.port`, `system.namespace`, and `system.gatewayNamespace`.
+template before CUE compilation. Because all templates share the same generated
+schema (prepended by the renderer), they have full access to all `input.*` and
+`platform.*` fields — including `input.name`, `input.port`, `platform.namespace`,
+and `platform.gatewayNamespace`.
 
-System templates contribute their resources to `output.systemNamespacedResources`
-and `output.systemClusterResources` so that they do not conflict with the user
-template's `output.namespacedResources` and `output.clusterResources` fields.
+System templates contribute their resources to `platformResources.namespacedResources`
+and `platformResources.clusterResources` so that they do not conflict with the project
+template's `projectResources.namespacedResources` and `projectResources.clusterResources` fields.
 
 **Operator Guarantees**
 
-Resources placed in `output.systemNamespacedResources` and
-`output.systemClusterResources` by system templates are:
+Resources placed in `platformResources.namespacedResources` and
+`platformResources.clusterResources` by system templates are:
 
 - **Not modifiable by user templates** — user-authored deployment templates cannot
-  override or replace resources in the `system*` output fields. The fields are
+  override or replace resources in the `platformResources` fields. The fields are
   explicitly separate, so CUE unification does not allow a user template to conflict
   with a system template's output.
 - **Always applied alongside user resources** — the render engine collects resources
@@ -558,7 +561,7 @@ Resources placed in `output.systemNamespacedResources` and
 
 Operators can use system templates to constrain user-controlled resources. Because
 system templates are unified with the deployment template before compilation, a
-system template can add CUE constraints on `output.namespacedResources` (the user
+system template can add CUE constraints on `projectResources.namespacedResources` (the project
 output fields). For example, a system template could enforce a required label or
 annotation on all namespaced resources — any user template that violates the
 constraint will fail at CUE evaluation time before any Kubernetes call.
@@ -566,20 +569,26 @@ constraint will fail at CUE evaluation time before any Kubernetes call.
 **Example: HTTPRoute System Template**
 
 The built-in `default_referencegrant.cue` system template seeds a disabled HTTPRoute
-example. When enabled, it adds an `HTTPRoute` to `output.systemNamespacedResources`
+example. When enabled, it adds an `HTTPRoute` to `platformResources.namespacedResources`
 that routes all gateway traffic to the deployment's `Service`:
 
 ```cue
-package deployment
-
-output: {
-    systemNamespacedResources: (system.namespace): {
+// platformResources contributes platform-managed Kubernetes resources.
+// Platform templates define resources under platformResources so they do not
+// conflict with the project template's projectResources fields.
+platformResources: {
+    // namespacedResources organizes platform-managed namespaced resources.
+    namespacedResources: (platform.namespace): {
+        // HTTPRoute exposes the deployment's Service via the gateway.
+        // It routes all traffic from the gateway to the Service named input.name
+        // on port 80 (the Service port, which forwards to containerPort input.port).
+        // See: https://gateway-api.sigs.k8s.io/api-types/httproute/
         HTTPRoute: (input.name): {
             apiVersion: "gateway.networking.k8s.io/v1"
             kind:       "HTTPRoute"
             metadata: {
                 name:      input.name
-                namespace: system.namespace
+                namespace: platform.namespace
                 labels: {
                     "app.kubernetes.io/managed-by": "console.holos.run"
                     "app.kubernetes.io/name":       input.name
@@ -589,7 +598,8 @@ output: {
                 parentRefs: [{
                     group:     "gateway.networking.k8s.io"
                     kind:      "Gateway"
-                    namespace: system.gatewayNamespace
+                    namespace: platform.gatewayNamespace
+                    // Change "default" to the name of your Gateway resource.
                     name:      "default"
                 }]
                 rules: [{
@@ -601,12 +611,14 @@ output: {
             }
         }
     }
-    systemClusterResources: {}
+
+    // clusterResources organizes platform-managed cluster-scoped resources (none for this template).
+    clusterResources: {}
 }
 ```
 
-This system template references `input.name` (user-supplied deployment name),
-`system.namespace` (resolved project namespace), and `system.gatewayNamespace`
+This system template references `input.name` (project-supplied deployment name),
+`platform.namespace` (resolved project namespace), and `platform.gatewayNamespace`
 (operator-configured gateway namespace) — all available because system templates
 are unified with the deployment template before evaluation.
 
@@ -614,11 +626,11 @@ are unified with the deployment template before evaluation.
 
 CUE constraints enforce that the struct path keys match the resource metadata:
 
-- `output.namespacedResources.<namespace>` must match `metadata.namespace`
-- `output.namespacedResources.<namespace>.<Kind>` must match `kind`
-- `output.namespacedResources.<namespace>.<Kind>.<name>` must match `metadata.name`
-- `output.clusterResources.<Kind>` must match `kind`
-- `output.clusterResources.<Kind>.<name>` must match `metadata.name`
+- `projectResources.namespacedResources.<namespace>` must match `metadata.namespace`
+- `projectResources.namespacedResources.<namespace>.<Kind>` must match `kind`
+- `projectResources.namespacedResources.<namespace>.<Kind>.<name>` must match `metadata.name`
+- `projectResources.clusterResources.<Kind>` must match `kind`
+- `projectResources.clusterResources.<Kind>.<name>` must match `metadata.name`
 
 A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 
@@ -627,14 +639,14 @@ A mismatch is a CUE evaluation error caught before any Kubernetes API call.
 The default template produces four namespaced resources (ServiceAccount, Deployment, Service, and ReferenceGrant):
 
 ```cue
-output: {
-    namespacedResources: (system.namespace): {
+projectResources: {
+    namespacedResources: (platform.namespace): {
         ServiceAccount: (input.name): {
             apiVersion: "v1"
             kind:       "ServiceAccount"
             metadata: {
                 name:      input.name
-                namespace: system.namespace
+                namespace: platform.namespace
                 labels:    _labels
             }
         }
@@ -663,9 +675,9 @@ output: {
 
 ## Validation Constraints
 
-Every resource collected from all four output fields (`output.namespacedResources`,
-`output.clusterResources`, `output.systemNamespacedResources`, and
-`output.systemClusterResources`) must satisfy these constraints or the render is
+Every resource collected from all four output fields (`projectResources.namespacedResources`,
+`projectResources.clusterResources`, `platformResources.namespacedResources`, and
+`platformResources.clusterResources`) must satisfy these constraints or the render is
 rejected. These are enforced in Go after CUE evaluation, not in CUE itself.
 
 ### Required Fields
@@ -676,7 +688,7 @@ Each resource must have:
 - `metadata.name` — non-empty
 
 Namespaced resources additionally require:
-- `metadata.namespace` — must exactly match the struct key and `system.namespace`
+- `metadata.namespace` — must exactly match the struct key and `platform.namespace`
 
 Cluster resources additionally require:
 - `metadata.namespace` — must be absent (cluster-scoped resources have no namespace)
@@ -730,9 +742,10 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 
 | File | Purpose |
 |------|---------|
-| `console/templates/default_template.cue` | Default CUE template with `#Input`, `#Claims`, and `#System` schema definitions, env var transformation, `_annotations` helper (stamps `system.claims.email`), `#Namespaced`/`#Cluster` constraints, and resource definitions nested under `output.namespacedResources`/`output.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. |
+| `console/templates/default_template.cue` | Default CUE template. Narrows generated `#ProjectInput` and `#PlatformInput` types with additional CUE constraints, defines `_envSpec` env var transformation, `_annotations` helper (stamps `platform.claims.email`), `#Namespaced`/`#Cluster` structural constraints, and resource definitions nested under `projectResources.namespacedResources`/`projectResources.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. No `package` declaration — the renderer prepends the generated schema. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
-| `console/system_templates/default_referencegrant.cue` | Built-in example HTTPRoute system template using `package deployment`. References `input.name` and `system.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Seeded as disabled (not mandatory) on first `ListSystemTemplates` access. Embedded via `console/system_templates/embed.go`. |
+| `console/system_templates/default_referencegrant.cue` | Built-in example HTTPRoute system template. References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListSystemTemplates` access. Embedded via `console/system_templates/embed.go`. No `package` declaration. |
+| `api/v1alpha1/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. |
 
 ### Go Rendering Pipeline
 
@@ -740,11 +753,11 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: compiles CUE source, marshals `UserInput` to JSON and fills `"input"`, marshals `SystemInput` and fills `"system"`, walks structured `output.namespacedResources`/`output.clusterResources` fields (and optionally `output.systemNamespacedResources`/`output.systemClusterResources`), validates. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — unifies zero or more system template CUE sources with the deployment template by concatenating them (same package) before compilation, then fills in system and user inputs. Used at deploy time to produce both user and system resources in a single evaluation. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates CUE source with a raw CUE input string before compilation so cross-references (e.g. input.name used in system templates) resolve correctly. Extracts `system.namespace` from the compiled value. |
-| `console/deployments/render.go` | `ClaimsInput`, `SystemInput`, `UserInput` structs — split Go representation of template inputs. `SystemInput` (project, namespace, gatewayNamespace, claims) is trusted backend context; `UserInput` (name, image, tag, etc.) is user-supplied. |
-| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` reads from `output.*` paths, dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
+| `console/deployments/render.go` | `CueRenderer.Render()` — deployment service path: prepends generated schema (`api/v1alpha1.GeneratedSchema`), compiles CUE source, marshals `ProjectInput` to JSON and fills `"input"`, marshals `PlatformInput` and fills `"platform"`, walks structured `projectResources.namespacedResources`/`projectResources.clusterResources` fields (and optionally `platformResources.namespacedResources`/`platformResources.clusterResources`), validates. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — unifies zero or more system template CUE sources with the deployment template by concatenating them before compilation, prepends generated schema, then fills in platform and project inputs. Used at deploy time to produce both project and platform resources in a single evaluation. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in system templates) resolve correctly. Extracts `platform.namespace` from the compiled value. |
+| `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
+| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured()` reads from `projectResources.*` and `platformResources.*` paths, dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
 
@@ -768,7 +781,7 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create/Update flow — builds `SystemInput` (including `GatewayNamespace`) from authenticated context and `UserInput` from API request fields, calls `renderResources()` (which unifies enabled system templates via `RenderWithSystemTemplates`), then `Apply()`. |
+| `console/deployments/handler.go` | Create/Update flow — builds `PlatformInput` (including `GatewayNamespace`) from authenticated context and `ProjectInput` from API request fields, calls `renderResources()` (which unifies enabled system templates via `RenderWithSystemTemplates`), then `Apply()`. |
 | `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
@@ -786,6 +799,7 @@ Two render paths exist — one for the deployment service and one for the templa
 |-----------|---------|
 | `gen/holos/console/v1/` | Go protobuf structs (`*_pb.go`) and ConnectRPC bindings (`consolev1connect/`). |
 | `frontend/src/gen/` | TypeScript protobuf types for the UI. |
+| `api/v1alpha1/cue.mod/` | Generated CUE schema files produced by `cue get go ./api/v1alpha1/...`. The renderer embeds and prepends these before compiling any template. |
 
 ### Kind-to-GVR Mapping
 

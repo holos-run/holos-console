@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
@@ -36,13 +37,13 @@ func contextWithClaims(email string, groups ...string) context.Context {
 func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 	annotations := map[string]string{}
 	if shareUsersJSON != "" {
-		annotations[secrets.ShareUsersAnnotation] = shareUsersJSON
+		annotations[v1alpha1.AnnotationShareUsers] = shareUsersJSON
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-" + name,
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: name,
 			},
@@ -120,8 +121,8 @@ func TestListOrganizations_ReturnsOrgNameNotNamespace(t *testing.T) {
 
 func TestGetOrganization_Authorized(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[DisplayNameAnnotation] = "ACME Corp"
-	ns.Annotations[secrets.DescriptionAnnotation] = "Test org"
+	ns.Annotations[v1alpha1.AnnotationDisplayName] = "ACME Corp"
+	ns.Annotations[v1alpha1.AnnotationDescription] = "Test org"
 
 	handler := newTestHandler(ns)
 	ctx := contextWithClaims("alice@example.com")
@@ -473,7 +474,7 @@ func TestUpdateOrgSharing_WithRoleGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected namespace to exist, got %v", err)
 	}
-	rolesJSON := k8sNS.Annotations[secrets.ShareRolesAnnotation]
+	rolesJSON := k8sNS.Annotations[v1alpha1.AnnotationShareRoles]
 	if rolesJSON == "" {
 		t.Fatal("expected share-roles annotation to be set")
 	}
@@ -587,8 +588,8 @@ func TestUpdateOrgDefaultSharing_Unauthenticated(t *testing.T) {
 
 func TestBuildOrganization_IncludesDefaultSharing(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	ns.Annotations[DefaultShareUsersAnnotation] = `[{"principal":"bob@example.com","role":"editor"}]`
-	ns.Annotations[DefaultShareRolesAnnotation] = `[{"principal":"engineering","role":"viewer"}]`
+	ns.Annotations[v1alpha1.AnnotationDefaultShareUsers] = `[{"principal":"bob@example.com","role":"editor"}]`
+	ns.Annotations[v1alpha1.AnnotationDefaultShareRoles] = `[{"principal":"engineering","role":"viewer"}]`
 
 	handler := newTestHandler(ns)
 	ctx := contextWithClaims("alice@example.com")
@@ -616,7 +617,7 @@ func TestBuildOrganization_IncludesDefaultSharing(t *testing.T) {
 
 func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[DisplayNameAnnotation] = "ACME Corp"
+	ns.Annotations[v1alpha1.AnnotationDisplayName] = "ACME Corp"
 	handler := newTestHandler(ns)
 	ctx := contextWithClaims("alice@example.com")
 
@@ -640,8 +641,8 @@ func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Errorf("expected metadata.name 'holos-org-acme', got %v", metadata["name"])
 	}
 	labels := metadata["labels"].(map[string]interface{})
-	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
-		t.Errorf("expected managed-by label, got %v", labels[secrets.ManagedByLabel])
+	if labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
+		t.Errorf("expected managed-by label, got %v", labels[v1alpha1.LabelManagedBy])
 	}
 	if labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeOrganization {
 		t.Errorf("expected resource-type label, got %v", labels[resolver.ResourceTypeLabel])
@@ -670,7 +671,7 @@ func TestBuildOrganization_UsesLabelNotNamespaceParsing(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-o-holos", // namespace-prefix "holos-" + org-prefix "o-" + name "holos"
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "holos",
 			},
@@ -693,7 +694,7 @@ func TestBuildOrganization_LabelTakesPrecedenceOverParsing(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "org-legacy-name",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "correct-name",
 			},
@@ -713,12 +714,12 @@ func TestListOrganizations_UsesLabelWithNamespacePrefix(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-o-holos",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "holos",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
 			},
 		},
 	}

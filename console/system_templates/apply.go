@@ -76,8 +76,8 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 			}
 		}
 
-		// Build UserInput for the template.
-		userInput := systemTemplateUserInput{}
+		// Build project input for the template.
+		userInput := systemTemplateProjectInput{}
 
 		// Encode both inputs as a combined CUE value.
 		platformJSON, err := json.Marshal(platformInput)
@@ -122,6 +122,6 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 	return nil
 }
 
-// systemTemplateUserInput carries the user-configurable input for system templates.
+// systemTemplateProjectInput carries the user-configurable input for system templates.
 // The field name must match the CUE #Input struct field name in the template.
-type systemTemplateUserInput struct{}
+type systemTemplateProjectInput struct{}

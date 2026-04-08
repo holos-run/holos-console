@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,15 +15,7 @@ import (
 )
 
 const (
-	ManagedByLabel        = "app.kubernetes.io/managed-by"
-	ManagedByValue        = "console.holos.run"
-	ResourceTypeLabel     = "console.holos.run/resource-type"
-	ResourceTypeValue     = "system-template"
-	DisplayNameAnnotation = "console.holos.run/display-name"
-	DescriptionAnnotation = "console.holos.run/description"
-	MandatoryAnnotation   = "console.holos.run/mandatory"
-	EnabledAnnotation     = "console.holos.run/enabled"
-	CueTemplateKey        = "template.cue"
+	CueTemplateKey = "template.cue"
 
 	// DefaultReferenceGrantName is the name of the seeded built-in template.
 	DefaultReferenceGrantName = "reference-grant"
@@ -42,7 +35,7 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // ListSystemTemplates returns all system template ConfigMaps in the org namespace.
 func (k *K8sClient) ListSystemTemplates(ctx context.Context, org string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
-	labelSelector := ResourceTypeLabel + "=" + ResourceTypeValue
+	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeSystemTemplate
 	slog.DebugContext(ctx, "listing system templates from kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
@@ -81,14 +74,14 @@ func (k *K8sClient) CreateSystemTemplate(ctx context.Context, org, name, display
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeSystemTemplate,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
-				MandatoryAnnotation:   strconv.FormatBool(mandatory),
-				EnabledAnnotation:     strconv.FormatBool(enabled),
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
+				v1alpha1.AnnotationMandatory:   strconv.FormatBool(mandatory),
+				v1alpha1.AnnotationEnabled:     strconv.FormatBool(enabled),
 			},
 		},
 		Data: map[string]string{
@@ -115,16 +108,16 @@ func (k *K8sClient) UpdateSystemTemplate(ctx context.Context, org, name string, 
 		cm.Annotations = make(map[string]string)
 	}
 	if displayName != nil {
-		cm.Annotations[DisplayNameAnnotation] = *displayName
+		cm.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
 	}
 	if description != nil {
-		cm.Annotations[DescriptionAnnotation] = *description
+		cm.Annotations[v1alpha1.AnnotationDescription] = *description
 	}
 	if mandatory != nil {
-		cm.Annotations[MandatoryAnnotation] = strconv.FormatBool(*mandatory)
+		cm.Annotations[v1alpha1.AnnotationMandatory] = strconv.FormatBool(*mandatory)
 	}
 	if enabled != nil {
-		cm.Annotations[EnabledAnnotation] = strconv.FormatBool(*enabled)
+		cm.Annotations[v1alpha1.AnnotationEnabled] = strconv.FormatBool(*enabled)
 	}
 	if cm.Data == nil {
 		cm.Data = make(map[string]string)
@@ -154,13 +147,13 @@ func (k *K8sClient) CloneSystemTemplate(ctx context.Context, org, sourceName, ne
 	if err != nil {
 		return nil, fmt.Errorf("getting source system template for clone: %w", err)
 	}
-	mandatory, _ := strconv.ParseBool(source.Annotations[MandatoryAnnotation])
+	mandatory, _ := strconv.ParseBool(source.Annotations[v1alpha1.AnnotationMandatory])
 	return k.CreateSystemTemplate(
 		ctx,
 		org,
 		newName,
 		newDisplayName,
-		source.Annotations[DescriptionAnnotation],
+		source.Annotations[v1alpha1.AnnotationDescription],
 		source.Data[CueTemplateKey],
 		mandatory,
 		false, // new clones start disabled
@@ -211,13 +204,13 @@ func (k *K8sClient) ListEnabledSystemTemplateSources(ctx context.Context, org st
 
 // configMapToSystemTemplate converts a Kubernetes ConfigMap to a SystemTemplate protobuf message.
 func configMapToSystemTemplate(cm *corev1.ConfigMap, org string) *consolev1.SystemTemplate {
-	mandatory, _ := strconv.ParseBool(cm.Annotations[MandatoryAnnotation])
-	enabled, _ := strconv.ParseBool(cm.Annotations[EnabledAnnotation])
+	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationMandatory])
+	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationEnabled])
 	return &consolev1.SystemTemplate{
 		Name:        cm.Name,
 		Org:         org,
-		DisplayName: cm.Annotations[DisplayNameAnnotation],
-		Description: cm.Annotations[DescriptionAnnotation],
+		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
+		Description: cm.Annotations[v1alpha1.AnnotationDescription],
 		CueTemplate: cm.Data[CueTemplateKey],
 		Mandatory:   mandatory,
 		Enabled:     enabled,

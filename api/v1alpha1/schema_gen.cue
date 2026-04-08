@@ -17,18 +17,27 @@
 #LabelProject:      "console.holos.run/project"
 
 // Label values.
-#ManagedByValue:           "console.holos.run"
-#ResourceTypeOrganization: "organization"
-#ResourceTypeProject:      "project"
+#ManagedByValue:                 "console.holos.run"
+#ResourceTypeOrganization:       "organization"
+#ResourceTypeProject:            "project"
+#ResourceTypeDeployment:         "deployment"
+#ResourceTypeDeploymentTemplate: "deployment-template"
+#ResourceTypeSystemTemplate:     "system-template"
 
 // Annotations.
-#AnnotationDisplayName:   "console.holos.run/display-name"
-#AnnotationDescription:   "console.holos.run/description"
-#AnnotationCreatorEmail:  "console.holos.run/creator-email"
-#AnnotationShareUsers:    "console.holos.run/share-users"
-#AnnotationShareRoles:    "console.holos.run/share-roles"
-#AnnotationDeployment:    "console.holos.run/deployment"
-#AnnotationDeployerEmail: "console.holos.run/deployer-email"
+#AnnotationDisplayName:       "console.holos.run/display-name"
+#AnnotationDescription:       "console.holos.run/description"
+#AnnotationCreatorEmail:      "console.holos.run/creator-email"
+#AnnotationShareUsers:        "console.holos.run/share-users"
+#AnnotationShareRoles:        "console.holos.run/share-roles"
+#AnnotationDefaultShareUsers: "console.holos.run/default-share-users"
+#AnnotationDefaultShareRoles: "console.holos.run/default-share-roles"
+#AnnotationDeployment:        "console.holos.run/deployment"
+#AnnotationDeployerEmail:     "console.holos.run/deployer-email"
+#AnnotationURL:               "console.holos.run/url"
+#AnnotationMandatory:         "console.holos.run/mandatory"
+#AnnotationEnabled:           "console.holos.run/enabled"
+#AnnotationSettings:          "console.holos.run/project-settings"
 
 // --- hierarchy_go_gen.cue ---
 

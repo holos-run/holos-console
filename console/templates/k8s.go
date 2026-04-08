@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,13 +15,7 @@ import (
 )
 
 const (
-	ManagedByLabel        = "app.kubernetes.io/managed-by"
-	ManagedByValue        = "console.holos.run"
-	ResourceTypeLabel     = "console.holos.run/resource-type"
-	ResourceTypeValue     = "deployment-template"
-	DisplayNameAnnotation = "console.holos.run/display-name"
-	DescriptionAnnotation = "console.holos.run/description"
-	CueTemplateKey        = "template.cue"
+	CueTemplateKey = "template.cue"
 	// DefaultsKey is the ConfigMap data key that stores DeploymentDefaults as JSON.
 	DefaultsKey = "defaults.json"
 )
@@ -39,7 +34,7 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // ListTemplates returns all deployment template ConfigMaps in the project namespace.
 func (k *K8sClient) ListTemplates(ctx context.Context, project string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
-	labelSelector := ResourceTypeLabel + "=" + ResourceTypeValue
+	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeDeploymentTemplate
 	slog.DebugContext(ctx, "listing deployment templates from kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
@@ -89,12 +84,12 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeploymentTemplate,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
 			},
 		},
 		Data: data,
@@ -121,10 +116,10 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, di
 		cm.Annotations = make(map[string]string)
 	}
 	if displayName != nil {
-		cm.Annotations[DisplayNameAnnotation] = *displayName
+		cm.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
 	}
 	if description != nil {
-		cm.Annotations[DescriptionAnnotation] = *description
+		cm.Annotations[v1alpha1.AnnotationDescription] = *description
 	}
 	if cm.Data == nil {
 		cm.Data = make(map[string]string)
@@ -164,7 +159,7 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newN
 		project,
 		newName,
 		newDisplayName,
-		source.Annotations[DescriptionAnnotation],
+		source.Annotations[v1alpha1.AnnotationDescription],
 		source.Data[CueTemplateKey],
 		defaults,
 	)

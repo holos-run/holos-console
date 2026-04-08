@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -416,8 +417,8 @@ func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.Deploy
 	tmpl := &consolev1.DeploymentTemplate{
 		Name:        cm.Name,
 		Project:     project,
-		DisplayName: cm.Annotations[DisplayNameAnnotation],
-		Description: cm.Annotations[DescriptionAnnotation],
+		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
+		Description: cm.Annotations[v1alpha1.AnnotationDescription],
 		CueTemplate: cm.Data[CueTemplateKey],
 	}
 	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {

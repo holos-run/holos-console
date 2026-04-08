@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -22,7 +23,7 @@ func projectNS(project string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-" + project,
 			Labels: map[string]string{
-				ManagedByLabel:             ManagedByValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      project,
 			},
@@ -36,12 +37,12 @@ func templateConfigMap(project, name, displayName, description, cueTemplate stri
 			Name:      name,
 			Namespace: "prj-" + project,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeploymentTemplate,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
 			},
 		},
 		Data: map[string]string{
@@ -125,17 +126,17 @@ func TestCreateTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if cm.Labels[ManagedByLabel] != ManagedByValue {
+		if cm.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 			t.Error("expected managed-by label")
 		}
-		if cm.Labels[ResourceTypeLabel] != ResourceTypeValue {
+		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeDeploymentTemplate {
 			t.Error("expected resource-type label")
 		}
-		if cm.Annotations[DisplayNameAnnotation] != "Web App" {
-			t.Errorf("expected display name 'Web App', got %q", cm.Annotations[DisplayNameAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationDisplayName] != "Web App" {
+			t.Errorf("expected display name 'Web App', got %q", cm.Annotations[v1alpha1.AnnotationDisplayName])
 		}
-		if cm.Annotations[DescriptionAnnotation] != "A web app" {
-			t.Errorf("expected description 'A web app', got %q", cm.Annotations[DescriptionAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationDescription] != "A web app" {
+			t.Errorf("expected description 'A web app', got %q", cm.Annotations[v1alpha1.AnnotationDescription])
 		}
 		if cm.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
@@ -208,12 +209,12 @@ func TestUpdateTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if updated.Annotations[DisplayNameAnnotation] != "Updated Web App" {
-			t.Errorf("expected updated display name, got %q", updated.Annotations[DisplayNameAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationDisplayName] != "Updated Web App" {
+			t.Errorf("expected updated display name, got %q", updated.Annotations[v1alpha1.AnnotationDisplayName])
 		}
 		// Description should be unchanged
-		if updated.Annotations[DescriptionAnnotation] != "A web app" {
-			t.Errorf("expected unchanged description, got %q", updated.Annotations[DescriptionAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationDescription] != "A web app" {
+			t.Errorf("expected unchanged description, got %q", updated.Annotations[v1alpha1.AnnotationDescription])
 		}
 	})
 
@@ -353,11 +354,11 @@ func TestCloneTemplate(t *testing.T) {
 		if cloned.Name != "web-app-copy" {
 			t.Errorf("expected name 'web-app-copy', got %q", cloned.Name)
 		}
-		if cloned.Annotations[DisplayNameAnnotation] != "Web App Copy" {
-			t.Errorf("expected display name 'Web App Copy', got %q", cloned.Annotations[DisplayNameAnnotation])
+		if cloned.Annotations[v1alpha1.AnnotationDisplayName] != "Web App Copy" {
+			t.Errorf("expected display name 'Web App Copy', got %q", cloned.Annotations[v1alpha1.AnnotationDisplayName])
 		}
-		if cloned.Annotations[DescriptionAnnotation] != "A web app template" {
-			t.Errorf("expected description from source, got %q", cloned.Annotations[DescriptionAnnotation])
+		if cloned.Annotations[v1alpha1.AnnotationDescription] != "A web app template" {
+			t.Errorf("expected description from source, got %q", cloned.Annotations[v1alpha1.AnnotationDescription])
 		}
 		if cloned.Data[CueTemplateKey] != "foo: true\n" {
 			t.Errorf("expected CUE template from source, got %q", cloned.Data[CueTemplateKey])
