@@ -283,7 +283,7 @@ describe('DeploymentTemplateDetailPage', () => {
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     const lastCall = calls[calls.length - 1]
     expect(lastCall[1]).toContain('input:')
-    expect(lastCall[3]).toContain('system:')
+    expect(lastCall[3]).toContain('platform:')
   })
 
   it('modifying User Input calls useRenderDeploymentTemplate with updated value', async () => {

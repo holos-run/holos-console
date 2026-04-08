@@ -179,7 +179,7 @@ describe('CreateTemplatePage', () => {
   it('shows CUE template has default content', () => {
     render(<CreateTemplatePage />)
     const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
-    expect(cueEditor.value).toContain('package deployment')
+    expect(cueEditor.value).toContain('projectResources')
   })
 
   it('useRenderDeploymentTemplate is called with system input including claims', () => {
@@ -188,7 +188,7 @@ describe('CreateTemplatePage', () => {
     expect(calls.length).toBeGreaterThan(0)
     // 4th arg is cueSystemInput
     const systemInput = calls[0][3]
-    expect(systemInput).toContain('system:')
+    expect(systemInput).toContain('platform:')
     expect(systemInput).toContain('claims')
     expect(systemInput).toContain('email')
   })

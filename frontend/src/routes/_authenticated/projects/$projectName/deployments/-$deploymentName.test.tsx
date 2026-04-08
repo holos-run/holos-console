@@ -77,8 +77,8 @@ const mockStatus = {
 const mockLogs = '2024-01-15T10:30:01Z Starting server...\n2024-01-15T10:30:02Z Listening on :8080'
 
 const mockPreview = {
-  cueTemplate: 'package templates\n\ninput: #Input\n',
-  cueSystemInput: 'system: {\n  project: "test-project"\n  namespace: "holos-prj-test-project"\n}',
+  cueTemplate: 'input: #ProjectInput\nplatform: #PlatformInput\n',
+  cueSystemInput: 'platform: {\n  project: "test-project"\n  namespace: "holos-prj-test-project"\n}',
   cueUserInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
   renderedYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n',
   renderedJson: '[]',
@@ -430,7 +430,7 @@ describe('DeploymentDetailPage', () => {
       const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
       expect(editor).toBeInTheDocument()
       expect(editor.readOnly).toBe(true)
-      expect(editor.value).toContain('package templates')
+      expect(editor.value).toContain('#ProjectInput')
     })
 
     it('renders grpcurl Command section heading', () => {
