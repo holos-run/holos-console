@@ -557,11 +557,12 @@ api/
 
 - **Folder depth limit.** The 3-folder limit is based on the experience of
   Google Cloud IAM, where hierarchies deeper than 3 levels become difficult to
-  comprehend and reason about for the people managing them. Deeper hierarchies
-  also increase load on the Kubernetes API server — each level in the walk
-  requires a Namespace read. The limit can be increased in a future version
-  without schema changes, but doing so should be weighed against the cognitive
-  and operational costs.
+  comprehend and reason about for the people managing them. In practice, it is
+  rare for organizations to need more than 3 levels of folder hierarchy for
+  project resources. Deeper hierarchies also increase load on the Kubernetes
+  API server — each level in the walk requires a Namespace read. The limit can
+  be increased in a future version without schema changes, but doing so should
+  be weighed against the cognitive and operational costs.
 
 ## References
 
