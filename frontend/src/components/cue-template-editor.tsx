@@ -155,7 +155,7 @@ export function CueTemplateEditor({
       </TabsContent>
       <TabsContent value="preview" className="mt-4 space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="cue-system-input-editor">System Input (provided by the platform)</Label>
+          <Label htmlFor="cue-system-input-editor">Platform Input</Label>
           <p className="text-xs text-muted-foreground">
             These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
           </p>

@@ -9,57 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
-const DEFAULT_CUE_TEMPLATE = `// package deployment is the required CUE package declaration.
-package deployment
-
-// #KeyRef identifies a key within a Kubernetes Secret or ConfigMap.
-#KeyRef: {
-  name: string
-  key:  string
-}
-
-// #EnvVar represents a container environment variable.
-#EnvVar: {
-  name:               string
-  value?:             string
-  secretKeyRef?:      #KeyRef
-  configMapKeyRef?:   #KeyRef
-}
-
-// #Input defines the user-provided fields the console fills in at render time.
-#Input: {
-  name:    string & =~"^[a-z][a-z0-9-]*$"
-  image:   string
-  tag:     string
-  command?: [...string]
-  args?: [...string]
+const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Additional CUE constraints narrow the generated types for this template.
+input: #ProjectInput & {
+  name: =~"^[a-z][a-z0-9-]*$"
   env:  [...#EnvVar] | *[]
-  port: int & >0 & <=65535 | *8080
+  port: >0 & <=65535 | *8080
 }
-
-// #Claims carries the OIDC ID token claims of the authenticated user.
-#Claims: {
-  iss:            string
-  sub:            string
-  exp:            int
-  iat:            int
-  email:          string
-  email_verified: bool
-  name?:          string
-  groups?: [...string]
-  ... // allow provider-specific claims
-}
-
-// #System defines the trusted system-provided fields set by the console backend.
-#System: {
-  project:          string
-  namespace:        string
-  gatewayNamespace: string | *"istio-ingress"
-  claims:           #Claims
-}
-
-input:  #Input
-system: #System
+platform: #PlatformInput
 
 // _labels are the standard labels required on every resource.
 _labels: {
@@ -69,7 +26,7 @@ _labels: {
 
 // _annotations are standard annotations applied to every resource.
 _annotations: {
-  "console.holos.run/deployer-email": system.claims.email
+  "console.holos.run/deployer-email": platform.claims.email
 }
 
 // #Namespaced constrains namespaced resource struct keys to match resource metadata.
@@ -93,16 +50,16 @@ _annotations: {
   ...
 }
 
-// output collects all rendered Kubernetes resources.
-output: {
+// projectResources collects all rendered Kubernetes resources.
+projectResources: {
   namespacedResources: #Namespaced & {
-    (system.namespace): {
+    (platform.namespace): {
       Deployment: (input.name): {
         apiVersion: "apps/v1"
         kind:       "Deployment"
         metadata: {
           name:        input.name
-          namespace:   system.namespace
+          namespace:   platform.namespace
           labels:      _labels
           annotations: _annotations
         }
@@ -154,7 +111,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const previewCueSystemInput = `system: {
+  const previewCueSystemInput = `platform: {
 \tproject:          "${projectName}"
 \tnamespace:        "holos-prj-${projectName}"
 \tgatewayNamespace: "istio-ingress"
