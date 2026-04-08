@@ -565,7 +565,3 @@ api/
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
-- [Issue #509](https://github.com/holos-run/holos-console/issues/509) — parent plan
-- [Issue #510](https://github.com/holos-run/holos-console/issues/510) — v1alpha1 package skeleton
-- [Issue #511](https://github.com/holos-run/holos-console/issues/511) — IAM types
-- [Issue #512](https://github.com/holos-run/holos-console/issues/512) — resource collection types

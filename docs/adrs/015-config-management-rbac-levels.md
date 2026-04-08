@@ -387,5 +387,3 @@ Viewer and above.
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
 - [ADR 014: Configuration Management Resource Schema](014-config-management-resource-schema.md)
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions
-- [Issue #509](https://github.com/holos-run/holos-console/issues/509) — parent plan
-- [Issue #511](https://github.com/holos-run/holos-console/issues/511) — IAM types
