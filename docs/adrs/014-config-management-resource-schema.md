@@ -555,10 +555,13 @@ api/
   the generated CUE schema, and by `make generate` catching generation
   failures before they reach a build.
 
-- **Folder depth limit.** The 3-folder limit is arbitrary. If a deep hierarchy
-  is needed, the limit must be raised, which changes traversal cost and RBAC
-  evaluation complexity. The limit can be increased in a future version without
-  schema changes.
+- **Folder depth limit.** The 3-folder limit is based on the experience of
+  Google Cloud IAM, where hierarchies deeper than 3 levels become difficult to
+  comprehend and reason about for the people managing them. Deeper hierarchies
+  also increase load on the Kubernetes API server — each level in the walk
+  requires a Namespace read. The limit can be increased in a future version
+  without schema changes, but doing so should be weighed against the cognitive
+  and operational costs.
 
 ## References
 
