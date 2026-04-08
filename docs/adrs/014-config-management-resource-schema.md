@@ -65,10 +65,10 @@ Each struct field carries three tags — `json`, `yaml`, and `cue` — following
 pattern established by `holos-run/holos` in `api/core/v1alpha6/types.go`:
 
 ```go
-type Platform struct {
+type ResourceSet struct {
     TypeMeta `json:",inline" yaml:",inline"`
-    Metadata Metadata          `json:"metadata"          yaml:"metadata"          cue:"metadata"`
-    Spec     PlatformSpec      `json:"spec"              yaml:"spec"              cue:"spec"`
+    Metadata Metadata        `json:"metadata"          yaml:"metadata"          cue:"metadata"`
+    Spec     ResourceSetSpec `json:"spec"              yaml:"spec"              cue:"spec"`
 }
 ```
 
@@ -90,7 +90,7 @@ the CUE evaluator. See the comment on issue #509 for the detailed analysis.
 type TypeMeta struct {
     // APIVersion is the versioned schema identifier, e.g. "console.holos.run/v1alpha1".
     APIVersion string `json:"apiVersion" yaml:"apiVersion" cue:"apiVersion"`
-    // Kind is the resource type name, e.g. "Platform".
+    // Kind is the resource type name, e.g. "ResourceSet".
     Kind       string `json:"kind"       yaml:"kind"       cue:"kind"`
 }
 ```
@@ -418,28 +418,33 @@ platform engineers manage it. The Go allowlist is the fallback — it catches
 anything the CUE constraint missed (e.g., if no platform template is defined)
 and ensures the renderer has a GVR mapping for every Kind it applies.
 
-### 10. The top-level Platform type composes all of the above.
+### 10. The top-level ResourceSet type composes all of the above.
 
 ```go
-// Platform is the top-level resource type for the configuration management API.
-// It represents the complete evaluated state of a deployment: inputs from the
-// platform and the product engineer, and the resulting resource collections.
+// ResourceSet is the top-level resource type for the configuration management
+// API. It represents the complete set of Kubernetes resources produced by
+// unifying templates from all hierarchy levels with their inputs.
 //
-// At evaluation time, the console constructs a Platform value by:
+// A ResourceSet is not specific to applications — it can hold any combination
+// of resources: Deployments and Services for an app, Datadog dashboard
+// ConfigMaps for observability, NetworkPolicies for security, Argo Rollouts
+// for progressive delivery, or any other set of resources managed together.
+//
+// At evaluation time, the console constructs a ResourceSet by:
 //  1. Filling PlatformInput from authenticated server context.
 //  2. Filling ProjectInput from the API request.
 //  3. Collecting templates from every hierarchy level.
 //  4. Unifying all templates with the filled inputs via CUE.
 //  5. Reading PlatformResources and ProjectResources from the evaluated value.
 //  6. Validating and applying the resources to Kubernetes.
-type Platform struct {
+type ResourceSet struct {
     TypeMeta `json:",inline" yaml:",inline"`
-    Metadata Metadata `json:"metadata" yaml:"metadata" cue:"metadata"`
-    Spec     PlatformSpec `json:"spec" yaml:"spec" cue:"spec"`
+    Metadata Metadata        `json:"metadata" yaml:"metadata" cue:"metadata"`
+    Spec     ResourceSetSpec `json:"spec"     yaml:"spec"     cue:"spec"`
 }
 
-// PlatformSpec groups the input and output sections of a Platform resource.
-type PlatformSpec struct {
+// ResourceSetSpec groups the input and output sections of a ResourceSet.
+type ResourceSetSpec struct {
     // PlatformInput is the trusted context set by the backend and platform engineers.
     PlatformInput     PlatformInput     `json:"platformInput"     yaml:"platformInput"     cue:"platformInput"`
     // ProjectInput is the user-provided deployment parameters.
@@ -457,9 +462,9 @@ The consumer package defines a `Renderer` interface that all versioned types
 must satisfy:
 
 ```go
-// Renderer evaluates a configuration and returns the resource collections.
-// Each api/v1alpha* type implements this interface. The consumer dispatches
-// to the correct implementation based on TypeMeta.
+// Renderer evaluates a ResourceSet and returns the resource collections.
+// Each api/v1alpha* ResourceSet type implements this interface. The consumer
+// dispatches to the correct implementation based on TypeMeta.
 type Renderer interface {
     // Render evaluates the configuration and returns platform and project
     // resource collections. The caller supplies the filled inputs; the
@@ -489,7 +494,7 @@ from the serialized configuration, selects the correct versioned type, and calls
 api/
   v1alpha1/
     doc.go           // package doc with rationale and usage examples
-    types.go         // TypeMeta, Metadata, Platform, PlatformSpec
+    types.go         // TypeMeta, Metadata, ResourceSet, ResourceSetSpec
     input.go         // PlatformInput, ProjectInput, Claims, EnvVar
     resources.go     // PlatformResources, ProjectResources, Resource
     iam.go           // Role, Permission, Principal, Grant (see ADR 015)
