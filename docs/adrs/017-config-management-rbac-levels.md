@@ -1,8 +1,42 @@
-# ADR 015: Configuration Management RBAC Levels
+# ADR 017: Configuration Management RBAC Levels
 
 ## Status
 
-Revoked by [ADR 017](017-config-management-rbac-levels.md)
+Accepted — revokes [ADR 015](015-config-management-rbac-levels.md)
+
+## CUE Unification: No Distinction Between "Write" and "Constrain"
+
+This section corrects a fundamental misconception in ADR 015.
+
+ADR 015 distinguished between "writing to" and "constraining" a resource
+collection. For example, it stated that folder and organization templates "can
+constrain `projectResources`" but "cannot write to `projectResources`." **This
+distinction does not exist in CUE.**
+
+In CUE, types, constraints, and concrete values are all **plain old values**
+that get **unified** together. There is no separate "constrain" operation
+distinct from a "write" operation. When a folder-level template says
+`projectResources: namespacedResources: Deployment: "my-app": spec: replicas: >=2`
+and a project-level template says
+`projectResources: namespacedResources: Deployment: "my-app": spec: replicas: 3`,
+CUE unifies these two values. The result is `3` because `3` satisfies `>=2`.
+Both templates wrote to the same field — one wrote a constraint, the other wrote
+a concrete value. CUE does not care which is which; it unifies them.
+
+This means the correct model is simpler than ADR 015 described:
+
+- **Every template at every level can define values for both
+  `projectResources` and `platformResources`.** Those values may be concrete
+  (`replicas: 3`), constraints (`replicas: >=2`), types (`replicas: int`),
+  top (`_`), or bottom (`_|_`). CUE unifies all of them.
+
+- **The renderer controls which collections it reads from which level.** This
+  is the real access boundary — not a CUE-level distinction between writing
+  and constraining, but a Go-level decision about which fields the renderer
+  extracts from which template source.
+
+The rest of this ADR preserves the RBAC decisions from ADR 015, with the
+resource collection scope table (Decision 3) corrected to reflect this reality.
 
 ## Context
 
@@ -18,15 +52,15 @@ resource collections (`platformResources` vs. `projectResources`). This
 hierarchy needs its own RBAC model that determines:
 
 1. Who can author or modify templates at each level.
-2. Which resource collections a template at a given level can write to.
+2. Which resource collections the renderer reads from a template at a given level.
 3. How permissions cascade through the hierarchy.
 
 The RPC authorization model and the configuration RBAC model are related but
 distinct. RPC authorization controls API access ("can this user call
-`CreateDeployment`?"). Configuration RBAC controls template scope ("can a
-template at this level write to `platformResources`?"). Both models must align:
-a user who lacks RPC authorization to modify a folder should also be unable to
-modify templates stored in that folder.
+`CreateDeployment`?"). Configuration RBAC controls template scope ("which
+collections does the renderer read from a template at this level?"). Both
+models must align: a user who lacks RPC authorization to modify a folder should
+also be unable to modify templates stored in that folder.
 
 ### Audience
 
@@ -35,8 +69,8 @@ This ADR is written for three audiences:
 - **Product engineers** who write deployment templates for their applications
   and need to understand what they can and cannot do.
 - **Site reliability engineers (SREs)** who write templates at folder levels to
-  enforce operational standards and need to understand how their constraints
-  interact with project templates.
+  enforce operational standards and need to understand how their values
+  interact with project templates via CUE unification.
 - **Platform engineers** who write templates at the organization level to
   enforce platform-wide policy and need to understand the full scope model.
 
@@ -83,53 +117,66 @@ sources, evaluated in order:
 
 This matches the existing RBAC evaluation pattern in `console/rbac/rbac.go`.
 
-### 3. Template scope determines which resource collections a template can write to.
+### 3. The renderer determines which resource collections it reads from each template level.
 
-This is the central RBAC rule for configuration management:
+Every template at every level in the hierarchy can define values for both
+`projectResources` and `platformResources`. In CUE, all values — concrete
+data, constraints, types, top, bottom — are unified together. There is no
+language-level distinction between "defining" and "constraining" a field.
 
-| Template defined at | Can write to `projectResources` | Can write to `platformResources` | Can constrain `projectResources` |
-|--------------------|---------------------------------|----------------------------------|----------------------------------|
-| Project            | Yes | No  | N/A (defines, not constrains) |
-| Folder             | No  | Yes | Yes |
-| Organization       | No  | Yes | Yes |
+The access boundary is enforced by the **Go renderer**, which decides which
+fields to read from templates at each level:
+
+| Template defined at | Renderer reads `projectResources` | Renderer reads `platformResources` |
+|--------------------|-----------------------------------|-------------------------------------|
+| Project            | Yes | No  |
+| Folder             | Yes | Yes |
+| Organization       | Yes | Yes |
 
 **What this means in practice:**
 
 - A **product engineer** writes a template in their project. That template
   defines the Deployment, Service, and ServiceAccount that run their app. These
-  resources go into `projectResources`. The template cannot create an HTTPRoute
-  in the gateway namespace or modify a NetworkPolicy — those are
-  `platformResources` and are out of scope for a project-level template.
+  resources go into `projectResources`. The renderer does not read
+  `platformResources` from this template, so any values the project template
+  defines there have no effect.
 
 - An **SRE** writes a template in a folder that covers several projects. That
-  template might add an HTTPRoute to `platformResources` so that every project
-  under the folder gets external traffic routing. It might also add a CUE
-  constraint to `projectResources` requiring every Deployment to have a
-  `resources.limits.memory` field. The SRE template does not define project
-  resources directly — it constrains them.
+  template can define values for both collections. It might add an HTTPRoute
+  to `platformResources` so that every project under the folder gets external
+  traffic routing. It might also define values in `projectResources` — for
+  example, requiring every Deployment to have a `resources.limits.memory` field
+  by providing a CUE constraint like `memory: string`. Because CUE unifies all
+  values, the project template's concrete value (e.g. `memory: "512Mi"`) and
+  the folder template's constraint (`memory: string`) are unified into
+  `memory: "512Mi"`. If the project template omits the field, CUE evaluation
+  produces an incomplete value, which the renderer catches as an error.
 
 - A **platform engineer** writes a template at the organization level. That
-  template might add a NetworkPolicy to `platformResources` that applies to
-  every project in the organization. It might also constrain
+  template can define values for both collections, exactly like a folder
+  template. It might add a NetworkPolicy to `platformResources` that applies
+  to every project in the organization, and define constraints in
   `projectResources` to require a specific label on every resource.
 
 **Enforcement**: The Go renderer reads `platformResources` only from templates
-at the folder and organization levels. It reads `projectResources` only from the
-project-level template. When a project template defines fields under
-`platformResources`, they are ignored by the renderer. This is a hard boundary,
-not a CUE constraint — the renderer simply does not read the field.
+at the folder and organization levels. It reads `projectResources` from all
+levels. When a project template defines fields under `platformResources`, they
+are ignored by the renderer. This is a hard boundary enforced in Go code — the
+renderer simply does not read the field from project-level templates.
 
-**Constraints flow downward**: Organization and folder templates can explicitly
-unify with `projectResources` to add CUE constraints that project templates must
-satisfy. For example, a platform template can close the `projectResources`
-struct to restrict which resource Kinds a project template may produce — if a
-project template tries to add a `ClusterRoleBinding`, CUE evaluation fails
-before any Kubernetes API call (see ADR 014, Decision 9 for the full mechanism
-and examples). Platform templates can also require labels, set minimum replica
-counts, or enforce any other structural constraint on project resources.
+**Values flow downward via unification**: Organization and folder templates
+define values for `projectResources` that get unified with the project
+template's values. This is standard CUE unification — the same mechanism used
+everywhere else in the language. For example, a platform template can close the
+`projectResources` struct to restrict which resource Kinds a project template
+may produce — if a project template tries to add a `ClusterRoleBinding`, CUE
+evaluation fails before any Kubernetes API call (see ADR 014, Decision 9 for
+the full mechanism and examples). Platform templates can also require labels,
+set minimum replica counts, or define any other value that project templates
+must satisfy through unification.
 
-Constraints cannot flow upward: a project template cannot constrain
-`platformResources`.
+Values cannot flow upward: a project template cannot affect `platformResources`
+because the renderer does not read that field from project-level templates.
 
 ### 4. Permissions cascade downward through the hierarchy, highest role wins.
 
@@ -138,10 +185,10 @@ evaluates grants starting from the target level and walking up to the
 organization:
 
 ```
-Organization grant  ──►  highest role wins
-  Folder-1 grant    ──►  at each level,
-    Folder-2 grant  ──►  check direct grants
-      Project grant  ──►  (share-users, share-roles)
+Organization grant  -->  highest role wins
+  Folder-1 grant    -->  at each level,
+    Folder-2 grant  -->  check direct grants
+      Project grant  -->  (share-users, share-roles)
 ```
 
 The effective role is the maximum of all grants found during the walk. This
@@ -244,20 +291,20 @@ do so.
 ### 6. Resource collection scope is enforced by the renderer, not by RBAC.
 
 RBAC controls *who* can author templates at each level. The *renderer* controls
-*what* resource collections a template at a given level can affect. These are
+*what* resource collections it reads from a template at a given level. These are
 separate enforcement points:
 
 - **RBAC check** (at RPC time): "Does this user have `PermissionTemplatesWrite`
   at the folder level?" If no, the RPC returns PermissionDenied.
 
 - **Renderer check** (at evaluation time): "This template is stored at the
-  folder level, so I read `platformResources` from it and ignore any
-  `projectResources` it defines."
+  project level, so I read `projectResources` from it but not
+  `platformResources`."
 
-This separation means a platform engineer who has Editor on a folder cannot
-bypass the resource collection boundary by writing a folder-level template that
-defines `projectResources`. The renderer enforces the boundary regardless of
-the author's role.
+This separation means a product engineer who has Editor on a project cannot
+affect platform resources by defining `platformResources` values in their
+project-level template — the renderer simply does not read that field from
+project-level sources. The boundary is enforced in Go code, not in CUE.
 
 ### 7. Authorization evaluation walks the hierarchy once per request.
 
@@ -314,14 +361,20 @@ Viewer and above.
 ### Positive
 
 - **Clear separation of concerns.** RBAC controls who can author templates;
-  the renderer controls what collections a template can affect. Neither system
-  needs to know the details of the other.
+  the renderer controls what collections it reads from each level. Neither
+  system needs to know the details of the other.
+
+- **Correct CUE mental model.** By not distinguishing between "write" and
+  "constrain," this ADR accurately reflects how CUE unification works. Template
+  authors at all levels define values; CUE unifies them. The renderer decides
+  which fields to extract from which levels.
 
 - **Intuitive for template authors.** A product engineer knows: "I write
-  templates in my project, they produce project resources." An SRE knows: "I
-  write templates in my folder, they produce platform resources and can
-  constrain project resources." No Kubernetes expertise is needed to understand
-  this boundary.
+  templates in my project, the renderer reads my project resources." An SRE
+  knows: "I write templates in my folder, the renderer reads both my platform
+  resources and my project resource values (which get unified with the
+  project's own values)." No Kubernetes expertise is needed to understand this
+  boundary.
 
 - **Hierarchical policy.** Organization-level templates apply everywhere.
   Folder-level templates apply to a subtree. Project-level templates apply to
@@ -358,20 +411,20 @@ Viewer and above.
 
 ### Risks
 
-- **Constraint conflicts.** Two folder-level templates in the same hierarchy
-  path could add conflicting CUE constraints to `projectResources`. CUE
+- **Unification conflicts.** Two templates in the same hierarchy path could
+  define conflicting values for the same field in `projectResources`. CUE
   unification detects this as an evaluation error, which is the correct
   behavior — but the error message may be confusing to a product engineer whose
-  template was valid before a new folder-level constraint was added. Mitigated
-  by the `RenderDeploymentTemplate` preview RPC, which evaluates the full
+  template was valid before a new folder-level value was added. Mitigated by
+  the `RenderDeploymentTemplate` preview RPC, which evaluates the full
   template stack and reports errors before deployment.
 
-- **Over-constraining.** A platform engineer who adds overly strict constraints
+- **Over-constraining.** A platform engineer who defines overly strict values
   at the organization level can break every project's template. This is
   inherent to hierarchical policy and is the same risk as a Kubernetes admission
   webhook that is too restrictive. Mitigated by requiring Owner role for
   template authoring at the organization level, and by the preview RPC which
-  lets the platform engineer test constraints against existing project templates
+  lets the platform engineer test values against existing project templates
   before committing.
 
 - **Cascade scope creep.** The decision to cascade template permissions (unlike
@@ -385,5 +438,7 @@ Viewer and above.
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
-- [ADR 014: Configuration Management Resource Schema](014-config-management-resource-schema.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
+- [ADR 015: Configuration Management RBAC Levels (revoked)](015-config-management-rbac-levels.md)
+- [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions

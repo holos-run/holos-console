@@ -1,8 +1,44 @@
-# ADR 014: Configuration Management Resource Schema
+# ADR 016: Configuration Management Resource Schema
 
 ## Status
 
-Revoked by [ADR 016](016-config-management-resource-schema.md)
+Accepted — revokes [ADR 014](014-config-management-resource-schema.md)
+
+## CUE Unification: No Distinction Between "Write" and "Constrain"
+
+This section corrects a fundamental misconception in ADR 014.
+
+ADR 014 distinguished between "writing to" and "constraining" a resource
+collection. For example, Decision 8 stated that organization and folder
+templates "write to `platformResources`" and "can constrain
+`projectResources`," while project templates "write to `projectResources`" but
+cannot constrain anything above them. **This distinction does not exist in CUE.**
+
+In CUE, types, constraints, and concrete values are all **plain old values**
+that get **unified** together. There is no separate "constrain" operation
+distinct from a "write" operation. When a folder-level template says
+`projectResources: namespacedResources: Deployment: "my-app": spec: replicas: >=2`
+and a project-level template says
+`projectResources: namespacedResources: Deployment: "my-app": spec: replicas: 3`,
+CUE unifies these two values. The result is `3` because `3` satisfies `>=2`.
+Both templates defined a value for the same field — one defined a constraint,
+the other defined a concrete value. CUE does not care which is which; it
+unifies them.
+
+This means the correct model is simpler than ADR 014 described:
+
+- **Every template at every level can define values for both
+  `projectResources` and `platformResources`.** Those values may be concrete
+  (`replicas: 3`), constraints (`replicas: >=2`), types (`replicas: int`),
+  top (`_`), or bottom (`_|_`). CUE unifies all of them.
+
+- **The renderer controls which collections it reads from which level.** This
+  is the real access boundary — not a CUE-level distinction between writing
+  and constraining, but a Go-level decision about which fields the renderer
+  extracts from which template source.
+
+The rest of this ADR preserves the resource schema decisions from ADR 014, with
+Decisions 6, 8, and 9 corrected to reflect this reality.
 
 ## Context
 
@@ -23,9 +59,9 @@ compile-time enforcement that they agree.
 The console also needs to support an organizational hierarchy deeper than the
 current two-level model (Organization -> Project). Platform engineers need to
 define templates at intermediate "folder" levels that apply to all projects
-beneath them, and security engineers need to define constraints at higher folder
-levels that cannot be overridden by lower levels. The resource schema must
-accommodate this hierarchy from the start.
+beneath them, and security engineers need to define values at higher folder
+levels that project templates must satisfy through CUE unification. The resource
+schema must accommodate this hierarchy from the start.
 
 ### Terminology
 
@@ -47,7 +83,7 @@ This ADR uses terms that map to roles in a typical engineering organization:
 
 These roles are not mutually exclusive. A single person may operate at multiple
 levels depending on the task. The schema does not enforce role boundaries — RBAC
-does (see ADR 015).
+does (see ADR 017).
 
 ### Resource Model Overview
 
@@ -110,7 +146,7 @@ type Metadata struct {
     // Name is the unique identifier of the resource within its scope.
     Name        string            `json:"name"                  yaml:"name"                  cue:"name"`
     // Annotations carry optional key-value metadata. Used for display names,
-    // descriptions, and grant storage (see ADR 015).
+    // descriptions, and grant storage (see ADR 017).
     Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty" cue:"annotations?"`
 }
 ```
@@ -122,9 +158,9 @@ level. Each level is distinguished by a label on the Namespace:
 
 ```
 Organization (Namespace, resource-type=organization)
-  └── Folder (Namespace, resource-type=folder)     // optional, up to 3 levels
-        └── Folder (Namespace, resource-type=folder)
-              └── Project (Namespace, resource-type=project)
+  +-- Folder (Namespace, resource-type=folder)     // optional, up to 3 levels
+        +-- Folder (Namespace, resource-type=folder)
+              +-- Project (Namespace, resource-type=project)
 ```
 
 A Folder is a Namespace with `console.holos.run/resource-type: folder` and a
@@ -139,7 +175,7 @@ the Kubernetes API server — each level in the walk requires a Namespace read.
 
 This hierarchy is traversed at template evaluation time to collect and unify
 templates from every level. It is also traversed at authorization time to
-resolve effective permissions (see ADR 015).
+resolve effective permissions (see ADR 017).
 
 The folder concept is planned for `v1alpha2`. The `v1alpha1` schema defines the
 Organization and Project types; the Folder type and `folderInput` are deferred
@@ -211,11 +247,10 @@ applied:
 // gateway namespace or at cluster scope) or are platform-mandated resources
 // within the project namespace that project templates cannot override.
 //
-// A template defined at the project level cannot write to platformResources.
-// Only templates at the folder level or above can contribute to this collection.
-// This is the key RBAC boundary: it ensures a product engineer's template
-// cannot inject an HTTPRoute into the gateway namespace or modify a
-// NetworkPolicy set by the platform team.
+// The renderer reads platformResources only from templates at the folder level
+// or above. A project-level template may define values under
+// platformResources, but the renderer does not read them — this is a hard
+// boundary enforced in Go code.
 type PlatformResources struct {
     // NamespacedResources maps namespace -> kind -> name -> resource manifest.
     NamespacedResources map[string]map[string]map[string]Resource `json:"namespacedResources,omitempty"`
@@ -225,13 +260,14 @@ type PlatformResources struct {
 
 // ProjectResources holds resources managed by product engineers.
 // These resources live within the project namespace. A project-level template
-// writes to this collection.
+// defines values in this collection.
 //
-// Platform templates at the folder level or above can also constrain
-// projectResources — for example, requiring a label on every Deployment —
-// but cannot replace or remove resources defined by the project template.
-// CUE unification enforces this: constraints add requirements, they do not
-// delete existing structure.
+// Templates at the folder level or above can also define values for
+// projectResources. In CUE, all values — concrete data, constraints, types —
+// are unified together. A folder template that defines
+// `projectResources: ...: replicas: >=2` and a project template that defines
+// `replicas: 3` produce `replicas: 3` after unification (because 3 satisfies
+// >=2). There is no separate "constrain" operation — it is all unification.
 type ProjectResources struct {
     // NamespacedResources maps namespace -> kind -> name -> resource manifest.
     NamespacedResources map[string]map[string]map[string]Resource `json:"namespacedResources,omitempty"`
@@ -310,58 +346,64 @@ value. CUE's unification operation is commutative, associative, and idempotent �
 the order of template collection does not affect the result.
 
 ```
-Organization templates   ──┐
-  Folder-1 templates     ──┤
-    Folder-2 templates   ──┤  CUE unification  ──►  single evaluated value
-      Project template   ──┘
+Organization templates   --+
+  Folder-1 templates     --+
+    Folder-2 templates   --+  CUE unification  -->  single evaluated value
+      Project template   --+
 ```
 
 Every template can reference `platform.*` and `input.*` fields. Templates from
-different levels write to different output collections and may constrain
-each other:
+all levels can define values for both `projectResources` and
+`platformResources`. In CUE, these values may be concrete data, constraints,
+types, top, or bottom — they are all plain old values that get unified together.
 
-| Template level  | Writes to             | Can constrain          |
-|-----------------|-----------------------|------------------------|
-| Organization    | platformResources     | projectResources       |
-| Folder          | platformResources     | projectResources       |
-| Project         | projectResources      | (nothing above it)     |
+The **renderer** determines which collections it reads from each level:
 
-**Writing** means defining concrete resources (a Deployment, a Service, an
-HTTPRoute). **Constraining** means adding CUE type constraints that resources
-defined at a lower level must satisfy — for example, closing the set of allowed
-Kinds, requiring a label, or setting a minimum replica count.
+| Template level  | Renderer reads `projectResources` | Renderer reads `platformResources` |
+|-----------------|-----------------------------------|-------------------------------------|
+| Organization    | Yes                               | Yes                                 |
+| Folder          | Yes                               | Yes                                 |
+| Project         | Yes                               | No                                  |
 
-Organization and folder templates can explicitly unify with `projectResources`
-to add constraints. This is the mechanism by which platform engineers control
-what project-level templates are allowed to produce (see Decision 9).
+The renderer reads `platformResources` only from folder and organization
+templates. A project-level template that defines `platformResources` fields has
+no effect because the renderer does not read `platformResources` from the
+project template's contribution. This is a hard boundary enforced by the
+renderer in Go code, not by CUE.
 
-The Go renderer reads each collection from the appropriate CUE path after
-unification. A project-level template that attempts to define
-`platformResources` fields has no effect because the renderer does not read
-`platformResources` from the project template's contribution. This is a hard
-boundary enforced by the renderer, not by CUE.
+**Values flow downward via unification**: Organization and folder templates
+define values for `projectResources` that get unified with the project
+template's values. This is standard CUE unification — the same mechanism used
+everywhere else in the language. For example, a platform template can require a
+label on all Deployments, set minimum replica counts, or close the struct to
+restrict allowed Kinds (see Decision 9). There is no distinction between
+"writing" and "constraining" — both are defining values that CUE unifies.
 
-**Constraint flow is one-directional**: higher-level templates can add CUE
-constraints to `projectResources` (e.g., requiring a label on all Deployments,
-restricting allowed Kinds) but project templates cannot constrain
-`platformResources`. This is enforced by CUE evaluation order in the renderer.
+**Values cannot flow upward**: a project template cannot affect
+`platformResources` because the renderer does not read that field from
+project-level templates.
 
 ### 9. Platform templates close the projectResources struct to restrict allowed resource kinds.
 
 A product engineer's project template can define any CUE value under
-`projectResources`. Without constraints, nothing prevents a project template
-from producing a `ClusterRole`, a `ClusterRoleBinding`, or any other dangerous
-resource kind. The Go renderer validates allowed kinds after evaluation (see
-the allowed kinds list in `console/deployments/apply.go`), but that is a
-last-resort safety net — errors at apply time are late and opaque compared to
-errors at CUE evaluation time.
+`projectResources`. Without any values defined at higher levels, nothing
+prevents a project template from producing a `ClusterRole`, a
+`ClusterRoleBinding`, or any other dangerous resource kind. The Go renderer
+validates allowed kinds after evaluation (see the allowed kinds list in
+`console/deployments/apply.go`), but that is a last-resort safety net — errors
+at apply time are late and opaque compared to errors at CUE evaluation time.
 
-Platform templates solve this by closing the `projectResources` struct at the
-organization or folder level. A closed struct in CUE rejects any field not
-explicitly allowed. When a platform template closes `projectResources` to a
-specific set of Kind keys, any project template that tries to add a resource of
-a disallowed Kind fails at CUE evaluation time with a clear error — before any
-Kubernetes API call.
+Platform templates solve this by defining values that close the
+`projectResources` struct at the organization or folder level. A closed struct
+in CUE rejects any field not explicitly allowed. When a platform template closes
+`projectResources` to a specific set of Kind keys, any project template that
+tries to add a resource of a disallowed Kind fails at CUE evaluation time with
+a clear error — before any Kubernetes API call.
+
+This is not a special "constrain" mechanism — it is regular CUE unification.
+The platform template defines a value (a closed struct). The project template
+defines a value (with resource fields). CUE unifies them. If the project
+template's fields are not allowed by the closed struct, unification fails.
 
 **Example: restricting project resources to safe kinds.** An organization-level
 platform template defines the allowed Kind keys:
@@ -369,8 +411,8 @@ platform template defines the allowed Kind keys:
 ```cue
 // Platform template (org level): close projectResources to safe kinds only.
 //
-// This constraint is unified with the project template at evaluation time.
-// If a project template defines a Kind not listed here, CUE evaluation fails.
+// This value is unified with the project template at evaluation time.
+// If a project template defines a Kind not listed here, CUE unification fails.
 
 import "list"
 
@@ -386,7 +428,7 @@ projectResources: [_]: {
 }
 ```
 
-With this constraint in place, a project template that tries to produce a
+With this value in place, a project template that tries to produce a
 `ClusterRoleBinding`:
 
 ```cue
@@ -417,9 +459,9 @@ allowed set is configurable per-organization or per-folder, not hardcoded in Go.
 | Platform template (CUE) | Allowed Kind keys in `projectResources`, configurable per org/folder | CUE evaluation time |
 | Go renderer (`apply.go`) | Hard-coded Kind allowlist and GVR mapping | After CUE evaluation, before Kubernetes apply |
 
-A Kind must pass both layers. The CUE constraint is the primary control —
+A Kind must pass both layers. The CUE value is the primary control —
 platform engineers manage it. The Go allowlist is the fallback — it catches
-anything the CUE constraint missed (e.g., if no platform template is defined)
+anything the CUE value missed (e.g., if no platform template is defined)
 and ensures the renderer has a GVR mapping for every Kind it applies.
 
 ### 10. The top-level ResourceSet type composes all of the above.
@@ -501,7 +543,7 @@ api/
     types.go         // TypeMeta, Metadata, ResourceSet, ResourceSetSpec
     input.go         // PlatformInput, ProjectInput, Claims, EnvVar
     resources.go     // PlatformResources, ProjectResources, Resource
-    iam.go           // Role, Permission, Principal, Grant (see ADR 015)
+    iam.go           // Role, Permission, Principal, Grant (see ADR 017)
     hierarchy.go     // Organization, Folder, Project
     annotations.go   // annotation and label constants
     types_test.go    // CUE round-trip validation tests
@@ -521,10 +563,16 @@ api/
   types is additive — the consumer learns the new version without modifying old
   code.
 
+- **Correct CUE mental model.** By not distinguishing between "write" and
+  "constrain," this ADR accurately reflects how CUE unification works. Template
+  authors at all levels define values; CUE unifies them. The renderer decides
+  which fields to extract from which levels.
+
 - **Clear resource segregation.** `platformResources` and `projectResources`
-  are separate fields with separate RBAC rules (ADR 015). A product engineer
-  who writes a project template cannot accidentally or intentionally inject
-  resources into `platformResources`.
+  are separate fields. The renderer reads each collection from the appropriate
+  template levels (see ADR 017 for the RBAC rules). A product engineer who
+  writes a project template cannot affect `platformResources` because the
+  renderer does not read that field from project-level templates.
 
 - **Hierarchy-ready.** The schema accommodates the folder concept from the
   start, even though `v1alpha1` only implements Organization -> Project. The
@@ -565,3 +613,5 @@ api/
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
+- [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
