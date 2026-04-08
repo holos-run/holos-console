@@ -1,6 +1,7 @@
 // platformResources contributes platform-managed Kubernetes resources.
-// Platform templates define resources under platformResources so they do not
-// conflict with the project template's projectResources fields.
+// Any template at any level can define values for both platformResources and
+// projectResources. The renderer reads platformResources from organization and
+// folder templates (not project templates). See ADR 016 Decision 8.
 platformResources: {
 	// namespacedResources organizes platform-managed namespaced resources.
 	namespacedResources: (platform.namespace): {

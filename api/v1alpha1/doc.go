@@ -1,5 +1,5 @@
 // Package v1alpha1 defines the versioned type system for the configuration
-// management API specified in ADR 014.
+// management API specified in ADR 016.
 //
 // These Go structs are the single source of truth for the template API
 // contract. Each struct field carries json, yaml, and cue struct tags. CUE
