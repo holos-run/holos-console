@@ -18,11 +18,11 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 	return &CueRendererAdapter{inner: &deployments.CueRenderer{}}
 }
 
-// Render evaluates cueTemplate unified with cueSystemInput and cueInput and
-// returns the rendered Kubernetes resource manifests.  cueSystemInput carries
+// Render evaluates cueTemplate unified with cuePlatformInput and cueInput and
+// returns the rendered Kubernetes resource manifests.  cuePlatformInput carries
 // trusted backend values (project, namespace, claims); cueInput carries
 // user-provided deployment parameters.  Both must be valid CUE source;
-// cueSystemInput may be empty when the template does not require system values.
+// cuePlatformInput may be empty when the template does not require platform values.
 func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error) {
 	// Combine cueSystemInput and cueInput into a single CUE document so that
 	// both "platform" and "input" top-level fields are available to the template.

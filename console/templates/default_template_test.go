@@ -10,9 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// defaultSystemInput returns a PlatformInput with all required fields populated,
-// including claims, for use in default template tests.
-func defaultSystemInput(namespace string) v1alpha1.PlatformInput {
+// defaultPlatformInput returns a PlatformInput with all required fields populated
+// for use in default template tests.
+func defaultPlatformInput(namespace string) v1alpha1.PlatformInput {
 	return v1alpha1.PlatformInput{
 		Project:          "my-project",
 		Namespace:        namespace,
@@ -33,7 +33,7 @@ func defaultSystemInput(namespace string) v1alpha1.PlatformInput {
 func TestDefaultTemplate(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := defaultSystemInput(namespace)
+	system := defaultPlatformInput(namespace)
 	user := v1alpha1.ProjectInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
@@ -97,7 +97,7 @@ func TestDefaultTemplate(t *testing.T) {
 func TestDefaultTemplate_CommandArgs(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := defaultSystemInput(namespace)
+	system := defaultPlatformInput(namespace)
 
 	t.Run("command and args appear in container spec", func(t *testing.T) {
 		user := v1alpha1.ProjectInput{
@@ -181,7 +181,7 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 func TestDefaultTemplate_EnvVars(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := defaultSystemInput(namespace)
+	system := defaultPlatformInput(namespace)
 
 	t.Run("no env vars renders without env field", func(t *testing.T) {
 		user := v1alpha1.ProjectInput{
@@ -350,7 +350,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 	renderer := &deployments.CueRenderer{}
 	namespace := "prj-my-project"
-	system := defaultSystemInput(namespace)
+	system := defaultPlatformInput(namespace)
 	user := v1alpha1.ProjectInput{
 		Name:  "holos-console",
 		Image: "ghcr.io/holos-run/holos-console",
