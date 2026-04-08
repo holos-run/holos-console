@@ -1180,6 +1180,73 @@ platformResources: {
 }
 `
 
+// systemProjectResourcesTemplate is a system template that defines resources in
+// projectResources (not platformResources). Per ADR 016, any template at any
+// level can define values in any collection. This validates that system templates
+// are not limited to platformResources.
+const systemProjectResourcesTemplate = `
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: "sys-project-sa": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "sys-project-sa"
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// systemBothCollectionsTemplate is a system template that defines resources in
+// both projectResources and platformResources. This validates that
+// RenderWithSystemTemplates returns resources from both collections.
+const systemBothCollectionsTemplate = `
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: "sys-project-sa": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "sys-project-sa"
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+
+platformResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: "sys-platform-sa": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "sys-platform-sa"
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
 // deploymentTemplateForUnification is a simple deployment template used to test unification.
 const deploymentTemplateForUnification = `
 
@@ -1309,6 +1376,67 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 		}
 		if resources[0].GetKind() != "Deployment" {
 			t.Errorf("expected Deployment, got %q", resources[0].GetKind())
+		}
+	})
+
+	// ADR 016 key insight: any template at any level can define values in any
+	// collection. A system template is not restricted to platformResources only.
+	t.Run("system template contributing to projectResources is unified", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+			deploymentTemplateForUnification,
+			[]string{systemProjectResourcesTemplate},
+			system, user,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from
+		// system template's projectResources.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (Deployment + system ServiceAccount in projectResources), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		nameSet := make(map[string]bool)
+		for _, r := range resources {
+			nameSet[r.GetName()] = true
+		}
+		if !nameSet["web-app"] {
+			t.Error("expected Deployment 'web-app' from deployment template projectResources")
+		}
+		if !nameSet["sys-project-sa"] {
+			t.Error("expected ServiceAccount 'sys-project-sa' from system template projectResources")
+		}
+	})
+
+	// Validate that RenderWithSystemTemplates returns resources from both
+	// projectResources and platformResources when a system template defines both.
+	t.Run("system template defining both collections returns all resources", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+			deploymentTemplateForUnification,
+			[]string{systemBothCollectionsTemplate},
+			system, user,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect: 1 Deployment (deployment template projectResources) +
+		//         1 ServiceAccount from system template projectResources +
+		//         1 ServiceAccount from system template platformResources.
+		if len(resources) != 3 {
+			t.Fatalf("expected 3 resources, got %d: %v", len(resources), resourceKinds(resources))
+		}
+		nameSet := make(map[string]bool)
+		for _, r := range resources {
+			nameSet[r.GetName()] = true
+		}
+		if !nameSet["web-app"] {
+			t.Error("expected Deployment 'web-app' from deployment template projectResources")
+		}
+		if !nameSet["sys-project-sa"] {
+			t.Error("expected ServiceAccount 'sys-project-sa' from system template projectResources")
+		}
+		if !nameSet["sys-platform-sa"] {
+			t.Error("expected ServiceAccount 'sys-platform-sa' from system template platformResources")
 		}
 	})
 }
