@@ -43,6 +43,10 @@ This ADR is written for three audiences:
 Kubernetes expertise is not assumed. Where Kubernetes concepts are referenced,
 they are explained in terms of what they mean for the template author.
 
+For a visual overview of how the hierarchy, templates, inputs, and resource
+collections fit together, see the
+[Resource Model diagram in ADR 014](014-resource-model.svg).
+
 ## Decisions
 
 ### 1. Three roles, four levels.

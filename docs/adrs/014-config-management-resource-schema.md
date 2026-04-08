@@ -49,6 +49,13 @@ These roles are not mutually exclusive. A single person may operate at multiple
 levels depending on the task. The schema does not enforce role boundaries — RBAC
 does (see ADR 015).
 
+### Resource Model Overview
+
+The diagram below shows how templates, inputs, and resource collections fit
+together. Start here if you are new to the system and want to build a template.
+
+![Resource Model](014-resource-model.svg)
+
 ## Decisions
 
 ### 1. Go structs with CUE struct tags define the template API contract.
