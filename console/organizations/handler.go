@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -548,9 +549,9 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 	if a, ok := ns.(annotated); ok {
 		annotations := a.GetAnnotations()
 		if annotations != nil {
-			org.DisplayName = annotations[DisplayNameAnnotation]
-			org.Description = annotations[secrets.DescriptionAnnotation]
-			org.CreatorEmail = annotations[CreatorEmailAnnotation]
+			org.DisplayName = annotations[v1alpha1.AnnotationDisplayName]
+			org.Description = annotations[v1alpha1.AnnotationDescription]
+			org.CreatorEmail = annotations[v1alpha1.AnnotationCreatorEmail]
 		}
 		// Populate default sharing grants and creation timestamp from typed namespace
 		if nsTyped, ok := ns.(*corev1.Namespace); ok {

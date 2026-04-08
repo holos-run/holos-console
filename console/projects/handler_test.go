@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
@@ -80,13 +81,13 @@ func contextWithClaims(email string, groups ...string) context.Context {
 func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 	annotations := map[string]string{}
 	if shareUsersJSON != "" {
-		annotations[secrets.ShareUsersAnnotation] = shareUsersJSON
+		annotations[v1alpha1.AnnotationShareUsers] = shareUsersJSON
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-" + name,
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      name,
 			},
@@ -195,8 +196,8 @@ func TestListProjects_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
 
 func TestGetProject_ReturnsProjectForAuthorizedUser(t *testing.T) {
 	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[DisplayNameAnnotation] = "My Project"
-	ns.Annotations[secrets.DescriptionAnnotation] = "A test project"
+	ns.Annotations[v1alpha1.AnnotationDisplayName] = "My Project"
+	ns.Annotations[v1alpha1.AnnotationDescription] = "A test project"
 
 	handler, logHandler := newHandler(ns)
 	ctx := contextWithClaims("alice@example.com")
@@ -570,12 +571,12 @@ func TestBuildProject_FallbackProducesWrongNameWithPrefix(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos", // namespace-prefix "holos-" + project-prefix "p-" + name "holos"
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				// No ProjectLabel — forces fallback
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
 			},
 		},
 	}
@@ -602,12 +603,12 @@ func TestBuildProject_LabelPreferredOverFallback(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "holos",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
 			},
 		},
 	}
@@ -631,12 +632,12 @@ func TestCreateProject_NamespacePrefixIncluded(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prod-prj-existing",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "existing",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 			},
 		},
 	}
@@ -697,7 +698,7 @@ func assertPermissionDenied(t *testing.T, err error) {
 
 func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[DisplayNameAnnotation] = "My Project"
+	ns.Annotations[v1alpha1.AnnotationDisplayName] = "My Project"
 	handler, _ := newHandler(ns)
 	ctx := contextWithClaims("alice@example.com")
 
@@ -721,8 +722,8 @@ func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Errorf("expected metadata.name 'prj-my-project', got %v", metadata["name"])
 	}
 	labels := metadata["labels"].(map[string]interface{})
-	if labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
-		t.Errorf("expected managed-by label, got %v", labels[secrets.ManagedByLabel])
+	if labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
+		t.Errorf("expected managed-by label, got %v", labels[v1alpha1.LabelManagedBy])
 	}
 	if labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeProject {
 		t.Errorf("expected resource-type label, got %v", labels[resolver.ResourceTypeLabel])
@@ -900,13 +901,13 @@ func TestBuildProject_PopulatesDefaultGrants(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				DefaultShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
-				DefaultShareRolesAnnotation: `[{"principal":"engineering","role":"editor"}]`,
+				v1alpha1.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"editor"}]`,
 			},
 		},
 	}

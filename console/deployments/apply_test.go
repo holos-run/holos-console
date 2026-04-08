@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	testing2 "k8s.io/client-go/testing"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 )
 
 // allTestGVRs lists every GVR that the fake scheme must know about,
@@ -139,14 +141,14 @@ func TestApplier_Apply(t *testing.T) {
 		for _, a := range fakeClient.Actions() {
 			if pa, ok := a.(testing2.PatchAction); ok {
 				patch := string(pa.GetPatch())
-				if containsStr(patch, OwnershipLabel) {
+				if containsStr(patch, v1alpha1.AnnotationDeployment) {
 					found = true
 					break
 				}
 			}
 		}
 		if !found {
-			t.Errorf("expected ownership label %q in patch payload", OwnershipLabel)
+			t.Errorf("expected ownership label %q in patch payload", v1alpha1.AnnotationDeployment)
 		}
 	})
 
@@ -185,7 +187,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("web-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			OwnershipLabel:                 deploymentName,
+			v1alpha1.AnnotationDeployment:                 deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})
@@ -225,7 +227,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("other-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			OwnershipLabel:                 "other-app",
+			v1alpha1.AnnotationDeployment:                 "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})

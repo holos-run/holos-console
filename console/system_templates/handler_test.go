@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -459,8 +460,8 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected cloned ConfigMap, got %v", err)
 		}
-		if clonedCM.Annotations[EnabledAnnotation] != "false" {
-			t.Errorf("expected cloned template to start with enabled=false, got %q", clonedCM.Annotations[EnabledAnnotation])
+		if clonedCM.Annotations[v1alpha1.AnnotationEnabled] != "false" {
+			t.Errorf("expected cloned template to start with enabled=false, got %q", clonedCM.Annotations[v1alpha1.AnnotationEnabled])
 		}
 	})
 
@@ -550,11 +551,11 @@ func TestSeedDefaultTemplates(t *testing.T) {
 			t.Fatalf("expected seeded ConfigMap, got %v", err)
 		}
 		// The seeded HTTPRoute template is opt-in (not mandatory) and starts disabled.
-		if cm.Annotations[MandatoryAnnotation] != "false" {
-			t.Errorf("expected mandatory annotation 'false' for seeded HTTPRoute template, got %q", cm.Annotations[MandatoryAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationMandatory] != "false" {
+			t.Errorf("expected mandatory annotation 'false' for seeded HTTPRoute template, got %q", cm.Annotations[v1alpha1.AnnotationMandatory])
 		}
-		if cm.Annotations[EnabledAnnotation] != "false" {
-			t.Errorf("expected enabled annotation 'false' for seeded template, got %q", cm.Annotations[EnabledAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationEnabled] != "false" {
+			t.Errorf("expected enabled annotation 'false' for seeded template, got %q", cm.Annotations[v1alpha1.AnnotationEnabled])
 		}
 		if cm.Data[CueTemplateKey] == "" {
 			t.Error("expected non-empty CUE template")

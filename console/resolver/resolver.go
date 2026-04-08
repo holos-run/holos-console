@@ -6,20 +6,18 @@ package resolver
 import (
 	"fmt"
 	"strings"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 )
 
-// Label and annotation constants for resource type identification.
-const (
-	// ResourceTypeLabel distinguishes organization and project namespaces.
-	ResourceTypeLabel = "console.holos.run/resource-type"
-	// ResourceTypeOrganization is the resource-type label value for organization namespaces.
-	ResourceTypeOrganization = "organization"
-	// ResourceTypeProject is the resource-type label value for project namespaces.
-	ResourceTypeProject = "project"
-	// OrganizationLabel stores the organization name on organization and project namespaces.
-	OrganizationLabel = "console.holos.run/organization"
-	// ProjectLabel stores the project name on project namespaces.
-	ProjectLabel = "console.holos.run/project"
+// Re-export constants from v1alpha1 so existing importers continue to compile.
+// New code should import v1alpha1 directly.
+var (
+	ResourceTypeLabel        = v1alpha1.LabelResourceType
+	ResourceTypeOrganization = v1alpha1.ResourceTypeOrganization
+	ResourceTypeProject      = v1alpha1.ResourceTypeProject
+	OrganizationLabel        = v1alpha1.LabelOrganization
+	ProjectLabel             = v1alpha1.LabelProject
 )
 
 // Resolver translates between user-facing resource names and Kubernetes namespace names.

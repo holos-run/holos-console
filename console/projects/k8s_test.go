@@ -4,12 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/secrets"
 )
 
 func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
@@ -17,7 +19,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-a",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "project-a",
 				resolver.OrganizationLabel: "acme",
@@ -28,7 +30,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-b",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "project-b",
 				resolver.OrganizationLabel: "acme",
@@ -39,7 +41,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 		},
@@ -88,7 +90,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-active",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "active",
 			},
@@ -98,7 +100,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-terminating",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "terminating",
 			},
@@ -125,7 +127,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-foo",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "foo",
 				resolver.OrganizationLabel: "acme",
@@ -136,7 +138,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-bar",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "bar",
 				resolver.OrganizationLabel: "acme",
@@ -147,7 +149,7 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-baz",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "baz",
 				resolver.OrganizationLabel: "beta",
@@ -171,14 +173,14 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation:         "My Project",
-				secrets.DescriptionAnnotation: "Test project",
+				v1alpha1.AnnotationDisplayName:         "My Project",
+				v1alpha1.AnnotationDescription: "Test project",
 			},
 		},
 	}
@@ -192,8 +194,8 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 	if result.Name != "holos-prj-my-project" {
 		t.Errorf("expected namespace 'holos-prj-my-project', got %q", result.Name)
 	}
-	if result.Annotations[DisplayNameAnnotation] != "My Project" {
-		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[DisplayNameAnnotation])
+	if result.Annotations[v1alpha1.AnnotationDisplayName] != "My Project" {
+		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[v1alpha1.AnnotationDisplayName])
 	}
 }
 
@@ -202,7 +204,7 @@ func TestGetProject_ReturnsOrganization(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 				resolver.OrganizationLabel: "acme",
@@ -263,7 +265,7 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	if result.Name != "holos-prj-new-project" {
 		t.Errorf("expected namespace 'holos-prj-new-project', got %q", result.Name)
 	}
-	if result.Labels[secrets.ManagedByLabel] != secrets.ManagedByValue {
+	if result.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 		t.Errorf("expected managed-by label, got %v", result.Labels)
 	}
 	if result.Labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeProject {
@@ -272,8 +274,8 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	if result.Labels[resolver.ProjectLabel] != "new-project" {
 		t.Errorf("expected project label 'new-project', got %q", result.Labels[resolver.ProjectLabel])
 	}
-	if result.Annotations[DisplayNameAnnotation] != "New Project" {
-		t.Errorf("expected display-name 'New Project', got %q", result.Annotations[DisplayNameAnnotation])
+	if result.Annotations[v1alpha1.AnnotationDisplayName] != "New Project" {
+		t.Errorf("expected display-name 'New Project', got %q", result.Annotations[v1alpha1.AnnotationDisplayName])
 	}
 }
 
@@ -308,7 +310,7 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-existing",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "existing",
 			},
@@ -331,12 +333,12 @@ func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 			},
 		},
 	}
@@ -376,7 +378,7 @@ func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
@@ -413,7 +415,7 @@ func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-a",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "project-a",
 			},
@@ -423,7 +425,7 @@ func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "other-prj-project-b",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "project-b",
 			},
@@ -449,12 +451,12 @@ func TestGetDefaultShareUsers_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				DefaultShareUsersAnnotation: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
 			},
 		},
 	}
@@ -475,7 +477,7 @@ func TestGetDefaultShareUsers_ReturnsNilWhenAbsent(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
@@ -495,12 +497,12 @@ func TestGetDefaultShareRoles_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				DefaultShareRolesAnnotation: `[{"principal":"engineering","role":"editor"}]`,
+				v1alpha1.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"editor"}]`,
 			},
 		},
 	}
@@ -521,7 +523,7 @@ func TestUpdateProjectDefaultSharing_PersistsAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
@@ -571,13 +573,13 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},
 			Annotations: map[string]string{
-				secrets.ShareUsersAnnotation: `[{"principal":"old@example.com","role":"viewer"}]`,
-				secrets.ShareRolesAnnotation: `[]`,
+				v1alpha1.AnnotationShareUsers: `[{"principal":"old@example.com","role":"viewer"}]`,
+				v1alpha1.AnnotationShareRoles: `[]`,
 			},
 		},
 	}
@@ -613,8 +615,8 @@ func TestCreateProject_StoresCreatorEmailAnnotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Annotations[CreatorEmailAnnotation] != "creator@example.com" {
-		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[CreatorEmailAnnotation])
+	if result.Annotations[v1alpha1.AnnotationCreatorEmail] != "creator@example.com" {
+		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[v1alpha1.AnnotationCreatorEmail])
 	}
 }
 
@@ -626,7 +628,7 @@ func TestCreateProject_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := result.Annotations[CreatorEmailAnnotation]; ok {
+	if _, ok := result.Annotations[v1alpha1.AnnotationCreatorEmail]; ok {
 		t.Error("expected no creator-email annotation when email is empty")
 	}
 }
@@ -638,15 +640,15 @@ func TestBuildProject_PopulatesCreatorEmailAndCreatedAt(t *testing.T) {
 			Name:              "holos-prj-my-project",
 			CreationTimestamp: now,
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
-				CreatorEmailAnnotation:       "creator@example.com",
-				secrets.ShareUsersAnnotation: `[{"principal":"creator@example.com","role":"owner"}]`,
-				secrets.ShareRolesAnnotation: `[]`,
+				v1alpha1.AnnotationCreatorEmail:       "creator@example.com",
+				v1alpha1.AnnotationShareUsers: `[{"principal":"creator@example.com","role":"owner"}]`,
+				v1alpha1.AnnotationShareRoles: `[]`,
 			},
 		},
 	}
@@ -674,7 +676,7 @@ func TestBuildProject_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				secrets.ManagedByLabel:     secrets.ManagedByValue,
+				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "my-project",
 			},

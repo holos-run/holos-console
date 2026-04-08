@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -611,11 +612,11 @@ func TestHandler_CloneDeploymentTemplate(t *testing.T) {
 		if clonedCM.Data[CueTemplateKey] != validCue {
 			t.Errorf("expected CUE template from source, got %q", clonedCM.Data[CueTemplateKey])
 		}
-		if clonedCM.Annotations[DescriptionAnnotation] != "original description" {
-			t.Errorf("expected description from source, got %q", clonedCM.Annotations[DescriptionAnnotation])
+		if clonedCM.Annotations[v1alpha1.AnnotationDescription] != "original description" {
+			t.Errorf("expected description from source, got %q", clonedCM.Annotations[v1alpha1.AnnotationDescription])
 		}
-		if clonedCM.Annotations[DisplayNameAnnotation] != "Web App Copy" {
-			t.Errorf("expected display name 'Web App Copy', got %q", clonedCM.Annotations[DisplayNameAnnotation])
+		if clonedCM.Annotations[v1alpha1.AnnotationDisplayName] != "Web App Copy" {
+			t.Errorf("expected display name 'Web App Copy', got %q", clonedCM.Annotations[v1alpha1.AnnotationDisplayName])
 		}
 	})
 

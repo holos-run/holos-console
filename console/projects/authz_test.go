@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 )
 
 func TestCheckProjectReadAccess_UserGrantAllows(t *testing.T) {
@@ -129,9 +130,9 @@ func TestCheckProjectCreateAccess_OwnerOnExistingProjectAllows(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "existing-project",
-				Labels: map[string]string{secrets.ManagedByLabel: secrets.ManagedByValue},
+				Labels: map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
 				Annotations: map[string]string{
-					secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 		},
@@ -147,9 +148,9 @@ func TestCheckProjectCreateAccess_EditorOnExistingProjectDenies(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "existing-project",
-				Labels: map[string]string{secrets.ManagedByLabel: secrets.ManagedByValue},
+				Labels: map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
 				Annotations: map[string]string{
-					secrets.ShareUsersAnnotation: `[{"principal":"alice@example.com","role":"editor"}]`,
+					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"editor"}]`,
 				},
 			},
 		},

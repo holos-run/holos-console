@@ -15,13 +15,6 @@ import (
 )
 
 const (
-	ManagedByLabel        = "app.kubernetes.io/managed-by"
-	ManagedByValue        = "console.holos.run"
-	ResourceTypeLabel     = "console.holos.run/resource-type"
-	ResourceTypeValue     = "deployment"
-	DisplayNameAnnotation = "console.holos.run/display-name"
-	DescriptionAnnotation = "console.holos.run/description"
-
 	// Data keys in the ConfigMap.
 	ImageKey    = "image"
 	TagKey      = "tag"
@@ -46,7 +39,7 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // ListDeployments returns all deployment ConfigMaps in the project namespace.
 func (k *K8sClient) ListDeployments(ctx context.Context, project string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
-	labelSelector := ResourceTypeLabel + "=" + ResourceTypeValue
+	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeDeployment
 	slog.DebugContext(ctx, "listing deployments from kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
@@ -85,12 +78,12 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeployment,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
 			},
 		},
 		Data: map[string]string{
@@ -145,10 +138,10 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 		cm.Data[TagKey] = *tag
 	}
 	if displayName != nil {
-		cm.Annotations[DisplayNameAnnotation] = *displayName
+		cm.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
 	}
 	if description != nil {
-		cm.Annotations[DescriptionAnnotation] = *description
+		cm.Annotations[v1alpha1.AnnotationDescription] = *description
 	}
 	if len(command) > 0 {
 		b, _ := json.Marshal(command)
@@ -229,7 +222,7 @@ func (k *K8sClient) ListNamespaceConfigMaps(ctx context.Context, project string)
 	}
 	result := make([]NamespaceResourceItem, 0, len(list.Items))
 	for _, cm := range list.Items {
-		if _, isConsoleManagedResource := cm.Labels[ResourceTypeLabel]; isConsoleManagedResource {
+		if _, isConsoleManagedResource := cm.Labels[v1alpha1.LabelResourceType]; isConsoleManagedResource {
 			continue
 		}
 		keys := make([]string, 0, len(cm.Data))

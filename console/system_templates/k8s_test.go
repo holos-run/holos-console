@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -20,7 +21,7 @@ func orgNS(org string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "org-" + org,
 			Labels: map[string]string{
-				ManagedByLabel:             ManagedByValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 		},
@@ -33,14 +34,14 @@ func sysTemplateConfigMap(org, name, displayName, description, cueTemplate strin
 			Name:      name,
 			Namespace: "org-" + org,
 			Labels: map[string]string{
-				ManagedByLabel:    ManagedByValue,
-				ResourceTypeLabel: ResourceTypeValue,
+				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeSystemTemplate,
 			},
 			Annotations: map[string]string{
-				DisplayNameAnnotation: displayName,
-				DescriptionAnnotation: description,
-				MandatoryAnnotation:   boolToStr(mandatory),
-				EnabledAnnotation:     boolToStr(enabled),
+				v1alpha1.AnnotationDisplayName: displayName,
+				v1alpha1.AnnotationDescription: description,
+				v1alpha1.AnnotationMandatory:   boolToStr(mandatory),
+				v1alpha1.AnnotationEnabled:     boolToStr(enabled),
 			},
 		},
 		Data: map[string]string{
@@ -131,20 +132,20 @@ func TestCreateSystemTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if cm.Labels[ManagedByLabel] != ManagedByValue {
+		if cm.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 			t.Error("expected managed-by label")
 		}
-		if cm.Labels[ResourceTypeLabel] != ResourceTypeValue {
+		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeSystemTemplate {
 			t.Error("expected resource-type label")
 		}
-		if cm.Annotations[DisplayNameAnnotation] != "ReferenceGrant" {
-			t.Errorf("expected display name 'ReferenceGrant', got %q", cm.Annotations[DisplayNameAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationDisplayName] != "ReferenceGrant" {
+			t.Errorf("expected display name 'ReferenceGrant', got %q", cm.Annotations[v1alpha1.AnnotationDisplayName])
 		}
-		if cm.Annotations[MandatoryAnnotation] != "true" {
-			t.Errorf("expected mandatory annotation 'true', got %q", cm.Annotations[MandatoryAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationMandatory] != "true" {
+			t.Errorf("expected mandatory annotation 'true', got %q", cm.Annotations[v1alpha1.AnnotationMandatory])
 		}
-		if cm.Annotations[EnabledAnnotation] != "true" {
-			t.Errorf("expected enabled annotation 'true', got %q", cm.Annotations[EnabledAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationEnabled] != "true" {
+			t.Errorf("expected enabled annotation 'true', got %q", cm.Annotations[v1alpha1.AnnotationEnabled])
 		}
 		if cm.Data[CueTemplateKey] != "#Input: {}\n" {
 			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
@@ -160,8 +161,8 @@ func TestCreateSystemTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if cm.Annotations[EnabledAnnotation] != "false" {
-			t.Errorf("expected enabled annotation 'false', got %q", cm.Annotations[EnabledAnnotation])
+		if cm.Annotations[v1alpha1.AnnotationEnabled] != "false" {
+			t.Errorf("expected enabled annotation 'false', got %q", cm.Annotations[v1alpha1.AnnotationEnabled])
 		}
 	})
 
@@ -197,8 +198,8 @@ func TestUpdateSystemTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if updated.Annotations[MandatoryAnnotation] != "true" {
-			t.Errorf("expected mandatory annotation 'true', got %q", updated.Annotations[MandatoryAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationMandatory] != "true" {
+			t.Errorf("expected mandatory annotation 'true', got %q", updated.Annotations[v1alpha1.AnnotationMandatory])
 		}
 	})
 
@@ -213,8 +214,8 @@ func TestUpdateSystemTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if updated.Annotations[EnabledAnnotation] != "true" {
-			t.Errorf("expected enabled annotation 'true', got %q", updated.Annotations[EnabledAnnotation])
+		if updated.Annotations[v1alpha1.AnnotationEnabled] != "true" {
+			t.Errorf("expected enabled annotation 'true', got %q", updated.Annotations[v1alpha1.AnnotationEnabled])
 		}
 	})
 

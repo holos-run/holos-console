@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -35,7 +36,7 @@ func projectNSWithAnnotation(project string, deploymentsEnabled bool) *corev1.Na
 	settings.DeploymentsEnabled = deploymentsEnabled
 	data, _ := json.Marshal(settings)
 	ns.Annotations = map[string]string{
-		SettingsAnnotation: string(data),
+		v1alpha1.AnnotationSettings: string(data),
 	}
 	return ns
 }
@@ -112,7 +113,7 @@ func TestUpdateSettings(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected namespace to exist, got %v", err)
 		}
-		if _, ok := updated.Annotations[SettingsAnnotation]; !ok {
+		if _, ok := updated.Annotations[v1alpha1.AnnotationSettings]; !ok {
 			t.Error("expected settings annotation on namespace")
 		}
 	})
