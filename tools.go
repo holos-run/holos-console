@@ -6,6 +6,7 @@ package main
 
 import (
 	_ "connectrpc.com/connect/cmd/protoc-gen-connect-go"
+	_ "cuelang.org/go/cmd/cue"
 	_ "filippo.io/mkcert"
 	_ "github.com/bufbuild/buf/cmd/buf"
 	_ "github.com/fullstorydev/grpcurl/cmd/grpcurl"

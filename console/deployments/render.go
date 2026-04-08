@@ -123,11 +123,12 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
-	// Concatenate all CUE sources. System templates may reference identifiers
-	// defined in the deployment template (input, platform, _labels, etc.).
-	// Combining them into a single compilation unit allows those cross-references
-	// to resolve correctly.
-	combined := deploymentCUE
+	// Prepend generated schema definitions and concatenate all CUE sources.
+	// System templates may reference identifiers defined in the deployment
+	// template (input, platform, _labels, etc.) as well as generated type
+	// definitions (#PlatformInput, #ProjectInput, etc.). Combining them into
+	// a single compilation unit allows those cross-references to resolve.
+	combined := v1alpha1.GeneratedSchema + "\n" + deploymentCUE
 	for _, sysSrc := range systemCUESources {
 		combined = combined + "\n" + sysSrc
 	}
@@ -183,8 +184,12 @@ func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string
 func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
+	// Prepend generated schema definitions so templates can reference
+	// #PlatformInput, #ProjectInput, #Claims, etc.
+	fullSource := v1alpha1.GeneratedSchema + "\n" + cueSource
+
 	// Compile the template source.
-	tmpl := cueCtx.CompileString(cueSource)
+	tmpl := cueCtx.CompileString(fullSource)
 	if err := tmpl.Err(); err != nil {
 		return nil, fmt.Errorf("invalid CUE template: %w", err)
 	}
@@ -238,11 +243,12 @@ func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha
 func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
-	// Compile the template source together with the CUE input document.
-	// Concatenating them in a single compilation unit allows the template to
-	// reference top-level identifiers (input.name, platform.namespace, etc.)
-	// provided by the input document.
-	combined := cueSource + "\n" + cueInput
+	// Prepend generated schema definitions and compile the template source
+	// together with the CUE input document. Concatenating them in a single
+	// compilation unit allows the template to reference top-level identifiers
+	// (input.name, platform.namespace, etc.) and generated type definitions
+	// (#PlatformInput, #ProjectInput, etc.).
+	combined := v1alpha1.GeneratedSchema + "\n" + cueSource + "\n" + cueInput
 	unified := cueCtx.CompileString(combined)
 	if err := unified.Err(); err != nil {
 		return nil, fmt.Errorf("invalid CUE template: %w", err)

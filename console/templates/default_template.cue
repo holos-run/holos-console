@@ -1,63 +1,11 @@
-// #KeyRef identifies a key within a Kubernetes Secret or ConfigMap.
-#KeyRef: {
-	name: string
-	key:  string
-}
-
-// #EnvVar represents a container environment variable.
-// Exactly one of value, secretKeyRef, or configMapKeyRef should be set.
-#EnvVar: {
-	name: string
-	// Exactly one of value, secretKeyRef, or configMapKeyRef.
-	value?:           string
-	secretKeyRef?:    #KeyRef
-	configMapKeyRef?: #KeyRef
-}
-
-// #Input defines the user-provided fields the console fills in at render time.
-// Constraints here are enforced by CUE before any Kubernetes call is made.
-#Input: {
-	name:    string & =~"^[a-z][a-z0-9-]*$" // DNS label
-	image:   string
-	tag:     string
-	command?: [...string]
-	args?: [...string]
+// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Additional CUE constraints narrow the generated types for this template.
+input: #ProjectInput & {
+	name: =~"^[a-z][a-z0-9-]*$" // DNS label
 	env:  [...#EnvVar] | *[]
-	port: int & >0 & <=65535 | *8080
+	port: >0 & <=65535 | *8080
 }
-
-// #Claims carries the OIDC ID token claims of the authenticated user.
-// These values are set by the console backend from the verified JWT and are
-// never supplied directly by the user.  Standard claims are required; additional
-// provider-specific claims are allowed via the open struct (...).
-#Claims: {
-	iss:            string
-	sub:            string
-	exp:            int
-	iat:            int
-	email:          string
-	email_verified: bool
-	name?:          string
-	groups?: [...string]
-	... // allow provider-specific claims
-}
-
-// #Platform defines the trusted platform-provided fields set by the console backend.
-// These values are derived from authenticated context (project namespace resolution
-// and OIDC token claims) and are never supplied by the user.
-#Platform: {
-	project:          string
-	namespace:        string
-	// gatewayNamespace is the namespace containing the Gateway resource. It is
-	// used in ReferenceGrant specs to allow HTTPRoute resources from that namespace
-	// to reference Services in the project namespace.
-	gatewayNamespace: string
-	organization:     string
-	claims:           #Claims
-}
-
-input:    #Input
-platform: #Platform
+platform: #PlatformInput
 
 // _labels are the standard labels required on every resource.
 // app.kubernetes.io/managed-by MUST equal "console.holos.run" or the
