@@ -545,12 +545,15 @@ api/
 
 ### Risks
 
-- **CUE tag fidelity.** The `cue` struct tag is interpreted at runtime by `cue
-  get go`. If a CUE tag constraint diverges from the Go type (e.g., a `cue`
-  tag adds a regex that the Go code does not enforce), the CUE evaluation may
-  reject inputs that the Go code would accept, or vice versa. Mitigated by
-  round-trip tests in `types_test.go` that marshal Go values to JSON and
-  validate them against the generated CUE schema.
+- **CUE tag fidelity.** `cue get go` runs at build time via `go generate` to
+  produce `.cue` files from the Go struct tags. These generated CUE files are
+  embedded into the binary and used for unification at runtime. If a `cue` tag
+  constraint diverges from the Go type (e.g., a `cue` tag adds a regex that
+  the Go code does not enforce), the CUE evaluation may reject inputs that
+  the Go code would accept, or vice versa. Mitigated by round-trip tests in
+  `types_test.go` that marshal Go values to JSON and validate them against
+  the generated CUE schema, and by `make generate` catching generation
+  failures before they reach a build.
 
 - **Folder depth limit.** The 3-folder limit is arbitrary. If a deep hierarchy
   is needed, the limit must be raised, which changes traversal cost and RBAC
