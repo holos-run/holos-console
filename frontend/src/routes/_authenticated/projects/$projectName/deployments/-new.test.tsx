@@ -29,18 +29,24 @@ vi.mock('@/queries/deployment-templates', () => ({
   useListDeploymentTemplates: vi.fn(),
 }))
 
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ value, onValueChange, children }: { value?: string; onValueChange?: (v: string) => void; children: React.ReactNode }) => (
-    <select data-testid="template-select" data-value={value} value={value} onChange={(e) => onValueChange?.(e.target.value)}>
-      {children}
+vi.mock('@/components/ui/combobox', () => ({
+  Combobox: ({ items, value, onValueChange, 'aria-label': ariaLabel }: {
+    items: { value: string; label: string }[]
+    value: string
+    onValueChange: (v: string) => void
+    'aria-label'?: string
+  }) => (
+    <select
+      data-testid="template-select"
+      aria-label={ariaLabel ?? 'Template'}
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
+      {items.map((item) => (
+        <option key={item.value} value={item.value}>{item.label}</option>
+      ))}
     </select>
   ),
-  SelectTrigger: () => null,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
-  SelectValue: () => null,
 }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -49,7 +55,7 @@ import { useCreateDeployment } from '@/queries/deployments'
 import { useListDeploymentTemplates } from '@/queries/deployment-templates'
 import { CreateDeploymentPage } from './new'
 
-function makeTemplate(name: string, defaults?: { image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[]; port?: number }) {
+function makeTemplate(name: string, defaults?: { name?: string; image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[]; port?: number; description?: string }) {
   return { name, project: 'test-project', displayName: '', description: '', cueTemplate: '', defaults }
 }
 
@@ -283,6 +289,43 @@ describe('CreateDeploymentPage', () => {
       expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/web')
       expect(screen.getByLabelText(/^tag$/i)).toHaveValue('v2.0.0')
     })
+  })
+
+  it('selecting a template with defaults pre-fills name and slug', async () => {
+    const templates = [makeTemplate('web-app', { name: 'httpbin', image: 'ghcr.io/org/web', tag: 'v2.0.0' })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    const slugInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
+    expect(slugInput.value).toBe('')
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      const slugInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
+      expect(slugInput.value).toBe('httpbin')
+    })
+  })
+
+  it('selecting a template with description default pre-fills description field', async () => {
+    const templates = [makeTemplate('web-app', { image: 'ghcr.io/org/web', tag: 'v2.0.0', description: 'A simple HTTP service' })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    const descInput = screen.getByLabelText(/^description$/i) as HTMLInputElement
+    expect(descInput.value).toBe('')
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'web-app' } })
+
+    await waitFor(() => {
+      const descInput = screen.getByLabelText(/^description$/i) as HTMLInputElement
+      expect(descInput.value).toBe('A simple HTTP service')
+    })
+  })
+
+  it('Combobox renders with correct aria-label for template selection', () => {
+    render(<CreateDeploymentPage />)
+    expect(screen.getByLabelText(/^template$/i)).toBeInTheDocument()
   })
 
   it('renders Port field', () => {

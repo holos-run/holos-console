@@ -200,6 +200,23 @@ The application uses a dark-only theme (ADR 011). All new UI elements must follo
 
 The guide also includes a "Before adding new UI elements" checklist. Consult it before writing any new component.
 
+### Selection Components
+
+All selection inputs that present a **dynamic collection of items** MUST use the searchable
+`Combobox` component (`frontend/src/components/ui/combobox.tsx`), not the basic `Select`
+component. This follows the Linear-style pattern: text input for filtering, keyboard-navigable
+list, single-select.
+
+Use the basic `Select` only for **small, static enumerations** (e.g., 2–4 fixed choices such
+as "Value / SecretRef / ConfigMapRef" or "Viewer / Editor / Owner"). When in doubt, use
+`Combobox`.
+
+Examples:
+- Template selection in the Create Deployment form → `Combobox` (dynamic list from K8s)
+- Organization selection in the Create Project dialog → `Combobox` (dynamic list from K8s)
+- Env var source type ("Value / SecretRef / ConfigMapRef") → `Select` (3 static choices)
+- Role picker ("Viewer / Editor / Owner") in the sharing panel → `Select` (3 static choices)
+
 ### Embedded Services
 
 External dependencies (OIDC, NATS) are embedded in the console binary for dev mode and single-replica deployments. The approach: configure as close to production as possible, optimize for developer experience (no passwords, no sidecars), and support full automation. `make run` starts a complete system with zero external infrastructure.

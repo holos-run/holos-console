@@ -5,13 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
@@ -65,6 +59,14 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     setTemplate(templateName)
     const selected = templates.find((t) => t.name === templateName)
     const defaults = selected?.defaults
+    // Pre-fill name and description from CUE-extracted defaults (ADR 018).
+    if (defaults?.name) {
+      setDisplayName(defaults.name)
+      setName(slugify(defaults.name))
+    }
+    if (defaults?.description) {
+      setDescription(defaults.description)
+    }
     setImage(defaults?.image ?? '')
     setTag(defaults?.tag ?? '')
     setPort(defaults?.port || 8080)
@@ -173,16 +175,15 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
                 first.
               </p>
             ) : (
-              <Select value={template} onValueChange={handleTemplateChange}>
-                <SelectTrigger aria-label="Template">
-                  <SelectValue placeholder="Select a template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                aria-label="Template"
+                items={templates.map((t) => ({ value: t.name, label: t.name }))}
+                value={template}
+                onValueChange={handleTemplateChange}
+                placeholder="Select a template..."
+                searchPlaceholder="Search templates..."
+                emptyMessage="No templates found."
+              />
             )}
           </div>
           <div>
