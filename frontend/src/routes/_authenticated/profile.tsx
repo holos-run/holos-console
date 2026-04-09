@@ -3,9 +3,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { Braces, List } from 'lucide-react'
+import { Braces, Copy, Eye, EyeOff, List, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { useAuth } from '@/lib/auth'
@@ -29,6 +29,7 @@ export function ProfilePage() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [claimsView, setClaimsView] = useState<'claims' | 'raw'>('claims')
+  const [tokenRevealed, setTokenRevealed] = useState(false)
 
   useEffect(() => {
     if (!user?.expires_at) {
@@ -257,6 +258,171 @@ export function ProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      {user?.id_token && (
+        <ApiAccessCard idToken={user.id_token} tokenRevealed={tokenRevealed} onToggleReveal={() => setTokenRevealed((v) => !v)} />
+      )}
     </div>
+  )
+}
+
+interface ApiAccessCardProps {
+  idToken: string
+  tokenRevealed: boolean
+  onToggleReveal: () => void
+}
+
+function ApiAccessCard({ idToken, tokenRevealed, onToggleReveal }: ApiAccessCardProps) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
+  const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
+
+  const exportSnippet = `set +o history\nexport HOLOS_ID_TOKEN="${idToken}"\nset -o history`
+
+  const curlCmd =
+    `curl -sk ${origin}/holos.console.v1.OrganizationService/ListOrganizations \\\n` +
+    `  -H "Content-Type: application/json" \\\n` +
+    `  -H "Connect-Protocol-Version: 1" \\\n` +
+    `  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n` +
+    `  -d '{}'`
+
+  const grpcurlCmd =
+    `grpcurl -insecure \\\n` +
+    `  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n` +
+    `  -d '{}' \\\n` +
+    `  ${host} \\\n` +
+    `  holos.console.v1.OrganizationService/ListOrganizations`
+
+  const handleCopyExport = () => {
+    navigator.clipboard.writeText(exportSnippet)
+    toast.success('Copied to clipboard')
+  }
+
+  const handleCopyCurl = () => {
+    navigator.clipboard.writeText(curlCmd)
+    toast.success('Copied to clipboard')
+  }
+
+  const handleCopyGrpcurl = () => {
+    navigator.clipboard.writeText(grpcurlCmd)
+    toast.success('Copied to clipboard')
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>API Access</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Alert variant="destructive">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertTitle>Security warning</AlertTitle>
+          <AlertDescription>
+            This token expires when your session expires. Never commit it to version control or share
+            it. The refresh token is deliberately not shown.
+          </AlertDescription>
+        </Alert>
+
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">ID Token</p>
+          <p className="text-xs text-muted-foreground">
+            Paste into your terminal. The{' '}
+            <code className="font-mono">set +o history</code> wrapper prevents the token from
+            landing in <code className="font-mono">.bash_history</code> /{' '}
+            <code className="font-mono">.zsh_history</code>.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={tokenRevealed ? 'Hide' : 'Reveal'}
+              onClick={onToggleReveal}
+            >
+              {tokenRevealed ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5 mr-1" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  Reveal
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Copy export snippet"
+              onClick={handleCopyExport}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Copy export snippet
+            </Button>
+          </div>
+          <div className="relative">
+            <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre break-all">
+              {tokenRevealed
+                ? `set +o history\nexport HOLOS_ID_TOKEN="${idToken}"\nset -o history`
+                : `set +o history\nexport HOLOS_ID_TOKEN="••••••••••••••••••••"\nset -o history`}
+            </pre>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">
+            curl (Connect protocol — recommended)
+          </p>
+          <div className="relative">
+            <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+              {curlCmd}
+            </pre>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Copy curl command"
+              className="absolute top-2 right-2 h-7 w-7"
+              onClick={handleCopyCurl}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">
+            grpcurl (gRPC backward compatibility)
+          </p>
+          <div className="relative">
+            <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+              {grpcurlCmd}
+            </pre>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Copy grpcurl command"
+              className="absolute top-2 right-2 h-7 w-7"
+              onClick={handleCopyGrpcurl}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          See{' '}
+          <a
+            href="https://github.com/holos-run/holos-console/blob/main/docs/api-access.md"
+            className="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            docs/api-access.md
+          </a>{' '}
+          for the full reference including gRPC reflection and troubleshooting.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
