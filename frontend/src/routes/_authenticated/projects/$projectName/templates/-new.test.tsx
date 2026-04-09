@@ -203,4 +203,29 @@ describe('CreateTemplatePage', () => {
     expect(userInput).not.toContain('project:')
     expect(userInput).not.toContain('namespace:')
   })
+
+  describe('Load httpbin Example button', () => {
+    it('renders Load httpbin Example button', () => {
+      render(<CreateTemplatePage />)
+      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
+    })
+
+    it('clicking Load httpbin Example changes the CUE textarea content', () => {
+      render(<CreateTemplatePage />)
+      const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+      const initialContent = cueEditor.value
+      fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
+      expect(cueEditor.value).not.toBe(initialContent)
+      expect(cueEditor.value).toContain('go-httpbin')
+    })
+
+    it('httpbin example CUE contains ServiceAccount, Deployment, and Service', () => {
+      render(<CreateTemplatePage />)
+      fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
+      const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+      expect(cueEditor.value).toContain('ServiceAccount')
+      expect(cueEditor.value).toContain('Deployment')
+      expect(cueEditor.value).toContain('Service')
+    })
+  })
 })
