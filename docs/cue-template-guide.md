@@ -16,7 +16,7 @@ When a user creates or updates a deployment, the console:
 5. Fills `ProjectInput` at the `input` path and `PlatformInput` at the `platform` path.
 6. Reads structured output fields based on the render level (ADR 016 Decision 8):
    - Always reads `projectResources.namespacedResources` and `projectResources.clusterResources`.
-   - When system templates are present (organization/folder level), also reads `platformResources.namespacedResources` and `platformResources.clusterResources`.
+   - When platform templates are present (organization/folder level), also reads `platformResources.namespacedResources` and `platformResources.clusterResources`.
    - At the project level (`Render()`), `platformResources` is intentionally skipped — a project template that defines `platformResources` fields has no effect.
 7. Validates each resource against safety constraints.
 8. Applies the validated resources to Kubernetes via server-side apply.
@@ -188,7 +188,7 @@ projectResources: {
 
 			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
 			// reference Service resources in the project namespace.
-			// This enables system templates (such as the example HTTPRoute template)
+			// This enables platform templates (such as the example HTTPRoute template)
 			// to expose deployments via the gateway.
 			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
 			ReferenceGrant: "allow-gateway-httproute": {
@@ -300,7 +300,7 @@ port defined above — do not use `input.port` here.
 8. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 9. **Never place project or namespace in `input`** — these are platform-provided values available at `platform.project` and `platform.namespace`.
 10. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
-11. **Never define `platformResources` in a user deployment template** — the project-level renderer does not read `platformResources` (ADR 016 Decision 8). Any values defined there are silently ignored. Platform resources are defined in system templates evaluated at the organization/folder level.
+11. **Never define `platformResources` in a user deployment template** — the project-level renderer does not read `platformResources` (ADR 016 Decision 8). Any values defined there are silently ignored. Platform resources are defined in platform templates evaluated at the organization/folder level.
 
 ### Platform and Project Templates Working Together
 
@@ -311,12 +311,12 @@ templates may produce, paired with a project-level template that deploys
 for the ADR 016 Decision 9 constraint pattern. The examples below are the actual
 embedded templates (`console/system_templates/example_httpbin_platform.cue` and
 `console/templates/example_httpbin.cue`) available via the **Load httpbin
-Example** buttons in the system template create dialog and the deployment
+Example** buttons in the platform template create dialog and the deployment
 template create page.
 
-#### Organization-Level System Template
+#### Organization-Level Platform Template
 
-The org-level system template does two things in a single CUE file:
+The org-level platform template does two things in a single CUE file:
 
 1. **Provides the HTTPRoute** in `platformResources` so the gateway routes
    traffic to the deployment's `Service`.
@@ -325,10 +325,10 @@ The org-level system template does two things in a single CUE file:
    `Service`, and `ServiceAccount`.
 
 ```cue
-// Org-level system template — evaluated at organization scope.
+// Org-level platform template — evaluated at organization scope.
 // Any changes here affect every project in the org.
 
-// input and platform are available because system templates are unified with
+// input and platform are available because platform templates are unified with
 // the deployment template before evaluation (ADR 016 Decision 8).
 input: #ProjectInput & {
     port: >0 & <=65535 | *8080
@@ -390,7 +390,7 @@ projectResources: namespacedResources: [_]: close({
 ```
 
 Key points:
-- **`platformResources`** is used because only the system-template render path
+- **`platformResources`** is used because only the platform template render path
   reads it — project templates that accidentally define `platformResources` are
   silently ignored. This keeps platform resources exclusively under platform
   control.
@@ -399,7 +399,7 @@ Key points:
   fields are allowed. Each listed Kind field carries `?` (optional) so a namespace
   bucket need not contain all three kinds. Any unlisted Kind key — such as
   `RoleBinding` — causes a CUE evaluation error before any Kubernetes API call.
-- The `input.name` and `platform.namespace` references work because system
+- The `input.name` and `platform.namespace` references work because platform
   templates are concatenated with the deployment template before compilation —
   both `input` and `platform` are fully resolved.
 
@@ -475,7 +475,7 @@ projectResources: {
         }
 
         // Service exposes port 80 → container port input.port.
-        // The HTTPRoute in the org system template routes gateway traffic here.
+        // The HTTPRoute in the org platform template routes gateway traffic here.
         Service: (input.name): {
             apiVersion: "v1"
             kind:       "Service"
@@ -509,7 +509,7 @@ Key points:
 
 #### What Happens When a Project Template Violates the Constraint
 
-When the org-level system template closes `projectResources.namespacedResources`
+When the org-level platform template closes `projectResources.namespacedResources`
 to `Deployment`, `Service`, and `ServiceAccount`, any project template that
 tries to add a disallowed Kind gets a CUE evaluation error immediately — before
 any Kubernetes API call.
@@ -793,18 +793,18 @@ incrementally as cluster resource support is added.
 ### `platformResources.namespacedResources` and `platformResources.clusterResources` Fields
 
 These fields follow the same structure as `projectResources.namespacedResources` and `projectResources.clusterResources`
-respectively, but are reserved for system template resources managed by the platform
+respectively, but are reserved for platform template resources managed by the platform
 operator. User-authored deployment templates should NOT define these fields.
 
-**System Template Unification**
+**Platform Template Unification**
 
-At deploy time, the console unifies enabled system templates with the deployment
+At deploy time, the console unifies enabled platform templates with the deployment
 template before CUE compilation. Because all templates share the same generated
 schema (prepended by the renderer), they have full access to all `input.*` and
 `platform.*` fields — including `input.name`, `input.port`, `platform.namespace`,
 and `platform.gatewayNamespace`.
 
-System templates may define resources under `platformResources` and/or `projectResources`
+Platform templates may define resources under `platformResources` and/or `projectResources`
 (ADR 016 Decision 8). The built-in example and operator-managed resources conventionally
 use `platformResources` to signal their intent, but there is no rigid separation — all
 template output is unified by CUE before the renderer reads either collection.
@@ -812,7 +812,7 @@ template output is unified by CUE before the renderer reads either collection.
 **Operator Guarantees**
 
 Resources placed in `platformResources.namespacedResources` and
-`platformResources.clusterResources` by system templates are:
+`platformResources.clusterResources` by platform templates are:
 
 - **Not produced by project-level templates** — the renderer enforces a hard boundary
   (ADR 016 Decision 8) in Go code: when rendering a project-level template (`Render()`),
@@ -826,12 +826,12 @@ Resources placed in `platformResources.namespacedResources` and
   (e.g., `HTTPRoute`, network policies) are always present whenever the deployment
   is applied.
 
-**Operator Constraints via System Templates**
+**Operator Constraints via Platform Templates**
 
-Operators can use system templates to constrain user-controlled resources. Because
-system templates are unified with the deployment template before compilation, a
-system template can add CUE constraints on `projectResources.namespacedResources` (the project
-output fields). For example, a system template could enforce a required label or
+Operators can use platform templates to constrain user-controlled resources. Because
+platform templates are unified with the deployment template before compilation, a
+platform template can add CUE constraints on `projectResources.namespacedResources` (the project
+output fields). For example, a platform template could enforce a required label or
 annotation on all namespaced resources — any user template that violates the
 constraint will fail at CUE evaluation time before any Kubernetes call.
 
@@ -840,9 +840,9 @@ explanation of the three enforcement layers, see
 ["Platform and Project Templates Working Together"](#platform-and-project-templates-working-together)
 in the "Writing a Custom Template" section.
 
-**Example: HTTPRoute System Template**
+**Example: HTTPRoute Platform Template**
 
-The built-in `default_referencegrant.cue` system template seeds a disabled HTTPRoute
+The built-in `default_referencegrant.cue` platform template seeds a disabled HTTPRoute
 example. When enabled, it adds an `HTTPRoute` to `platformResources.namespacedResources`
 that routes all gateway traffic to the deployment's `Service`:
 
@@ -892,9 +892,9 @@ platformResources: {
 }
 ```
 
-This system template references `input.name` (project-supplied deployment name),
+This platform template references `input.name` (project-supplied deployment name),
 `platform.namespace` (resolved project namespace), and `platform.gatewayNamespace`
-(operator-configured gateway namespace) — all available because system templates
+(operator-configured gateway namespace) — all available because platform templates
 are unified with the deployment template before evaluation.
 
 ### Struct Key Consistency
@@ -1019,7 +1019,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 |------|---------|
 | `console/templates/default_template.cue` | Default CUE template. Narrows generated `#ProjectInput` and `#PlatformInput` types with additional CUE constraints, defines `_envSpec` env var transformation, `_annotations` helper (stamps `platform.claims.email`), `#Namespaced`/`#Cluster` structural constraints, and resource definitions nested under `projectResources.namespacedResources`/`projectResources.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. No `package` declaration — the renderer prepends the generated schema. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
-| `console/system_templates/default_referencegrant.cue` | Built-in example HTTPRoute system template. References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListSystemTemplates` access. Embedded via `console/system_templates/embed.go`. No `package` declaration. |
+| `console/system_templates/default_referencegrant.cue` | Built-in example HTTPRoute platform template (code: `SystemTemplate`). References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListSystemTemplates` access. Embedded via `console/system_templates/embed.go`. No `package` declaration. |
 | `api/v1alpha1/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. |
 
 ### Go Rendering Pipeline
@@ -1029,8 +1029,8 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `console/deployments/render.go` | `CueRenderer.Render()` — project-level render path: prepends generated schema, compiles CUE source, fills `"input"` and `"platform"`, then calls `evaluateStructured(..., false)` which reads only `projectResources` (ADR 016 Decision 8 hard boundary — `platformResources` is intentionally skipped). |
-| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — organization/folder-level render path: unifies system template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
-| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in system templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithSystemTemplates()` — organization/folder-level render path: unifies platform template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in platform templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
 | `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
@@ -1044,19 +1044,19 @@ Two render paths exist — one for the deployment service and one for the templa
 | `console/templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `deployment-template` resource-type label. |
 | `console/templates/render_adapter.go` | `CueRendererAdapter` — wraps `deployments.CueRenderer` to produce YAML and structured object data for the template preview RPC. |
 
-### System Template Service
+### Platform Template Service (code: `SystemTemplateService`)
 
 | File | Purpose |
 |------|---------|
-| `console/system_templates/handler.go` | `SystemTemplateService` handler — CRUD and render for org-scoped system templates stored as ConfigMaps. Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`. |
-| `console/system_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `system-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListSystemTemplates`. `ListEnabledSystemTemplateSources()` returns CUE sources for enabled templates (satisfies `deployments.SystemTemplateProvider`). |
-| `console/system_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatorySystemTemplates()` — called by the projects service after project namespace creation to apply templates that are both `mandatory=true` AND `enabled=true`. |
+| `console/system_templates/handler.go` | `SystemTemplateService` handler — CRUD and render for org-scoped platform templates stored as ConfigMaps. Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`. |
+| `console/system_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `system-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListSystemTemplates`. `ListEnabledSystemTemplateSources()` returns CUE sources for enabled platform templates (satisfies `deployments.SystemTemplateProvider`). |
+| `console/system_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatorySystemTemplates()` — called by the projects service after project namespace creation to apply platform templates that are both `mandatory=true` AND `enabled=true`. |
 
 ### Deployment Service
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create/Update flow — builds `PlatformInput` (including `GatewayNamespace`) from authenticated context and `ProjectInput` from API request fields, calls `renderResources()` (which unifies enabled system templates via `RenderWithSystemTemplates`), then `Apply()`. |
+| `console/deployments/handler.go` | Create/Update flow — builds `PlatformInput` (including `GatewayNamespace`) from authenticated context and `ProjectInput` from API request fields, calls `renderResources()` (which unifies enabled platform templates via `RenderWithSystemTemplates`), then `Apply()`. |
 | `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
@@ -1066,7 +1066,7 @@ Two render paths exist — one for the deployment service and one for the templa
 |------|---------|
 | `proto/holos/console/v1/deployments.proto` | `Deployment`, `EnvVar`, `SecretKeyRef`, `ConfigMapKeyRef` messages; `DeploymentService` RPCs. |
 | `proto/holos/console/v1/deployment_templates.proto` | `DeploymentTemplate` message; `DeploymentTemplateService` RPCs including `RenderDeploymentTemplate`. |
-| `proto/holos/console/v1/system_templates.proto` | `SystemTemplate` message; `SystemTemplateService` RPCs including `RenderSystemTemplate`. |
+| `proto/holos/console/v1/system_templates.proto` | `SystemTemplate` message (platform template); `SystemTemplateService` RPCs including `RenderSystemTemplate`. |
 
 ### Generated Code
 

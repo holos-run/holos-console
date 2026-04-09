@@ -98,25 +98,25 @@ project namespace.
 
 ### SystemTemplateService
 
-_System templates_ (org-level templates) are organization-scoped CUE programs
+_Platform templates_ (org-level templates, code: `SystemTemplate`) are organization-scoped CUE programs
 authored by platform engineers. They run alongside every deployment template
 at render time and can contribute platform-managed resources (`platformResources`)
 and enforce constraints on what project templates are allowed to produce. They
 are stored as Kubernetes ConfigMaps in the org namespace.
 
-A system template may be marked **mandatory** (applied to every project
+A platform template may be marked **mandatory** (applied to every project
 namespace at project creation time) and/or **enabled** (unified with the
 deployment template at deploy time). New templates start disabled.
 
 | RPC | Required Permission | Description |
 |-----|-------------------|-------------|
-| `ListSystemTemplates` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Lists all system templates in an organization. |
-| `GetSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Returns a single system template including its CUE source. |
-| `CreateSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Creates a new org-level template. Starts disabled and non-mandatory by default. |
+| `ListSystemTemplates` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Lists all platform templates in an organization. |
+| `GetSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Returns a single platform template including its CUE source. |
+| `CreateSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Creates a new org-level platform template. Starts disabled and non-mandatory by default. |
 | `UpdateSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
-| `DeleteSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Deletes an org-level template. |
-| `RenderSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Renders the system template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
-| `CloneSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Copies an existing system template to a new name within the same org. |
+| `DeleteSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Deletes an org-level platform template. |
+| `RenderSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
+| `CloneSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Copies an existing platform template to a new name within the same org. |
 
 > All `SystemTemplateService` operations require `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`,
 > which is granted exclusively to org-level OWNERs. Project-level OWNERs do not
@@ -268,8 +268,8 @@ The org-level template does two things:
    templates from producing any resource Kind other than `Deployment`,
    `Service`, and `ServiceAccount`.
 
-Navigate to **Organizations > my-org > System Templates** and click
-**Create System Template**. Fill in the form fields:
+Navigate to **Organizations > my-org > Platform Templates** and click
+**Create Platform Template**. Fill in the form fields:
 
 | Field | Value |
 |-------|-------|
@@ -500,7 +500,7 @@ projectResources: {
             }
 
             // Service exposes port 80 → container port input.port (named "http").
-            // The HTTPRoute in the org system template routes gateway traffic here.
+            // The HTTPRoute in the org platform template routes gateway traffic here.
             Service: (input.name): {
                 apiVersion: "v1"
                 kind:       "Service"
