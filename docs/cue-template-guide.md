@@ -308,7 +308,11 @@ This section walks through a concrete two-template scenario: an org-level system
 template that provides an HTTPRoute and constrains which resource kinds project
 templates may produce, paired with a project-level template that deploys
 [go-httpbin](https://github.com/mccutchen/go-httpbin). Use this as a reference
-for the ADR 016 Decision 9 constraint pattern.
+for the ADR 016 Decision 9 constraint pattern. The examples below are the actual
+embedded templates (`console/system_templates/example_httpbin_platform.cue` and
+`console/templates/example_httpbin.cue`) available via the **Load httpbin
+Example** buttons in the system template create dialog and the deployment
+template create page.
 
 #### Organization-Level System Template
 
