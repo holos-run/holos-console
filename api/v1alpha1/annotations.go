@@ -34,7 +34,13 @@ const (
 	AnnotationDeployment        = "console.holos.run/deployment"
 	AnnotationDeployerEmail     = "console.holos.run/deployer-email"
 	AnnotationURL               = "console.holos.run/url"
-	AnnotationMandatory         = "console.holos.run/mandatory"
-	AnnotationEnabled           = "console.holos.run/enabled"
-	AnnotationSettings          = "console.holos.run/project-settings"
+	AnnotationMandatory            = "console.holos.run/mandatory"
+	AnnotationEnabled              = "console.holos.run/enabled"
+	AnnotationSettings             = "console.holos.run/project-settings"
+	// AnnotationLinkedOrgTemplates stores the list of explicitly linked platform
+	// template names as a JSON array on a deployment template ConfigMap.
+	// Only enabled (non-mandatory) org templates appear here; mandatory templates
+	// always participate in render regardless of this annotation.
+	// Example: ["microservice-v2", "istio-gateway"]
+	AnnotationLinkedOrgTemplates = "console.holos.run/linked-org-templates"
 )

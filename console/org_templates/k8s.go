@@ -179,27 +179,72 @@ func (k *K8sClient) SeedDefaultTemplates(ctx context.Context, org string) error 
 	return err
 }
 
-// ListEnabledOrgTemplateSources returns the CUE source strings for all enabled
-// platform templates in the org. Disabled templates are excluded. This method
-// satisfies the deployments.OrgTemplateProvider interface via structural typing.
-func (k *K8sClient) ListEnabledOrgTemplateSources(ctx context.Context, org string) ([]string, error) {
+// ListOrgTemplateSourcesForRender returns CUE sources for the effective set of
+// org templates that participate in unification at render time (ADR 019).
+//
+// The effective set is: (mandatory AND enabled) UNION (enabled AND name IN linkedNames).
+// Disabled templates are never included, even when listed in linkedNames.
+// The result is deduplicated so a mandatory+explicitly-linked template appears once.
+//
+// linkedNames may be nil or empty to apply only the mandatory policy floor.
+func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedNames []string) ([]string, error) {
 	cms, err := k.ListOrgTemplates(ctx, org)
 	if err != nil {
 		return nil, err
 	}
+
+	// Build a set for O(1) lookup.
+	linked := make(map[string]bool, len(linkedNames))
+	for _, n := range linkedNames {
+		linked[n] = true
+	}
+
+	seen := make(map[string]bool)
 	var sources []string
 	for _, cm := range cms {
 		tmpl := configMapToOrgTemplate(&cm, org)
 		if !tmpl.Enabled {
+			continue // disabled templates never participate
+		}
+		include := (tmpl.Mandatory) || linked[tmpl.Name]
+		if !include {
 			continue
+		}
+		if seen[tmpl.Name] {
+			continue // deduplicate
 		}
 		src := cm.Data[CueTemplateKey]
 		if src == "" {
 			continue
 		}
+		seen[tmpl.Name] = true
 		sources = append(sources, src)
 	}
 	return sources, nil
+}
+
+// ListLinkableOrgTemplateInfos returns all enabled org templates as LinkableOrgTemplate
+// proto messages. Used by the DeploymentTemplateService to populate the linking UI.
+// Only enabled templates are returned; disabled templates cannot be linked.
+func (k *K8sClient) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableOrgTemplate, error) {
+	cms, err := k.ListOrgTemplates(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	var result []*consolev1.LinkableOrgTemplate
+	for _, cm := range cms {
+		tmpl := configMapToOrgTemplate(&cm, org)
+		if !tmpl.Enabled {
+			continue
+		}
+		result = append(result, &consolev1.LinkableOrgTemplate{
+			Name:        tmpl.Name,
+			DisplayName: tmpl.DisplayName,
+			Description: tmpl.Description,
+			Mandatory:   tmpl.Mandatory,
+		})
+	}
+	return result, nil
 }
 
 // configMapToOrgTemplate converts a Kubernetes ConfigMap to an OrgTemplate protobuf message.

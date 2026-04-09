@@ -283,7 +283,9 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Deployment template service with project grant fallback
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
-		templatesHandler := templates.NewHandler(templatesK8s, projectResolver, templates.NewCueRendererAdapter())
+		templatesHandler := templates.NewHandler(templatesK8s, projectResolver, templates.NewCueRendererAdapter()).
+			WithOrgResolver(projectResolver).
+			WithOrgTemplateLister(org_templates.NewK8sClient(k8sClientset, nsResolver))
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
@@ -293,15 +295,14 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgTemplatesPath, orgTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(orgTemplatesHandler, protectedInterceptors)
 		mux.Handle(orgTemplatesPath, orgTemplatesHTTPHandler)
 
-		// Deployment service with project grant fallback
+		// Deployment service with project grant fallback.
+		// orgTemplatesK8s satisfies OrgTemplateProvider via ListOrgTemplateSourcesForRender,
+		// implementing the explicit linking model (ADR 019).
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
 		var deploymentsApplier deployments.ResourceApplier
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
-		// orgTemplatesK8s is reused here to provide platform template sources during
-		// deployment render; the same K8sClient satisfies OrgTemplateProvider
-		// via ListEnabledOrgTemplateSources.
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
 			WithOrgTemplateProvider(orgTemplatesK8s)

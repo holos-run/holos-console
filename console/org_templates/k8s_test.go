@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
@@ -258,6 +259,124 @@ func TestDeleteOrgTemplate(t *testing.T) {
 		err := k8s.DeleteOrgTemplate(context.Background(), "my-org", "nonexistent")
 		if err == nil {
 			t.Fatal("expected error for nonexistent template")
+		}
+	})
+}
+
+func TestListOrgTemplateSourcesForRender(t *testing.T) {
+	// Template combinations for the test matrix (name, mandatory, enabled, src).
+	type tmplSpec struct {
+		name      string
+		mandatory bool
+		enabled   bool
+		src       string
+	}
+
+	// Helper: build a fake K8sClient with the given templates.
+	setup := func(specs []tmplSpec) *K8sClient {
+		ns := orgNS("my-org")
+		objects := []runtime.Object{ns}
+		for _, s := range specs {
+			objects = append(objects, orgTemplateConfigMap("my-org", s.name, s.name, "", s.src, s.mandatory, s.enabled))
+		}
+		fakeClient := fake.NewClientset(objects...)
+		return NewK8sClient(fakeClient, testResolver())
+	}
+
+	t.Run("mandatory+enabled template always included without linking", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "policy", mandatory: true, enabled: true, src: "// policy"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source, got %d", len(sources))
+		}
+		if sources[0] != "// policy" {
+			t.Errorf("unexpected source: %q", sources[0])
+		}
+	})
+
+	t.Run("non-mandatory enabled template NOT included when not linked", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "archetype", mandatory: false, enabled: true, src: "// archetype"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (non-mandatory not linked), got %d: %v", len(sources), sources)
+		}
+	})
+
+	t.Run("non-mandatory enabled template included when explicitly linked", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "archetype", mandatory: false, enabled: true, src: "// archetype"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"archetype"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source (explicitly linked), got %d", len(sources))
+		}
+	})
+
+	t.Run("linked+mandatory deduplicates — template appears once", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "policy", mandatory: true, enabled: true, src: "// policy"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"policy"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source (deduplication), got %d", len(sources))
+		}
+	})
+
+	t.Run("disabled template not included even when linked", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "disabled", mandatory: false, enabled: false, src: "// disabled"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"disabled"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (disabled cannot be linked), got %d", len(sources))
+		}
+	})
+
+	t.Run("mandatory disabled template not included", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "disabled-mandatory", mandatory: true, enabled: false, src: "// disabled"},
+		})
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (mandatory disabled), got %d", len(sources))
+		}
+	})
+
+	t.Run("mixed: mandatory+enabled + linked non-mandatory + unlinked non-mandatory", func(t *testing.T) {
+		k8s := setup([]tmplSpec{
+			{name: "policy", mandatory: true, enabled: true, src: "// policy"},
+			{name: "archetype-a", mandatory: false, enabled: true, src: "// archetype-a"},
+			{name: "archetype-b", mandatory: false, enabled: true, src: "// archetype-b"},
+		})
+		// Link only archetype-a; archetype-b should NOT be included.
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"archetype-a"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 2 {
+			t.Fatalf("expected 2 sources (policy + archetype-a), got %d: %v", len(sources), sources)
 		}
 	})
 }

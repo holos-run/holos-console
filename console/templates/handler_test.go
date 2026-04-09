@@ -38,6 +38,10 @@ func (r *stubRenderer) Render(_ context.Context, _ string, _ string, _ string) (
 	return r.resources, r.err
 }
 
+func (r *stubRenderer) RenderWithOrgTemplateSources(_ context.Context, _ string, _ []string, _ string, _ string) ([]RenderResource, error) {
+	return r.resources, r.err
+}
+
 func authedCtx(email string, roles []string) context.Context {
 	return rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "user-123",
@@ -922,6 +926,115 @@ func TestHandler_RenderDeploymentTemplate(t *testing.T) {
 		}
 		if connect.CodeOf(err) != connect.CodeInvalidArgument {
 			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+}
+
+// stubOrgResolver implements OrgResolver for tests.
+type stubOrgResolver struct {
+	org string
+	err error
+}
+
+func (s *stubOrgResolver) GetProjectOrganization(_ context.Context, _ string) (string, error) {
+	return s.org, s.err
+}
+
+// stubOrgTemplateLister implements OrgTemplateLister for tests.
+type stubOrgTemplateLister struct {
+	templates []*consolev1.LinkableOrgTemplate
+	err       error
+}
+
+func (s *stubOrgTemplateLister) ListLinkableOrgTemplateInfos(_ context.Context, _ string) ([]*consolev1.LinkableOrgTemplate, error) {
+	return s.templates, s.err
+}
+
+func TestListLinkableOrgTemplates(t *testing.T) {
+	linkableTemplates := []*consolev1.LinkableOrgTemplate{
+		{Name: "microservice-v2", DisplayName: "Microservice v2", Description: "Standard microservice", Mandatory: false},
+		{Name: "policy-floor", DisplayName: "Policy Floor", Description: "Mandatory policies", Mandatory: true},
+	}
+
+	t.Run("requires authentication", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{}).
+			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
+			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
+
+		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
+		_, err := handler.ListLinkableOrgTemplates(context.Background(), req)
+		if err == nil {
+			t.Fatal("expected unauthenticated error")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("requires project field", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{}).
+			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
+			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
+
+		ctx := authedCtx("user@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{})
+		_, err := handler.ListLinkableOrgTemplates(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for empty project")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("returns empty list when org resolver not configured", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"user@example.com": "viewer"}}
+		handler := NewHandler(k8s, pr, &stubRenderer{})
+		// No org resolver — should return empty response.
+
+		ctx := authedCtx("user@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
+		resp, err := handler.ListLinkableOrgTemplates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Templates) != 0 {
+			t.Errorf("expected 0 templates, got %d", len(resp.Msg.Templates))
+		}
+	})
+
+	t.Run("returns linkable templates including mandatory", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"user@example.com": "viewer"}}
+		handler := NewHandler(k8s, pr, &stubRenderer{}).
+			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
+			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
+
+		ctx := authedCtx("user@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
+		resp, err := handler.ListLinkableOrgTemplates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Templates) != 2 {
+			t.Fatalf("expected 2 templates, got %d", len(resp.Msg.Templates))
+		}
+		// Verify mandatory flag is propagated.
+		var foundMandatory bool
+		for _, tmpl := range resp.Msg.Templates {
+			if tmpl.Name == "policy-floor" && tmpl.Mandatory {
+				foundMandatory = true
+			}
+		}
+		if !foundMandatory {
+			t.Error("expected policy-floor template to be marked mandatory")
 		}
 	})
 }

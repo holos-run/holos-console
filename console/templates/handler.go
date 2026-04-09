@@ -30,6 +30,17 @@ type ProjectResolver interface {
 	GetProjectGrants(ctx context.Context, project string) (shareUsers, shareRoles map[string]string, err error)
 }
 
+// OrgResolver resolves the organization for a project.
+type OrgResolver interface {
+	GetProjectOrganization(ctx context.Context, project string) (string, error)
+}
+
+// OrgTemplateLister lists org templates for an organization and returns proto messages.
+// Satisfied structurally by org_templates.K8sClient (via ListOrgTemplates + configMapToOrgTemplate).
+type OrgTemplateLister interface {
+	ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableOrgTemplate, error)
+}
+
 // RenderResource is a single rendered resource with its YAML representation
 // and its raw object data for JSON serialization.
 type RenderResource struct {
@@ -43,19 +54,39 @@ type RenderResource struct {
 // claims); cueInput carries user-provided deployment parameters.
 type Renderer interface {
 	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
+	// RenderWithOrgTemplateSources evaluates the deployment template unified with
+	// zero or more platform template CUE sources, then with the CUE input.
+	// Used by the preview RPC when linked_org_templates is supplied.
+	RenderWithOrgTemplateSources(ctx context.Context, cueTemplate string, orgTemplateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
 // Handler implements the DeploymentTemplateService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentTemplateServiceHandler
-	k8s             *K8sClient
-	projectResolver ProjectResolver
-	renderer        Renderer
+	k8s              *K8sClient
+	projectResolver  ProjectResolver
+	renderer         Renderer
+	orgResolver      OrgResolver
+	orgTemplateLister OrgTemplateLister
 }
 
 // NewHandler creates a DeploymentTemplateService handler.
 func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, renderer Renderer) *Handler {
 	return &Handler{k8s: k8s, projectResolver: projectResolver, renderer: renderer}
+}
+
+// WithOrgResolver configures the handler with an OrgResolver for resolving
+// the project's organization. Required for ListLinkableOrgTemplates.
+func (h *Handler) WithOrgResolver(or OrgResolver) *Handler {
+	h.orgResolver = or
+	return h
+}
+
+// WithOrgTemplateLister configures the handler with an OrgTemplateLister for
+// listing linkable platform templates. Required for ListLinkableOrgTemplates.
+func (h *Handler) WithOrgTemplateLister(l OrgTemplateLister) *Handler {
+	h.orgTemplateLister = l
+	return h
 }
 
 // ListDeploymentTemplates returns all templates in a project.
@@ -167,7 +198,7 @@ func (h *Handler) CreateDeploymentTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.CreateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults)
+	_, err := h.k8s.CreateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, req.Msg.LinkedOrgTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -216,7 +247,7 @@ func (h *Handler) UpdateDeploymentTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, false)
+	_, err := h.k8s.UpdateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, false, req.Msg.LinkedOrgTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -343,6 +374,11 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
+	// Render the template. The linked_org_templates field in the request is
+	// accepted for future use (when the RPC gains a project parameter to resolve
+	// the org). Currently this RPC renders the deployment template standalone —
+	// effective org template unification happens at deploy time (renderResources)
+	// and in GetDeploymentRenderPreview.
 	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
@@ -368,6 +404,57 @@ func (h *Handler) RenderDeploymentTemplate(
 	return connect.NewResponse(&consolev1.RenderDeploymentTemplateResponse{
 		RenderedYaml: buf.String(),
 		RenderedJson: string(jsonBytes),
+	}), nil
+}
+
+// ListLinkableOrgTemplates returns the set of enabled org templates for the
+// project's organization that a deployment template may link against (ADR 019).
+// Mandatory+enabled templates are included so the UI can display them as
+// always-on with a lock icon.
+func (h *Handler) ListLinkableOrgTemplates(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListLinkableOrgTemplatesRequest],
+) (*connect.Response[consolev1.ListLinkableOrgTemplatesResponse], error) {
+	project := req.Msg.Project
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesList); err != nil {
+		return nil, err
+	}
+
+	if h.orgResolver == nil || h.orgTemplateLister == nil {
+		// Not configured — return empty list (no platform templates available).
+		return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{}), nil
+	}
+
+	org, err := h.orgResolver.GetProjectOrganization(ctx, project)
+	if err != nil || org == "" {
+		// Project has no org or org resolution failed — return empty list.
+		return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{}), nil
+	}
+
+	templates, err := h.orgTemplateLister.ListLinkableOrgTemplateInfos(ctx, org)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("listing linkable platform templates: %w", err))
+	}
+
+	slog.InfoContext(ctx, "linkable platform templates listed",
+		slog.String("action", "linkable_org_templates_list"),
+		slog.String("project", project),
+		slog.String("org", org),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(templates)),
+	)
+
+	return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{
+		Templates: templates,
 	}), nil
 }
 
@@ -429,6 +516,20 @@ func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.Deploy
 		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha1.AnnotationDescription],
 		CueTemplate: cueSource,
+	}
+
+	// Populate linked org templates from annotation (ADR 019).
+	if raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
+		var linked []string
+		if err := json.Unmarshal([]byte(raw), &linked); err == nil {
+			tmpl.LinkedOrgTemplates = linked
+		} else {
+			slog.Warn("failed to parse linked-org-templates annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		}
 	}
 
 	// Priority 1: CUE extraction from the template source.
