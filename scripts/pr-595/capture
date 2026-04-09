@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #595: searchable Combobox and Create Deployment form refactor
+# Usage: called by scripts/browser-capture-pr 595
+# Environment: HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR are set by the launcher
+
+set -euo pipefail
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+echo "Capturing screenshot: Create Deployment page (Combobox template selector)"
+agent-browser navigate "${BACKEND_URL}/projects/test-project/deployments/new"
+agent-browser screenshot --full "${SCREENSHOT_DIR}/create-deployment-form.png"
+
+echo "Screenshots captured to ${SCREENSHOT_DIR}"
