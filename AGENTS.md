@@ -382,6 +382,17 @@ Implement each phase using a RED GREEN approach:
 
 Every plan must include a final phase to scan the entire repository for dead, deprecated, or outdated information introduced or made stale by the commits implementing the plan. This includes removing obsolete comments, unused imports, stale documentation, dead code paths, and outdated references in AGENTS.md, README files, and doc files. Commit cleanup changes separately with a clear message explaining what was removed and why.
 
+### Uncommitted Changes Guardrail
+
+After all sub-issues (or a single issue) are merged, run `git status` to verify no local changes were left uncommitted. Uncommitted changes left over from sub-agent work do not appear in any PR and are silently discarded when the branch is deleted.
+
+**If uncommitted local changes are found:**
+1. Create a follow-up branch from `main`
+2. Commit the changes with a descriptive message
+3. Open a PR that links to the parent issue (if any): use `Closes: #<parent-number>` so the parent closes on merge
+4. Loop on CI checks until all pass
+5. Merge with `gh pr merge <N> --merge`
+
 ### Tracking Progress
 
 When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes. When the PR is merged, the `Closes: #NN` line in the PR description automatically closes the issue.

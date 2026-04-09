@@ -39,12 +39,18 @@ Extract all referenced issue numbers from these patterns using a regex like `#(\
    c. **Wait for the agent to complete** before starting the next sub-issue. Each sub-issue may depend on the prior one (e.g., proto changes before backend, backend before frontend).
    d. After each agent completes, pull main to pick up the merged changes: `git checkout main && git pull origin main`.
 
-2. After all sub-issues are implemented and merged, close the parent issue:
+2. After all sub-issues are implemented and merged, run `git status` to check for uncommitted local changes. Sub-agents sometimes modify files (e.g. applying diagnostic fixes, updating generated code) that never get committed. **If uncommitted changes are found:**
+   a. Create a follow-up branch from `main`
+   b. Commit the changes with a descriptive message
+   c. Open a PR that closes the parent issue: `Closes #<parent-number>`
+   d. Loop on CI until all checks pass, then merge with `--merge`
+
+3. Once `git status` is clean, close the parent issue:
    ```bash
    gh issue close <parent-number> --repo <owner/repo> --comment "All sub-issues implemented and merged."
    ```
 
-3. **Stop here** -- do not continue to step 2 or beyond. The parent issue has no implementation of its own; the sub-issues cover all the work.
+4. **Stop here** -- do not continue to step 2 or beyond. The parent issue has no implementation of its own; the sub-issues cover all the work.
 
 **If no sub-issues are found**, continue with step 2 below (normal single-issue workflow).
 
@@ -238,3 +244,4 @@ Use `--merge` (not squash or rebase) so that commit SHAs referenced in screensho
 - **Screenshots for frontend PRs**: Required before the PR is considered complete
 - **Merge commits**: Always merge with `--merge`, never squash or rebase
 - **Close the right issue**: PRs close the specific issue being worked on (`Closes #<sub-issue>` for sub-issues, not the parent)
+- **No uncommitted local changes**: After all sub-issues are merged, verify `git status` is clean before closing the parent. Any uncommitted changes must be committed in a follow-up PR that closes the parent issue.

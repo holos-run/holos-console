@@ -632,23 +632,6 @@ func (h *uiHandler) serveIfFile(w http.ResponseWriter, r *http.Request, name str
 	return true
 }
 
-func (h *uiHandler) serveFile(w http.ResponseWriter, r *http.Request, name string) {
-	file, err := h.fs.Open(name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil || info.IsDir() {
-		http.NotFound(w, r)
-		return
-	}
-
-	h.serveFileWithInfo(w, r, name, file, info)
-}
-
 func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, name string, file fs.File, info fs.FileInfo) {
 	data, err := io.ReadAll(file)
 	if err != nil {
@@ -665,7 +648,7 @@ func (h *uiHandler) serveFileWithInfo(w http.ResponseWriter, r *http.Request, na
 
 // handleDebugOIDC returns debug information about OIDC configuration.
 // Useful for troubleshooting OIDC issues like missing groups claims.
-func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string, client *http.Client) {
+func handleDebugOIDC(w http.ResponseWriter, _ *http.Request, issuer string, client *http.Client) {
 
 	// Fetch the OIDC discovery document
 	discoveryURL := issuer + "/.well-known/openid-configuration"
@@ -676,14 +659,14 @@ func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string, clie
 	}
 	defer resp.Body.Close()
 
-	var discovery map[string]interface{}
+	var discovery map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to parse discovery document: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Add debug information
-	debugInfo := map[string]interface{}{
+	debugInfo := map[string]any{
 		"discovery":         discovery,
 		"configured_issuer": issuer,
 		"notes": map[string]string{

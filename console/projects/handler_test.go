@@ -707,7 +707,7 @@ func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(resp.Msg.Raw), &parsed); err != nil {
 		t.Fatalf("expected valid JSON, got parse error: %v", err)
 	}
@@ -717,11 +717,11 @@ func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 	if parsed["kind"] != "Namespace" {
 		t.Errorf("expected kind 'Namespace', got %v", parsed["kind"])
 	}
-	metadata := parsed["metadata"].(map[string]interface{})
+	metadata := parsed["metadata"].(map[string]any)
 	if metadata["name"] != "holos-prj-my-project" {
 		t.Errorf("expected metadata.name 'prj-my-project', got %v", metadata["name"])
 	}
-	labels := metadata["labels"].(map[string]interface{})
+	labels := metadata["labels"].(map[string]any)
 	if labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 		t.Errorf("expected managed-by label, got %v", labels[v1alpha1.LabelManagedBy])
 	}
