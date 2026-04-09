@@ -415,7 +415,9 @@ func (h *Handler) UpdateDeployment(
 		return nil, mapK8sError(err)
 	}
 
-	// Re-render and re-apply deployment resources with updated parameters.
+	// Re-render and reconcile deployment resources with updated parameters.
+	// Reconcile applies the new desired set via SSA then deletes any previously
+	// owned resources that are no longer in the desired set (orphan cleanup).
 	if h.renderer != nil && h.applier != nil && updated != nil {
 		templateName := updated.Data[TemplateKey]
 		image := updated.Data[ImageKey]

@@ -1113,7 +1113,8 @@ Two render paths exist — one for the deployment service and one for the templa
 | `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
-| `console/deployments/apply.go:96-127` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. |
+| `console/deployments/apply.go` | `Applier.Reconcile()` — calls `Apply()` then deletes owned resources whose (kind, name) is not in the desired set (orphan cleanup). Used by `UpdateDeployment`. Orphan cleanup is skipped if apply fails so the previously working state is preserved. |
+| `console/deployments/apply.go` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. Used by `DeleteDeployment` (unconditional removal) and `CreateDeployment` rollback. |
 
 ### Template Service
 
@@ -1135,7 +1136,7 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create/Update flow — builds `PlatformInput` (including `GatewayNamespace`) from authenticated context and `ProjectInput` from API request fields, calls `renderResources()` (which unifies enabled platform templates via `RenderWithOrgTemplates`), then `Apply()`. |
+| `console/deployments/handler.go` | Create flow — builds `PlatformInput` and `ProjectInput`, calls `renderResources()`, then `Apply()`. All-or-nothing: if render or apply fails, `rollbackCreate()` calls `Cleanup()` then `DeleteDeployment()` to remove partial state. Update flow uses `Reconcile()` instead of `Apply()` so orphaned resources are cleaned up after a successful apply. |
 | `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
