@@ -27,6 +27,7 @@ var (
 	refreshTokenTTL string
 	namespacePrefix    string
 	organizationPrefix string
+	folderPrefix       string
 	projectPrefix      string
 	disableOrgCreation bool
 	orgCreatorUsers    string
@@ -90,6 +91,7 @@ func Command() *cobra.Command {
 	// Namespace prefix flags
 	cmd.Flags().StringVar(&namespacePrefix, "namespace-prefix", "holos-", "Global prefix for all namespace names (default \"holos-\"), enabling multi-instance isolation (e.g., prod-, ci-)")
 	cmd.Flags().StringVar(&organizationPrefix, "organization-prefix", "org-", "Prefix for organization namespace names")
+	cmd.Flags().StringVar(&folderPrefix, "folder-prefix", "fld-", "Prefix for folder namespace names")
 	cmd.Flags().StringVar(&projectPrefix, "project-prefix", "prj-", "Prefix for project namespace names")
 
 	// Organization creation permission flags
@@ -240,6 +242,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		RefreshTokenTTL:  refreshTTL,
 		NamespacePrefix:     namespacePrefix,
 		OrganizationPrefix:  organizationPrefix,
+		FolderPrefix:        folderPrefix,
 		ProjectPrefix:       projectPrefix,
 		DisableOrgCreation:  disableOrgCreation,
 		OrgCreatorUsers:     splitCSV(orgCreatorUsers),
