@@ -32,6 +32,21 @@ type ResourceSet struct {
 
 // ResourceSetSpec groups the input and output sections of a ResourceSet.
 type ResourceSetSpec struct {
+	// Defaults carries optional default values for ProjectInput fields.
+	// Template authors specify concrete values in the CUE template's defaults
+	// block; these pre-fill the Create Deployment form and serve as CUE
+	// defaults that users can override at render time.
+	//
+	// Example defaults for go-httpbin:
+	//
+	//	Defaults: &ProjectInput{
+	//	    Name:        "httpbin",
+	//	    Image:       "ghcr.io/mccutchen/go-httpbin",
+	//	    Tag:         "2.21.0",
+	//	    Description: "A simple HTTP Request & Response Service",
+	//	    Port:        8080,
+	//	}
+	Defaults *ProjectInput `json:"defaults,omitempty" yaml:"defaults,omitempty" cue:"defaults?"`
 	// PlatformInput is the trusted context set by the backend and platform engineers.
 	PlatformInput PlatformInput `json:"platformInput"     yaml:"platformInput"     cue:"platformInput"`
 	// ProjectInput is the user-provided deployment parameters.

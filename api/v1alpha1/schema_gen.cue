@@ -132,6 +132,11 @@
 
 	// Port is the container port the application listens on (default: 8080).
 	port: int  @go(Port)
+
+	// Description is a short human-readable description of the deployment.
+	// Template authors can set this in the defaults block to pre-fill the
+	// Create Deployment form. Users may override it at deploy time.
+	description?: string  @go(Description)
 }
 
 // --- resources_go_gen.cue ---
@@ -200,6 +205,22 @@
 
 // ResourceSetSpec groups the input and output sections of a ResourceSet.
 #ResourceSetSpec: {
+	// Defaults carries optional default values for ProjectInput fields.
+	// Template authors specify concrete values in the CUE template's defaults
+	// block; these pre-fill the Create Deployment form and serve as CUE
+	// defaults that users can override at render time.
+	//
+	// Example defaults for go-httpbin:
+	//
+	//	Defaults: &ProjectInput{
+	//	    Name:        "httpbin",
+	//	    Image:       "ghcr.io/mccutchen/go-httpbin",
+	//	    Tag:         "2.21.0",
+	//	    Description: "A simple HTTP Request & Response Service",
+	//	    Port:        8080,
+	//	}
+	defaults?: (null | #ProjectInput)  @go(Defaults,*ProjectInput)
+
 	// PlatformInput is the trusted context set by the backend and platform engineers.
 	platformInput: #PlatformInput  @go(PlatformInput)
 

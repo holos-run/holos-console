@@ -61,4 +61,8 @@ type ProjectInput struct {
 	Env []EnvVar `json:"env,omitempty"     yaml:"env,omitempty"     cue:"env?"`
 	// Port is the container port the application listens on (default: 8080).
 	Port int `json:"port"              yaml:"port"              cue:"port"`
+	// Description is a short human-readable description of the deployment.
+	// Template authors can set this in the defaults block to pre-fill the
+	// Create Deployment form. Users may override it at deploy time.
+	Description string `json:"description,omitempty" yaml:"description,omitempty" cue:"description?"`
 }
