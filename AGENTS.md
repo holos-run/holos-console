@@ -288,8 +288,8 @@ Users and agents can call any RPC from the command line using `curl` (Connect pr
 - How to obtain an ID token from the profile page (`/profile`)
 - Shell-history-safe `export HOLOS_ID_TOKEN=...` workflow
 - `curl` Connect-protocol invocation (`-H "Connect-Protocol-Version: 1"`)
-- `grpcurl -insecure` invocation (never `-plaintext` — the listener is TLS-only)
-- gRPC reflection (`grpcurl -insecure localhost:8443 list`)
+- `grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem"` invocation (never `-plaintext` or `-insecure` — the listener is TLS-only and always presents a valid cert)
+- gRPC reflection (`grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" localhost:8443 list`)
 - Troubleshooting the `first record does not look like a TLS handshake` error
 
 ### Terminology
@@ -348,6 +348,28 @@ After any of the above, confirm the "Writing a Custom Template" section still in
 - Guidance on `HTTPRoute`: when to add one (external access) versus relying on the Service ClusterIP (cluster-internal), with a minimal CUE example.
 
 If any of the above is missing or stale after your changes, update the doc as part of the same commit.
+
+### TLS Example Command Guardrail
+
+**Never include TLS verification bypass flags in any example command**, whether in documentation, UI-rendered snippets, tests, or code comments. Specifically:
+
+- Do not emit `curl -k`, `curl -sk`, or `curl --insecure`.
+- Do not emit `grpcurl -insecure`.
+
+**Reason**: Holos Console always runs with valid TLS certs. Local development uses `make certs` to generate a locally-trusted mkcert certificate; production uses a public-CA cert. There is no supported mode in which the server serves an untrusted certificate.
+
+**Correct form** (matches `scripts/rpc-version`):
+
+```bash
+curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" https://localhost:8443/...
+grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" localhost:8443 ...
+```
+
+Production examples whose server cert chains to a public CA may omit `--cacert` entirely and rely on the system CA store.
+
+**Not covered by this rule**: `--enable-insecure-dex` is the server CLI flag that enables the embedded Dex OIDC provider. It is unrelated to TLS verification and must not be changed or removed.
+
+**Triggers**: Apply this rule when writing or editing any `.md`, `.go`, `.ts`, `.tsx`, or shell script that contains a `curl` or `grpcurl` example.
 
 ### Testing Patterns
 

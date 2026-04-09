@@ -159,18 +159,20 @@ describe('ProfilePage API Access section', () => {
   it('renders a curl example using $HOLOS_ID_TOKEN', () => {
     setAuthState()
     render(<ProfilePage />)
-    const curl = screen.getByText(/curl -sk/)
+    const curl = screen.getByText(/curl -s --cacert/)
     expect(curl.textContent).toContain('Connect-Protocol-Version: 1')
     expect(curl.textContent).toContain('$HOLOS_ID_TOKEN')
     expect(curl.textContent).toContain('OrganizationService/ListOrganizations')
+    expect(curl.textContent).not.toContain('-k')
   })
 
-  it('renders a grpcurl -insecure example using $HOLOS_ID_TOKEN', () => {
+  it('renders a grpcurl example using $HOLOS_ID_TOKEN', () => {
     setAuthState()
     render(<ProfilePage />)
-    const pre = screen.getByText(/grpcurl -insecure/)
+    const pre = screen.getByText(/grpcurl -cacert/)
     expect(pre.textContent).toContain('$HOLOS_ID_TOKEN')
     expect(pre.textContent).toContain('OrganizationService/ListOrganizations')
+    expect(pre.textContent).not.toContain('-insecure')
   })
 
   it('does not render grpcurl -plaintext', () => {
