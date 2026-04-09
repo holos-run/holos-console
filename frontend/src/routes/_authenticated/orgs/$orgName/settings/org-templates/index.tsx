@@ -20,12 +20,12 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListSystemTemplates, useCreateSystemTemplate } from '@/queries/system-templates'
+import { useListOrgTemplates, useCreateOrgTemplate } from '@/queries/org-templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
-// EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE is the example org-level platform template CUE content
-// (code: SystemTemplate). It matches console/system_templates/example_httpbin_platform.cue.
+// EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE is the example org-level platform template CUE content.
+// It matches console/org_templates/example_httpbin_platform.cue.
 const EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE = `// Org-level platform template — evaluated at organization scope.
 // Any changes here affect every project in the org.
 //
@@ -101,16 +101,16 @@ projectResources: namespacedResources: [_]: close({
 })
 `
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/system-templates/')({
-  component: SystemTemplatesListRoute,
+export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/org-templates/')({
+  component: OrgTemplatesListRoute,
 })
 
-function SystemTemplatesListRoute() {
+function OrgTemplatesListRoute() {
   const { orgName } = Route.useParams()
-  return <SystemTemplatesListPage orgName={orgName} />
+  return <OrgTemplatesListPage orgName={orgName} />
 }
 
-export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: string } = {}) {
+export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: string } = {}) {
   let routeOrgName: string | undefined
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -120,9 +120,9 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const { data: templates, isPending, error } = useListSystemTemplates(orgName)
+  const { data: templates, isPending, error } = useListOrgTemplates(orgName)
   const { data: org } = useGetOrganization(orgName)
-  const createMutation = useCreateSystemTemplate(orgName)
+  const createMutation = useCreateOrgTemplate(orgName)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
@@ -221,7 +221,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
               {templates.map((tmpl) => (
                 <li key={tmpl.name}>
                   <Link
-                    to="/orgs/$orgName/settings/system-templates/$templateName"
+                    to="/orgs/$orgName/settings/org-templates/$templateName"
                     params={{ orgName, templateName: tmpl.name }}
                     className="flex items-center gap-2 p-3 rounded-md hover:bg-muted transition-colors"
                   >

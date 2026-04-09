@@ -116,13 +116,13 @@ describe('CueTemplateEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
-  it('renders preview tab with system input, user input, and rendered YAML sections', async () => {
+  it('renders preview tab with platform input, user input, and rendered YAML sections', async () => {
     const user = userEvent.setup()
     render(
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        defaultSystemInput="system: {}"
+        defaultPlatformInput="system: {}"
         defaultUserInput="input: {}"
         useRenderFn={makeRenderFn('apiVersion: v1\nkind: ReferenceGrant')}
       />
@@ -131,7 +131,7 @@ describe('CueTemplateEditor', () => {
     // Switch to preview tab
     await user.click(screen.getByRole('tab', { name: /preview/i }))
 
-    expect(screen.getByRole('textbox', { name: /system input/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /platform input/i })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /user input/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Rendered YAML')).toBeInTheDocument()
     expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('ReferenceGrant')

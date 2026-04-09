@@ -5,20 +5,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { OrgTemplateService } from '@/gen/holos/console/v1/org_templates_pb.js'
 import { useAuth } from '@/lib/auth'
 
-function systemTemplateListKey(org: string) {
-  return ['system-templates', 'list', org] as const
+function orgTemplateListKey(org: string) {
+  return ['org-templates', 'list', org] as const
 }
 
-function systemTemplateGetKey(org: string, name: string) {
-  return ['system-templates', 'get', org, name] as const
+function orgTemplateGetKey(org: string, name: string) {
+  return ['org-templates', 'get', org, name] as const
 }
 
-export function useListSystemTemplates(org: string) {
+export function useListOrgTemplates(org: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   return useQuery({
-    queryKey: systemTemplateListKey(org),
+    queryKey: orgTemplateListKey(org),
     queryFn: async () => {
       const response = await client.listOrgTemplates({ org })
       return response.templates
@@ -27,12 +27,12 @@ export function useListSystemTemplates(org: string) {
   })
 }
 
-export function useGetSystemTemplate(org: string, name: string) {
+export function useGetOrgTemplate(org: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   return useQuery({
-    queryKey: systemTemplateGetKey(org, name),
+    queryKey: orgTemplateGetKey(org, name),
     queryFn: async () => {
       const response = await client.getOrgTemplate({ org, name })
       return response.template
@@ -41,7 +41,7 @@ export function useGetSystemTemplate(org: string, name: string) {
   })
 }
 
-export function useCreateSystemTemplate(org: string) {
+export function useCreateOrgTemplate(org: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -49,12 +49,12 @@ export function useCreateSystemTemplate(org: string) {
     mutationFn: (params: { name: string; displayName: string; description: string; cueTemplate: string; mandatory: boolean; enabled: boolean }) =>
       client.createOrgTemplate({ org, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
+      queryClient.invalidateQueries({ queryKey: orgTemplateListKey(org) })
     },
   })
 }
 
-export function useUpdateSystemTemplate(org: string, name: string) {
+export function useUpdateOrgTemplate(org: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -62,13 +62,13 @@ export function useUpdateSystemTemplate(org: string, name: string) {
     mutationFn: (params: { displayName?: string; description?: string; cueTemplate?: string; mandatory?: boolean; enabled?: boolean }) =>
       client.updateOrgTemplate({ org, name, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
-      queryClient.invalidateQueries({ queryKey: systemTemplateGetKey(org, name) })
+      queryClient.invalidateQueries({ queryKey: orgTemplateListKey(org) })
+      queryClient.invalidateQueries({ queryKey: orgTemplateGetKey(org, name) })
     },
   })
 }
 
-export function useDeleteSystemTemplate(org: string) {
+export function useDeleteOrgTemplate(org: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -76,12 +76,12 @@ export function useDeleteSystemTemplate(org: string) {
     mutationFn: (params: { name: string }) =>
       client.deleteOrgTemplate({ org, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
+      queryClient.invalidateQueries({ queryKey: orgTemplateListKey(org) })
     },
   })
 }
 
-export function useCloneSystemTemplate(org: string) {
+export function useCloneOrgTemplate(org: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -89,12 +89,12 @@ export function useCloneSystemTemplate(org: string) {
     mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
       client.cloneOrgTemplate({ org, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: systemTemplateListKey(org) })
+      queryClient.invalidateQueries({ queryKey: orgTemplateListKey(org) })
     },
   })
 }
 
-export function useRenderSystemTemplate(
+export function useRenderOrgTemplate(
   cueTemplate: string,
   cueInput = '',
   enabled = true,
@@ -104,7 +104,7 @@ export function useRenderSystemTemplate(
   const transport = useTransport()
   const client = useMemo(() => createClient(OrgTemplateService, transport), [transport])
   return useQuery({
-    queryKey: ['system-templates', 'render', cueTemplate, cueInput, cuePlatformInput] as const,
+    queryKey: ['org-templates', 'render', cueTemplate, cueInput, cuePlatformInput] as const,
     queryFn: async () => {
       const response = await client.renderOrgTemplate({
         cueTemplate,
