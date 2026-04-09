@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -61,10 +62,20 @@ function setAuthState(overrides: Record<string, unknown> = {}) {
   })
 }
 
+function mockClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText },
+    writable: true,
+    configurable: true,
+  })
+  return writeText
+}
+
 describe('ProfilePage API Access section', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mockClipboard()
   })
 
   it('renders the API Access card heading', () => {
@@ -95,17 +106,40 @@ describe('ProfilePage API Access section', () => {
     expect(screen.queryByText(/id\.token\.value/)).not.toBeInTheDocument()
   })
 
-  it('copies the set +o history / export / set -o history recipe on copy', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.assign(navigator, { clipboard: { writeText } })
+  it('copies a clean export line with the id_token on copy', async () => {
+    const writeText = mockClipboard()
     setAuthState()
     render(<ProfilePage />)
     fireEvent.click(screen.getByRole('button', { name: /copy export snippet/i }))
     expect(writeText).toHaveBeenCalledOnce()
     const copied = writeText.mock.calls[0][0] as string
-    expect(copied).toContain('set +o history')
-    expect(copied).toContain('export HOLOS_ID_TOKEN="id.token.value"')
-    expect(copied).toContain('set -o history')
+    expect(copied).toBe('export HOLOS_ID_TOKEN="id.token.value"')
+    expect(copied).not.toContain('set +o history')
+    expect(copied).not.toContain('set -o history')
+  })
+
+  it('renders shell history tabs with zsh and bash triggers', () => {
+    setAuthState()
+    render(<ProfilePage />)
+    expect(screen.getByRole('tab', { name: /zsh/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /bash/i })).toBeInTheDocument()
+  })
+
+  it('shows zsh tab content by default', () => {
+    setAuthState()
+    render(<ProfilePage />)
+    // zsh tab is active by default — its content should be visible
+    expect(screen.getByText(/setopt/i)).toBeInTheDocument()
+  })
+
+  it('switches to bash tab and shows bash-specific instructions', async () => {
+    const user = userEvent.setup()
+    setAuthState()
+    render(<ProfilePage />)
+    await user.click(screen.getByRole('tab', { name: /bash/i }))
+    // The bash tab panel should be active; check the tab panel content
+    const bashPanel = screen.getByRole('tabpanel')
+    expect(bashPanel.textContent).toContain('set +o history')
   })
 
   it('never shows the refresh_token even when present', () => {

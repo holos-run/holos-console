@@ -25,13 +25,42 @@ never leave the browser.
 Copy the export snippet from the profile page and paste it into your terminal:
 
 ```bash
+export HOLOS_ID_TOKEN="<paste id token here>"
+```
+
+Before pasting, disable command history in your shell so the token does not land
+in your history file. See the per-shell instructions below.
+
+### Disabling shell history before pasting
+
+**zsh** — disable history recording for the current session:
+
+```zsh
+unset HISTFILE
+export HOLOS_ID_TOKEN="<paste id token here>"
+```
+
+Alternatively, prefix the export with a leading space and enable
+`HIST_IGNORE_SPACE` (lines starting with a space are not recorded):
+
+```zsh
+setopt HIST_IGNORE_SPACE
+ export HOLOS_ID_TOKEN="<paste id token here>"
+```
+
+To restore history, start a new shell or run
+`export HISTFILE=~/.zsh_history`.
+
+**bash** — wrap the export with `set +o history` / `set -o history`:
+
+```bash
 set +o history
 export HOLOS_ID_TOKEN="<paste id token here>"
 set -o history
 ```
 
-The `set +o history` / `set -o history` wrapper prevents the token from landing
-in `.bash_history` or `.zsh_history`.
+`set +o history` disables recording for the current shell session.
+`set -o history` re-enables it after you paste.
 
 ## Calling an RPC with curl (Connect protocol — recommended)
 
