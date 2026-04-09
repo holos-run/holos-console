@@ -175,7 +175,15 @@ Rejected because:
   A per-project opt-out mechanism is deferred.
 
 - **Folder-level linking.** This ADR applies to Organization → Project linking.
-  Folder-level templates (v1alpha2) will extend this model.
+  Folder-level templates (v1alpha2) extend this model.
+
+**v1alpha2 extension**: The explicit linking model is extended to cross-level
+references (project → folder → org). The `console.holos.run/linked-org-templates`
+annotation is replaced by `console.holos.run/linked-templates` with a JSON
+object array carrying `{scope, scope_name, name}` instead of a flat name list.
+The render-set formula is extended to cover all ancestor levels (not just the
+organization). Mandatory templates at any ancestor level (folder or org) are
+always included. See [ADR 021](021-unified-template-service.md) Decision 5.
 
 ## References
 
@@ -184,3 +192,4 @@ Rejected because:
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
 - [ADR 018: CUE Template Default Values](018-cue-template-default-values.md)
+- [ADR 021: Unified Template Service and Collapsed Template Permissions](021-unified-template-service.md) — extends this ADR to cross-level linking and the unified TemplateService

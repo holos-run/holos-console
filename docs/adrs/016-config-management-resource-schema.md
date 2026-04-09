@@ -555,6 +555,13 @@ api/
   v1alpha2/          // future: adds Folder, securityResources, folderInput
 ```
 
+**v1alpha2**: `api/v1alpha2/` adds the `Folder` type and extends `PlatformInput`
+with folder ancestry (`FolderInfo`, `Folders []FolderInfo`). See
+[ADR 020](020-v1alpha2-folder-hierarchy.md) for the complete type definitions.
+The unified `TemplateService` replaces `DeploymentTemplateService` and
+`OrgTemplateService`. See [ADR 021](021-unified-template-service.md) for the
+collapsed permission set, scope discriminator, and cross-level linking model.
+
 ## Consequences
 
 ### Positive
@@ -621,3 +628,4 @@ api/
 - [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
 - [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md)
+- [ADR 021: Unified Template Service and Collapsed Template Permissions](021-unified-template-service.md)
