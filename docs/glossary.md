@@ -23,15 +23,18 @@ canonical term "platform template."
 
 An organization-level CUE template managed by platform engineers. Platform
 templates are stored as Kubernetes ConfigMaps in the organization namespace and
-unified with the deployment template at render time. They can produce resources
-in `platformResources` (e.g., HTTPRoutes in the gateway namespace) and define
-CUE constraints over `projectResources` (e.g., closing the struct to restrict
-allowed resource kinds). Platform templates may be marked `mandatory` (applied
-to project namespaces at creation time) and/or `enabled` (unified at deploy
-time). Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE`, granted only
-to org-level OWNERs. See [ADR 013](adrs/013-separate-system-user-template-input.md)
-and [ADR 016](adrs/016-config-management-resource-schema.md) for the design
-rationale.
+unified with the deployment template at render time (subject to the explicit
+linking formula — see [Linked platform template](#linked-platform-template) and
+[Mandatory platform template](#mandatory-platform-template) below). They can
+produce resources in `platformResources` (e.g., HTTPRoutes in the gateway
+namespace) and define CUE constraints over `projectResources` (e.g., closing
+the struct to restrict allowed resource kinds). Platform templates may be marked
+`mandatory` (always applied at render time and at project namespace creation)
+and/or `enabled` (available for linking and render-time unification). Edit
+access requires `PERMISSION_ORG_TEMPLATES_WRITE`, granted only to org-level
+OWNERs. See [ADR 013](adrs/013-separate-system-user-template-input.md),
+[ADR 016](adrs/016-config-management-resource-schema.md), and
+[ADR 019](adrs/019-explicit-template-linking.md) for the design rationale.
 
 ### Deployment template (code: `DeploymentTemplate`, proto: `DeploymentTemplateService`)
 
@@ -40,8 +43,30 @@ deployment. Deployment templates are stored as Kubernetes ConfigMaps in the
 project namespace and written by product engineers. They produce resources in
 `projectResources` (Deployments, Services, ServiceAccounts) and may carry
 `DeploymentDefaults` (image, tag, port, etc.) that pre-fill the Create
-Deployment form. At render time, the deployment template is unified with all
-enabled platform templates for the organization.
+Deployment form. At render time, the deployment template is unified with the
+applicable platform templates — always including mandatory platform templates,
+plus any enabled platform templates explicitly linked via the
+`console.holos.run/linked-org-templates` annotation (see
+[Linked platform template](#linked-platform-template)).
+
+### Linked platform template
+
+An enabled org-level platform template that a deployment template has explicitly
+opted into by including its name in the `console.holos.run/linked-org-templates`
+annotation on the deployment template ConfigMap. Linked non-mandatory templates
+are included in the render set for that deployment template. The product engineer
+selects linked templates using the "Linked Platform Templates" section in the
+deployment template editor. See [ADR 019](adrs/019-explicit-template-linking.md).
+
+### Mandatory platform template
+
+An org-level platform template with `mandatory = true`. Mandatory templates are
+applied to every project namespace at creation time AND are always unified with
+every deployment template at render time, regardless of whether the deployment
+template links them. Platform engineers set the `mandatory` flag when a policy
+must apply uniformly across all deployments in the organization with no opt-out.
+Mandatory templates appear pre-checked with a lock icon in the deployment
+template editor. See [ADR 019](adrs/019-explicit-template-linking.md).
 
 ### Platform resources (`platformResources`)
 

@@ -122,7 +122,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -161,7 +161,7 @@ func TestCreateTemplate(t *testing.T) {
 			Image: "ghcr.io/mccutchen/go-httpbin",
 			Tag:   "2.21",
 		}
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -187,7 +187,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil)
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -205,7 +205,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated Web App"
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -225,7 +225,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTemplate := "#Input: { name: string }\n"
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, &newTemplate, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, &newTemplate, nil, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -241,7 +241,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		defaults := &consolev1.DeploymentDefaults{Image: "ghcr.io/example/app", Tag: "v1.0"}
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, defaults, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, defaults, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -266,7 +266,7 @@ func TestUpdateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, nil, true)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, nil, true, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -283,7 +283,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "New Display Name"
-		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newName, nil, nil, nil, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -302,7 +302,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated"
-		_, err := k8s.UpdateTemplate(context.Background(), "my-project", "nonexistent", &newName, nil, nil, nil, false)
+		_, err := k8s.UpdateTemplate(context.Background(), "my-project", "nonexistent", &newName, nil, nil, nil, false, nil)
 		if err == nil {
 			t.Fatal("expected error for nonexistent template")
 		}
@@ -373,6 +373,111 @@ func TestCloneTemplate(t *testing.T) {
 		_, err := k8s.CloneTemplate(context.Background(), "my-project", "nonexistent", "copy", "Copy")
 		if err == nil {
 			t.Fatal("expected error when source does not exist")
+		}
+	})
+}
+
+func TestLinkedOrgTemplatesAnnotation(t *testing.T) {
+	t.Run("CreateTemplate stores linked list as JSON annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		linked := []string{"archetype-a", "policy-floor"}
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, linked)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]
+		if !ok {
+			t.Fatal("expected linked-org-templates annotation")
+		}
+		var got []string
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("annotation is not valid JSON: %v", err)
+		}
+		if len(got) != 2 || got[0] != "archetype-a" || got[1] != "policy-floor" {
+			t.Errorf("expected [archetype-a policy-floor], got %v", got)
+		}
+	})
+
+	t.Run("CreateTemplate with empty linked list omits annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		cm, err := k8s.CreateTemplate(context.Background(), "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok {
+			t.Error("expected no linked-org-templates annotation when linked list is nil")
+		}
+	})
+
+	t.Run("UpdateTemplate replaces linked list", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", "#Input: {}\n")
+		cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates] = `["old-template"]`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		newLinked := []string{"new-template"}
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, nil, false, newLinked)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		raw, ok := updated.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]
+		if !ok {
+			t.Fatal("expected linked-org-templates annotation")
+		}
+		var got []string
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("annotation is not valid JSON: %v", err)
+		}
+		if len(got) != 1 || got[0] != "new-template" {
+			t.Errorf("expected [new-template], got %v", got)
+		}
+	})
+
+	t.Run("UpdateTemplate clears linked list when empty slice provided", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", "#Input: {}\n")
+		cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates] = `["old-template"]`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, nil, false, []string{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := updated.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok {
+			t.Error("expected linked-org-templates annotation to be removed on empty slice")
+		}
+	})
+
+	t.Run("UpdateTemplate leaves linked list unchanged when nil provided", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", "#Input: {}\n")
+		cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates] = `["preserved"]`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		newDisplayName := "Updated"
+		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", &newDisplayName, nil, nil, nil, false, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		raw, ok := updated.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]
+		if !ok {
+			t.Fatal("expected linked-org-templates annotation to be preserved")
+		}
+		var got []string
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("annotation is not valid JSON: %v", err)
+		}
+		if len(got) != 1 || got[0] != "preserved" {
+			t.Errorf("expected [preserved], got %v", got)
 		}
 	})
 }

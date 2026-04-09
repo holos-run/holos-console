@@ -22,6 +22,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/deployment-templates', () => ({
   useCreateDeploymentTemplate: vi.fn(),
   useRenderDeploymentTemplate: vi.fn(),
+  useListLinkableOrgTemplates: vi.fn().mockReturnValue({ data: [] }),
 }))
 
 vi.mock('@/hooks/use-debounced-value', () => ({
@@ -30,7 +31,7 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useCreateDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useCreateDeploymentTemplate, useRenderDeploymentTemplate, useListLinkableOrgTemplates } from '@/queries/deployment-templates'
 import { CreateTemplatePage } from './new'
 
 function setupMocks(
@@ -226,6 +227,89 @@ describe('CreateTemplatePage', () => {
       expect(cueEditor.value).toContain('ServiceAccount')
       expect(cueEditor.value).toContain('Deployment')
       expect(cueEditor.value).toContain('Service')
+    })
+  })
+
+  describe('linked platform templates', () => {
+    const mockLinkable = [
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false },
+      { name: 'mandatory-labels', displayName: 'Mandatory Labels', description: 'Enforces labels', mandatory: true },
+    ]
+
+    it('does not show linked templates section when no linkable templates exist', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: [] })
+      render(<CreateTemplatePage />)
+      expect(screen.queryByLabelText(/linked platform templates/i)).not.toBeInTheDocument()
+    })
+
+    it('shows linked templates section when linkable templates exist', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+      expect(screen.getByLabelText(/linked platform templates/i)).toBeInTheDocument()
+    })
+
+    it('renders each linkable template as a checkbox', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+      expect(screen.getByRole('checkbox', { name: /httproute gateway/i })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: /mandatory labels/i })).toBeInTheDocument()
+    })
+
+    it('mandatory template checkbox is checked and disabled', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /mandatory labels/i })
+      expect(mandatoryCheckbox).toBeChecked()
+      expect(mandatoryCheckbox).toBeDisabled()
+    })
+
+    it('non-mandatory template checkbox is unchecked and enabled by default', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+      const checkbox = screen.getByRole('checkbox', { name: /httproute gateway/i })
+      expect(checkbox).not.toBeChecked()
+      expect(checkbox).not.toBeDisabled()
+    })
+
+    it('checking a non-mandatory template includes it in the create mutation', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync)
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+
+      // Fill in required name field
+      fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+
+      // Check the non-mandatory template
+      fireEvent.click(screen.getByRole('checkbox', { name: /httproute gateway/i }))
+
+      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            linkedOrgTemplates: ['httproute'],
+          }),
+        )
+      })
+    })
+
+    it('unchecked template is not included in the create mutation', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync)
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      render(<CreateTemplatePage />)
+
+      fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            linkedOrgTemplates: [],
+          }),
+        )
+      })
     })
   })
 })

@@ -119,6 +119,10 @@ This matches the existing RBAC evaluation pattern in `console/rbac/rbac.go`.
 
 ### 3. The renderer determines which resource collections it reads from each template level.
 
+**Note:** ADR 017 is silent on *which specific ancestor templates* participate
+in unification at render time. That decision (explicit linking, Model B) is
+documented in [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md).
+
 Every template at every level in the hierarchy can define values for both
 `projectResources` and `platformResources`. In CUE, all values — concrete
 data, constraints, types, top, bottom — are unified together. There is no
@@ -441,4 +445,5 @@ Viewer and above.
 - [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
 - [ADR 015: Configuration Management RBAC Levels (revoked)](015-config-management-rbac-levels.md)
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
+- [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md) — which ancestor templates participate in unification
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions

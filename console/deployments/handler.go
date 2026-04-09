@@ -63,9 +63,14 @@ type OrgProvider interface {
 	GetProjectOrg(ctx context.Context, project string) (string, error)
 }
 
-// OrgTemplateProvider lists enabled platform template CUE sources for an org.
+// OrgTemplateProvider resolves platform template CUE sources for render (ADR 019).
+// The effective set at render time is:
+//
+//	(mandatory AND enabled) UNION (enabled AND name IN linkedNames)
+//
+// Disabled templates are never included even when explicitly listed.
 type OrgTemplateProvider interface {
-	ListEnabledOrgTemplateSources(ctx context.Context, org string) ([]string, error)
+	ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedNames []string) ([]string, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -117,10 +122,17 @@ func (h *Handler) WithOrgTemplateProvider(stp OrgTemplateProvider) *Handler {
 	return h
 }
 
-// renderResources renders deployment resources, unifying with enabled platform
+// renderResources renders deployment resources, unifying with platform
 // templates when an OrgProvider and OrgTemplateProvider are configured.
-// If neither is configured, falls back to Render (deployment template only).
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+//
+// linkedNames contains the explicit linking list from the deployment template
+// annotation (console.holos.run/linked-org-templates). The effective template
+// set at render time is the union of mandatory+enabled templates and the
+// explicitly linked enabled templates (ADR 019).
+//
+// If neither OrgProvider nor OrgTemplateProvider is configured, falls back to
+// Render (deployment template only, no platform template unification).
+func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput, linkedNames []string) ([]unstructured.Unstructured, error) {
 	if h.orgProvider == nil || h.orgTemplateProvider == nil {
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
@@ -138,9 +150,9 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	orgTemplateSources, err := h.orgTemplateProvider.ListEnabledOrgTemplateSources(ctx, org)
+	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)
 	if err != nil {
-		slog.WarnContext(ctx, "could not list enabled platform templates, skipping platform template unification",
+		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
 			slog.String("project", project),
 			slog.String("org", org),
 			slog.Any("error", err),
@@ -281,14 +293,17 @@ func (h *Handler) CreateDeployment(
 		}
 	}
 
-	// Validate that the referenced template exists and get its CUE source.
+	// Validate that the referenced template exists and get its CUE source
+	// along with the explicit linking list (ADR 019).
 	var cueSource string
+	var linkedOrgTemplates []string
 	if h.templateResolver != nil {
 		tmplCM, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", req.Msg.Template, project))
 		}
 		cueSource = tmplCM.Data[cueTemplateKey]
+		linkedOrgTemplates = linkedOrgTemplatesFromAnnotation(tmplCM)
 	}
 
 	envInputs, err := validateEnvVars(req.Msg.Env)
@@ -325,7 +340,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplates)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -424,6 +439,7 @@ func (h *Handler) UpdateDeployment(
 		tag := updated.Data[TagKey]
 
 		var cueSource string
+		var linkedOrgTemplatesUpdate []string
 		if h.templateResolver != nil && templateName != "" {
 			tmplCM, tmplErr := h.templateResolver.GetTemplate(ctx, project, templateName)
 			if tmplErr != nil {
@@ -434,6 +450,7 @@ func (h *Handler) UpdateDeployment(
 				)
 			} else {
 				cueSource = tmplCM.Data[cueTemplateKey]
+				linkedOrgTemplatesUpdate = linkedOrgTemplatesFromAnnotation(tmplCM)
 			}
 		}
 
@@ -448,7 +465,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha1(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn)
+		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -665,6 +682,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
+	linkedOrgTemplatesPreview := linkedOrgTemplatesFromAnnotation(tmplCM)
 
 	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
@@ -693,10 +711,12 @@ func (h *Handler) GetDeploymentRenderPreview(
 	cuePlatformInput := fmt.Sprintf("platform: %s", string(platformJSON))
 	cueUserInput := fmt.Sprintf("input: %s", string(projectJSON))
 
-	// Render the template to produce YAML and JSON output.
+	// Render the template to produce YAML and JSON output, including linked
+	// platform templates (ADR 019). Uses renderResources so the same linking
+	// logic applies at preview time as at deploy time.
 	var renderedYAML, renderedJSON string
 	if h.renderer != nil {
-		resources, renderErr := h.renderer.Render(ctx, cueTemplate, platformIn, projectIn)
+		resources, renderErr := h.renderResources(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -935,6 +955,29 @@ func (h *Handler) buildPlatformInput(project, namespace string, claims *rpc.Clai
 		}
 	}
 	return pi
+}
+
+// linkedOrgTemplatesFromAnnotation reads the linked org template names from the
+// console.holos.run/linked-org-templates annotation on a deployment template ConfigMap.
+// Returns nil if the annotation is absent or unparseable.
+func linkedOrgTemplatesFromAnnotation(cm *corev1.ConfigMap) []string {
+	if cm == nil || cm.Annotations == nil {
+		return nil
+	}
+	raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]
+	if !ok || raw == "" {
+		return nil
+	}
+	var names []string
+	if err := json.Unmarshal([]byte(raw), &names); err != nil {
+		slog.Warn("failed to parse linked-org-templates annotation",
+			slog.String("name", cm.Name),
+			slog.String("namespace", cm.Namespace),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	return names
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.

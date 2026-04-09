@@ -62,7 +62,9 @@ func (k *K8sClient) GetTemplate(ctx context.Context, project, name string) (*cor
 
 // CreateTemplate creates a new deployment template ConfigMap.
 // If defaults is non-nil, it is serialized to JSON and stored under DefaultsKey.
-func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.DeploymentDefaults) (*corev1.ConfigMap, error) {
+// If linkedOrgTemplates is non-nil and non-empty, it is stored as a JSON array
+// in the console.holos.run/linked-org-templates annotation.
+func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.DeploymentDefaults, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment template in kubernetes",
 		slog.String("project", project),
@@ -79,6 +81,17 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 		}
 		data[DefaultsKey] = string(b)
 	}
+	annotations := map[string]string{
+		v1alpha1.AnnotationDisplayName: displayName,
+		v1alpha1.AnnotationDescription: description,
+	}
+	if len(linkedOrgTemplates) > 0 {
+		b, err := json.Marshal(linkedOrgTemplates)
+		if err != nil {
+			return nil, fmt.Errorf("serializing linked org templates: %w", err)
+		}
+		annotations[v1alpha1.AnnotationLinkedOrgTemplates] = string(b)
+	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -87,10 +100,7 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
 				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeploymentTemplate,
 			},
-			Annotations: map[string]string{
-				v1alpha1.AnnotationDisplayName: displayName,
-				v1alpha1.AnnotationDescription: description,
-			},
+			Annotations: annotations,
 		},
 		Data: data,
 	}
@@ -101,7 +111,9 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 // Only non-nil fields are updated. If defaults is non-nil, it is serialized to
 // JSON and stored under DefaultsKey. If clearDefaults is true, the DefaultsKey
 // is removed from the ConfigMap data regardless of the defaults parameter.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.DeploymentDefaults, clearDefaults bool) (*corev1.ConfigMap, error) {
+// linkedOrgTemplates replaces the entire linking annotation when present (even
+// when empty, to allow clearing all links). Pass nil to leave the annotation unchanged.
+func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.DeploymentDefaults, clearDefaults bool, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment template in kubernetes",
 		slog.String("project", project),
@@ -136,11 +148,25 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, di
 		}
 		cm.Data[DefaultsKey] = string(b)
 	}
+	// linkedOrgTemplates is non-nil when the caller wants to update the linking
+	// list (including clearing it with an empty slice). Nil means "no change".
+	if linkedOrgTemplates != nil {
+		if len(linkedOrgTemplates) == 0 {
+			delete(cm.Annotations, v1alpha1.AnnotationLinkedOrgTemplates)
+		} else {
+			b, err := json.Marshal(linkedOrgTemplates)
+			if err != nil {
+				return nil, fmt.Errorf("serializing linked org templates: %w", err)
+			}
+			cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates] = string(b)
+		}
+	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
 
 // CloneTemplate copies an existing deployment template to a new name.
-// The clone inherits the CUE template, description, and defaults from the source.
+// The clone inherits the CUE template, description, defaults, and linked org
+// templates from the source.
 func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
 	source, err := k.GetTemplate(ctx, project, sourceName)
 	if err != nil {
@@ -154,6 +180,11 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newN
 			defaults = &d
 		}
 	}
+	// Inherit linked org templates from source.
+	var linkedOrgTemplates []string
+	if raw, ok := source.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
+		_ = json.Unmarshal([]byte(raw), &linkedOrgTemplates)
+	}
 	return k.CreateTemplate(
 		ctx,
 		project,
@@ -162,6 +193,7 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newN
 		source.Annotations[v1alpha1.AnnotationDescription],
 		source.Data[CueTemplateKey],
 		defaults,
+		linkedOrgTemplates,
 	)
 }
 

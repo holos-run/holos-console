@@ -39,6 +39,13 @@
 #AnnotationEnabled:           "console.holos.run/enabled"
 #AnnotationSettings:          "console.holos.run/project-settings"
 
+// AnnotationLinkedOrgTemplates stores the list of explicitly linked platform
+// template names as a JSON array on a deployment template ConfigMap.
+// Only enabled (non-mandatory) org templates appear here; mandatory templates
+// always participate in render regardless of this annotation.
+// Example: ["microservice-v2", "istio-gateway"]
+#AnnotationLinkedOrgTemplates: "console.holos.run/linked-org-templates"
+
 // --- hierarchy_go_gen.cue ---
 
 // Organization represents an organization in the configuration management hierarchy.
