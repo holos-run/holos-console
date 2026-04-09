@@ -186,7 +186,7 @@ describe('CreateTemplatePage', () => {
     render(<CreateTemplatePage projectName="test-project" />)
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     expect(calls.length).toBeGreaterThan(0)
-    // 4th arg is cueSystemInput
+    // 4th arg is cuePlatformInput
     const systemInput = calls[0][3]
     expect(systemInput).toContain('platform:')
     expect(systemInput).toContain('claims')

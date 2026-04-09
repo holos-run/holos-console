@@ -69,7 +69,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     }
   }, [template?.cueTemplate])
 
-  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_SYSTEM_DEPLOYMENTS_EDIT).
+  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_ORG_TEMPLATES_WRITE).
   // Frontend mirrors this: show Save only for OWNER.
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
@@ -156,7 +156,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
       <Card>
         <CardContent className="pt-6 space-y-6">
           <div>
-            <p className="text-sm text-muted-foreground">{orgName} / Settings / System Templates / {templateName}</p>
+            <p className="text-sm text-muted-foreground">{orgName} / Settings / Platform Templates / {templateName}</p>
             <div className="flex items-center gap-2 mt-1">
               <h2 className="text-xl font-semibold">{template?.displayName || templateName}</h2>
               {template?.mandatory && (
@@ -231,7 +231,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
       <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Clone System Template</DialogTitle>
+            <DialogTitle>Clone Platform Template</DialogTitle>
             <DialogDescription>
               Create a copy of &quot;{templateName}&quot; with a new name.
             </DialogDescription>

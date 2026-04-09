@@ -19,7 +19,7 @@ type ResourceApplier interface {
 }
 
 // MandatoryTemplateApplier renders and applies all mandatory platform templates
-// (code: SystemTemplate) for an org into a project namespace.
+// (code: OrgTemplate) for an org into a project namespace.
 type MandatoryTemplateApplier struct {
 	k8s      *K8sClient
 	renderer *deployments.CueRenderer

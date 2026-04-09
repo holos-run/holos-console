@@ -203,8 +203,8 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div>
-            <p className="text-sm text-muted-foreground">{orgName} / Settings / System Templates</p>
-            <CardTitle className="mt-1">System Templates</CardTitle>
+            <p className="text-sm text-muted-foreground">{orgName} / Settings / Platform Templates</p>
+            <CardTitle className="mt-1">Platform Templates</CardTitle>
           </div>
           {canWrite && (
             <Button size="sm" onClick={handleOpenCreate}>Create Template</Button>
@@ -261,7 +261,7 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Create System Template</DialogTitle>
+            <DialogTitle>Create Platform Template</DialogTitle>
             <DialogDescription>
               Create a new platform template for organization &quot;{orgName}&quot;.
             </DialogDescription>

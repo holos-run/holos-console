@@ -326,17 +326,17 @@ project = 5 levels maximum). Each level requires one Kubernetes API call to
 read the Namespace object. The walk is cached per-request to avoid redundant
 API calls when multiple permission checks are needed in a single RPC handler.
 
-### 8. The existing `PermissionSystemDeploymentsEdit` maps to org-level template authoring.
+### 8. The existing `PermissionOrgTemplatesWrite` maps to org-level template authoring.
 
-The current `PermissionSystemDeploymentsEdit` permission (used for system
-templates) is the predecessor of org-level `PermissionTemplatesWrite` for
-`platformResources`. During migration:
+The current `PermissionOrgTemplatesWrite` permission (used for platform
+templates) is the org-level grant for `platformResources` authoring. During
+migration from the earlier `PermissionSystemDeploymentsEdit` name:
 
-- `SystemTemplate` objects become organization-level templates that write to
+- `OrgTemplate` objects are organization-level templates that write to
   `platformResources`.
-- `PermissionSystemDeploymentsEdit` is replaced by
-  `PermissionTemplatesWrite` checked at the organization level.
-- The `OrgCascadeSystemTemplatePerms` table is superseded by
+- `PermissionSystemDeploymentsEdit` was replaced by
+  `PermissionOrgTemplatesWrite` checked at the organization level.
+- The `OrgCascadeSystemTemplatePerms` table was renamed to
   `OrgCascadeTemplatePerms`.
 
 ### 9. Alignment between RPC authorization and configuration RBAC.

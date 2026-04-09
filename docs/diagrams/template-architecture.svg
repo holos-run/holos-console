@@ -15,7 +15,7 @@
   <!-- Org-Level Templates box -->
   <rect x="100" y="72" width="480" height="100" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
   <text x="340" y="106" text-anchor="middle" font-size="17" font-weight="700" fill="#1e40af">Org-Level Templates</text>
-  <text x="340" y="128" text-anchor="middle" font-size="13" fill="#3b82f6">SystemTemplateService</text>
+  <text x="340" y="128" text-anchor="middle" font-size="13" fill="#3b82f6">OrgTemplateService</text>
   <text x="340" y="148" text-anchor="middle" font-size="12" fill="#64748b">Authored by Platform Engineers</text>
   <!-- outputs label -->
   <text x="340" y="163" text-anchor="middle" font-size="11" font-style="italic" fill="#94a3b8">platformResources · projectResources constraints</text>

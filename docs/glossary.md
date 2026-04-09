@@ -9,18 +9,17 @@ mentions templates, resources, or the configuration management hierarchy.
 ADR 013 introduced the concept of an organization-level CUE template and called
 it a "system template." ADR 016 renamed the concept to "platform template" to
 align with the resource collection names (`platformResources`) and the input
-name (`PlatformInput`). Code identifiers (`SystemTemplate`, `SystemTemplateService`,
-file paths such as `console/system_templates/`, and proto service names) were
-not renamed because renaming code identifiers carries a higher migration cost and
-the product is pre-release. In prose, always use the canonical term "platform
-template." Reserve the identifier spelling (`SystemTemplate`) for references to
-specific code artifacts.
+name (`PlatformInput`). Code identifiers were subsequently renamed in phases
+1–3 of issue #558: `SystemTemplate` → `OrgTemplate`, `SystemTemplateService` →
+`OrgTemplateService`, `console/system_templates/` → `console/org_templates/`,
+and `system_templates.proto` → `org_templates.proto`. In prose, always use the
+canonical term "platform template."
 
 ---
 
 ## Terms
 
-### Platform template (code: `SystemTemplate`, proto: `SystemTemplateService`)
+### Platform template (code: `OrgTemplate`, proto: `OrgTemplateService`)
 
 An organization-level CUE template managed by platform engineers. Platform
 templates are stored as Kubernetes ConfigMaps in the organization namespace and
@@ -29,7 +28,7 @@ in `platformResources` (e.g., HTTPRoutes in the gateway namespace) and define
 CUE constraints over `projectResources` (e.g., closing the struct to restrict
 allowed resource kinds). Platform templates may be marked `mandatory` (applied
 to project namespaces at creation time) and/or `enabled` (unified at deploy
-time). Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`, granted only
+time). Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE`, granted only
 to org-level OWNERs. See [ADR 013](adrs/013-separate-system-user-template-input.md)
 and [ADR 016](adrs/016-config-management-resource-schema.md) for the design
 rationale.

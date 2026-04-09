@@ -1,5 +1,5 @@
-// Package system_templates implements the SystemTemplateService RPC handler.
-// Platform templates (code: SystemTemplate) are org-scoped CUE templates stored
+// Package org_templates implements the OrgTemplateService RPC handler.
+// Platform templates (code: OrgTemplate) are org-scoped CUE templates stored
 // in org namespace ConfigMaps. They differ from deployment templates in that they
 // can be marked mandatory, causing them to be automatically applied to project
 // namespaces at creation time.
@@ -46,7 +46,7 @@ type Renderer interface {
 	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
-// Handler implements the SystemTemplateService.
+// Handler implements the OrgTemplateService.
 type Handler struct {
 	consolev1connect.UnimplementedOrgTemplateServiceHandler
 	k8s         *K8sClient
@@ -54,7 +54,7 @@ type Handler struct {
 	renderer    Renderer
 }
 
-// NewHandler creates a SystemTemplateService handler.
+// NewHandler creates an OrgTemplateService handler.
 func NewHandler(k8s *K8sClient, orgResolver OrgResolver, renderer Renderer) *Handler {
 	return &Handler{k8s: k8s, orgResolver: orgResolver, renderer: renderer}
 }
@@ -396,7 +396,7 @@ func (h *Handler) checkOrgReadAccess(ctx context.Context, claims *rpc.Claims, or
 	return rbac.CheckAccessGrants(claims.Email, claims.Roles, users, roles, rbac.PermissionOrganizationsRead)
 }
 
-// checkOrgEditAccess verifies the user has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT
+// checkOrgEditAccess verifies the user has PERMISSION_ORG_TEMPLATES_WRITE
 // at the org level via the OrgCascadeTemplatePerms cascade table.
 func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, org string) error {
 	if h.orgResolver == nil {

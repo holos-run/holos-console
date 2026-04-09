@@ -287,7 +287,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
-		// Platform template service (SystemTemplateService) with org-level RBAC
+		// Platform template service (OrgTemplateService) with org-level RBAC
 		orgTemplatesK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
 		orgTemplatesHandler := org_templates.NewHandler(orgTemplatesK8s, orgGrantResolver, org_templates.NewCueRendererAdapter())
 		orgTemplatesPath, orgTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(orgTemplatesHandler, protectedInterceptors)
@@ -300,8 +300,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
 		// orgTemplatesK8s is reused here to provide platform template sources during
-		// deployment render; the same K8sClient satisfies SystemTemplateProvider
-		// via ListEnabledSystemTemplateSources.
+		// deployment render; the same K8sClient satisfies OrgTemplateProvider
+		// via ListEnabledOrgTemplateSources.
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
 			WithOrgTemplateProvider(orgTemplatesK8s)
