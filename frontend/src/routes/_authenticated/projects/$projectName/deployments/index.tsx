@@ -136,6 +136,7 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                       <Link
                         to="/projects/$projectName/deployments/$deploymentName"
                         params={{ projectName, deploymentName: deployment.name }}
+                        search={{ tab: 'status' }}
                         className="font-medium hover:underline"
                       >
                         {deployment.name}

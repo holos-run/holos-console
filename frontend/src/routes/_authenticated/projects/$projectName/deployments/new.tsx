@@ -114,6 +114,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
       await navigate({
         to: '/projects/$projectName/deployments/$deploymentName',
         params: { projectName, deploymentName },
+        search: { tab: 'status' },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
