@@ -96,9 +96,9 @@ project namespace.
 | `RenderDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_READ` | Renders a CUE template against supplied inputs and returns the resulting Kubernetes manifests as YAML and JSON. Does not create or modify any deployment — useful for previewing during authoring. |
 | `CloneDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_WRITE` | Copies an existing template to a new name within the same project. |
 
-### SystemTemplateService
+### OrgTemplateService
 
-_Platform templates_ (org-level templates, code: `SystemTemplate`) are organization-scoped CUE programs
+_Platform templates_ (org-level templates, code: `OrgTemplate`) are organization-scoped CUE programs
 authored by platform engineers. They run alongside every deployment template
 at render time and can contribute platform-managed resources (`platformResources`)
 and enforce constraints on what project templates are allowed to produce. They
@@ -110,15 +110,15 @@ deployment template at deploy time). New templates start disabled.
 
 | RPC | Required Permission | Description |
 |-----|-------------------|-------------|
-| `ListSystemTemplates` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Lists all platform templates in an organization. |
-| `GetSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Returns a single platform template including its CUE source. |
-| `CreateSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Creates a new org-level platform template. Starts disabled and non-mandatory by default. |
-| `UpdateSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
-| `DeleteSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Deletes an org-level platform template. |
-| `RenderSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
-| `CloneSystemTemplate` | `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` | Copies an existing platform template to a new name within the same org. |
+| `ListOrgTemplates` | `PERMISSION_ORG_TEMPLATES_WRITE` | Lists all platform templates in an organization. |
+| `GetOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Returns a single platform template including its CUE source. |
+| `CreateOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Creates a new org-level platform template. Starts disabled and non-mandatory by default. |
+| `UpdateOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
+| `DeleteOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Deletes an org-level platform template. |
+| `RenderOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
+| `CloneOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Copies an existing platform template to a new name within the same org. |
 
-> All `SystemTemplateService` operations require `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`,
+> All `OrgTemplateService` operations require `PERMISSION_ORG_TEMPLATES_WRITE`,
 > which is granted exclusively to org-level OWNERs. Project-level OWNERs do not
 > inherit this permission.
 
@@ -281,7 +281,7 @@ Navigate to **Organizations > my-org > Platform Templates** and click
 
 Paste the following CUE into the **Template** editor. This is the canonical
 go-httpbin org-level example — an identical version is embedded in the server
-at `console/system_templates/example_httpbin_platform.cue`.
+at `console/org_templates/example_httpbin_platform.cue`.
 
 ```cue
 // Org-level template — evaluated at organization scope.
@@ -641,8 +641,8 @@ contacted.
 | Who | What | RPC |
 |-----|------|-----|
 | Platform engineer | Enable deployments on the project | `ProjectSettingsService.UpdateProjectSettings` |
-| Platform engineer | Author and enable the org-level template | `SystemTemplateService.CreateSystemTemplate` + `UpdateSystemTemplate` |
-| Platform engineer | Preview the org-level template | `SystemTemplateService.RenderSystemTemplate` |
+| Platform engineer | Author and enable the org-level template | `OrgTemplateService.CreateOrgTemplate` + `UpdateOrgTemplate` |
+| Platform engineer | Preview the org-level template | `OrgTemplateService.RenderOrgTemplate` |
 | Project engineer | Create the deployment template | `DeploymentTemplateService.CreateDeploymentTemplate` |
 | Project engineer | Preview the deployment template | `DeploymentTemplateService.RenderDeploymentTemplate` |
 | Project owner | Deploy an instance | `DeploymentService.CreateDeployment` |

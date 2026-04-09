@@ -21,7 +21,7 @@
   <!-- Org Templates -->
   <rect x="280" y="52" width="220" height="64" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
   <text x="390" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#1e40af">Org-Level Templates</text>
-  <text x="390" y="96" text-anchor="middle" font-size="11" fill="#64748b">enabled SystemTemplates</text>
+  <text x="390" y="96" text-anchor="middle" font-size="11" fill="#64748b">enabled OrgTemplates</text>
 
   <!-- Deployment Template -->
   <rect x="530" y="52" width="220" height="64" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>

@@ -641,21 +641,21 @@ func TestCheckAccessGrants(t *testing.T) {
 }
 
 func TestOrgCascadeTemplatePerms(t *testing.T) {
-	t.Run("org OWNER has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+	t.Run("org OWNER has PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
 		if !HasCascadePermission(RoleOwner, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org OWNER should have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT via cascade")
+			t.Error("org OWNER should have PERMISSION_ORG_TEMPLATES_WRITE via cascade")
 		}
 	})
 
-	t.Run("org EDITOR does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+	t.Run("org EDITOR does not have PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
 		if HasCascadePermission(RoleEditor, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org EDITOR should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
+			t.Error("org EDITOR should not have PERMISSION_ORG_TEMPLATES_WRITE")
 		}
 	})
 
-	t.Run("org VIEWER does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
+	t.Run("org VIEWER does not have PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
 		if HasCascadePermission(RoleViewer, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org VIEWER should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
+			t.Error("org VIEWER should not have PERMISSION_ORG_TEMPLATES_WRITE")
 		}
 	})
 

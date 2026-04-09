@@ -150,8 +150,8 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
   - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as annotations on the project Namespace; deployments toggle requires org-level OWNER via `PERMISSION_PROJECT_DEPLOYMENTS_ENABLE`
   - `templates/` - DeploymentTemplateService managing CUE-based deployment templates stored as K8s ConfigMaps; embeds `default_template.cue` (the built-in template with ServiceAccount, Deployment, Service, and ReferenceGrant) and `example_httpbin.cue` (the go-httpbin example that produces ServiceAccount, Deployment, and Service — designed to pair with the org-level `example_httpbin_platform.cue` platform template). Templates use the structured `projectResources.namespacedResources`/`projectResources.clusterResources` output format (see `docs/cue-template-guide.md`). Templates can carry `DeploymentDefaults` (image, tag, command, args, env, port) that pre-fill the Create Deployment form. The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`). The default template adds a `console.holos.run/deployer-email` annotation to all resources from `platform.claims.email`. The default template includes a `ReferenceGrant` (using `platform.gatewayNamespace`, default "istio-ingress") that allows HTTPRoute resources from the gateway namespace to reference Services in the project namespace.
-  - `system_templates/` - `SystemTemplateService` (code: platform templates) managing org-scoped CUE templates stored as K8s ConfigMaps in the org namespace. Platform templates are unified with the deployment template at deploy time (the renderer prepends generated CUE schema and concatenates all sources) so they can reference `input.*` and `platform.*` fields. Templates can be marked `mandatory` (applied to project namespaces at creation time) and/or `enabled` (unified at deploy time). `MandatoryTemplateApplier` applies only mandatory AND enabled templates at project creation. Embeds `default_referencegrant.cue` as the built-in example HTTPRoute platform template (seeded as disabled, not mandatory) and `example_httpbin_platform.cue` (the go-httpbin org-level example that provides an HTTPRoute in `platformResources` and closes `projectResources.namespacedResources` to Deployment, Service, and ServiceAccount — designed to pair with the project-level `example_httpbin.cue` template). Edit access requires `PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` (org-level OWNER only via `OrgCascadeSystemTemplatePerms`).
-  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `projectResources`/`platformResources` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, listing project-namespace Secrets/ConfigMaps for env var references, and `GetDeploymentRenderPreview` (returns the CUE template, platform input, project input, rendered YAML, and rendered JSON for a live deployment). CUE render uses split `PlatformInput` (project, namespace, gatewayNamespace, claims) and `ProjectInput` (name, image, tag, etc.) — see `docs/cue-template-guide.md`. At render time, enabled platform templates for the project's org are loaded and unified with the deployment template via `CueRenderer.RenderWithSystemTemplates`; platform templates may define resources under `platformResources` and/or `projectResources` — the renderer reads both collections when processing platform templates (ADR 016 Decision 8).
+  - `org_templates/` - `OrgTemplateService` (platform templates) managing org-scoped CUE templates stored as K8s ConfigMaps in the org namespace. Platform templates are unified with the deployment template at deploy time (the renderer prepends generated CUE schema and concatenates all sources) so they can reference `input.*` and `platform.*` fields. Templates can be marked `mandatory` (applied to project namespaces at creation time) and/or `enabled` (unified at deploy time). `MandatoryTemplateApplier` applies only mandatory AND enabled templates at project creation. Embeds `default_referencegrant.cue` as the built-in example HTTPRoute platform template (seeded as disabled, not mandatory) and `example_httpbin_platform.cue` (the go-httpbin org-level example that provides an HTTPRoute in `platformResources` and closes `projectResources.namespacedResources` to Deployment, Service, and ServiceAccount — designed to pair with the project-level `example_httpbin.cue` template). Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE` (org-level OWNER only via `OrgCascadeTemplatePerms`).
+  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `projectResources`/`platformResources` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, listing project-namespace Secrets/ConfigMaps for env var references, and `GetDeploymentRenderPreview` (returns the CUE template, platform input, project input, rendered YAML, and rendered JSON for a live deployment). CUE render uses split `PlatformInput` (project, namespace, gatewayNamespace, claims) and `ProjectInput` (name, image, tag, etc.) — see `docs/cue-template-guide.md`. At render time, enabled platform templates for the project's org are loaded and unified with the deployment template via `CueRenderer.RenderWithOrgTemplates`; platform templates may define resources under `platformResources` and/or `projectResources` — the renderer reads both collections when processing platform templates (ADR 016 Decision 8).
   - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` - Protobuf source files
   - `holos/console/v1/organizations.proto` - OrganizationService
@@ -160,7 +160,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
   - `holos/console/v1/project_settings.proto` - ProjectSettingsService
   - `holos/console/v1/deployment_templates.proto` - DeploymentTemplateService
   - `holos/console/v1/deployments.proto` - DeploymentService
-  - `holos/console/v1/system_templates.proto` - `SystemTemplateService` (platform templates)
+  - `holos/console/v1/org_templates.proto` - `OrgTemplateService` (platform templates)
   - `holos/console/v1/rbac.proto` - Role definitions (VIEWER, EDITOR, OWNER)
   - `holos/console/v1/version.proto` - VersionService
 - `gen/` - Generated protobuf Go code (do not edit)
@@ -240,7 +240,7 @@ The `--roles-claim` flag (default `"groups"`) configures which OIDC token claim 
 
 Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
 
-`PERMISSION_SYSTEM_DEPLOYMENTS_EDIT` is required to create, update, or delete platform templates (code: `SystemTemplate`). It is granted only to org-level OWNERs via the `OrgCascadeSystemTemplatePerms` cascade table in `console/rbac/rbac.go`.
+`PERMISSION_ORG_TEMPLATES_WRITE` is required to create, update, or delete platform templates (code: `OrgTemplate`). It is granted only to org-level OWNERs via the `OrgCascadeTemplatePerms` cascade table in `console/rbac/rbac.go`.
 
 ### Code Generation
 
@@ -270,10 +270,8 @@ See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissio
 
 **Rule**: In documentation, Go comments, and TypeScript comments, use "platform
 template" (not "system template") when referring to the concept of an
-organization-level CUE template. Reserve the identifier spelling
-`SystemTemplate` (and derivatives: `SystemTemplateService`, `system_templates/`,
-`system_templates.proto`) for references to specific code artifacts, file paths,
-and proto service names.
+organization-level CUE template. Code identifiers use the `OrgTemplate` prefix
+(e.g., `OrgTemplateService`, `org_templates/`, `org_templates.proto`).
 
 **Triggers**: Apply this rule when writing or editing any `.md` file, Go
 comment, or TypeScript comment that mentions templates at the organization level.
@@ -283,8 +281,8 @@ Examples of correct usage:
 | Context | Correct | Incorrect |
 |---------|---------|-----------|
 | Prose / docs | "Create a platform template to enforce labels…" | "Create a system template…" |
-| Code identifier | `SystemTemplateService.CreateSystemTemplate` | — (identifiers are not renamed) |
-| Mixed reference | "`SystemTemplate` (platform template) controls…" | "system template controls…" |
+| Code identifier | `OrgTemplateService.CreateOrgTemplate` | `SystemTemplateService.CreateSystemTemplate` |
+| Mixed reference | "`OrgTemplate` (platform template) controls…" | "system template controls…" |
 
 ### Template Field Guardrail
 

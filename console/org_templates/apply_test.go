@@ -12,7 +12,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 )
 
-// minimalOrgTemplate is a minimal platform template (code: SystemTemplate) for
+// minimalOrgTemplate is a minimal platform template (code: OrgTemplate) for
 // testing the MandatoryTemplateApplier. It only references platform.namespace
 // (not input.*) so it can be rendered standalone at project creation time without
 // a deployment template or user input.

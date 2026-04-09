@@ -945,7 +945,7 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 			t.Error("expected non-empty cue_template")
 		}
 		if resp.Msg.CuePlatformInput == "" {
-			t.Error("expected non-empty cue_system_input")
+			t.Error("expected non-empty cue_platform_input")
 		}
 		if resp.Msg.CueUserInput == "" {
 			t.Error("expected non-empty cue_user_input")
@@ -1028,9 +1028,9 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// System input should contain project name.
+		// Platform input should contain project name.
 		if !containsStr(resp.Msg.CuePlatformInput, "my-project") {
-			t.Errorf("expected cue_system_input to contain project name, got: %q", resp.Msg.CuePlatformInput)
+			t.Errorf("expected cue_platform_input to contain project name, got: %q", resp.Msg.CuePlatformInput)
 		}
 		// User input should contain deployment name and image.
 		if !containsStr(resp.Msg.CueUserInput, "web-app") {

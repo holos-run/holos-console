@@ -313,9 +313,9 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               isSaving={updateOrganizationDefaultSharing.isPending}
             />
 
-            {/* System Templates section */}
+            {/* Platform Templates section */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium">System Templates</h3>
+              <h3 className="text-sm font-medium">Platform Templates</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
                 Platform templates are automatically applied to new projects in this organization.
@@ -323,10 +323,10 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               <Link
                 to="/orgs/$orgName/settings/org-templates"
                 params={{ orgName }}
-                aria-label="System Templates"
+                aria-label="Platform Templates"
                 className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
               >
-                <span className="text-sm">Manage System Templates</span>
+                <span className="text-sm">Manage Platform Templates</span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </Link>
             </div>

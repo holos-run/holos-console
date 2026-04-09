@@ -21,13 +21,13 @@ const (
 	DefaultReferenceGrantName = "reference-grant"
 )
 
-// K8sClient wraps Kubernetes client operations for platform templates (code: SystemTemplate).
+// K8sClient wraps Kubernetes client operations for platform templates (code: OrgTemplate).
 type K8sClient struct {
 	client   kubernetes.Interface
 	Resolver *resolver.Resolver
 }
 
-// NewK8sClient creates a client for platform template (SystemTemplate) operations.
+// NewK8sClient creates a client for platform template (OrgTemplate) operations.
 func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
 }
@@ -181,7 +181,7 @@ func (k *K8sClient) SeedDefaultTemplates(ctx context.Context, org string) error 
 
 // ListEnabledOrgTemplateSources returns the CUE source strings for all enabled
 // platform templates in the org. Disabled templates are excluded. This method
-// satisfies the deployments.SystemTemplateProvider interface via structural typing.
+// satisfies the deployments.OrgTemplateProvider interface via structural typing.
 func (k *K8sClient) ListEnabledOrgTemplateSources(ctx context.Context, org string) ([]string, error) {
 	cms, err := k.ListOrgTemplates(ctx, org)
 	if err != nil {
@@ -202,7 +202,7 @@ func (k *K8sClient) ListEnabledOrgTemplateSources(ctx context.Context, org strin
 	return sources, nil
 }
 
-// configMapToOrgTemplate converts a Kubernetes ConfigMap to a SystemTemplate protobuf message.
+// configMapToOrgTemplate converts a Kubernetes ConfigMap to an OrgTemplate protobuf message.
 func configMapToOrgTemplate(cm *corev1.ConfigMap, org string) *consolev1.OrgTemplate {
 	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationMandatory])
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationEnabled])

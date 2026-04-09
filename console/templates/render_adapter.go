@@ -23,10 +23,10 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 // trusted backend values (project, namespace, claims); cueInput carries
 // user-provided deployment parameters.  Both must be valid CUE source;
 // cuePlatformInput may be empty when the template does not require platform values.
-func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error) {
-	// Combine cueSystemInput and cueInput into a single CUE document so that
+func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error) {
+	// Combine cuePlatformInput and cueInput into a single CUE document so that
 	// both "platform" and "input" top-level fields are available to the template.
-	combined := cueSystemInput
+	combined := cuePlatformInput
 	if combined != "" && cueInput != "" {
 		combined = combined + "\n" + cueInput
 	} else if cueInput != "" {

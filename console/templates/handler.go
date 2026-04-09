@@ -37,12 +37,12 @@ type RenderResource struct {
 	Object map[string]any
 }
 
-// Renderer evaluates a CUE template unified with system and user CUE input strings
+// Renderer evaluates a CUE template unified with platform and user CUE input strings
 // and returns a list of rendered Kubernetes manifests with both YAML and structured
-// object data.  cueSystemInput carries trusted backend values (project, namespace,
+// object data.  cuePlatformInput carries trusted backend values (project, namespace,
 // claims); cueInput carries user-provided deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error)
+	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
 // Handler implements the DeploymentTemplateService.
@@ -324,9 +324,9 @@ func (h *Handler) CloneDeploymentTemplate(
 // multi-document YAML and a pretty-printed JSON array.
 //
 // Authentication is required. The request requires a non-empty cue_template;
-// cue_input and cue_system_input are optional (empty strings are valid for
+// cue_input and cue_platform_input are optional (empty strings are valid for
 // templates that have no required inputs or for callers that do not need
-// system context during preview).
+// platform context during preview).
 //
 // Access is not checked against a specific project — this RPC is intentionally
 // open to any authenticated user for template authoring and preview purposes.
