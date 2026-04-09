@@ -292,6 +292,14 @@ that they can diverge independently — for example, a future policy might restr
 folder-level Editor from deleting templates while allowing org-level Editor to
 do so.
 
+**v1alpha2 implementation**: The cascade tables `OrgCascadeTemplatePerms`,
+`FolderCascadeTemplatePerms`, and `ProjectCascadeTemplatePerms` are defined in
+`api/v1alpha2/iam.go`. The permission set collapses the separate
+`PERMISSION_DEPLOYMENT_TEMPLATES_*` and `PERMISSION_ORG_TEMPLATES_WRITE` enums
+into five unified `PermissionTemplates*` constants. See
+[ADR 021](021-unified-template-service.md) for the exact table values and the
+`TemplateScope` discriminator.
+
 ### 6. Resource collection scope is enforced by the renderer, not by RBAC.
 
 RBAC controls *who* can author templates at each level. The *renderer* controls
@@ -451,4 +459,5 @@ Viewer and above.
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md) — which ancestor templates participate in unification
 - [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md) — implementation specification for the walk algorithm and folder authorization
+- [ADR 021: Unified Template Service and Collapsed Template Permissions](021-unified-template-service.md) — collapsed permission set, scope discriminator, and cross-level linking
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions

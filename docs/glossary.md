@@ -106,6 +106,16 @@ user-controlled values and apply appropriate CUE constraints. In CUE templates,
 project input is accessed via the `input` top-level identifier (e.g.,
 `input.name`, `input.port`). Go type: `api/v1alpha1.ProjectInput`.
 
+### Template scope
+
+The hierarchy level at which a template is stored and authored:
+`organization`, `folder`, or `project`. Encoded as the `TemplateScope` enum in
+the unified `TemplateService` proto introduced in `v1alpha2`. The scope determines
+which resource collections the renderer reads from the template (ADR 017
+Decision 3: `projectResources` from all levels; `platformResources` from folder
+and org only) and which cascade table governs authoring permissions (ADR 021
+Decision 3). See [ADR 021](adrs/021-unified-template-service.md).
+
 ### Resource set
 
 The complete output produced by unifying all templates in the hierarchy with
