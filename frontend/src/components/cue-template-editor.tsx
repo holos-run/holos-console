@@ -92,7 +92,7 @@ export interface CueTemplateEditorProps {
 /**
  * CueTemplateEditor is a shared component that renders a tabbed CUE template
  * editor + live preview. It is used by both the deployment template detail page
- * and the system template detail page.
+ * and the platform template (SystemTemplate) detail page.
  */
 export function CueTemplateEditor({
   cueTemplate,

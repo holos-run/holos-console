@@ -18,8 +18,8 @@ type ResourceApplier interface {
 	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
 }
 
-// MandatoryTemplateApplier renders and applies all mandatory system templates
-// for an org into a project namespace.
+// MandatoryTemplateApplier renders and applies all mandatory platform templates
+// (code: SystemTemplate) for an org into a project namespace.
 type MandatoryTemplateApplier struct {
 	k8s      *K8sClient
 	renderer *deployments.CueRenderer
@@ -31,7 +31,7 @@ func NewMandatoryTemplateApplier(k8s *K8sClient, renderer *deployments.CueRender
 	return &MandatoryTemplateApplier{k8s: k8s, renderer: renderer, applier: applier}
 }
 
-// ApplyMandatorySystemTemplates lists all mandatory system templates for the
+// ApplyMandatorySystemTemplates lists all mandatory platform templates for the
 // org, renders each one using PlatformInput derived from the project and caller
 // claims, and applies the rendered resources to the project namespace.
 //
@@ -40,7 +40,7 @@ func NewMandatoryTemplateApplier(k8s *K8sClient, renderer *deployments.CueRender
 func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error {
 	templates, err := a.k8s.ListSystemTemplates(ctx, org)
 	if err != nil {
-		return fmt.Errorf("listing system templates for org %q: %w", org, err)
+		return fmt.Errorf("listing platform templates for org %q: %w", org, err)
 	}
 
 	for _, cm := range templates {
@@ -50,7 +50,7 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 			continue
 		}
 
-		slog.InfoContext(ctx, "applying mandatory system template",
+		slog.InfoContext(ctx, "applying mandatory platform template",
 			slog.String("org", org),
 			slog.String("project", project),
 			slog.String("namespace", projectNamespace),
@@ -94,11 +94,11 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 
 		resources, err := a.renderer.RenderWithCueInput(ctx, tmpl.CueTemplate, combinedCUE)
 		if err != nil {
-			return fmt.Errorf("rendering mandatory system template %q for project %q: %w", tmpl.Name, project, err)
+			return fmt.Errorf("rendering mandatory platform template %q for project %q: %w", tmpl.Name, project, err)
 		}
 
 		if a.applier == nil {
-			slog.WarnContext(ctx, "no resource applier configured, skipping mandatory system template apply",
+			slog.WarnContext(ctx, "no resource applier configured, skipping mandatory platform template apply",
 				slog.String("template", tmpl.Name),
 				slog.String("project", project),
 			)
@@ -107,10 +107,10 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 
 		// Use the template name as the "deployment name" for the ownership label.
 		if err := a.applier.Apply(ctx, projectNamespace, tmpl.Name, resources); err != nil {
-			return fmt.Errorf("applying mandatory system template %q to project %q: %w", tmpl.Name, project, err)
+			return fmt.Errorf("applying mandatory platform template %q to project %q: %w", tmpl.Name, project, err)
 		}
 
-		slog.InfoContext(ctx, "mandatory system template applied",
+		slog.InfoContext(ctx, "mandatory platform template applied",
 			slog.String("org", org),
 			slog.String("project", project),
 			slog.String("namespace", projectNamespace),
@@ -122,6 +122,6 @@ func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Con
 	return nil
 }
 
-// systemTemplateProjectInput carries the user-configurable input for system templates.
+// systemTemplateProjectInput carries the user-configurable input for platform templates.
 // The field name must match the CUE #Input struct field name in the template.
 type systemTemplateProjectInput struct{}

@@ -69,7 +69,7 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
     }
   }, [template?.cueTemplate])
 
-  // Only org-level OWNERs can edit system templates (backend enforces PERMISSION_SYSTEM_DEPLOYMENTS_EDIT).
+  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_SYSTEM_DEPLOYMENTS_EDIT).
   // Frontend mirrors this: show Save only for OWNER.
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
@@ -210,7 +210,7 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
             {!canWrite && (
               <Alert>
                 <AlertDescription>
-                  You need org Owner permissions to edit system templates.
+                  You need org Owner permissions to edit platform templates.
                 </AlertDescription>
               </Alert>
             )}

@@ -1,7 +1,8 @@
 // Package system_templates implements the SystemTemplateService RPC handler.
-// System templates are org-scoped CUE templates stored in org namespace ConfigMaps.
-// They differ from deployment templates in that they can be marked mandatory,
-// causing them to be automatically applied to project namespaces at creation time.
+// Platform templates (code: SystemTemplate) are org-scoped CUE templates stored
+// in org namespace ConfigMaps. They differ from deployment templates in that they
+// can be marked mandatory, causing them to be automatically applied to project
+// namespaces at creation time.
 package system_templates
 
 import (
@@ -58,7 +59,7 @@ func NewHandler(k8s *K8sClient, orgResolver OrgResolver, renderer Renderer) *Han
 	return &Handler{k8s: k8s, orgResolver: orgResolver, renderer: renderer}
 }
 
-// ListSystemTemplates returns all system templates in an org, seeding defaults on first access.
+// ListSystemTemplates returns all platform templates in an org, seeding defaults on first access.
 func (h *Handler) ListSystemTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListSystemTemplatesRequest],
@@ -86,7 +87,7 @@ func (h *Handler) ListSystemTemplates(
 	if len(cms) == 0 {
 		if seedErr := h.k8s.SeedDefaultTemplates(ctx, org); seedErr != nil {
 			// Log but don't fail: seeding is best-effort; the org namespace may not exist yet.
-			slog.WarnContext(ctx, "failed to seed default system templates",
+			slog.WarnContext(ctx, "failed to seed default platform templates",
 				slog.String("org", org),
 				slog.Any("error", seedErr),
 			)
@@ -104,7 +105,7 @@ func (h *Handler) ListSystemTemplates(
 		templates = append(templates, configMapToSystemTemplate(&cm, org))
 	}
 
-	slog.InfoContext(ctx, "system templates listed",
+	slog.InfoContext(ctx, "platform templates listed",
 		slog.String("action", "system_templates_list"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -117,7 +118,7 @@ func (h *Handler) ListSystemTemplates(
 	}), nil
 }
 
-// GetSystemTemplate returns a single system template by name.
+// GetSystemTemplate returns a single platform template by name.
 func (h *Handler) GetSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetSystemTemplateRequest],
@@ -145,7 +146,7 @@ func (h *Handler) GetSystemTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "system template read",
+	slog.InfoContext(ctx, "platform template read",
 		slog.String("action", "system_template_read"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -158,7 +159,7 @@ func (h *Handler) GetSystemTemplate(
 	}), nil
 }
 
-// CreateSystemTemplate creates a new system template.
+// CreateSystemTemplate creates a new platform template.
 func (h *Handler) CreateSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateSystemTemplateRequest],
@@ -189,7 +190,7 @@ func (h *Handler) CreateSystemTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "system template created",
+	slog.InfoContext(ctx, "platform template created",
 		slog.String("action", "system_template_create"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -203,7 +204,7 @@ func (h *Handler) CreateSystemTemplate(
 	}), nil
 }
 
-// UpdateSystemTemplate updates an existing system template.
+// UpdateSystemTemplate updates an existing platform template.
 func (h *Handler) UpdateSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateSystemTemplateRequest],
@@ -238,7 +239,7 @@ func (h *Handler) UpdateSystemTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "system template updated",
+	slog.InfoContext(ctx, "platform template updated",
 		slog.String("action", "system_template_update"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -250,7 +251,7 @@ func (h *Handler) UpdateSystemTemplate(
 	return connect.NewResponse(&consolev1.UpdateSystemTemplateResponse{}), nil
 }
 
-// DeleteSystemTemplate deletes a system template.
+// DeleteSystemTemplate deletes a platform template.
 func (h *Handler) DeleteSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.DeleteSystemTemplateRequest],
@@ -277,7 +278,7 @@ func (h *Handler) DeleteSystemTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "system template deleted",
+	slog.InfoContext(ctx, "platform template deleted",
 		slog.String("action", "system_template_delete"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -289,7 +290,7 @@ func (h *Handler) DeleteSystemTemplate(
 	return connect.NewResponse(&consolev1.DeleteSystemTemplateResponse{}), nil
 }
 
-// CloneSystemTemplate copies an existing system template to a new name.
+// CloneSystemTemplate copies an existing platform template to a new name.
 func (h *Handler) CloneSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CloneSystemTemplateRequest],
@@ -321,7 +322,7 @@ func (h *Handler) CloneSystemTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "system template cloned",
+	slog.InfoContext(ctx, "platform template cloned",
 		slog.String("action", "system_template_clone"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
@@ -336,7 +337,7 @@ func (h *Handler) CloneSystemTemplate(
 	}), nil
 }
 
-// RenderSystemTemplate evaluates a CUE system template and returns rendered manifests.
+// RenderSystemTemplate evaluates a CUE platform template and returns rendered manifests.
 func (h *Handler) RenderSystemTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.RenderSystemTemplateRequest],
@@ -378,7 +379,7 @@ func (h *Handler) RenderSystemTemplate(
 	}), nil
 }
 
-// checkOrgReadAccess verifies the user can read system templates in the org.
+// checkOrgReadAccess verifies the user can read platform templates in the org.
 // Requires org-level grants (VIEWER or above).
 func (h *Handler) checkOrgReadAccess(ctx context.Context, claims *rpc.Claims, org string) error {
 	if h.orgResolver == nil {

@@ -35,7 +35,7 @@ type OrgDefaultShareResolver interface {
 	GetOrgDefaultGrants(ctx context.Context, org string) (defaultUsers, defaultRoles []secrets.AnnotationGrant, err error)
 }
 
-// MandatoryTemplateApplier renders and applies all mandatory system templates
+// MandatoryTemplateApplier renders and applies all mandatory platform templates
 // into a newly created project namespace.
 type MandatoryTemplateApplier interface {
 	ApplyMandatorySystemTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error
@@ -55,7 +55,7 @@ func NewHandler(k8s *K8sClient, orgResolver OrgResolver) *Handler {
 }
 
 // WithMandatoryTemplateApplier sets the MandatoryTemplateApplier for the handler.
-// When set, mandatory system templates are applied to new project namespaces at creation time.
+// When set, mandatory platform templates are applied to new project namespaces at creation time.
 func (h *Handler) WithMandatoryTemplateApplier(applier MandatoryTemplateApplier) *Handler {
 	h.mandatoryTemplateApplier = applier
 	return h
@@ -235,13 +235,13 @@ func (h *Handler) CreateProject(
 		return nil, mapK8sError(err)
 	}
 
-	// Apply mandatory system templates into the new project namespace.
+	// Apply mandatory platform templates into the new project namespace.
 	// On failure, attempt a best-effort cleanup of the project namespace to
 	// avoid leaving orphaned resources, then return the error.
 	if h.mandatoryTemplateApplier != nil && req.Msg.Organization != "" {
 		projectNamespace := h.k8s.Resolver.ProjectNamespace(req.Msg.Name)
 		if err := h.mandatoryTemplateApplier.ApplyMandatorySystemTemplates(ctx, req.Msg.Organization, req.Msg.Name, projectNamespace, claims); err != nil {
-			slog.ErrorContext(ctx, "mandatory system template apply failed, cleaning up project",
+			slog.ErrorContext(ctx, "mandatory platform template apply failed, cleaning up project",
 				slog.String("project", req.Msg.Name),
 				slog.String("organization", req.Msg.Organization),
 				slog.Any("error", err),
@@ -252,7 +252,7 @@ func (h *Handler) CreateProject(
 					slog.Any("cleanup_error", cleanupErr),
 				)
 			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying mandatory system templates to project %q: %w", req.Msg.Name, err))
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying mandatory platform templates to project %q: %w", req.Msg.Name, err))
 		}
 	}
 

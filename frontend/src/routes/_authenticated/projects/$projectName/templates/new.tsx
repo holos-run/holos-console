@@ -188,7 +188,7 @@ projectResources: {
 			}
 
 			// Service exposes port 80 → container port input.port (named "http").
-			// The HTTPRoute in the org system template routes gateway traffic here.
+			// The HTTPRoute in the org platform template routes gateway traffic here.
 			Service: (input.name): {
 				apiVersion: "v1"
 				kind:       "Service"
@@ -356,7 +356,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                       <Info className="h-4 w-4 text-muted-foreground cursor-default" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>This example deploys go-httpbin with a ServiceAccount, Deployment, and Service. When an org-level system template is enabled, it is unified with this template at render time — the system template can inject platform resources (like HTTPRoute) and constrain which resource kinds this template may produce.</p>
+                      <p>This example deploys go-httpbin with a ServiceAccount, Deployment, and Service. When an org-level platform template is enabled, it is unified with this template at render time — the platform template can inject platform resources (like HTTPRoute) and constrain which resource kinds this template may produce.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

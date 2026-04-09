@@ -252,7 +252,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
 		}
 
-		// System template applier for mandatory templates on project creation.
+		// Platform template applier for mandatory templates on project creation.
 		// Wired before the projects handler so it can be injected.
 		sysTemplatesApplierK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
 		var sysTmplApplier projects.MandatoryTemplateApplier
@@ -287,7 +287,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
-		// System template service with org-level RBAC
+		// Platform template service (SystemTemplateService) with org-level RBAC
 		sysTemplatesK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
 		sysTemplatesHandler := system_templates.NewHandler(sysTemplatesK8s, orgGrantResolver, system_templates.NewCueRendererAdapter())
 		sysTemplatesPath, sysTemplatesHTTPHandler := consolev1connect.NewSystemTemplateServiceHandler(sysTemplatesHandler, protectedInterceptors)
@@ -299,7 +299,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
-		// sysTemplatesK8s is reused here to provide system template sources during
+		// sysTemplatesK8s is reused here to provide platform template sources during
 		// deployment render; the same K8sClient satisfies SystemTemplateProvider
 		// via ListEnabledSystemTemplateSources.
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).

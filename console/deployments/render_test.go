@@ -1184,9 +1184,9 @@ platformResources: {
 }
 `
 
-// systemProjectResourcesTemplate is a system template that defines resources in
+// systemProjectResourcesTemplate is a platform template that defines resources in
 // projectResources (not platformResources). Per ADR 016, any template at any
-// level can define values in any collection. This validates that system templates
+// level can define values in any collection. This validates that platform templates
 // are not limited to platformResources.
 const systemProjectResourcesTemplate = `
 
@@ -1209,7 +1209,7 @@ projectResources: {
 }
 `
 
-// systemBothCollectionsTemplate is a system template that defines resources in
+// systemBothCollectionsTemplate is a platform template that defines resources in
 // both projectResources and platformResources. This validates that
 // RenderWithSystemTemplates returns resources from both collections.
 const systemBothCollectionsTemplate = `
@@ -1308,9 +1308,9 @@ projectResources: {
 }
 `
 
-// TestCueRenderer_SystemTemplateUnification verifies that a system template CUE source
+// TestCueRenderer_SystemTemplateUnification verifies that a platform template CUE source
 // can be unified with a deployment template and that input.name is accessible in the
-// system template's platformResources.namespacedResources.
+// platform template's platformResources.namespacedResources.
 func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
@@ -1335,7 +1335,7 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 		Port:  8080,
 	}
 
-	t.Run("system template resources are included when unified with deployment template", func(t *testing.T) {
+	t.Run("platform template resources are included when unified with deployment template", func(t *testing.T) {
 		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemUnificationTemplate},
@@ -1344,9 +1344,9 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from system template.
+		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from platform template.
 		if len(resources) != 2 {
-			t.Fatalf("expected 2 resources (Deployment + system ServiceAccount), got %d: %v",
+			t.Fatalf("expected 2 resources (Deployment + platform ServiceAccount), got %d: %v",
 				len(resources), resourceKinds(resources))
 		}
 		kindSet := make(map[string]bool)
@@ -1359,14 +1359,14 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			t.Error("expected Deployment resource from deployment template")
 		}
 		if !kindSet["ServiceAccount"] {
-			t.Error("expected ServiceAccount resource from system template")
+			t.Error("expected ServiceAccount resource from platform template")
 		}
 		if !nameSet["system-from-web-app"] {
-			t.Errorf("expected system template to use input.name='web-app', got names: %v", nameSet)
+			t.Errorf("expected platform template to use input.name='web-app', got names: %v", nameSet)
 		}
 	})
 
-	t.Run("no system templates returns only deployment resources", func(t *testing.T) {
+	t.Run("no platform templates returns only deployment resources", func(t *testing.T) {
 		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			nil,
@@ -1384,8 +1384,8 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	})
 
 	// ADR 016 key insight: any template at any level can define values in any
-	// collection. A system template is not restricted to platformResources only.
-	t.Run("system template contributing to projectResources is unified", func(t *testing.T) {
+	// collection. A platform template is not restricted to platformResources only.
+	t.Run("platform template contributing to projectResources is unified", func(t *testing.T) {
 		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemProjectResourcesTemplate},
@@ -1395,7 +1395,7 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from
-		// system template's projectResources.
+		// platform template's projectResources.
 		if len(resources) != 2 {
 			t.Fatalf("expected 2 resources (Deployment + system ServiceAccount in projectResources), got %d: %v",
 				len(resources), resourceKinds(resources))
@@ -1408,13 +1408,13 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			t.Error("expected Deployment 'web-app' from deployment template projectResources")
 		}
 		if !nameSet["sys-project-sa"] {
-			t.Error("expected ServiceAccount 'sys-project-sa' from system template projectResources")
+			t.Error("expected ServiceAccount 'sys-project-sa' from platform template projectResources")
 		}
 	})
 
 	// Validate that RenderWithSystemTemplates returns resources from both
-	// projectResources and platformResources when a system template defines both.
-	t.Run("system template defining both collections returns all resources", func(t *testing.T) {
+	// projectResources and platformResources when a platform template defines both.
+	t.Run("platform template defining both collections returns all resources", func(t *testing.T) {
 		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemBothCollectionsTemplate},
@@ -1424,8 +1424,8 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		// Expect: 1 Deployment (deployment template projectResources) +
-		//         1 ServiceAccount from system template projectResources +
-		//         1 ServiceAccount from system template platformResources.
+		//         1 ServiceAccount from platform template projectResources +
+		//         1 ServiceAccount from platform template platformResources.
 		if len(resources) != 3 {
 			t.Fatalf("expected 3 resources, got %d: %v", len(resources), resourceKinds(resources))
 		}
@@ -1437,10 +1437,10 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 			t.Error("expected Deployment 'web-app' from deployment template projectResources")
 		}
 		if !nameSet["sys-project-sa"] {
-			t.Error("expected ServiceAccount 'sys-project-sa' from system template projectResources")
+			t.Error("expected ServiceAccount 'sys-project-sa' from platform template projectResources")
 		}
 		if !nameSet["sys-platform-sa"] {
-			t.Error("expected ServiceAccount 'sys-platform-sa' from system template platformResources")
+			t.Error("expected ServiceAccount 'sys-platform-sa' from platform template platformResources")
 		}
 	})
 }
@@ -1487,7 +1487,7 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	t.Run("RenderWithSystemTemplates reads both projectResources and platformResources", func(t *testing.T) {
 		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
 			systemOutputTemplate,
-			nil, // no additional system templates; the deployment template itself defines platformResources
+			nil, // no additional platform templates; the deployment template itself defines platformResources
 			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1515,7 +1515,7 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	})
 }
 
-// closedStructOrgTemplate is an org-level system template that:
+// closedStructOrgTemplate is an org-level platform template that:
 //  1. Provides an HTTPRoute in platformResources (platform team manages traffic).
 //  2. Closes projectResources.namespacedResources to Deployment, Service, and
 //     ServiceAccount so that any project template producing another Kind causes
@@ -1731,7 +1731,7 @@ projectResources: {
 `
 
 // TestCueRenderer_ClosedStructKindConstraint verifies the ADR 016 Decision 9
-// constraint pattern: an org-level system template can close
+// constraint pattern: an org-level platform template can close
 // projectResources.namespacedResources to a set of allowed Kinds, and any
 // project template that produces a disallowed Kind causes a CUE evaluation
 // error before any Kubernetes API call is made.
@@ -1833,7 +1833,7 @@ func repoRoot(t *testing.T) string {
 }
 
 // TestCueRenderer_HttpbinExample verifies the embedded go-httpbin example CUE
-// files work correctly together. The org-level system template
+// files work correctly together. The org-level platform template
 // (example_httpbin_platform.cue) closes projectResources.namespacedResources
 // to Deployment, Service, ServiceAccount and provides an HTTPRoute in
 // platformResources. The project-level template (example_httpbin.cue) produces
@@ -1881,7 +1881,7 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	}
 
 	// Sub-test 1: Templates render together.
-	// RenderWithSystemTemplates with the org template as system template and the
+	// RenderWithSystemTemplates with the org platform template and the
 	// project template as deployment template must produce 4 resources:
 	// 3 project resources (ServiceAccount, Deployment, Service) from
 	// projectResources + 1 platform resource (HTTPRoute) from platformResources.
@@ -1959,7 +1959,7 @@ projectResources: namespacedResources: (platform.namespace): {
 	})
 
 	// Sub-test 3: Project template renders alone.
-	// Render with just the project template (no system template) must produce
+	// Render with just the project template (no platform template) must produce
 	// exactly 3 resources: ServiceAccount, Deployment, Service.
 	t.Run("project template renders standalone producing 3 resources", func(t *testing.T) {
 		resources, err := renderer.Render(

@@ -353,7 +353,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("renders default HTTPRoute system template with mock input", func(t *testing.T) {
+	t.Run("renders default HTTPRoute platform template with mock input", func(t *testing.T) {
 		email := "owner@example.com"
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns)
@@ -375,7 +375,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		email_verified: true
 	}
 }`
-		// Mock input values allow standalone preview of the HTTPRoute system template.
+		// Mock input values allow standalone preview of the HTTPRoute platform template.
 		// At actual deploy time the template is unified with the real deployment template.
 		userInput := `input: {
 	name:  "my-app"
@@ -391,7 +391,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 			t.Fatalf("expected no error rendering default HTTPRoute template, got %v", err)
 		}
 		if resp.Msg.RenderedYaml == "" {
-			t.Error("expected non-empty YAML for default HTTPRoute system template")
+			t.Error("expected non-empty YAML for default HTTPRoute platform template")
 		}
 		// Verify HTTPRoute is in the output.
 		if !contains(resp.Msg.RenderedYaml, "HTTPRoute") {

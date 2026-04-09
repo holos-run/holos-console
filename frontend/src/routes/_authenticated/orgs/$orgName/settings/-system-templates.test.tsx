@@ -63,7 +63,7 @@ const mockTemplates = [
     name: 'optional-template',
     org: 'test-org',
     displayName: 'Optional Template',
-    description: 'An optional system template',
+    description: 'An optional platform template',
     cueTemplate: '// optional template',
     mandatory: false,
     enabled: true,
