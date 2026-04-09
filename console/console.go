@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
 	"github.com/holos-run/holos-console/console/projects"
@@ -251,6 +252,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorRoles)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
+
+		// Folder service
+		foldersK8s := folders.NewK8sClient(k8sClientset, nsResolver)
+		foldersHandler := folders.NewHandler(foldersK8s)
+		foldersPath, foldersHTTPHandler := consolev1connect.NewFolderServiceHandler(foldersHandler, protectedInterceptors)
+		mux.Handle(foldersPath, foldersHTTPHandler)
 
 		// Create dynamic client early so it can be shared by both the deployment
 		// service and the mandatory template applier.
