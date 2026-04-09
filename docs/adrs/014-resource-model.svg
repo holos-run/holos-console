@@ -170,8 +170,8 @@
   <!-- platformResources -->
   <rect x="30" y="472" width="410" height="188" class="box box-purple"/>
   <text x="48" y="496" class="bold accent-purple" font-size="14">platformResources</text>
-  <text x="48" y="514" class="small muted">Written by org &amp; folder templates only.</text>
-  <text x="48" y="530" class="small muted">Project templates cannot affect these.</text>
+  <text x="48" y="514" class="small muted">Renderer reads from org &amp; folder templates only.</text>
+  <text x="48" y="530" class="small muted">Project-level platformResources values are silently ignored.</text>
 
   <text x="48" y="556" class="small bold">Typical contents:</text>
   <text x="60" y="574" class="small">HTTPRoute in the gateway namespace</text>
@@ -183,8 +183,8 @@
   <!-- projectResources -->
   <rect x="460" y="472" width="410" height="188" class="box box-blue"/>
   <text x="478" y="496" class="bold accent-blue" font-size="14">projectResources</text>
-  <text x="478" y="514" class="small muted">Written by the project template only.</text>
-  <text x="478" y="530" class="small muted">Org &amp; folder templates can add constraints.</text>
+  <text x="478" y="514" class="small muted">Renderer reads from templates at all levels.</text>
+  <text x="478" y="530" class="small muted">All levels can define values via CUE unification.</text>
 
   <text x="478" y="556" class="small bold">Typical contents:</text>
   <text x="490" y="574" class="small">Deployment (your application container)</text>
