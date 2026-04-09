@@ -2,6 +2,9 @@ package deployments
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1812,6 +1815,174 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 		errMsg := err.Error()
 		if !strings.Contains(errMsg, "not allowed") {
 			t.Errorf("expected error message to contain 'not allowed' (CUE closed struct error), got: %s", errMsg)
+		}
+	})
+}
+
+// repoRoot returns the absolute path to the repository root. It is computed
+// relative to the location of this test file so the tests work correctly
+// regardless of the working directory when 'go test' is invoked.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	// thisFile is console/deployments/render_test.go; root is three levels up.
+	return filepath.Join(filepath.Dir(thisFile), "..", "..")
+}
+
+// TestCueRenderer_HttpbinExample verifies the embedded go-httpbin example CUE
+// files work correctly together. The org-level system template
+// (example_httpbin_platform.cue) closes projectResources.namespacedResources
+// to Deployment, Service, ServiceAccount and provides an HTTPRoute in
+// platformResources. The project-level template (example_httpbin.cue) produces
+// exactly those three kinds. Tests validate three scenarios: combined rendering,
+// closed-struct enforcement, and standalone rendering.
+func TestCueRenderer_HttpbinExample(t *testing.T) {
+	root := repoRoot(t)
+
+	// Load the embedded CUE files from their source locations to avoid an
+	// import cycle (console/system_templates and console/templates already
+	// import console/deployments).
+	projectTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/templates/example_httpbin.cue"))
+	if err != nil {
+		t.Fatalf("failed to read example_httpbin.cue: %v", err)
+	}
+	projectTemplate := string(projectTemplateBytes)
+
+	platformTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/system_templates/example_httpbin_platform.cue"))
+	if err != nil {
+		t.Fatalf("failed to read example_httpbin_platform.cue: %v", err)
+	}
+	platformTemplate := string(platformTemplateBytes)
+
+	renderer := &CueRenderer{}
+
+	platform := v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        "prj-my-project",
+		GatewayNamespace: "istio-ingress",
+		Organization:     "my-org",
+		Claims: v1alpha1.Claims{
+			Iss:           "https://example.com",
+			Sub:           "u1",
+			Exp:           9999999999,
+			Iat:           1000000000,
+			Email:         "deployer@example.com",
+			EmailVerified: true,
+		},
+	}
+	project := v1alpha1.ProjectInput{
+		Name:  "go-httpbin",
+		Image: "ghcr.io/mccutchen/go-httpbin",
+		Tag:   "2.21.0",
+		Port:  8080,
+	}
+
+	// Sub-test 1: Templates render together.
+	// RenderWithSystemTemplates with the org template as system template and the
+	// project template as deployment template must produce 4 resources:
+	// 3 project resources (ServiceAccount, Deployment, Service) from
+	// projectResources + 1 platform resource (HTTPRoute) from platformResources.
+	t.Run("templates render together producing 4 resources", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(
+			context.Background(),
+			projectTemplate,
+			[]string{platformTemplate},
+			platform,
+			project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(resources) != 4 {
+			t.Fatalf("expected 4 resources (ServiceAccount, Deployment, Service, HTTPRoute), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+		}
+		for _, expected := range []string{"ServiceAccount", "Deployment", "Service", "HTTPRoute"} {
+			if !kindSet[expected] {
+				t.Errorf("expected %s resource in output", expected)
+			}
+		}
+	})
+
+	// Sub-test 2: Closed struct rejects disallowed kind.
+	// A modified project template that adds a RoleBinding must fail CUE
+	// evaluation when unified with the org template (error contains "not allowed").
+	t.Run("closed struct rejects disallowed kind with CUE error", func(t *testing.T) {
+		// Add a RoleBinding to the project template — not allowed by the org constraint.
+		forbiddenAddition := `
+projectResources: namespacedResources: (platform.namespace): {
+	RoleBinding: "disallowed-binding": {
+		apiVersion: "rbac.authorization.k8s.io/v1"
+		kind:       "RoleBinding"
+		metadata: {
+			name:      "disallowed-binding"
+			namespace: platform.namespace
+			labels: {"app.kubernetes.io/managed-by": "console.holos.run"}
+		}
+		roleRef: {
+			apiGroup: "rbac.authorization.k8s.io"
+			kind:     "ClusterRole"
+			name:     "view"
+		}
+		subjects: [{
+			kind:      "ServiceAccount"
+			name:      input.name
+			namespace: platform.namespace
+		}]
+	}
+}
+`
+		// Concatenate the project template with the forbidden addition so we
+		// have a template that produces a disallowed kind alongside the allowed ones.
+		projectWithForbidden := projectTemplate + forbiddenAddition
+
+		_, err := renderer.RenderWithSystemTemplates(
+			context.Background(),
+			projectWithForbidden,
+			[]string{platformTemplate},
+			platform,
+			project,
+		)
+		if err == nil {
+			t.Fatal("expected CUE evaluation error for disallowed RoleBinding kind, got nil")
+		}
+		if !strings.Contains(err.Error(), "not allowed") {
+			t.Errorf("expected error to contain 'not allowed' (CUE closed struct), got: %s", err.Error())
+		}
+	})
+
+	// Sub-test 3: Project template renders alone.
+	// Render with just the project template (no system template) must produce
+	// exactly 3 resources: ServiceAccount, Deployment, Service.
+	t.Run("project template renders standalone producing 3 resources", func(t *testing.T) {
+		resources, err := renderer.Render(
+			context.Background(),
+			projectTemplate,
+			platform,
+			project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error for standalone render, got: %v", err)
+		}
+		if len(resources) != 3 {
+			t.Fatalf("expected 3 resources (ServiceAccount, Deployment, Service), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+		}
+		for _, expected := range []string{"ServiceAccount", "Deployment", "Service"} {
+			if !kindSet[expected] {
+				t.Errorf("expected %s resource in standalone output", expected)
+			}
 		}
 	})
 }
