@@ -21,6 +21,7 @@ vi.mock('@/queries/deployment-templates', () => ({
   useDeleteDeploymentTemplate: vi.fn(),
   useCloneDeploymentTemplate: vi.fn(),
   useRenderDeploymentTemplate: vi.fn(),
+  useListLinkableOrgTemplates: vi.fn().mockReturnValue({ data: [] }),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -35,7 +36,7 @@ vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
 
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate, useListLinkableOrgTemplates } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -516,6 +517,103 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       const mutateAsync = (useCloneDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
       expect(mutateAsync).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('linked platform templates', () => {
+    const mockLinkable = [
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false },
+      { name: 'mandatory-labels', displayName: 'Mandatory Labels', description: 'Enforces labels', mandatory: true },
+    ]
+
+    it('does not show linked templates row when no linkable templates exist', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: [] })
+      setupMocks()
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.queryByText(/linked platform templates/i)).not.toBeInTheDocument()
+    })
+
+    it('shows linked templates row when linkable templates exist', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks()
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+    })
+
+    it('shows None linked when no templates are linked', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      // mandatory template is always shown even when linkedOrgTemplates is empty
+      expect(screen.getByText('Mandatory Labels')).toBeInTheDocument()
+    })
+
+    it('shows linked template names as badges', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: ['httproute'] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByText('HTTPRoute Gateway')).toBeInTheDocument()
+    })
+
+    it('shows edit linked templates button for owners', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByRole('button', { name: /edit linked platform templates/i })).toBeInTheDocument()
+    })
+
+    it('does not show edit linked templates button for viewers', () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.VIEWER)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.queryByRole('button', { name: /edit linked platform templates/i })).not.toBeInTheDocument()
+    })
+
+    it('clicking edit linked templates button opens dialog', async () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: ['httproute'] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('dialog shows checkboxes for each linkable template', async () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: ['httproute'] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const checkboxes = screen.getAllByRole('checkbox')
+      expect(checkboxes.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('mandatory template checkbox is checked and disabled in dialog', async () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /mandatory labels/i })
+      expect(mandatoryCheckbox).toBeChecked()
+      expect(mandatoryCheckbox).toBeDisabled()
+    })
+
+    it('saving calls updateMutation with selected linkedOrgTemplates', async () => {
+      ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      // Check the non-mandatory template
+      await user.click(screen.getByRole('checkbox', { name: /httproute gateway/i }))
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateDeploymentTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ linkedOrgTemplates: ['httproute'] }),
+        )
+      })
     })
   })
 })

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Pencil, Copy } from 'lucide-react'
+import { Pencil, Copy, Lock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate, useListLinkableOrgTemplates } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
@@ -47,6 +49,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const navigate = useNavigate()
   const { data: template, isPending, error } = useGetDeploymentTemplate(projectName, templateName)
   const { data: project } = useGetProject(projectName)
+  const { data: linkableTemplates = [] } = useListLinkableOrgTemplates(projectName)
   const updateMutation = useUpdateDeploymentTemplate(projectName, templateName)
   const deleteMutation = useDeleteDeploymentTemplate(projectName)
   const cloneMutation = useCloneDeploymentTemplate(projectName)
@@ -60,6 +63,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [cloneName, setCloneName] = useState('')
   const [cloneDisplayName, setCloneDisplayName] = useState('')
   const [cloneError, setCloneError] = useState<string | null>(null)
+  const [linkedEditOpen, setLinkedEditOpen] = useState(false)
+  const [draftLinkedOrgTemplates, setDraftLinkedOrgTemplates] = useState<string[]>([])
+  const [linkedEditError, setLinkedEditError] = useState<string | null>(null)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -108,6 +114,22 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
       setDescEditOpen(false)
     } catch (err) {
       setDescEditError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleOpenLinkedEdit = () => {
+    setDraftLinkedOrgTemplates(template?.linkedOrgTemplates ?? [])
+    setLinkedEditError(null)
+    setLinkedEditOpen(true)
+  }
+
+  const handleSaveLinkedTemplates = async () => {
+    try {
+      await updateMutation.mutateAsync({ linkedOrgTemplates: draftLinkedOrgTemplates })
+      toast.success('Saved')
+      setLinkedEditOpen(false)
+    } catch (err) {
+      setLinkedEditError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -198,6 +220,49 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                 )}
               </div>
             </div>
+
+            {linkableTemplates.length > 0 && (
+              <div className="flex items-start gap-2">
+                <span className="w-32 text-sm text-muted-foreground shrink-0 pt-0.5">Linked Platform Templates</span>
+                <div className="flex items-start gap-1 flex-1">
+                  <div className="flex-1">
+                    {(() => {
+                      const linkedNames = template?.linkedOrgTemplates ?? []
+                      const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
+                      const allLinked = [
+                        ...mandatoryTemplates.filter((t) => !linkedNames.includes(t.name)),
+                        ...linkableTemplates.filter((t) => linkedNames.includes(t.name) || t.mandatory),
+                      ]
+                      const dedupedLinked = allLinked.filter(
+                        (t, i, arr) => arr.findIndex((x) => x.name === t.name) === i,
+                      )
+                      if (dedupedLinked.length === 0) {
+                        return <span className="text-sm text-muted-foreground">None linked</span>
+                      }
+                      return (
+                        <div className="flex flex-wrap gap-1">
+                          {dedupedLinked.map((t) => (
+                            <span key={t.name} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
+                              {t.displayName || t.name}
+                              {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
+                            </span>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  {canWrite && (
+                    <button
+                      aria-label="edit linked platform templates"
+                      onClick={handleOpenLinkedEdit}
+                      className="ml-1 p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -282,6 +347,65 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
             <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={linkedEditOpen} onOpenChange={setLinkedEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Linked Platform Templates</DialogTitle>
+            <DialogDescription>
+              Select org-level platform templates to unify with this deployment template at render time. Mandatory templates are always included.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2" aria-label="Linked platform templates">
+            {linkableTemplates.map((t) => (
+              <div key={t.name} className="flex items-start gap-2">
+                <Checkbox
+                  id={`linked-edit-${t.name}`}
+                  checked={t.mandatory || draftLinkedOrgTemplates.includes(t.name)}
+                  disabled={t.mandatory}
+                  onCheckedChange={(checked) => {
+                    if (t.mandatory) return
+                    setDraftLinkedOrgTemplates((prev) =>
+                      checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                    )
+                  }}
+                />
+                <div className="flex flex-col">
+                  <label htmlFor={`linked-edit-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                    {t.displayName || t.name}
+                    {t.mandatory && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>This platform template is mandatory and always applied.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </label>
+                  {t.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {linkedEditError && (
+            <Alert variant="destructive">
+              <AlertDescription>{linkedEditError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setLinkedEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveLinkedTemplates} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -46,7 +46,7 @@ export function useCreateDeploymentTemplate(project: string) {
   const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName: string; description: string; cueTemplate: string }) =>
+    mutationFn: (params: { name: string; displayName: string; description: string; cueTemplate: string; linkedOrgTemplates?: string[] }) =>
       client.createDeploymentTemplate({ project, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(project) })
@@ -59,7 +59,7 @@ export function useUpdateDeploymentTemplate(project: string, name: string) {
   const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { displayName?: string; description?: string; cueTemplate?: string }) =>
+    mutationFn: (params: { displayName?: string; description?: string; cueTemplate?: string; linkedOrgTemplates?: string[] }) =>
       client.updateDeploymentTemplate({ project, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(project) })
@@ -91,6 +91,24 @@ export function useCloneDeploymentTemplate(project: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(project) })
     },
+  })
+}
+
+function linkableOrgTemplatesKey(project: string) {
+  return ['deployment-templates', 'linkable-org-templates', project] as const
+}
+
+export function useListLinkableOrgTemplates(project: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentTemplateService, transport), [transport])
+  return useQuery({
+    queryKey: linkableOrgTemplatesKey(project),
+    queryFn: async () => {
+      const response = await client.listLinkableOrgTemplates({ project })
+      return response.templates
+    },
+    enabled: isAuthenticated && !!project,
   })
 }
 
