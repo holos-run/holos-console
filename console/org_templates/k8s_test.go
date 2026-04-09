@@ -391,8 +391,12 @@ func TestConfigMapToOrgTemplate(t *testing.T) {
 		if !tmpl.Enabled {
 			t.Error("expected enabled=true")
 		}
-		if tmpl.Org != "my-org" {
-			t.Errorf("expected org 'my-org', got %q", tmpl.Org)
+		if tmpl.ScopeRef == nil || tmpl.ScopeRef.ScopeName != "my-org" {
+			scopeName := ""
+			if tmpl.ScopeRef != nil {
+				scopeName = tmpl.ScopeRef.ScopeName
+			}
+			t.Errorf("expected scope_name 'my-org', got %q", scopeName)
 		}
 	})
 

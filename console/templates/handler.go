@@ -1,3 +1,7 @@
+// Package templates provides the TemplateService handler for project-scoped
+// CUE deployment templates. This package implements the unified v1alpha2
+// TemplateService for TEMPLATE_SCOPE_PROJECT templates. Phase 9 will extend
+// this to handle org- and folder-scoped templates in a single handler.
 package templates
 
 import (
@@ -20,7 +24,7 @@ import (
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
-const auditResourceType = "deployment-template"
+const auditResourceType = "template"
 
 // dnsLabelRe validates template names as DNS labels.
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
@@ -35,10 +39,10 @@ type OrgResolver interface {
 	GetProjectOrganization(ctx context.Context, project string) (string, error)
 }
 
-// OrgTemplateLister lists org templates for an organization and returns proto messages.
-// Satisfied structurally by org_templates.K8sClient (via ListOrgTemplates + configMapToOrgTemplate).
+// OrgTemplateLister lists linkable platform templates for an organization.
+// Satisfied structurally by org_templates.K8sClient.
 type OrgTemplateLister interface {
-	ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableOrgTemplate, error)
+	ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableTemplate, error)
 }
 
 // RenderResource is a single rendered resource with its YAML representation
@@ -60,9 +64,10 @@ type Renderer interface {
 	RenderWithOrgTemplateSources(ctx context.Context, cueTemplate string, orgTemplateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
-// Handler implements the DeploymentTemplateService.
+// Handler implements the TemplateService (stub — phase 9 will fill in the
+// full implementation against the unified v1alpha2 TemplateService).
 type Handler struct {
-	consolev1connect.UnimplementedDeploymentTemplateServiceHandler
+	consolev1connect.UnimplementedTemplateServiceHandler
 	k8s              *K8sClient
 	projectResolver  ProjectResolver
 	renderer         Renderer
@@ -70,33 +75,37 @@ type Handler struct {
 	orgTemplateLister OrgTemplateLister
 }
 
-// NewHandler creates a DeploymentTemplateService handler.
+// NewHandler creates a TemplateService handler stub.
 func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, renderer Renderer) *Handler {
 	return &Handler{k8s: k8s, projectResolver: projectResolver, renderer: renderer}
 }
 
 // WithOrgResolver configures the handler with an OrgResolver for resolving
-// the project's organization. Required for ListLinkableOrgTemplates.
+// the project's organization.
 func (h *Handler) WithOrgResolver(or OrgResolver) *Handler {
 	h.orgResolver = or
 	return h
 }
 
 // WithOrgTemplateLister configures the handler with an OrgTemplateLister for
-// listing linkable platform templates. Required for ListLinkableOrgTemplates.
+// listing linkable platform templates.
 func (h *Handler) WithOrgTemplateLister(l OrgTemplateLister) *Handler {
 	h.orgTemplateLister = l
 	return h
 }
 
-// ListDeploymentTemplates returns all templates in a project.
-func (h *Handler) ListDeploymentTemplates(
+// ListTemplates returns all templates in the given scope (project only in this phase).
+func (h *Handler) ListTemplates(
 	ctx context.Context,
-	req *connect.Request[consolev1.ListDeploymentTemplatesRequest],
-) (*connect.Response[consolev1.ListDeploymentTemplatesResponse], error) {
-	project := req.Msg.Project
+	req *connect.Request[consolev1.ListTemplatesRequest],
+) (*connect.Response[consolev1.ListTemplatesResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -104,7 +113,7 @@ func (h *Handler) ListDeploymentTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesList); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesList); err != nil {
 		return nil, err
 	}
 
@@ -113,33 +122,37 @@ func (h *Handler) ListDeploymentTemplates(
 		return nil, mapK8sError(err)
 	}
 
-	templates := make([]*consolev1.DeploymentTemplate, 0, len(cms))
+	templates := make([]*consolev1.Template, 0, len(cms))
 	for _, cm := range cms {
 		templates = append(templates, configMapToTemplate(&cm, project))
 	}
 
-	slog.InfoContext(ctx, "deployment templates listed",
-		slog.String("action", "deployment_templates_list"),
+	slog.InfoContext(ctx, "templates listed",
+		slog.String("action", "templates_list"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", project),
 		slog.String("sub", claims.Sub),
 		slog.Int("count", len(templates)),
 	)
 
-	return connect.NewResponse(&consolev1.ListDeploymentTemplatesResponse{
+	return connect.NewResponse(&consolev1.ListTemplatesResponse{
 		Templates: templates,
 	}), nil
 }
 
-// GetDeploymentTemplate returns a single template by name.
-func (h *Handler) GetDeploymentTemplate(
+// GetTemplate returns a single template by name.
+func (h *Handler) GetTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.GetDeploymentTemplateRequest],
-) (*connect.Response[consolev1.GetDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
+	req *connect.Request[consolev1.GetTemplateRequest],
+) (*connect.Response[consolev1.GetTemplateResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
 	name := req.Msg.Name
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
@@ -150,7 +163,7 @@ func (h *Handler) GetDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesRead); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesRead); err != nil {
 		return nil, err
 	}
 
@@ -159,81 +172,42 @@ func (h *Handler) GetDeploymentTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "deployment template read",
-		slog.String("action", "deployment_template_read"),
+	slog.InfoContext(ctx, "template read",
+		slog.String("action", "template_read"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", project),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
 	)
 
-	return connect.NewResponse(&consolev1.GetDeploymentTemplateResponse{
+	return connect.NewResponse(&consolev1.GetTemplateResponse{
 		Template: configMapToTemplate(cm, project),
 	}), nil
 }
 
-// CreateDeploymentTemplate creates a new template.
-func (h *Handler) CreateDeploymentTemplate(
+// CreateTemplate creates a new template.
+func (h *Handler) CreateTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.CreateDeploymentTemplateRequest],
-) (*connect.Response[consolev1.CreateDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
-	name := req.Msg.Name
+	req *connect.Request[consolev1.CreateTemplateRequest],
+) (*connect.Response[consolev1.CreateTemplateResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
+	tmpl := req.Msg.GetTemplate()
+	if tmpl == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template is required"))
+	}
+	name := tmpl.Name
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 	if err := validateTemplateName(name); err != nil {
 		return nil, err
 	}
-	if err := validateCueSyntax(req.Msg.CueTemplate); err != nil {
-		return nil, err
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesWrite); err != nil {
-		return nil, err
-	}
-
-	_, err := h.k8s.CreateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, req.Msg.LinkedOrgTemplates)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "deployment template created",
-		slog.String("action", "deployment_template_create"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
-		slog.String("name", name),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-	)
-
-	return connect.NewResponse(&consolev1.CreateDeploymentTemplateResponse{
-		Name: name,
-	}), nil
-}
-
-// UpdateDeploymentTemplate updates an existing template.
-func (h *Handler) UpdateDeploymentTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.UpdateDeploymentTemplateRequest],
-) (*connect.Response[consolev1.UpdateDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
-	name := req.Msg.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
-	}
-	if name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
-	}
-
-	// Validate CUE syntax if a new template is provided
-	if req.Msg.CueTemplate != nil {
-		if err := validateCueSyntax(*req.Msg.CueTemplate); err != nil {
+	if tmpl.CueTemplate != "" {
+		if err := validateCueSyntax(tmpl.CueTemplate); err != nil {
 			return nil, err
 		}
 	}
@@ -243,17 +217,25 @@ func (h *Handler) UpdateDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesWrite); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateTemplate(ctx, project, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Defaults, false, req.Msg.LinkedOrgTemplates)
+	// Extract linked org template names from LinkedTemplates.
+	var linkedOrgTemplates []string
+	for _, ref := range tmpl.LinkedTemplates {
+		if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.Name != "" {
+			linkedOrgTemplates = append(linkedOrgTemplates, ref.Name)
+		}
+	}
+
+	_, err := h.k8s.CreateTemplate(ctx, project, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, linkedOrgTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "deployment template updated",
-		slog.String("action", "deployment_template_update"),
+	slog.InfoContext(ctx, "template created",
+		slog.String("action", "template_create"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", project),
 		slog.String("name", name),
@@ -261,18 +243,88 @@ func (h *Handler) UpdateDeploymentTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.UpdateDeploymentTemplateResponse{}), nil
+	return connect.NewResponse(&consolev1.CreateTemplateResponse{
+		Name: name,
+	}), nil
 }
 
-// DeleteDeploymentTemplate deletes a template.
-func (h *Handler) DeleteDeploymentTemplate(
+// UpdateTemplate updates an existing template.
+func (h *Handler) UpdateTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.DeleteDeploymentTemplateRequest],
-) (*connect.Response[consolev1.DeleteDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
+	req *connect.Request[consolev1.UpdateTemplateRequest],
+) (*connect.Response[consolev1.UpdateTemplateResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
+	tmpl := req.Msg.GetTemplate()
+	if tmpl == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template is required"))
+	}
+	name := tmpl.Name
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+	if tmpl.CueTemplate != "" {
+		if err := validateCueSyntax(tmpl.CueTemplate); err != nil {
+			return nil, err
+		}
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
+		return nil, err
+	}
+
+	// Extract linked org template names from LinkedTemplates.
+	var linkedOrgTemplates []string
+	for _, ref := range tmpl.LinkedTemplates {
+		if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.Name != "" {
+			linkedOrgTemplates = append(linkedOrgTemplates, ref.Name)
+		}
+	}
+
+	displayName := tmpl.DisplayName
+	description := tmpl.Description
+	cueTemplate := tmpl.CueTemplate
+	_, err := h.k8s.UpdateTemplate(ctx, project, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, linkedOrgTemplates)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "template updated",
+		slog.String("action", "template_update"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", project),
+		slog.String("name", name),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.UpdateTemplateResponse{}), nil
+}
+
+// DeleteTemplate deletes a template.
+func (h *Handler) DeleteTemplate(
+	ctx context.Context,
+	req *connect.Request[consolev1.DeleteTemplateRequest],
+) (*connect.Response[consolev1.DeleteTemplateResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
 	name := req.Msg.Name
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
@@ -283,7 +335,7 @@ func (h *Handler) DeleteDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesDelete); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesDelete); err != nil {
 		return nil, err
 	}
 
@@ -291,8 +343,8 @@ func (h *Handler) DeleteDeploymentTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "deployment template deleted",
-		slog.String("action", "deployment_template_delete"),
+	slog.InfoContext(ctx, "template deleted",
+		slog.String("action", "template_delete"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", project),
 		slog.String("name", name),
@@ -300,19 +352,23 @@ func (h *Handler) DeleteDeploymentTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.DeleteDeploymentTemplateResponse{}), nil
+	return connect.NewResponse(&consolev1.DeleteTemplateResponse{}), nil
 }
 
-// CloneDeploymentTemplate copies an existing deployment template to a new name.
-func (h *Handler) CloneDeploymentTemplate(
+// CloneTemplate copies an existing template to a new name within the same scope.
+func (h *Handler) CloneTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.CloneDeploymentTemplateRequest],
-) (*connect.Response[consolev1.CloneDeploymentTemplateResponse], error) {
-	project := req.Msg.Project
+	req *connect.Request[consolev1.CloneTemplateRequest],
+) (*connect.Response[consolev1.CloneTemplateResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
 	sourceName := req.Msg.SourceName
 	newName := req.Msg.Name
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 	if sourceName == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source_name is required"))
@@ -326,7 +382,7 @@ func (h *Handler) CloneDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesWrite); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
 		return nil, err
 	}
 
@@ -335,8 +391,8 @@ func (h *Handler) CloneDeploymentTemplate(
 		return nil, mapK8sError(err)
 	}
 
-	slog.InfoContext(ctx, "deployment template cloned",
-		slog.String("action", "deployment_template_clone"),
+	slog.InfoContext(ctx, "template cloned",
+		slog.String("action", "template_clone"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("project", project),
 		slog.String("source_name", sourceName),
@@ -345,26 +401,16 @@ func (h *Handler) CloneDeploymentTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.CloneDeploymentTemplateResponse{
+	return connect.NewResponse(&consolev1.CloneTemplateResponse{
 		Name: newName,
 	}), nil
 }
 
-// RenderDeploymentTemplate evaluates a CUE template unified with a CUE input
-// string and returns the rendered Kubernetes resource manifests as
-// multi-document YAML and a pretty-printed JSON array.
-//
-// Authentication is required. The request requires a non-empty cue_template;
-// cue_input and cue_platform_input are optional (empty strings are valid for
-// templates that have no required inputs or for callers that do not need
-// platform context during preview).
-//
-// Access is not checked against a specific project — this RPC is intentionally
-// open to any authenticated user for template authoring and preview purposes.
-func (h *Handler) RenderDeploymentTemplate(
+// RenderTemplate evaluates a CUE template and returns rendered Kubernetes manifests.
+func (h *Handler) RenderTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.RenderDeploymentTemplateRequest],
-) (*connect.Response[consolev1.RenderDeploymentTemplateResponse], error) {
+	req *connect.Request[consolev1.RenderTemplateRequest],
+) (*connect.Response[consolev1.RenderTemplateResponse], error) {
 	if req.Msg.CueTemplate == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cue_template is required"))
 	}
@@ -374,12 +420,11 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Render the template. The linked_org_templates field in the request is
-	// accepted for future use (when the RPC gains a project parameter to resolve
-	// the org). Currently this RPC renders the deployment template standalone —
-	// effective org template unification happens at deploy time (renderResources)
-	// and in GetDeploymentRenderPreview.
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueInput)
+	if h.renderer == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renderer not configured"))
+	}
+
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueProjectInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}
@@ -401,23 +446,25 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal rendered resources to JSON: %w", err))
 	}
 
-	return connect.NewResponse(&consolev1.RenderDeploymentTemplateResponse{
+	return connect.NewResponse(&consolev1.RenderTemplateResponse{
 		RenderedYaml: buf.String(),
 		RenderedJson: string(jsonBytes),
 	}), nil
 }
 
-// ListLinkableOrgTemplates returns the set of enabled org templates for the
+// ListLinkableTemplates returns the set of enabled org templates for the
 // project's organization that a deployment template may link against (ADR 019).
-// Mandatory+enabled templates are included so the UI can display them as
-// always-on with a lock icon.
-func (h *Handler) ListLinkableOrgTemplates(
+func (h *Handler) ListLinkableTemplates(
 	ctx context.Context,
-	req *connect.Request[consolev1.ListLinkableOrgTemplatesRequest],
-) (*connect.Response[consolev1.ListLinkableOrgTemplatesResponse], error) {
-	project := req.Msg.Project
+	req *connect.Request[consolev1.ListLinkableTemplatesRequest],
+) (*connect.Response[consolev1.ListLinkableTemplatesResponse], error) {
+	scope := req.Msg.GetScope()
+	if scope == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	project := scope.ScopeName
 	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -425,19 +472,17 @@ func (h *Handler) ListLinkableOrgTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentTemplatesList); err != nil {
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesList); err != nil {
 		return nil, err
 	}
 
 	if h.orgResolver == nil || h.orgTemplateLister == nil {
-		// Not configured — return empty list (no platform templates available).
-		return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{}), nil
+		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
 
 	org, err := h.orgResolver.GetProjectOrganization(ctx, project)
 	if err != nil || org == "" {
-		// Project has no org or org resolution failed — return empty list.
-		return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{}), nil
+		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
 
 	templates, err := h.orgTemplateLister.ListLinkableOrgTemplateInfos(ctx, org)
@@ -446,14 +491,14 @@ func (h *Handler) ListLinkableOrgTemplates(
 	}
 
 	slog.InfoContext(ctx, "linkable platform templates listed",
-		slog.String("action", "linkable_org_templates_list"),
+		slog.String("action", "linkable_templates_list"),
 		slog.String("project", project),
 		slog.String("org", org),
 		slog.String("sub", claims.Sub),
 		slog.Int("count", len(templates)),
 	)
 
-	return connect.NewResponse(&consolev1.ListLinkableOrgTemplatesResponse{
+	return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{
 		Templates: templates,
 	}), nil
 }
@@ -497,7 +542,7 @@ func validateCueSyntax(source string) error {
 	return nil
 }
 
-// configMapToTemplate converts a Kubernetes ConfigMap to a DeploymentTemplate protobuf message.
+// configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
 //
 // Defaults are populated in priority order:
 //  1. CUE extraction — reads the `defaults` field from the template CUE source.
@@ -508,21 +553,31 @@ func validateCueSyntax(source string) error {
 // If CUE extraction succeeds and returns non-nil defaults, the annotation fallback
 // is skipped. If CUE extraction fails or the template has no `defaults` block, the
 // annotation fallback is attempted. If both are absent, Defaults is left nil.
-func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.DeploymentTemplate {
+func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.Template {
 	cueSource := cm.Data[CueTemplateKey]
-	tmpl := &consolev1.DeploymentTemplate{
+	tmpl := &consolev1.Template{
 		Name:        cm.Name,
-		Project:     project,
 		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha1.AnnotationDescription],
 		CueTemplate: cueSource,
+		ScopeRef: &consolev1.TemplateScopeRef{
+			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+			ScopeName: project,
+		},
 	}
 
-	// Populate linked org templates from annotation (ADR 019).
+	// Populate linked templates from annotation (ADR 019).
 	if raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
 		var linked []string
 		if err := json.Unmarshal([]byte(raw), &linked); err == nil {
-			tmpl.LinkedOrgTemplates = linked
+			refs := make([]*consolev1.LinkedTemplateRef, 0, len(linked))
+			for _, name := range linked {
+				refs = append(refs, &consolev1.LinkedTemplateRef{
+					Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+					Name:  name,
+				})
+			}
+			tmpl.LinkedTemplates = refs
 		} else {
 			slog.Warn("failed to parse linked-org-templates annotation",
 				slog.String("name", cm.Name),
@@ -549,11 +604,11 @@ func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.Deploy
 
 	// Priority 2: Annotation fallback for pre-ADR 018 templates.
 	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
-		var defaults consolev1.DeploymentDefaults
+		var defaults consolev1.TemplateDefaults
 		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
 			tmpl.Defaults = &defaults
 		} else {
-			slog.Warn("failed to deserialize deployment defaults from ConfigMap",
+			slog.Warn("failed to deserialize template defaults from ConfigMap",
 				slog.String("name", cm.Name),
 				slog.String("namespace", cm.Namespace),
 				slog.Any("error", err),

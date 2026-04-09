@@ -29,18 +29,22 @@ async function apiCreateDeploymentTemplate(
       if (!key) throw new Error('No OIDC session found')
       const data = JSON.parse(sessionStorage.getItem(key)!) as { access_token?: string }
       const token = data.access_token!
-      const resp = await fetch('/holos.console.v1.DeploymentTemplateService/CreateDeploymentTemplate', {
+      // Use the unified TemplateService (v1alpha2) with project scope.
+      const resp = await fetch('/holos.console.v1.TemplateService/CreateTemplate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connect-Protocol-Version': '1',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ project, name, displayName: name, description: '', cueTemplate: '' }),
+        body: JSON.stringify({
+          scope: { scope: 3, scopeName: project }, // TEMPLATE_SCOPE_PROJECT = 3
+          template: { name, scopeRef: { scope: 3, scopeName: project }, displayName: name, description: '', cueTemplate: '' },
+        }),
       })
       if (!resp.ok) {
         const text = await resp.text()
-        throw new Error(`CreateDeploymentTemplate failed (${resp.status}): ${text}`)
+        throw new Error(`CreateTemplate failed (${resp.status}): ${text}`)
       }
     },
     { project, name },

@@ -3,14 +3,10 @@ package templates
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"testing"
 
-	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -56,985 +52,138 @@ const validCue = `
 }
 `
 
-// templateConfigMapWithDefaults builds a ConfigMap that includes a defaults.json key.
-func templateConfigMapWithDefaults(project, name, displayName, description, cueTemplate string, defaultsJSON string) *corev1.ConfigMap {
-	cm := templateConfigMap(project, name, displayName, description, cueTemplate)
-	if defaultsJSON != "" {
-		cm.Data[DefaultsKey] = defaultsJSON
-	}
-	return cm
-}
-
-func TestHandler_DefaultsRoundTrip(t *testing.T) {
-	t.Run("create with defaults then get returns defaults", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		createReq := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			DisplayName: "Web App",
-			CueTemplate: validCue,
-			Defaults: &consolev1.DeploymentDefaults{
-				Image: "ghcr.io/mccutchen/go-httpbin",
-				Tag:   "2.21",
+// TestConfigMapToTemplate verifies that configMapToTemplate correctly converts
+// a ConfigMap to the new v1alpha2 Template proto message.
+func TestConfigMapToTemplate(t *testing.T) {
+	t.Run("basic fields populated", func(t *testing.T) {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "web-app",
+				Namespace: "prj-my-project",
+				Annotations: map[string]string{
+					v1alpha1.AnnotationDisplayName: "Web App",
+					v1alpha1.AnnotationDescription: "A web app",
+				},
 			},
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, createReq)
-		if err != nil {
-			t.Fatalf("create: expected no error, got %v", err)
-		}
-
-		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
-		if err != nil {
-			t.Fatalf("get: expected no error, got %v", err)
-		}
-		tmpl := getResp.Msg.Template
-		if tmpl.Defaults == nil {
-			t.Fatal("expected non-nil defaults after create with defaults")
-		}
-		if tmpl.Defaults.Image != "ghcr.io/mccutchen/go-httpbin" {
-			t.Errorf("expected image 'ghcr.io/mccutchen/go-httpbin', got %q", tmpl.Defaults.Image)
-		}
-		if tmpl.Defaults.Tag != "2.21" {
-			t.Errorf("expected tag '2.21', got %q", tmpl.Defaults.Tag)
-		}
-	})
-
-	t.Run("create without defaults then get returns nil defaults", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		createReq := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			DisplayName: "Web App",
-			CueTemplate: validCue,
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, createReq)
-		if err != nil {
-			t.Fatalf("create: expected no error, got %v", err)
-		}
-
-		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
-		if err != nil {
-			t.Fatalf("get: expected no error, got %v", err)
-		}
-		if getResp.Msg.Template.Defaults != nil {
-			t.Error("expected nil defaults when template created without defaults")
-		}
-	})
-
-	t.Run("update to add defaults then get returns defaults", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		updateReq := connect.NewRequest(&consolev1.UpdateDeploymentTemplateRequest{
-			Project: "my-project",
-			Name:    "web-app",
-			Defaults: &consolev1.DeploymentDefaults{
-				Image: "ghcr.io/example/app",
-				Tag:   "v2.0",
+			Data: map[string]string{
+				CueTemplateKey: validCue,
 			},
-		})
-		_, err := handler.UpdateDeploymentTemplate(ctx, updateReq)
-		if err != nil {
-			t.Fatalf("update: expected no error, got %v", err)
 		}
-
-		getReq := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		getResp, err := handler.GetDeploymentTemplate(ctx, getReq)
-		if err != nil {
-			t.Fatalf("get: expected no error, got %v", err)
+		tmpl := configMapToTemplate(cm, "my-project")
+		if tmpl.Name != "web-app" {
+			t.Errorf("expected name 'web-app', got %q", tmpl.Name)
 		}
-		tmpl := getResp.Msg.Template
-		if tmpl.Defaults == nil {
-			t.Fatal("expected non-nil defaults after update with defaults")
+		if tmpl.DisplayName != "Web App" {
+			t.Errorf("expected display name 'Web App', got %q", tmpl.DisplayName)
 		}
-		if tmpl.Defaults.Image != "ghcr.io/example/app" {
-			t.Errorf("expected image 'ghcr.io/example/app', got %q", tmpl.Defaults.Image)
+		if tmpl.Description != "A web app" {
+			t.Errorf("expected description 'A web app', got %q", tmpl.Description)
+		}
+		if tmpl.CueTemplate != validCue {
+			t.Errorf("expected cue template, got %q", tmpl.CueTemplate)
+		}
+		if tmpl.ScopeRef == nil {
+			t.Fatal("expected non-nil ScopeRef")
+		}
+		if tmpl.ScopeRef.ScopeName != "my-project" {
+			t.Errorf("expected scope_name 'my-project', got %q", tmpl.ScopeRef.ScopeName)
+		}
+		if tmpl.ScopeRef.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+			t.Errorf("expected project scope, got %v", tmpl.ScopeRef.Scope)
 		}
 	})
 
-	t.Run("list returns defaults on each template", func(t *testing.T) {
-		ns := projectNS("my-project")
+	t.Run("linked templates from annotation", func(t *testing.T) {
+		linkedJSON, _ := json.Marshal([]string{"httproute", "security-policy"})
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "web-app",
+				Namespace: "prj-my-project",
+				Annotations: map[string]string{
+					v1alpha1.AnnotationLinkedOrgTemplates: string(linkedJSON),
+				},
+			},
+			Data: map[string]string{},
+		}
+		tmpl := configMapToTemplate(cm, "my-project")
+		if len(tmpl.LinkedTemplates) != 2 {
+			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.LinkedTemplates))
+		}
+		if tmpl.LinkedTemplates[0].Name != "httproute" {
+			t.Errorf("expected 'httproute', got %q", tmpl.LinkedTemplates[0].Name)
+		}
+		if tmpl.LinkedTemplates[1].Name != "security-policy" {
+			t.Errorf("expected 'security-policy', got %q", tmpl.LinkedTemplates[1].Name)
+		}
+		for _, ref := range tmpl.LinkedTemplates {
+			if ref.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
+				t.Errorf("expected org scope for linked template %q, got %v", ref.Name, ref.Scope)
+			}
+		}
+	})
+
+	t.Run("defaults from annotation fallback", func(t *testing.T) {
 		defaultsJSON := `{"image":"ghcr.io/example/app","tag":"v1.0"}`
-		cm := templateConfigMapWithDefaults("my-project", "web-app", "Web App", "A web app", validCue, defaultsJSON)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		listReq := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
-		listResp, err := handler.ListDeploymentTemplates(ctx, listReq)
-		if err != nil {
-			t.Fatalf("list: expected no error, got %v", err)
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "web-app",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string]string{
+				DefaultsKey: defaultsJSON,
+			},
 		}
-		if len(listResp.Msg.Templates) != 1 {
-			t.Fatalf("expected 1 template, got %d", len(listResp.Msg.Templates))
-		}
-		tmpl := listResp.Msg.Templates[0]
+		tmpl := configMapToTemplate(cm, "my-project")
 		if tmpl.Defaults == nil {
-			t.Fatal("expected non-nil defaults in list response")
+			t.Fatal("expected non-nil defaults from annotation fallback")
 		}
 		if tmpl.Defaults.Image != "ghcr.io/example/app" {
 			t.Errorf("expected image 'ghcr.io/example/app', got %q", tmpl.Defaults.Image)
 		}
-	})
-}
-
-func TestHandler_ListDeploymentTemplates(t *testing.T) {
-	t.Run("viewer can list templates", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
-		resp, err := handler.ListDeploymentTemplates(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(resp.Msg.Templates) != 1 {
-			t.Fatalf("expected 1 template, got %d", len(resp.Msg.Templates))
-		}
-		if resp.Msg.Templates[0].Name != "web-app" {
-			t.Errorf("expected name 'web-app', got %q", resp.Msg.Templates[0].Name)
+		if tmpl.Defaults.Tag != "v1.0" {
+			t.Errorf("expected tag 'v1.0', got %q", tmpl.Defaults.Tag)
 		}
 	})
 
-	t.Run("rejects unauthenticated request", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
-
-		ctx := context.Background()
-		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
-		_, err := handler.ListDeploymentTemplates(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for unauthenticated request")
-		}
-		if connect.CodeOf(err) != connect.CodeUnauthenticated {
-			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects unauthorized user", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{} // no grants
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("nobody@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: "my-project"})
-		_, err := handler.ListDeploymentTemplates(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for unauthorized user")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects empty project", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListDeploymentTemplatesRequest{Project: ""})
-		_, err := handler.ListDeploymentTemplates(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for empty project")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-}
-
-func TestHandler_GetDeploymentTemplate(t *testing.T) {
-	t.Run("viewer can get template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		resp, err := handler.GetDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if resp.Msg.Template.Name != "web-app" {
-			t.Errorf("expected name 'web-app', got %q", resp.Msg.Template.Name)
-		}
-		if resp.Msg.Template.DisplayName != "Web App" {
-			t.Errorf("expected display name 'Web App', got %q", resp.Msg.Template.DisplayName)
-		}
-		if resp.Msg.Template.CueTemplate != validCue {
-			t.Errorf("expected cue template, got %q", resp.Msg.Template.CueTemplate)
-		}
-	})
-
-	t.Run("rejects unauthorized user", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, nil)
-
-		ctx := authedCtx("nobody@example.com", nil)
-		req := connect.NewRequest(&consolev1.GetDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		_, err := handler.GetDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for unauthorized user")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-}
-
-func TestHandler_CreateDeploymentTemplate(t *testing.T) {
-	t.Run("editor can create template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			DisplayName: "Web App",
-			Description: "A web app",
-			CueTemplate: validCue,
-		})
-		resp, err := handler.CreateDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if resp.Msg.Name != "web-app" {
-			t.Errorf("expected name 'web-app', got %q", resp.Msg.Name)
-		}
-
-		// Verify it was created in K8s
-		_, err = fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected ConfigMap to exist, got %v", err)
-		}
-	})
-
-	t.Run("viewer cannot create template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			DisplayName: "Web App",
-			CueTemplate: validCue,
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer creating template")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects invalid template name", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "Invalid-Name!",
-			DisplayName: "Bad Name",
-			CueTemplate: validCue,
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for invalid template name")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects invalid CUE syntax", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			DisplayName: "Web App",
-			CueTemplate: "this is not valid {{ cue",
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for invalid CUE syntax")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects empty name", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "",
-			CueTemplate: validCue,
-		})
-		_, err := handler.CreateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for empty name")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-}
-
-func TestHandler_UpdateDeploymentTemplate(t *testing.T) {
-	t.Run("editor can update template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		newDesc := "Updated description"
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.UpdateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			Description: &newDesc,
-		})
-		_, err := handler.UpdateDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-	})
-
-	t.Run("viewer cannot update template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		newDesc := "Updated description"
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.UpdateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			Description: &newDesc,
-		})
-		_, err := handler.UpdateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer updating template")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("rejects invalid CUE on update", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		badCue := "this is not valid {{ cue"
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.UpdateDeploymentTemplateRequest{
-			Project:     "my-project",
-			Name:        "web-app",
-			CueTemplate: &badCue,
-		})
-		_, err := handler.UpdateDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for invalid CUE syntax")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-}
-
-func TestHandler_DeleteDeploymentTemplate(t *testing.T) {
-	t.Run("owner can delete template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"owner@example.com": "owner"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("owner@example.com", nil)
-		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		_, err := handler.DeleteDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-	})
-
-	t.Run("editor cannot delete template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		_, err := handler.DeleteDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for editor deleting template")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("viewer cannot delete template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.DeleteDeploymentTemplateRequest{Project: "my-project", Name: "web-app"})
-		_, err := handler.DeleteDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer deleting template")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
-}
-
-func TestHandler_CloneDeploymentTemplate(t *testing.T) {
-	t.Run("editor can clone template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "A web app", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "web-app",
-			Name:        "web-app-copy",
-			DisplayName: "Web App Copy",
-		})
-		resp, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if resp.Msg.Name != "web-app-copy" {
-			t.Errorf("expected name 'web-app-copy', got %q", resp.Msg.Name)
-		}
-	})
-
-	t.Run("clone inherits CUE template and description from source", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "original description", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "web-app",
-			Name:        "web-app-copy",
-			DisplayName: "Web App Copy",
-		})
-		_, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		clonedCM, err := fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app-copy", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected cloned ConfigMap, got %v", err)
-		}
-		if clonedCM.Data[CueTemplateKey] != validCue {
-			t.Errorf("expected CUE template from source, got %q", clonedCM.Data[CueTemplateKey])
-		}
-		if clonedCM.Annotations[v1alpha1.AnnotationDescription] != "original description" {
-			t.Errorf("expected description from source, got %q", clonedCM.Annotations[v1alpha1.AnnotationDescription])
-		}
-		if clonedCM.Annotations[v1alpha1.AnnotationDisplayName] != "Web App Copy" {
-			t.Errorf("expected display name 'Web App Copy', got %q", clonedCM.Annotations[v1alpha1.AnnotationDisplayName])
-		}
-	})
-
-	t.Run("returns error when source does not exist", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "nonexistent",
-			Name:        "copy",
-			DisplayName: "Copy",
-		})
-		_, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error when source does not exist")
-		}
-		if connect.CodeOf(err) != connect.CodeNotFound {
-			t.Errorf("expected CodeNotFound, got %v", err)
-		}
-	})
-
-	t.Run("returns error when target name already exists", func(t *testing.T) {
-		ns := projectNS("my-project")
-		source := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
-		target := templateConfigMap("my-project", "web-app-copy", "Web App Copy", "desc", validCue)
-		fakeClient := fake.NewClientset(ns, source, target)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "web-app",
-			Name:        "web-app-copy",
-			DisplayName: "Web App Copy",
-		})
-		_, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error when target name already exists")
-		}
-		if connect.CodeOf(err) != connect.CodeAlreadyExists {
-			t.Errorf("expected CodeAlreadyExists, got %v", err)
-		}
-	})
-
-	t.Run("viewer cannot clone template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"viewer@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "web-app",
-			Name:        "web-app-copy",
-			DisplayName: "Web App Copy",
-		})
-		_, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected permission denied error for viewer")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", err)
-		}
-	})
-
-	t.Run("clone inherits defaults from source", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := templateConfigMap("my-project", "web-app", "Web App", "desc", validCue)
-		cm.Data[DefaultsKey] = `{"image":"ghcr.io/example/app","tag":"v1.0"}`
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"editor@example.com": "editor"}}
-		handler := NewHandler(k8s, pr, nil)
-
-		ctx := authedCtx("editor@example.com", nil)
-		req := connect.NewRequest(&consolev1.CloneDeploymentTemplateRequest{
-			Project:     "my-project",
-			SourceName:  "web-app",
-			Name:        "web-app-copy",
-			DisplayName: "Web App Copy",
-		})
-		_, err := handler.CloneDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		clonedCM, err := fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app-copy", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected cloned ConfigMap, got %v", err)
-		}
-		rawDefaults, ok := clonedCM.Data[DefaultsKey]
-		if !ok {
-			t.Fatalf("expected %q key in cloned ConfigMap", DefaultsKey)
-		}
-		var got map[string]any
-		if err := json.Unmarshal([]byte(rawDefaults), &got); err != nil {
-			t.Fatalf("defaults.json is not valid JSON: %v", err)
-		}
-		if got["image"] != "ghcr.io/example/app" {
-			t.Errorf("expected image from source defaults, got %v", got["image"])
-		}
-	})
-}
-
-func TestHandler_RenderDeploymentTemplate(t *testing.T) {
-	const validCueSrc = `
-#Input: { name: string }
-`
-
-	t.Run("unauthenticated request returns CodeUnauthenticated", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{})
-
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: validCueSrc,
-		})
-		_, err := handler.RenderDeploymentTemplate(context.Background(), req)
-		if err == nil {
-			t.Fatal("expected error for unauthenticated request")
-		}
-		if connect.CodeOf(err) != connect.CodeUnauthenticated {
-			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("missing cue_template returns CodeInvalidArgument", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, nil, &stubRenderer{})
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: "",
-		})
-		_, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for missing cue_template")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("valid request calls renderer with correct inputs and returns YAML", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		stub := &stubRenderer{
-			resources: []RenderResource{
-				{
-					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
-					Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
-				},
-				{
-					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
-					Object: map[string]any{"apiVersion": "apps/v1", "kind": "Deployment"},
-				},
+	t.Run("no defaults when both sources absent", func(t *testing.T) {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "web-app",
+				Namespace: "prj-my-project",
+			},
+			Data: map[string]string{
+				CueTemplateKey: validCue,
 			},
 		}
-		handler := NewHandler(k8s, nil, stub)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: validCueSrc,
-			CueInput: `input: {
-	name:      "holos-console"
-	image:     "ghcr.io/holos-run/holos-console"
-	tag:       "latest"
-	project:   "my-project"
-	namespace: "holos-prj-my-project"
-}`,
-		})
-		resp, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if resp.Msg.RenderedYaml == "" {
-			t.Error("expected non-empty rendered_yaml")
-		}
-		if !strings.Contains(resp.Msg.RenderedYaml, "ServiceAccount") {
-			t.Error("expected YAML to contain ServiceAccount")
-		}
-		if !strings.Contains(resp.Msg.RenderedYaml, "---\n") {
-			t.Error("expected YAML to contain document separator")
-		}
-	})
-
-	t.Run("rendered_json is a pretty-printed JSON array of all resource objects", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		stub := &stubRenderer{
-			resources: []RenderResource{
-				{
-					YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
-					Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
-				},
-				{
-					YAML:   "apiVersion: apps/v1\nkind: Deployment\n",
-					Object: map[string]any{"apiVersion": "apps/v1", "kind": "Deployment"},
-				},
-			},
-		}
-		handler := NewHandler(k8s, nil, stub)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: validCueSrc,
-		})
-		resp, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		// rendered_json must be non-empty.
-		if resp.Msg.RenderedJson == "" {
-			t.Fatal("expected non-empty rendered_json")
-		}
-
-		// rendered_json must be pretty-printed (contains newlines).
-		if !strings.Contains(resp.Msg.RenderedJson, "\n") {
-			t.Error("expected rendered_json to be pretty-printed with newlines")
-		}
-
-		// rendered_json must be valid JSON and parse as a JSON array.
-		var resources []map[string]any
-		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
-			t.Fatalf("rendered_json is not valid JSON: %v", err)
-		}
-
-		// Must contain both resources.
-		if len(resources) != 2 {
-			t.Fatalf("expected 2 elements in rendered_json array, got %d", len(resources))
-		}
-
-		// Verify resource kinds are present.
-		kinds := make(map[string]bool)
-		for _, r := range resources {
-			if k, ok := r["kind"].(string); ok {
-				kinds[k] = true
-			}
-		}
-		if !kinds["ServiceAccount"] {
-			t.Error("expected rendered_json to contain ServiceAccount")
-		}
-		if !kinds["Deployment"] {
-			t.Error("expected rendered_json to contain Deployment")
-		}
-	})
-
-	t.Run("rendered_json is empty array when renderer returns no objects", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		// Resources with no Object set (legacy path).
-		stub := &stubRenderer{
-			resources: []RenderResource{
-				{YAML: "apiVersion: v1\nkind: ServiceAccount\n"},
-			},
-		}
-		handler := NewHandler(k8s, nil, stub)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: validCueSrc,
-		})
-		resp, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		// rendered_json should be a valid JSON empty array.
-		var resources []map[string]any
-		if err := json.Unmarshal([]byte(resp.Msg.RenderedJson), &resources); err != nil {
-			t.Fatalf("rendered_json is not valid JSON: %v", err)
-		}
-		if len(resources) != 0 {
-			t.Errorf("expected 0 elements in rendered_json when no objects provided, got %d", len(resources))
-		}
-	})
-
-	t.Run("renderer error is propagated as CodeInvalidArgument", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		stub := &stubRenderer{err: fmt.Errorf("syntax error in CUE")}
-		handler := NewHandler(k8s, nil, stub)
-
-		ctx := authedCtx("viewer@example.com", nil)
-		req := connect.NewRequest(&consolev1.RenderDeploymentTemplateRequest{
-			CueTemplate: validCueSrc,
-		})
-		_, err := handler.RenderDeploymentTemplate(ctx, req)
-		if err == nil {
-			t.Fatal("expected error from renderer")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		tmpl := configMapToTemplate(cm, "my-project")
+		if tmpl.Defaults != nil {
+			t.Errorf("expected nil defaults when neither CUE defaults nor annotation present, got %+v", tmpl.Defaults)
 		}
 	})
 }
 
-// stubOrgResolver implements OrgResolver for tests.
-type stubOrgResolver struct {
-	org string
-	err error
-}
-
-func (s *stubOrgResolver) GetProjectOrganization(_ context.Context, _ string) (string, error) {
-	return s.org, s.err
-}
-
-// stubOrgTemplateLister implements OrgTemplateLister for tests.
-type stubOrgTemplateLister struct {
-	templates []*consolev1.LinkableOrgTemplate
-	err       error
-}
-
-func (s *stubOrgTemplateLister) ListLinkableOrgTemplateInfos(_ context.Context, _ string) ([]*consolev1.LinkableOrgTemplate, error) {
-	return s.templates, s.err
-}
-
-func TestListLinkableOrgTemplates(t *testing.T) {
-	linkableTemplates := []*consolev1.LinkableOrgTemplate{
-		{Name: "microservice-v2", DisplayName: "Microservice v2", Description: "Standard microservice", Mandatory: false},
-		{Name: "policy-floor", DisplayName: "Policy Floor", Description: "Mandatory policies", Mandatory: true},
+// TestValidateTemplateName verifies the DNS label validation rules.
+func TestValidateTemplateName(t *testing.T) {
+	valid := []string{"web-app", "my-service", "abc", "a1b2c3"}
+	for _, name := range valid {
+		if err := validateTemplateName(name); err != nil {
+			t.Errorf("expected valid name %q to pass, got %v", name, err)
+		}
 	}
+	invalid := []string{"", "Invalid-Name!", "1bad", "-bad", "bad-", "this-name-is-longer-than-sixty-three-characters-and-should-fail!"}
+	for _, name := range invalid {
+		if err := validateTemplateName(name); err == nil {
+			t.Errorf("expected invalid name %q to fail, but it passed", name)
+		}
+	}
+}
 
-	t.Run("requires authentication", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{}).
-			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
-			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
-
-		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
-		_, err := handler.ListLinkableOrgTemplates(context.Background(), req)
-		if err == nil {
-			t.Fatal("expected unauthenticated error")
-		}
-		if connect.CodeOf(err) != connect.CodeUnauthenticated {
-			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("requires project field", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubRenderer{}).
-			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
-			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
-
-		ctx := authedCtx("user@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{})
-		_, err := handler.ListLinkableOrgTemplates(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for empty project")
-		}
-		if connect.CodeOf(err) != connect.CodeInvalidArgument {
-			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-		}
-	})
-
-	t.Run("returns empty list when org resolver not configured", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"user@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, &stubRenderer{})
-		// No org resolver — should return empty response.
-
-		ctx := authedCtx("user@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
-		resp, err := handler.ListLinkableOrgTemplates(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(resp.Msg.Templates) != 0 {
-			t.Errorf("expected 0 templates, got %d", len(resp.Msg.Templates))
-		}
-	})
-
-	t.Run("returns linkable templates including mandatory", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		k8s := NewK8sClient(fakeClient, testResolver())
-		pr := &stubProjectResolver{users: map[string]string{"user@example.com": "viewer"}}
-		handler := NewHandler(k8s, pr, &stubRenderer{}).
-			WithOrgResolver(&stubOrgResolver{org: "my-org"}).
-			WithOrgTemplateLister(&stubOrgTemplateLister{templates: linkableTemplates})
-
-		ctx := authedCtx("user@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListLinkableOrgTemplatesRequest{Project: "my-project"})
-		resp, err := handler.ListLinkableOrgTemplates(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(resp.Msg.Templates) != 2 {
-			t.Fatalf("expected 2 templates, got %d", len(resp.Msg.Templates))
-		}
-		// Verify mandatory flag is propagated.
-		var foundMandatory bool
-		for _, tmpl := range resp.Msg.Templates {
-			if tmpl.Name == "policy-floor" && tmpl.Mandatory {
-				foundMandatory = true
-			}
-		}
-		if !foundMandatory {
-			t.Error("expected policy-floor template to be marked mandatory")
-		}
-	})
+// TestValidateCueSyntax verifies CUE syntax detection.
+func TestValidateCueSyntax(t *testing.T) {
+	if err := validateCueSyntax(validCue); err != nil {
+		t.Errorf("expected valid CUE to pass, got %v", err)
+	}
+	if err := validateCueSyntax("this is not valid {{ cue"); err == nil {
+		t.Error("expected invalid CUE to fail, but it passed")
+	}
 }

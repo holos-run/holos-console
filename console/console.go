@@ -281,19 +281,19 @@ func (s *Server) Serve(ctx context.Context) error {
 		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
 		mux.Handle(settingsPath, settingsHTTPHandler)
 
-		// Deployment template service with project grant fallback
+		// Unified TemplateService handler (project-scoped templates).
+		// Phase 9 will wire full implementations; these stubs return Unimplemented for now.
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
 		templatesHandler := templates.NewHandler(templatesK8s, projectResolver, templates.NewCueRendererAdapter()).
 			WithOrgResolver(projectResolver).
 			WithOrgTemplateLister(org_templates.NewK8sClient(k8sClientset, nsResolver))
-		templatesPath, templatesHTTPHandler := consolev1connect.NewDeploymentTemplateServiceHandler(templatesHandler, protectedInterceptors)
+		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
-		// Platform template service (OrgTemplateService) with org-level RBAC
+		// Platform template service (org-scoped templates, stub handler).
 		orgTemplatesK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
 		orgTemplatesHandler := org_templates.NewHandler(orgTemplatesK8s, orgGrantResolver, org_templates.NewCueRendererAdapter())
-		orgTemplatesPath, orgTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(orgTemplatesHandler, protectedInterceptors)
-		mux.Handle(orgTemplatesPath, orgTemplatesHTTPHandler)
+		_ = orgTemplatesHandler // registered via TemplateService above in phase 9
 
 		// Deployment service with project grant fallback.
 		// orgTemplatesK8s satisfies OrgTemplateProvider via ListOrgTemplateSourcesForRender,
@@ -327,8 +327,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.ProjectServiceName,
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
-		consolev1connect.DeploymentTemplateServiceName,
-		consolev1connect.OrgTemplateServiceName,
+		consolev1connect.TemplateServiceName,
+		consolev1connect.FolderServiceName,
 		consolev1connect.DeploymentServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)

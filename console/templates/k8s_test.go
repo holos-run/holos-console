@@ -157,7 +157,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		defaults := &consolev1.DeploymentDefaults{
+		defaults := &consolev1.TemplateDefaults{
 			Image: "ghcr.io/mccutchen/go-httpbin",
 			Tag:   "2.21",
 		}
@@ -240,7 +240,7 @@ func TestUpdateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		defaults := &consolev1.DeploymentDefaults{Image: "ghcr.io/example/app", Tag: "v1.0"}
+		defaults := &consolev1.TemplateDefaults{Image: "ghcr.io/example/app", Tag: "v1.0"}
 		updated, err := k8s.UpdateTemplate(context.Background(), "my-project", "web-app", nil, nil, nil, defaults, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)

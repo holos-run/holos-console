@@ -6,6 +6,7 @@ import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegen
 import type { Message } from "@bufbuild/protobuf";
 import type { ShareGrant } from "./secrets_pb";
 import type { Role } from "./rbac_pb";
+import type { ParentType } from "./folders_pb";
 
 /**
  * Describes the file holos/console/v1/projects.proto.
@@ -61,7 +62,8 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
   userRole: Role;
 
   /**
-   * organization is the organization this project belongs to.
+   * organization is the root organization this project belongs to.
+   * Retained for convenience — use parent_type + parent_name for the immediate parent.
    *
    * @generated from field: string organization = 7;
    */
@@ -94,6 +96,22 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
    * @generated from field: string created_at = 11;
    */
   createdAt: string;
+
+  /**
+   * parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+   *
+   * @generated from field: holos.console.v1.ParentType parent_type = 12;
+   */
+  parentType: ParentType;
+
+  /**
+   * parent_name is the name of the immediate parent scope (v1alpha2).
+   * For a project directly under an org this is the org name.
+   * For a project under a folder this is the folder name.
+   *
+   * @generated from field: string parent_name = 13;
+   */
+  parentName: string;
 };
 
 /**
@@ -114,6 +132,20 @@ export declare type ListProjectsRequest = Message<"holos.console.v1.ListProjects
    * @generated from field: string organization = 1;
    */
   organization: string;
+
+  /**
+   * parent_type and parent_name together filter to immediate children of a
+   * specific parent scope. When both are empty, returns all accessible projects
+   * in the organization.
+   *
+   * @generated from field: holos.console.v1.ParentType parent_type = 2;
+   */
+  parentType: ParentType;
+
+  /**
+   * @generated from field: string parent_name = 3;
+   */
+  parentName: string;
 };
 
 /**
@@ -224,11 +256,27 @@ export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProje
   roleGrants: ShareGrant[];
 
   /**
-   * organization is the organization to create this project in.
+   * organization is the root organization to create this project in.
    *
    * @generated from field: string organization = 6;
    */
   organization: string;
+
+  /**
+   * parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+   * Defaults to PARENT_TYPE_ORGANIZATION when unset.
+   *
+   * @generated from field: holos.console.v1.ParentType parent_type = 7;
+   */
+  parentType: ParentType;
+
+  /**
+   * parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
+   * When unset, defaults to organization.
+   *
+   * @generated from field: string parent_name = 8;
+   */
+  parentName: string;
 };
 
 /**

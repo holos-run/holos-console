@@ -437,47 +437,47 @@ func TestHasPermission_DeploymentPermissions(t *testing.T) {
 	})
 }
 
-func TestHasPermission_DeploymentTemplatePermissions(t *testing.T) {
+func TestHasPermission_TemplatePermissions(t *testing.T) {
 	t.Run("viewer can list and read templates", func(t *testing.T) {
-		if !HasPermission(RoleViewer, PermissionDeploymentTemplatesList) {
+		if !HasPermission(RoleViewer, PermissionTemplatesList) {
 			t.Error("viewer should have templates:list")
 		}
-		if !HasPermission(RoleViewer, PermissionDeploymentTemplatesRead) {
+		if !HasPermission(RoleViewer, PermissionTemplatesRead) {
 			t.Error("viewer should have templates:read")
 		}
 	})
 
 	t.Run("viewer cannot write or delete templates", func(t *testing.T) {
-		if HasPermission(RoleViewer, PermissionDeploymentTemplatesWrite) {
+		if HasPermission(RoleViewer, PermissionTemplatesWrite) {
 			t.Error("viewer should not have templates:write")
 		}
-		if HasPermission(RoleViewer, PermissionDeploymentTemplatesDelete) {
+		if HasPermission(RoleViewer, PermissionTemplatesDelete) {
 			t.Error("viewer should not have templates:delete")
 		}
 	})
 
 	t.Run("editor can write templates", func(t *testing.T) {
-		if !HasPermission(RoleEditor, PermissionDeploymentTemplatesWrite) {
+		if !HasPermission(RoleEditor, PermissionTemplatesWrite) {
 			t.Error("editor should have templates:write")
 		}
 	})
 
 	t.Run("editor cannot delete or admin templates", func(t *testing.T) {
-		if HasPermission(RoleEditor, PermissionDeploymentTemplatesDelete) {
+		if HasPermission(RoleEditor, PermissionTemplatesDelete) {
 			t.Error("editor should not have templates:delete")
 		}
-		if HasPermission(RoleEditor, PermissionDeploymentTemplatesAdmin) {
+		if HasPermission(RoleEditor, PermissionTemplatesAdmin) {
 			t.Error("editor should not have templates:admin")
 		}
 	})
 
 	t.Run("owner has all template permissions", func(t *testing.T) {
 		for _, perm := range []Permission{
-			PermissionDeploymentTemplatesList,
-			PermissionDeploymentTemplatesRead,
-			PermissionDeploymentTemplatesWrite,
-			PermissionDeploymentTemplatesDelete,
-			PermissionDeploymentTemplatesAdmin,
+			PermissionTemplatesList,
+			PermissionTemplatesRead,
+			PermissionTemplatesWrite,
+			PermissionTemplatesDelete,
+			PermissionTemplatesAdmin,
 		} {
 			if !HasPermission(RoleOwner, perm) {
 				t.Errorf("owner should have permission %v", perm)
@@ -555,31 +555,31 @@ func TestProjectCascadeDeploymentPerms(t *testing.T) {
 
 func TestProjectCascadeTemplatePerms(t *testing.T) {
 	t.Run("project viewer can list and read templates", func(t *testing.T) {
-		if !HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesList, ProjectCascadeTemplatePerms) {
+		if !HasCascadePermission(RoleViewer, PermissionTemplatesList, ProjectCascadeTemplatePerms) {
 			t.Error("project viewer should have templates:list via cascade")
 		}
-		if !HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesRead, ProjectCascadeTemplatePerms) {
+		if !HasCascadePermission(RoleViewer, PermissionTemplatesRead, ProjectCascadeTemplatePerms) {
 			t.Error("project viewer should have templates:read via cascade")
 		}
 	})
 
 	t.Run("project viewer cannot write templates", func(t *testing.T) {
-		if HasCascadePermission(RoleViewer, PermissionDeploymentTemplatesWrite, ProjectCascadeTemplatePerms) {
+		if HasCascadePermission(RoleViewer, PermissionTemplatesWrite, ProjectCascadeTemplatePerms) {
 			t.Error("project viewer should not have templates:write via cascade")
 		}
 	})
 
 	t.Run("project editor can write templates", func(t *testing.T) {
-		if !HasCascadePermission(RoleEditor, PermissionDeploymentTemplatesWrite, ProjectCascadeTemplatePerms) {
+		if !HasCascadePermission(RoleEditor, PermissionTemplatesWrite, ProjectCascadeTemplatePerms) {
 			t.Error("project editor should have templates:write via cascade")
 		}
 	})
 
 	t.Run("project owner can delete and admin templates", func(t *testing.T) {
-		if !HasCascadePermission(RoleOwner, PermissionDeploymentTemplatesDelete, ProjectCascadeTemplatePerms) {
+		if !HasCascadePermission(RoleOwner, PermissionTemplatesDelete, ProjectCascadeTemplatePerms) {
 			t.Error("project owner should have templates:delete via cascade")
 		}
-		if !HasCascadePermission(RoleOwner, PermissionDeploymentTemplatesAdmin, ProjectCascadeTemplatePerms) {
+		if !HasCascadePermission(RoleOwner, PermissionTemplatesAdmin, ProjectCascadeTemplatePerms) {
 			t.Error("project owner should have templates:admin via cascade")
 		}
 	})
@@ -641,21 +641,21 @@ func TestCheckAccessGrants(t *testing.T) {
 }
 
 func TestOrgCascadeTemplatePerms(t *testing.T) {
-	t.Run("org OWNER has PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
-		if !HasCascadePermission(RoleOwner, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org OWNER should have PERMISSION_ORG_TEMPLATES_WRITE via cascade")
+	t.Run("org OWNER has PERMISSION_TEMPLATES_WRITE", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionTemplatesWrite, OrgCascadeTemplatePerms) {
+			t.Error("org OWNER should have PERMISSION_TEMPLATES_WRITE via cascade")
 		}
 	})
 
-	t.Run("org EDITOR does not have PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
-		if HasCascadePermission(RoleEditor, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org EDITOR should not have PERMISSION_ORG_TEMPLATES_WRITE")
+	t.Run("org EDITOR does not have PERMISSION_TEMPLATES_WRITE", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionTemplatesWrite, OrgCascadeTemplatePerms) {
+			t.Error("org EDITOR should not have PERMISSION_TEMPLATES_WRITE")
 		}
 	})
 
-	t.Run("org VIEWER does not have PERMISSION_ORG_TEMPLATES_WRITE", func(t *testing.T) {
-		if HasCascadePermission(RoleViewer, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
-			t.Error("org VIEWER should not have PERMISSION_ORG_TEMPLATES_WRITE")
+	t.Run("org VIEWER does not have PERMISSION_TEMPLATES_WRITE", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionTemplatesWrite, OrgCascadeTemplatePerms) {
+			t.Error("org VIEWER should not have PERMISSION_TEMPLATES_WRITE")
 		}
 	})
 
@@ -665,7 +665,7 @@ func TestOrgCascadeTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"owner@example.com": "owner"},
 			nil,
-			PermissionOrgTemplatesWrite,
+			PermissionTemplatesWrite,
 			OrgCascadeTemplatePerms,
 		)
 		if err != nil {
@@ -679,7 +679,7 @@ func TestOrgCascadeTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"viewer@example.com": "viewer"},
 			nil,
-			PermissionOrgTemplatesWrite,
+			PermissionTemplatesWrite,
 			OrgCascadeTemplatePerms,
 		)
 		if err == nil {
@@ -693,7 +693,7 @@ func TestOrgCascadeTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"editor@example.com": "editor"},
 			nil,
-			PermissionOrgTemplatesWrite,
+			PermissionTemplatesWrite,
 			OrgCascadeTemplatePerms,
 		)
 		if err == nil {

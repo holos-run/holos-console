@@ -542,15 +542,17 @@ describe('DeploymentTemplateDetailPage', () => {
 
     it('shows None linked when no templates are linked', () => {
       ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: [] })
+      // v1alpha2: linkedTemplates replaces linkedOrgTemplates (array of LinkedTemplateRef)
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
-      // mandatory template is always shown even when linkedOrgTemplates is empty
+      // mandatory template is always shown even when linkedTemplates is empty
       expect(screen.getByText('Mandatory Labels')).toBeInTheDocument()
     })
 
     it('shows linked template names as badges', () => {
       ;(useListLinkableOrgTemplates as Mock).mockReturnValue({ data: mockLinkable })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedOrgTemplates: ['httproute'] })
+      // v1alpha2: linkedTemplates replaces linkedOrgTemplates (array of LinkedTemplateRef with name field)
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText('HTTPRoute Gateway')).toBeInTheDocument()
     })

@@ -817,18 +817,22 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
   cueTemplate: string;
 
   /**
-   * cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
+   * cue_platform_input is the platform-provided CUE input (project, namespace,
+   * folder ancestry, claims) in CUE format. Set by the backend from
+   * authenticated context; template authors can trust these values.
    *
    * @generated from field: string cue_platform_input = 2;
    */
   cuePlatformInput: string;
 
   /**
-   * cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
+   * cue_project_input is the user-provided CUE input (name, image, tag, etc.)
+   * in CUE format. Replaces cue_user_input from v1alpha1 to align with the
+   * platform/project input terminology used in api/v1alpha2.
    *
-   * @generated from field: string cue_user_input = 3;
+   * @generated from field: string cue_project_input = 3;
    */
-  cueUserInput: string;
+  cueProjectInput: string;
 
   /**
    * rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
@@ -975,8 +979,8 @@ export declare const DeploymentService: GenService<{
     output: typeof ListNamespaceConfigMapsResponseSchema;
   },
   /**
-   * GetDeploymentRenderPreview returns the CUE template source, system input,
-   * user input, and rendered output for a deployment. This gives the frontend
+   * GetDeploymentRenderPreview returns the CUE template source, platform input,
+   * project input, and rendered output for a deployment. This gives the frontend
    * everything needed to display the template preview on the deployment detail page.
    *
    * @generated from rpc holos.console.v1.DeploymentService.GetDeploymentRenderPreview

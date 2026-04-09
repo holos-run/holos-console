@@ -64,7 +64,7 @@ func (k *K8sClient) GetTemplate(ctx context.Context, project, name string) (*cor
 // If defaults is non-nil, it is serialized to JSON and stored under DefaultsKey.
 // If linkedOrgTemplates is non-nil and non-empty, it is stored as a JSON array
 // in the console.holos.run/linked-org-templates annotation.
-func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.DeploymentDefaults, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment template in kubernetes",
 		slog.String("project", project),
@@ -113,7 +113,7 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 // is removed from the ConfigMap data regardless of the defaults parameter.
 // linkedOrgTemplates replaces the entire linking annotation when present (even
 // when empty, to allow clearing all links). Pass nil to leave the annotation unchanged.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.DeploymentDefaults, clearDefaults bool, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment template in kubernetes",
 		slog.String("project", project),
@@ -173,9 +173,9 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newN
 		return nil, fmt.Errorf("getting source deployment template for clone: %w", err)
 	}
 	// Extract defaults from source if present.
-	var defaults *consolev1.DeploymentDefaults
+	var defaults *consolev1.TemplateDefaults
 	if rawJSON, ok := source.Data[DefaultsKey]; ok && rawJSON != "" {
-		var d consolev1.DeploymentDefaults
+		var d consolev1.TemplateDefaults
 		if err := json.Unmarshal([]byte(rawJSON), &d); err == nil {
 			defaults = &d
 		}

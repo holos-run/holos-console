@@ -727,7 +727,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 			return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 				CueTemplate:    cueTemplate,
 				CuePlatformInput: cuePlatformInput,
-				CueUserInput:   cueUserInput,
+				CueProjectInput:   cueUserInput,
 			}), nil
 		}
 
@@ -764,7 +764,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 		CueTemplate:    cueTemplate,
 		CuePlatformInput: cuePlatformInput,
-		CueUserInput:   cueUserInput,
+		CueProjectInput:   cueUserInput,
 		RenderedYaml:   renderedYAML,
 		RenderedJson:   renderedJSON,
 	}), nil

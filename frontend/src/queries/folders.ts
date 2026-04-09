@@ -1,0 +1,94 @@
+import { useMemo } from 'react'
+import { createClient } from '@connectrpc/connect'
+import { useTransport } from '@connectrpc/connect-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { FolderService } from '@/gen/holos/console/v1/folders_pb.js'
+import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
+import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
+import { useAuth } from '@/lib/auth'
+
+export type { ParentType }
+
+function folderListKey(organization: string, parentType?: number, parentName?: string) {
+  return ['folders', 'list', organization, parentType, parentName] as const
+}
+
+function folderGetKey(organization: string, name: string) {
+  return ['folders', 'get', organization, name] as const
+}
+
+export function useListFolders(organization: string, parentType?: ParentType, parentName?: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  return useQuery({
+    queryKey: folderListKey(organization, parentType, parentName),
+    queryFn: async () => {
+      const response = await client.listFolders({ organization, parentType, parentName })
+      return response.folders
+    },
+    enabled: isAuthenticated && !!organization,
+  })
+}
+
+export function useGetFolder(organization: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  return useQuery({
+    queryKey: folderGetKey(organization, name),
+    queryFn: async () => {
+      const response = await client.getFolder({ organization, name })
+      return response.folder
+    },
+    enabled: isAuthenticated && !!organization && !!name,
+  })
+}
+
+export function useCreateFolder(organization: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      name: string
+      displayName: string
+      description: string
+      parentType: ParentType
+      parentName: string
+      userGrants?: ShareGrant[]
+      roleGrants?: ShareGrant[]
+    }) =>
+      client.createFolder({ organization, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders', 'list', organization] })
+    },
+  })
+}
+
+export function useUpdateFolder(organization: string, name: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { displayName?: string; description?: string }) =>
+      client.updateFolder({ organization, name, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
+      queryClient.invalidateQueries({ queryKey: folderGetKey(organization, name) })
+    },
+  })
+}
+
+export function useDeleteFolder(organization: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { name: string }) =>
+      client.deleteFolder({ organization, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders', 'list', organization] })
+    },
+  })
+}

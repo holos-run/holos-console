@@ -16,7 +16,9 @@ enum Role {
   ROLE_OWNER = 3;
 }
 
-// Permission represents granular permissions for secrets operations.
+// Permission represents granular permissions for RBAC operations.
+// v1alpha2: template permissions are collapsed to a single set applied
+// uniformly at every scope level (ADR 021 Decision 2).
 enum Permission {
   // PERMISSION_UNSPECIFIED indicates no permission was specified.
   PERMISSION_UNSPECIFIED = 0;
@@ -63,13 +65,6 @@ enum Permission {
   PERMISSION_DEPLOYMENTS_ADMIN = 22;
   PERMISSION_DEPLOYMENTS_LOGS = 23;
 
-  // Deployment template permissions
-  PERMISSION_DEPLOYMENT_TEMPLATES_LIST = 24;
-  PERMISSION_DEPLOYMENT_TEMPLATES_READ = 25;
-  PERMISSION_DEPLOYMENT_TEMPLATES_WRITE = 26;
-  PERMISSION_DEPLOYMENT_TEMPLATES_DELETE = 27;
-  PERMISSION_DEPLOYMENT_TEMPLATES_ADMIN = 28;
-
   // Project settings permissions
   PERMISSION_PROJECT_SETTINGS_READ = 29;
   PERMISSION_PROJECT_SETTINGS_WRITE = 30;
@@ -78,8 +73,32 @@ enum Permission {
   // Granted to org-level OWNERs via cascade; designed for future project-level grants.
   PERMISSION_PROJECT_DEPLOYMENTS_ENABLE = 31;
 
-  // PERMISSION_ORG_TEMPLATES_WRITE allows creating, updating, and deleting
-  // platform templates (org-level CUE templates). Granted only to org-level
-  // OWNERs via cascade — not inherited by project-level OWNERs.
-  PERMISSION_ORG_TEMPLATES_WRITE = 32;
+  // Folder permissions (v1alpha2).
+  // PERMISSION_FOLDERS_LIST allows listing folders.
+  PERMISSION_FOLDERS_LIST = 33;
+  // PERMISSION_FOLDERS_READ allows reading folder metadata.
+  PERMISSION_FOLDERS_READ = 34;
+  // PERMISSION_FOLDERS_WRITE allows creating and updating folders.
+  PERMISSION_FOLDERS_WRITE = 35;
+  // PERMISSION_FOLDERS_DELETE allows deleting folders.
+  PERMISSION_FOLDERS_DELETE = 36;
+  // PERMISSION_FOLDERS_ADMIN allows administrative operations on folders.
+  PERMISSION_FOLDERS_ADMIN = 37;
+  // PERMISSION_FOLDERS_CREATE allows creating new folders.
+  PERMISSION_FOLDERS_CREATE = 38;
+
+  // Collapsed template permissions (v1alpha2, ADR 021 Decision 2).
+  // These replace PERMISSION_DEPLOYMENT_TEMPLATES_* and PERMISSION_ORG_TEMPLATES_WRITE.
+  // They apply uniformly at every scope level (organization, folder, project).
+
+  // PERMISSION_TEMPLATES_LIST allows listing template names.
+  PERMISSION_TEMPLATES_LIST = 39;
+  // PERMISSION_TEMPLATES_READ allows reading template CUE source.
+  PERMISSION_TEMPLATES_READ = 40;
+  // PERMISSION_TEMPLATES_WRITE allows creating and updating templates.
+  PERMISSION_TEMPLATES_WRITE = 41;
+  // PERMISSION_TEMPLATES_DELETE allows deleting templates.
+  PERMISSION_TEMPLATES_DELETE = 42;
+  // PERMISSION_TEMPLATES_ADMIN allows administrative operations on templates (IAM).
+  PERMISSION_TEMPLATES_ADMIN = 43;
 }
