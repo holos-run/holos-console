@@ -301,6 +301,7 @@ port defined above — do not use `input.port` here.
 9. **Never place project or namespace in `input`** — these are platform-provided values available at `platform.project` and `platform.namespace`.
 10. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
 11. **Never define `platformResources` in a user deployment template** — the project-level renderer does not read `platformResources` (ADR 016 Decision 8). Any values defined there are silently ignored. Platform resources are defined in platform templates evaluated at the organization/folder level.
+12. **Declare a `defaults` block** to pre-fill the Create Deployment form — add a `defaults: #ProjectInput & { ... }` block at the top of the template and wire each field in `input` as `*defaults.field | _`. See [Template Defaults](#template-defaults) for the complete pattern.
 
 ### Platform and Project Templates Working Together
 
