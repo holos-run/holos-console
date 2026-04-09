@@ -313,28 +313,64 @@ export function DeploymentDetailPage({
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-sm font-medium">grpcurl Command</h3>
+            <h3 className="text-sm font-medium">API Access</h3>
             <Separator />
             <p className="text-xs text-muted-foreground">
-              Invoke the render preview RPC directly from the command line using grpcurl.
+              Call this RPC from the command line. Set{' '}
+              <code className="font-mono">$HOLOS_ID_TOKEN</code> first — see the API Access
+              section on your{' '}
+              <Link to="/profile" className="underline">
+                profile page
+              </Link>
+              .
             </p>
-            <div className="relative">
-              <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                {`grpcurl -plaintext \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  localhost:8443 \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
-              </pre>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Copy grpcurl command"
-                className="absolute top-2 right-2 h-7 w-7"
-                onClick={() => {
-                  const cmd = `grpcurl -plaintext \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  localhost:8443 \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
-                  navigator.clipboard.writeText(cmd)
-                  toast.success('Copied to clipboard')
-                }}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                curl (Connect protocol — recommended)
+              </p>
+              <div className="relative">
+                <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+                  {`curl -sk ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Copy curl command"
+                  className="absolute top-2 right-2 h-7 w-7"
+                  onClick={() => {
+                    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
+                    const cmd = `curl -sk ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
+                    navigator.clipboard.writeText(cmd)
+                    toast.success('Copied to clipboard')
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                grpcurl (gRPC backward compatibility)
+              </p>
+              <div className="relative">
+                <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+                  {`grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Copy grpcurl command"
+                  className="absolute top-2 right-2 h-7 w-7"
+                  onClick={() => {
+                    const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
+                    const cmd = `grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
+                    navigator.clipboard.writeText(cmd)
+                    toast.success('Copied to clipboard')
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           </div>
 

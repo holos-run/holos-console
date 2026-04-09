@@ -433,21 +433,53 @@ describe('DeploymentDetailPage', () => {
       expect(editor.value).toContain('#ProjectInput')
     })
 
-    it('renders grpcurl Command section heading', () => {
+    it('renders API Access section heading', () => {
       setupMocks()
       render(<DeploymentDetailPage />)
-      expect(screen.getByText('grpcurl Command')).toBeInTheDocument()
+      expect(screen.getByText('API Access')).toBeInTheDocument()
     })
 
-    it('renders grpcurl command with project and deployment name', () => {
+    it('renders a working curl command using HOLOS_ID_TOKEN', () => {
       setupMocks()
       render(<DeploymentDetailPage />)
-      expect(screen.getByText(/GetDeploymentRenderPreview/)).toBeInTheDocument()
-      expect(screen.getByText(/"project":\s*"test-project"/)).toBeInTheDocument()
-      expect(screen.getByText(/"name":\s*"api"/)).toBeInTheDocument()
+      const curl = screen.getByText(/curl -sk/)
+      expect(curl.textContent).toContain('Connect-Protocol-Version: 1')
+      expect(curl.textContent).toContain('$HOLOS_ID_TOKEN')
+      expect(curl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
+      expect(curl.textContent).toContain('"project": "test-project"')
+      expect(curl.textContent).toContain('"name": "api"')
     })
 
-    it('copy button copies grpcurl command and shows toast', async () => {
+    it('renders a grpcurl -insecure command using HOLOS_ID_TOKEN', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      const grpcurl = screen.getByText(/grpcurl -insecure/)
+      expect(grpcurl.textContent).toContain('$HOLOS_ID_TOKEN')
+      expect(grpcurl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
+    })
+
+    it('does not render the broken grpcurl -plaintext form', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByText(/grpcurl -plaintext/)).not.toBeInTheDocument()
+    })
+
+    it('copy button for curl command copies correct command', async () => {
+      setupMocks()
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.assign(navigator, { clipboard: { writeText } })
+      render(<DeploymentDetailPage />)
+      fireEvent.click(screen.getByLabelText(/copy curl command/i))
+      await waitFor(() => expect(writeText).toHaveBeenCalled())
+      const copied = writeText.mock.calls[0][0] as string
+      expect(copied).toContain('Connect-Protocol-Version: 1')
+      expect(copied).toContain('$HOLOS_ID_TOKEN')
+      expect(copied).toContain('GetDeploymentRenderPreview')
+      expect(copied).toContain('test-project')
+      expect(copied).toContain('api')
+    })
+
+    it('copy button for grpcurl command copies correct command', async () => {
       setupMocks()
       const writeText = vi.fn().mockResolvedValue(undefined)
       Object.assign(navigator, { clipboard: { writeText } })
@@ -455,6 +487,8 @@ describe('DeploymentDetailPage', () => {
       fireEvent.click(screen.getByLabelText(/copy grpcurl command/i))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const copied = writeText.mock.calls[0][0] as string
+      expect(copied).toContain('-insecure')
+      expect(copied).toContain('$HOLOS_ID_TOKEN')
       expect(copied).toContain('GetDeploymentRenderPreview')
       expect(copied).toContain('test-project')
       expect(copied).toContain('api')
