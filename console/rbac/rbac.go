@@ -74,36 +74,41 @@ const (
 // Higher-level roles inherit all permissions from lower-level roles.
 var rolePermissions = map[Role]map[Permission]bool{
 	RoleViewer: {
-		PermissionSecretsRead:              true,
-		PermissionSecretsList:              true,
-		PermissionProjectsRead:             true,
-		PermissionProjectsList:             true,
-		PermissionOrganizationsRead:        true,
-		PermissionOrganizationsList:        true,
-		PermissionDeploymentsList:  true,
-		PermissionDeploymentsRead:  true,
-		PermissionDeploymentsLogs:  true,
-		PermissionTemplatesList:    true,
-		PermissionTemplatesRead:    true,
+		PermissionSecretsRead:         true,
+		PermissionSecretsList:         true,
+		PermissionProjectsRead:        true,
+		PermissionProjectsList:        true,
+		PermissionOrganizationsRead:   true,
+		PermissionOrganizationsList:   true,
+		PermissionFoldersList:         true,
+		PermissionFoldersRead:         true,
+		PermissionDeploymentsList:     true,
+		PermissionDeploymentsRead:     true,
+		PermissionDeploymentsLogs:     true,
+		PermissionTemplatesList:       true,
+		PermissionTemplatesRead:       true,
 		PermissionProjectSettingsRead: true,
 	},
 	RoleEditor: {
-		PermissionSecretsRead:        true,
-		PermissionSecretsList:        true,
-		PermissionSecretsWrite:       true,
-		PermissionProjectsRead:       true,
-		PermissionProjectsList:       true,
-		PermissionProjectsWrite:      true,
-		PermissionOrganizationsRead:  true,
-		PermissionOrganizationsList:  true,
-		PermissionOrganizationsWrite: true,
-		PermissionDeploymentsList:    true,
-		PermissionDeploymentsRead:    true,
-		PermissionDeploymentsWrite:   true,
-		PermissionDeploymentsLogs:    true,
-		PermissionTemplatesList:      true,
-		PermissionTemplatesRead:      true,
-		PermissionTemplatesWrite:     true,
+		PermissionSecretsRead:         true,
+		PermissionSecretsList:         true,
+		PermissionSecretsWrite:        true,
+		PermissionProjectsRead:        true,
+		PermissionProjectsList:        true,
+		PermissionProjectsWrite:       true,
+		PermissionOrganizationsRead:   true,
+		PermissionOrganizationsList:   true,
+		PermissionOrganizationsWrite:  true,
+		PermissionFoldersList:         true,
+		PermissionFoldersRead:         true,
+		PermissionFoldersWrite:        true,
+		PermissionDeploymentsList:     true,
+		PermissionDeploymentsRead:     true,
+		PermissionDeploymentsWrite:    true,
+		PermissionDeploymentsLogs:     true,
+		PermissionTemplatesList:       true,
+		PermissionTemplatesRead:       true,
+		PermissionTemplatesWrite:      true,
 		PermissionProjectSettingsRead: true,
 	},
 	RoleOwner: {
@@ -124,6 +129,12 @@ var rolePermissions = map[Role]map[Permission]bool{
 		PermissionOrganizationsDelete:  true,
 		PermissionOrganizationsAdmin:   true,
 		PermissionOrganizationsCreate:  true,
+		PermissionFoldersList:          true,
+		PermissionFoldersRead:          true,
+		PermissionFoldersWrite:         true,
+		PermissionFoldersDelete:        true,
+		PermissionFoldersAdmin:         true,
+		PermissionFoldersCreate:        true,
 		PermissionDeploymentsList:      true,
 		PermissionDeploymentsRead:      true,
 		PermissionDeploymentsWrite:     true,
@@ -322,6 +333,29 @@ var ProjectCascadeDeploymentPerms = CascadeTable{
 // ProjectCascadeTemplatePerms defines what template permissions each project
 // role grants via cascade.
 var ProjectCascadeTemplatePerms = CascadeTable{
+	RoleViewer: {
+		PermissionTemplatesList: true,
+		PermissionTemplatesRead: true,
+	},
+	RoleEditor: {
+		PermissionTemplatesList:  true,
+		PermissionTemplatesRead:  true,
+		PermissionTemplatesWrite: true,
+	},
+	RoleOwner: {
+		PermissionTemplatesList:   true,
+		PermissionTemplatesRead:   true,
+		PermissionTemplatesWrite:  true,
+		PermissionTemplatesDelete: true,
+		PermissionTemplatesAdmin:  true,
+	},
+}
+
+// FolderCascadeTemplatePerms defines what template permissions each folder role
+// grants via cascade to resources in child scopes (sub-folders and projects).
+// Structurally identical to ProjectCascadeTemplatePerms (ADR 017 Decision 5)
+// but defined separately so the two tables can diverge independently.
+var FolderCascadeTemplatePerms = CascadeTable{
 	RoleViewer: {
 		PermissionTemplatesList: true,
 		PermissionTemplatesRead: true,
