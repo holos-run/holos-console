@@ -53,7 +53,7 @@ const DefaultGatewayNamespace = "istio-ingress"
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
 	Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
-	// RenderWithSystemTemplates unifies one or more system template CUE sources
+	// RenderWithSystemTemplates unifies one or more platform template CUE sources
 	// with the deployment template before filling in platform and project inputs.
 	RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
 }
@@ -63,7 +63,7 @@ type OrgProvider interface {
 	GetProjectOrg(ctx context.Context, project string) (string, error)
 }
 
-// SystemTemplateProvider lists enabled system template CUE sources for an org.
+// SystemTemplateProvider lists enabled platform template CUE sources for an org.
 type SystemTemplateProvider interface {
 	ListEnabledSystemTemplateSources(ctx context.Context, org string) ([]string, error)
 }
@@ -101,20 +101,20 @@ func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolve
 }
 
 // WithOrgProvider configures the handler with an OrgProvider for resolving
-// the organization a project belongs to. Required for system template unification.
+// the organization a project belongs to. Required for platform template unification.
 func (h *Handler) WithOrgProvider(op OrgProvider) *Handler {
 	h.orgProvider = op
 	return h
 }
 
 // WithSystemTemplateProvider configures the handler with a SystemTemplateProvider
-// for loading enabled system templates at render time.
+// for loading enabled platform templates at render time.
 func (h *Handler) WithSystemTemplateProvider(stp SystemTemplateProvider) *Handler {
 	h.systemTemplateProvider = stp
 	return h
 }
 
-// renderResources renders deployment resources, unifying with enabled system
+// renderResources renders deployment resources, unifying with enabled platform
 // templates when an OrgProvider and SystemTemplateProvider are configured.
 // If neither is configured, falls back to Render (deployment template only).
 func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
@@ -124,20 +124,20 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 
 	org, err := h.orgProvider.GetProjectOrg(ctx, project)
 	if err != nil {
-		slog.WarnContext(ctx, "could not resolve org for project, skipping system template unification",
+		slog.WarnContext(ctx, "could not resolve org for project, skipping platform template unification",
 			slog.String("project", project),
 			slog.Any("error", err),
 		)
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 	if org == "" {
-		// Project is not associated with an org; no system templates apply.
+		// Project is not associated with an org; no platform templates apply.
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
 	systemSources, err := h.systemTemplateProvider.ListEnabledSystemTemplateSources(ctx, org)
 	if err != nil {
-		slog.WarnContext(ctx, "could not list enabled system templates, skipping system template unification",
+		slog.WarnContext(ctx, "could not list enabled platform templates, skipping platform template unification",
 			slog.String("project", project),
 			slog.String("org", org),
 			slog.Any("error", err),

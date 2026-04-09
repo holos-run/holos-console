@@ -24,9 +24,9 @@ import { useListSystemTemplates, useCreateSystemTemplate } from '@/queries/syste
 import { useGetOrganization } from '@/queries/organizations'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
-// EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE is the example org-level system template CUE content.
-// It matches console/system_templates/example_httpbin_platform.cue.
-const EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE = `// Org-level system template — evaluated at organization scope.
+// EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE is the example org-level platform template CUE content
+// (code: SystemTemplate). It matches console/system_templates/example_httpbin_platform.cue.
+const EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE = `// Org-level platform template — evaluated at organization scope.
 // Any changes here affect every project in the org.
 //
 // This template does two things:
@@ -38,7 +38,7 @@ const EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE = `// Org-level system template — eval
 //
 // Pair with console/templates/example_httpbin.cue for the project-level template.
 
-// input and platform are available because system templates are unified with
+// input and platform are available because platform templates are unified with
 // the deployment template before evaluation (ADR 016 Decision 8).
 input: #ProjectInput & {
 	port: >0 & <=65535 | *8080
@@ -167,7 +167,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
         mandatory: false,
         enabled: createEnabled,
       })
-      toast.success(`Created system template "${createName}"`)
+      toast.success(`Created platform template "${createName}"`)
       setCreateOpen(false)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err))
@@ -212,7 +212,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            System templates are automatically applied to project namespaces when projects are created.
+            Platform templates are automatically applied to project namespaces when projects are created.
             Mandatory templates are marked with a lock badge.
           </p>
           <Separator />
@@ -253,7 +253,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No system templates found.</p>
+            <p className="text-sm text-muted-foreground">No platform templates found.</p>
           )}
         </CardContent>
       </Card>
@@ -263,7 +263,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
           <DialogHeader>
             <DialogTitle>Create System Template</DialogTitle>
             <DialogDescription>
-              Create a new system template for organization &quot;{orgName}&quot;.
+              Create a new platform template for organization &quot;{orgName}&quot;.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -277,7 +277,7 @@ export function SystemTemplatesListPage({ orgName: propOrgName }: { orgName?: st
                     <Info className="h-4 w-4 text-muted-foreground cursor-default" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>System templates are unified with project deployment templates at render time via CUE. This example constrains project resources to safe kinds and provides an HTTPRoute for external access.</p>
+                    <p>Platform templates are unified with project deployment templates at render time via CUE. This example constrains project resources to safe kinds and provides an HTTPRoute for external access.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

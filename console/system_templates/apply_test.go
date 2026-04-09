@@ -12,10 +12,10 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 )
 
-// minimalSystemTemplate is a minimal system template for testing the
-// MandatoryTemplateApplier. It only references platform.namespace (not input.*)
-// so it can be rendered standalone at project creation time without a deployment
-// template or user input.
+// minimalSystemTemplate is a minimal platform template (code: SystemTemplate) for
+// testing the MandatoryTemplateApplier. It only references platform.namespace
+// (not input.*) so it can be rendered standalone at project creation time without
+// a deployment template or user input.
 const minimalSystemTemplate = `
 
 platform: {
@@ -86,7 +86,7 @@ func (s *stubResourceApplier) Apply(_ context.Context, namespace, deploymentName
 func TestApplyMandatorySystemTemplates_AppliesMandatoryAndEnabledTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=true AND enabled=true — should be applied.
-	// Use a minimal system template that can render standalone without a deployment template.
+	// Use a minimal platform template that can render standalone without a deployment template.
 	cm := sysTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalSystemTemplate, true, true)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())

@@ -59,10 +59,10 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1a
 }
 
 // RenderWithSystemTemplates evaluates the deployment template unified with zero or
-// more system template CUE sources. Each system template is unified with the
+// more platform template CUE sources. Each platform template is unified with the
 // deployment template before filling in the platform and project inputs.
 // All templates can define values for both projectResources and platformResources.
-// The renderer reads both collections when system templates are present (organization/folder level).
+// The renderer reads both collections when platform templates are present (organization/folder level).
 func (r *CueRenderer) RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
@@ -112,8 +112,8 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 }
 
 // evaluateWithSystemTemplates performs synchronous CUE template evaluation of a
-// deployment template unified with zero or more system template CUE sources.
-// All CUE sources are concatenated before compilation so that system templates
+// deployment template unified with zero or more platform template CUE sources.
+// All CUE sources are concatenated before compilation so that platform templates
 // can reference top-level identifiers (input, platform, _labels, etc.) defined
 // by the deployment template.
 // All templates can define values for both projectResources and platformResources.
@@ -122,7 +122,7 @@ func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string
 	cueCtx := cuecontext.New()
 
 	// Prepend generated schema definitions and concatenate all CUE sources.
-	// System templates may reference identifiers defined in the deployment
+	// Platform templates may reference identifiers defined in the deployment
 	// template (input, platform, _labels, etc.) as well as generated type
 	// definitions (#PlatformInput, #ProjectInput, etc.). Combining them into
 	// a single compilation unit allows those cross-references to resolve.
@@ -133,7 +133,7 @@ func evaluateWithSystemTemplates(deploymentCUE string, systemCUESources []string
 
 	unified := cueCtx.CompileString(combined)
 	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("invalid CUE template (deployment + system templates): %w", err)
+		return nil, fmt.Errorf("invalid CUE template (deployment + platform templates): %w", err)
 	}
 
 	// Encode project input as JSON then compile to a CUE value and unify at "input".

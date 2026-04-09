@@ -318,7 +318,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               <h3 className="text-sm font-medium">System Templates</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
-                System templates are automatically applied to new projects in this organization.
+                Platform templates are automatically applied to new projects in this organization.
               </p>
               <Link
                 to="/orgs/$orgName/settings/system-templates"

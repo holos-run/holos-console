@@ -21,22 +21,22 @@ const (
 	DefaultReferenceGrantName = "reference-grant"
 )
 
-// K8sClient wraps Kubernetes client operations for system templates.
+// K8sClient wraps Kubernetes client operations for platform templates (code: SystemTemplate).
 type K8sClient struct {
 	client   kubernetes.Interface
 	Resolver *resolver.Resolver
 }
 
-// NewK8sClient creates a client for system template operations.
+// NewK8sClient creates a client for platform template (SystemTemplate) operations.
 func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
 }
 
-// ListSystemTemplates returns all system template ConfigMaps in the org namespace.
+// ListSystemTemplates returns all platform template ConfigMaps in the org namespace.
 func (k *K8sClient) ListSystemTemplates(ctx context.Context, org string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
 	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeSystemTemplate
-	slog.DebugContext(ctx, "listing system templates from kubernetes",
+	slog.DebugContext(ctx, "listing platform templates from kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
 		slog.String("labelSelector", labelSelector),
@@ -45,15 +45,15 @@ func (k *K8sClient) ListSystemTemplates(ctx context.Context, org string) ([]core
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listing system templates: %w", err)
+		return nil, fmt.Errorf("listing platform templates: %w", err)
 	}
 	return list.Items, nil
 }
 
-// GetSystemTemplate retrieves a system template ConfigMap by name.
+// GetSystemTemplate retrieves a platform template ConfigMap by name.
 func (k *K8sClient) GetSystemTemplate(ctx context.Context, org, name string) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
-	slog.DebugContext(ctx, "getting system template from kubernetes",
+	slog.DebugContext(ctx, "getting platform template from kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
 		slog.String("name", name),
@@ -61,10 +61,10 @@ func (k *K8sClient) GetSystemTemplate(ctx context.Context, org, name string) (*c
 	return k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 }
 
-// CreateSystemTemplate creates a new system template ConfigMap in the org namespace.
+// CreateSystemTemplate creates a new platform template ConfigMap in the org namespace.
 func (k *K8sClient) CreateSystemTemplate(ctx context.Context, org, name, displayName, description, cueTemplate string, mandatory, enabled bool) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
-	slog.DebugContext(ctx, "creating system template in kubernetes",
+	slog.DebugContext(ctx, "creating platform template in kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
 		slog.String("name", name),
@@ -91,18 +91,18 @@ func (k *K8sClient) CreateSystemTemplate(ctx context.Context, org, name, display
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
-// UpdateSystemTemplate updates an existing system template ConfigMap.
+// UpdateSystemTemplate updates an existing platform template ConfigMap.
 // Only non-nil pointer fields are updated.
 func (k *K8sClient) UpdateSystemTemplate(ctx context.Context, org, name string, displayName, description, cueTemplate *string, mandatory, enabled *bool) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
-	slog.DebugContext(ctx, "updating system template in kubernetes",
+	slog.DebugContext(ctx, "updating platform template in kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
 	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("getting system template for update: %w", err)
+		return nil, fmt.Errorf("getting platform template for update: %w", err)
 	}
 	if cm.Annotations == nil {
 		cm.Annotations = make(map[string]string)
@@ -128,10 +128,10 @@ func (k *K8sClient) UpdateSystemTemplate(ctx context.Context, org, name string, 
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
 
-// DeleteSystemTemplate deletes a system template ConfigMap.
+// DeleteSystemTemplate deletes a platform template ConfigMap.
 func (k *K8sClient) DeleteSystemTemplate(ctx context.Context, org, name string) error {
 	ns := k.Resolver.OrgNamespace(org)
-	slog.DebugContext(ctx, "deleting system template from kubernetes",
+	slog.DebugContext(ctx, "deleting platform template from kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
 		slog.String("name", name),
@@ -139,13 +139,13 @@ func (k *K8sClient) DeleteSystemTemplate(ctx context.Context, org, name string) 
 	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-// CloneSystemTemplate copies an existing system template to a new name.
+// CloneSystemTemplate copies an existing platform template to a new name.
 // The clone inherits the CUE template, description, and mandatory flag from the source.
 // The new template starts with enabled=false regardless of the source.
 func (k *K8sClient) CloneSystemTemplate(ctx context.Context, org, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
 	source, err := k.GetSystemTemplate(ctx, org, sourceName)
 	if err != nil {
-		return nil, fmt.Errorf("getting source system template for clone: %w", err)
+		return nil, fmt.Errorf("getting source platform template for clone: %w", err)
 	}
 	mandatory, _ := strconv.ParseBool(source.Annotations[v1alpha1.AnnotationMandatory])
 	return k.CreateSystemTemplate(
@@ -160,8 +160,8 @@ func (k *K8sClient) CloneSystemTemplate(ctx context.Context, org, sourceName, ne
 	)
 }
 
-// SeedDefaultTemplates seeds the built-in HTTPRoute system template into
-// the org namespace if no system templates exist. This is called on first List
+// SeedDefaultTemplates seeds the built-in HTTPRoute platform template into
+// the org namespace if no platform templates exist. This is called on first List
 // to avoid a separate migration step. The template is seeded as disabled so
 // that org owners can review and configure it (e.g., set the Gateway name)
 // before enabling it.
@@ -180,7 +180,7 @@ func (k *K8sClient) SeedDefaultTemplates(ctx context.Context, org string) error 
 }
 
 // ListEnabledSystemTemplateSources returns the CUE source strings for all enabled
-// system templates in the org. Disabled templates are excluded. This method
+// platform templates in the org. Disabled templates are excluded. This method
 // satisfies the deployments.SystemTemplateProvider interface via structural typing.
 func (k *K8sClient) ListEnabledSystemTemplateSources(ctx context.Context, org string) ([]string, error) {
 	cms, err := k.ListSystemTemplates(ctx, org)

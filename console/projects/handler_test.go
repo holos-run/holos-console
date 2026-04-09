@@ -1186,7 +1186,7 @@ func assertInvalidArgument(t *testing.T, err error) {
 	}
 }
 
-// ---- CreateProject with mandatory system templates tests ----
+// ---- CreateProject with mandatory platform templates tests ----
 
 // stubMandatoryTemplateApplier implements MandatoryTemplateApplier for tests.
 type stubMandatoryTemplateApplier struct {
