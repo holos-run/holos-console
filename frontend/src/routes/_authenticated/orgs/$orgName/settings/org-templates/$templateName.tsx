@@ -20,20 +20,20 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetSystemTemplate, useUpdateSystemTemplate, useCloneSystemTemplate, useRenderSystemTemplate } from '@/queries/system-templates'
+import { useGetOrgTemplate, useUpdateOrgTemplate, useCloneOrgTemplate, useRenderOrgTemplate } from '@/queries/org-templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/system-templates/$templateName')({
-  component: SystemTemplateDetailRoute,
+export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/org-templates/$templateName')({
+  component: OrgTemplateDetailRoute,
 })
 
-function SystemTemplateDetailRoute() {
+function OrgTemplateDetailRoute() {
   const { orgName, templateName } = Route.useParams()
-  return <SystemTemplateDetailPage orgName={orgName} templateName={templateName} />
+  return <OrgTemplateDetailPage orgName={orgName} templateName={templateName} />
 }
 
-export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: propTemplateName }: { orgName?: string; templateName?: string } = {}) {
+export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: propTemplateName }: { orgName?: string; templateName?: string } = {}) {
   let routeParams: { orgName?: string; templateName?: string } = {}
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -52,10 +52,10 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
     navigate = undefined
   }
 
-  const { data: template, isPending, error } = useGetSystemTemplate(orgName, templateName)
+  const { data: template, isPending, error } = useGetOrgTemplate(orgName, templateName)
   const { data: org } = useGetOrganization(orgName)
-  const updateMutation = useUpdateSystemTemplate(orgName, templateName)
-  const cloneMutation = useCloneSystemTemplate(orgName)
+  const updateMutation = useUpdateOrgTemplate(orgName, templateName)
+  const cloneMutation = useCloneOrgTemplate(orgName)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [cloneOpen, setCloneOpen] = useState(false)
@@ -74,7 +74,7 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
-  const defaultSystemInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultUserInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {
@@ -118,7 +118,7 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
       setCloneOpen(false)
       if (navigate) {
         navigate({
-          to: '/orgs/$orgName/settings/system-templates/$templateName',
+          to: '/orgs/$orgName/settings/org-templates/$templateName',
           params: { orgName, templateName: response.name },
         })
       }
@@ -220,9 +220,9 @@ export function SystemTemplateDetailPage({ orgName: propOrgName, templateName: p
               readOnly={!canWrite}
               onSave={canWrite ? handleSave : undefined}
               isSaving={updateMutation.isPending}
-              defaultSystemInput={defaultSystemInput}
+              defaultPlatformInput={defaultPlatformInput}
               defaultUserInput={defaultUserInput}
-              useRenderFn={useRenderSystemTemplate}
+              useRenderFn={useRenderOrgTemplate}
             />
           </div>
         </CardContent>

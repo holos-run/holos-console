@@ -64,7 +64,7 @@ export function RenderStatusIndicator({ isStale, isRendering, hasError }: Render
   )
 }
 
-export type RenderFn = (cueTemplate: string, cueInput: string, enabled: boolean, cueSystemInput: string) => {
+export type RenderFn = (cueTemplate: string, cueInput: string, enabled: boolean, cuePlatformInput: string) => {
   data?: { renderedYaml: string; renderedJson: string }
   error?: Error | null
   isFetching: boolean
@@ -81,8 +81,8 @@ export interface CueTemplateEditorProps {
   onSave?: () => Promise<void>
   /** Whether a save operation is in progress */
   isSaving?: boolean
-  /** Default system input for the preview tab */
-  defaultSystemInput?: string
+  /** Default platform input for the preview tab */
+  defaultPlatformInput?: string
   /** Default user input for the preview tab */
   defaultUserInput?: string
   /** Hook to use for rendering (injectable for testability) */
@@ -92,7 +92,7 @@ export interface CueTemplateEditorProps {
 /**
  * CueTemplateEditor is a shared component that renders a tabbed CUE template
  * editor + live preview. It is used by both the deployment template detail page
- * and the platform template (SystemTemplate) detail page.
+ * and the platform template detail page.
  */
 export function CueTemplateEditor({
   cueTemplate,
@@ -100,28 +100,28 @@ export function CueTemplateEditor({
   readOnly = false,
   onSave,
   isSaving = false,
-  defaultSystemInput = '',
+  defaultPlatformInput = '',
   defaultUserInput = '',
   useRenderFn,
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
-  const [cueSystemInput, setCueSystemInput] = useState(defaultSystemInput)
+  const [cuePlatformInput, setCuePlatformInput] = useState(defaultPlatformInput)
   const [cueInput, setCueInput] = useState(defaultUserInput)
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
-  const debouncedCueSystemInput = useDebouncedValue(cueSystemInput, 500)
+  const debouncedCuePlatformInput = useDebouncedValue(cuePlatformInput, 500)
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
 
   const isStale =
     cueInput !== debouncedCueInput ||
-    cueSystemInput !== debouncedCueSystemInput ||
+    cuePlatformInput !== debouncedCuePlatformInput ||
     cueTemplate !== debouncedCueTemplate
 
   const { data: renderData, error: renderError, isFetching: isRendering } = useRenderFn(
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',
-    debouncedCueSystemInput,
+    debouncedCuePlatformInput,
   )
 
   const renderedYaml = renderData?.renderedYaml
@@ -160,10 +160,10 @@ export function CueTemplateEditor({
             These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
           </p>
           <Textarea
-            id="cue-system-input-editor"
-            aria-label="System Input"
-            value={cueSystemInput}
-            onChange={(e) => setCueSystemInput(e.target.value)}
+            id="cue-platform-input-editor"
+            aria-label="Platform Input"
+            value={cuePlatformInput}
+            onChange={(e) => setCuePlatformInput(e.target.value)}
             rows={10}
             className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
           />

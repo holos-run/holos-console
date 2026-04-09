@@ -235,12 +235,12 @@ describe('DeploymentTemplateDetailPage', () => {
     )
   })
 
-  it('System Input textarea is rendered in the preview tab', async () => {
+  it('Platform Input textarea is rendered in the preview tab', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    expect(screen.getByRole('textbox', { name: /system input/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /platform input/i })).toBeInTheDocument()
   })
 
   it('User Input textarea is rendered in the preview tab', async () => {
@@ -251,15 +251,15 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(screen.getByRole('textbox', { name: /user input/i })).toBeInTheDocument()
   })
 
-  it('System Input textarea contains project, namespace, and claims with email', async () => {
+  it('Platform Input textarea contains project, namespace, and claims with email', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    const systemInput = screen.getByRole('textbox', { name: /system input/i }) as HTMLTextAreaElement
-    expect(systemInput.value).toContain('test-project')
-    expect(systemInput.value).toContain('claims')
-    expect(systemInput.value).toContain('email')
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).toContain('test-project')
+    expect(platformInput.value).toContain('claims')
+    expect(platformInput.value).toContain('email')
   })
 
   it('User Input textarea contains name, image, tag, and port', async () => {

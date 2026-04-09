@@ -16,9 +16,9 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
-vi.mock('@/queries/system-templates', () => ({
-  useListSystemTemplates: vi.fn(),
-  useCreateSystemTemplate: vi.fn(),
+vi.mock('@/queries/org-templates', () => ({
+  useListOrgTemplates: vi.fn(),
+  useCreateOrgTemplate: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -27,28 +27,28 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListSystemTemplates, useCreateSystemTemplate } from '@/queries/system-templates'
+import { useListOrgTemplates, useCreateOrgTemplate } from '@/queries/org-templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { SystemTemplatesListPage } from './index'
+import { OrgTemplatesListPage } from './index'
 
 function setupMocks(userRole = Role.OWNER) {
-  ;(useListSystemTemplates as Mock).mockReturnValue({ data: [], isPending: false, error: null })
+  ;(useListOrgTemplates as Mock).mockReturnValue({ data: [], isPending: false, error: null })
   ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole } })
-  ;(useCreateSystemTemplate as Mock).mockReturnValue({
+  ;(useCreateOrgTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
 }
 
-describe('SystemTemplatesListPage - Load httpbin Example button', () => {
+describe('OrgTemplatesListPage - Load httpbin Example button', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('renders Load httpbin Example button for ORG_OWNER after opening create dialog', async () => {
     setupMocks(Role.OWNER)
-    render(<SystemTemplatesListPage orgName="test-org" />)
+    render(<OrgTemplatesListPage orgName="test-org" />)
     fireEvent.click(screen.getByRole('button', { name: /create template/i }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
@@ -57,14 +57,14 @@ describe('SystemTemplatesListPage - Load httpbin Example button', () => {
 
   it('does NOT render Load httpbin Example button for VIEWER (create button not shown)', () => {
     setupMocks(Role.VIEWER)
-    render(<SystemTemplatesListPage orgName="test-org" />)
+    render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /load httpbin example/i })).not.toBeInTheDocument()
   })
 
   it('clicking Load httpbin Example populates the name field', async () => {
     setupMocks(Role.OWNER)
-    render(<SystemTemplatesListPage orgName="test-org" />)
+    render(<OrgTemplatesListPage orgName="test-org" />)
     fireEvent.click(screen.getByRole('button', { name: /create template/i }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
@@ -76,7 +76,7 @@ describe('SystemTemplatesListPage - Load httpbin Example button', () => {
 
   it('clicking Load httpbin Example populates the display name field', async () => {
     setupMocks(Role.OWNER)
-    render(<SystemTemplatesListPage orgName="test-org" />)
+    render(<OrgTemplatesListPage orgName="test-org" />)
     fireEvent.click(screen.getByRole('button', { name: /create template/i }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
@@ -88,7 +88,7 @@ describe('SystemTemplatesListPage - Load httpbin Example button', () => {
 
   it('clicking Load httpbin Example populates the description field', async () => {
     setupMocks(Role.OWNER)
-    render(<SystemTemplatesListPage orgName="test-org" />)
+    render(<OrgTemplatesListPage orgName="test-org" />)
     fireEvent.click(screen.getByRole('button', { name: /create template/i }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()

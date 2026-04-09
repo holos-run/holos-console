@@ -321,7 +321,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                 Platform templates are automatically applied to new projects in this organization.
               </p>
               <Link
-                to="/orgs/$orgName/settings/system-templates"
+                to="/orgs/$orgName/settings/org-templates"
                 params={{ orgName }}
                 aria-label="System Templates"
                 className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"

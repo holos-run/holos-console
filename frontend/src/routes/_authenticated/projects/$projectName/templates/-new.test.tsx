@@ -182,7 +182,7 @@ describe('CreateTemplatePage', () => {
     expect(cueEditor.value).toContain('projectResources')
   })
 
-  it('useRenderDeploymentTemplate is called with system input including claims', () => {
+  it('useRenderDeploymentTemplate is called with platform input including claims', () => {
     render(<CreateTemplatePage projectName="test-project" />)
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     expect(calls.length).toBeGreaterThan(0)
