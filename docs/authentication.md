@@ -181,7 +181,7 @@ The auth provider automatically renews tokens before expiration using silent ref
 Verify the OIDC provider is accessible:
 
 ```bash
-curl -k https://localhost:8443/dex/.well-known/openid-configuration
+curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" https://localhost:8443/dex/.well-known/openid-configuration
 ```
 
 ### "Callback error" after login
