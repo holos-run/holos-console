@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #618 — simplified copy snippet and shell history tabs
+# Environment variables provided by scripts/browser-capture-pr:
+#   HOLOS_BACKEND_URL  - e.g. https://localhost:9001
+#   PR_SCREENSHOT_DIR  - docs/screenshots/pr-618/
+
+set -euo pipefail
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-618}"
+AB="agent-browser --session-name holos-dev"
+
+mkdir -p "$SCREENSHOT_DIR"
+
+# Login first
+scripts/browser-login
+
+# Navigate to profile page
+$AB open "$BACKEND_URL/profile"
+$AB wait --load networkidle
+$AB wait 2000
+
+# Screenshot: full page with zsh tab (default)
+$AB screenshot --full "$SCREENSHOT_DIR/01-profile-api-access-zsh-tab.png"
+echo "Screenshot: 01-profile-api-access-zsh-tab.png (full page, zsh tab — default)"
+
+# Click bash tab
+$AB find role tab click --name bash
+$AB wait 500
+
+# Screenshot: full page with bash tab selected
+$AB screenshot --full "$SCREENSHOT_DIR/02-profile-api-access-bash-tab.png"
+echo "Screenshot: 02-profile-api-access-bash-tab.png (full page, bash tab selected)"
+
+echo "Screenshots saved to $SCREENSHOT_DIR"

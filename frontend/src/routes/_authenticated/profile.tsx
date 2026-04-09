@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Braces, Copy, Eye, EyeOff, List, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
@@ -276,7 +277,7 @@ function ApiAccessCard({ idToken, tokenRevealed, onToggleReveal }: ApiAccessCard
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
 
-  const exportSnippet = `set +o history\nexport HOLOS_ID_TOKEN="${idToken}"\nset -o history`
+  const exportSnippet = `export HOLOS_ID_TOKEN="${idToken}"`
 
   const curlCmd =
     `curl -sk ${origin}/holos.console.v1.OrganizationService/ListOrganizations \\\n` +
@@ -325,10 +326,8 @@ function ApiAccessCard({ idToken, tokenRevealed, onToggleReveal }: ApiAccessCard
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">ID Token</p>
           <p className="text-xs text-muted-foreground">
-            Paste into your terminal. The{' '}
-            <code className="font-mono">set +o history</code> wrapper prevents the token from
-            landing in <code className="font-mono">.bash_history</code> /{' '}
-            <code className="font-mono">.zsh_history</code>.
+            Before pasting the token into your terminal, disable command history using the
+            per-shell instructions below to keep the token out of your shell history file.
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -362,10 +361,47 @@ function ApiAccessCard({ idToken, tokenRevealed, onToggleReveal }: ApiAccessCard
           <div className="relative">
             <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre break-all">
               {tokenRevealed
-                ? `set +o history\nexport HOLOS_ID_TOKEN="${idToken}"\nset -o history`
-                : `set +o history\nexport HOLOS_ID_TOKEN="••••••••••••••••••••"\nset -o history`}
+                ? `export HOLOS_ID_TOKEN="${idToken}"`
+                : `export HOLOS_ID_TOKEN="••••••••••••••••••••"`}
             </pre>
           </div>
+          <Tabs defaultValue="zsh" className="mt-2">
+            <TabsList>
+              <TabsTrigger value="zsh">zsh</TabsTrigger>
+              <TabsTrigger value="bash">bash</TabsTrigger>
+            </TabsList>
+            <TabsContent value="zsh">
+              <div className="space-y-2 pt-2 text-xs text-muted-foreground">
+                <p>Disable history recording for the current session, then paste the export line:</p>
+                <pre className="rounded-md bg-muted p-3 font-mono text-xs overflow-auto whitespace-pre">
+                  {`unset HISTFILE\nexport HOLOS_ID_TOKEN="<paste token here>"`}
+                </pre>
+                <p>
+                  Alternatively, prefix the export with a space and enable{' '}
+                  <code className="font-mono">HIST_IGNORE_SPACE</code>:
+                </p>
+                <pre className="rounded-md bg-muted p-3 font-mono text-xs overflow-auto whitespace-pre">
+                  {`setopt HIST_IGNORE_SPACE\n export HOLOS_ID_TOKEN="<paste token here>"`}
+                </pre>
+                <p>
+                  To re-enable history, start a new shell or run{' '}
+                  <code className="font-mono">export HISTFILE=~/.zsh_history</code>.
+                </p>
+              </div>
+            </TabsContent>
+            <TabsContent value="bash">
+              <div className="space-y-2 pt-2 text-xs text-muted-foreground">
+                <p>Disable history recording for the current session, paste the export line, then re-enable:</p>
+                <pre className="rounded-md bg-muted p-3 font-mono text-xs overflow-auto whitespace-pre">
+                  {`set +o history\nexport HOLOS_ID_TOKEN="<paste token here>"\nset -o history`}
+                </pre>
+                <p>
+                  <code className="font-mono">set +o history</code> disables recording.{' '}
+                  <code className="font-mono">set -o history</code> re-enables it after you paste.
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         <Separator />
