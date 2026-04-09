@@ -496,8 +496,9 @@ Key points:
 - The `ReferenceGrant` present in the default template is omitted here — the
   org-level constraint only allows `Deployment`, `Service`, `ServiceAccount`.
   The gateway team is expected to manage cross-namespace traffic permissions at
-  the org level. If your org template needs a `ReferenceGrant`, add it to the
-  `_allowedKinds` list and produce it from the system template.
+  the org level. If your org template needs a `ReferenceGrant`, add
+  `ReferenceGrant?: _` to the `close()` call and produce it from the system
+  template's `platformResources`.
 - `go-httpbin` needs no command override — the image's default entrypoint
   listens on `$PORT` (default `8080`) and the template's `input.port` default
   matches. A `GET /get` request returns 200 and is a simple health-check.
@@ -842,9 +843,10 @@ example. When enabled, it adds an `HTTPRoute` to `platformResources.namespacedRe
 that routes all gateway traffic to the deployment's `Service`:
 
 ```cue
-// platformResources holds platform-managed Kubernetes resources.
+// platformResources contributes platform-managed Kubernetes resources.
 // Any template at any level can define values for both platformResources and
-// projectResources — the renderer reads both collections via RenderWithSystemTemplates.
+// projectResources. The renderer reads platformResources from organization and
+// folder templates (not project templates). See ADR 016 Decision 8.
 platformResources: {
     // namespacedResources organizes platform-managed namespaced resources.
     namespacedResources: (platform.namespace): {

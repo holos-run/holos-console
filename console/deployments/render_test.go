@@ -1701,7 +1701,7 @@ projectResources: {
 				ports: [{port: 80, targetPort: "http", name: "http"}]
 			}
 		}
-		// RoleBinding is NOT in the org's _allowedKinds list — this should
+		// RoleBinding is NOT in the org's close() constraint — this should
 		// cause a CUE evaluation error: "field not allowed".
 		RoleBinding: "my-binding": {
 			apiVersion: "rbac.authorization.k8s.io/v1"
