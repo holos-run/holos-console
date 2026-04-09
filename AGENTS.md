@@ -264,6 +264,28 @@ This produces:
 
 See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissions-guide.md` for permission design guidelines including narrow scoping, multi-level grantability, and the cascade table pattern.
 
+### Terminology
+
+**Authoritative reference**: `docs/glossary.md`
+
+**Rule**: In documentation, Go comments, and TypeScript comments, use "platform
+template" (not "system template") when referring to the concept of an
+organization-level CUE template. Reserve the identifier spelling
+`SystemTemplate` (and derivatives: `SystemTemplateService`, `system_templates/`,
+`system_templates.proto`) for references to specific code artifacts, file paths,
+and proto service names.
+
+**Triggers**: Apply this rule when writing or editing any `.md` file, Go
+comment, or TypeScript comment that mentions templates at the organization level.
+
+Examples of correct usage:
+
+| Context | Correct | Incorrect |
+|---------|---------|-----------|
+| Prose / docs | "Create a platform template to enforce labels…" | "Create a system template…" |
+| Code identifier | `SystemTemplateService.CreateSystemTemplate` | — (identifiers are not renamed) |
+| Mixed reference | "`SystemTemplate` (platform template) controls…" | "system template controls…" |
+
 ### Template Field Guardrail
 
 **When adding new fields to `CreateDeploymentRequest`, `DeploymentDefaults`, or related template proto messages**, the field must also be:
