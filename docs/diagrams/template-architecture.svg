@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 520" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="680" height="520" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- Organization boundary -->
+  <rect x="30" y="24" width="620" height="472" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="8,4"/>
+  <text x="52" y="52" font-size="13" font-weight="600" fill="#64748b" letter-spacing="0.05em">ORGANIZATION</text>
+
+  <!-- Org-Level Templates box -->
+  <rect x="100" y="72" width="480" height="100" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="340" y="106" text-anchor="middle" font-size="17" font-weight="700" fill="#1e40af">Org-Level Templates</text>
+  <text x="340" y="128" text-anchor="middle" font-size="13" fill="#3b82f6">SystemTemplateService</text>
+  <text x="340" y="148" text-anchor="middle" font-size="12" fill="#64748b">Authored by Platform Engineers</text>
+  <!-- outputs label -->
+  <text x="340" y="163" text-anchor="middle" font-size="11" font-style="italic" fill="#94a3b8">platformResources · projectResources constraints</text>
+
+  <!-- Arrow: unified at render time -->
+  <line x1="340" y1="172" x2="340" y2="228" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="222" y="186" width="236" height="22" rx="4" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="340" y="202" text-anchor="middle" font-size="11" fill="#64748b">unified at render time</text>
+
+  <!-- Project boundary -->
+  <rect x="60" y="236" width="560" height="244" rx="8" fill="#fefce8" stroke="#eab308" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="82" y="260" font-size="13" font-weight="600" fill="#a16207" letter-spacing="0.05em">PROJECT</text>
+
+  <!-- Deployment Templates box -->
+  <rect x="130" y="272" width="420" height="84" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="340" y="302" text-anchor="middle" font-size="17" font-weight="700" fill="#166534">Deployment Templates</text>
+  <text x="340" y="322" text-anchor="middle" font-size="13" fill="#22c55e">DeploymentTemplateService</text>
+  <text x="340" y="342" text-anchor="middle" font-size="12" fill="#64748b">Authored by Project Engineers</text>
+
+  <!-- Arrow: instance of -->
+  <line x1="340" y1="356" x2="340" y2="396" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="280" y="362" width="120" height="22" rx="4" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="340" y="378" text-anchor="middle" font-size="11" fill="#64748b">instance of</text>
+
+  <!-- Deployments box -->
+  <rect x="170" y="404" width="340" height="60" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="340" y="430" text-anchor="middle" font-size="17" font-weight="700" fill="#6b21a8">Deployments</text>
+  <text x="340" y="450" text-anchor="middle" font-size="13" fill="#a855f7">DeploymentService — Project Owners</text>
+</svg>
