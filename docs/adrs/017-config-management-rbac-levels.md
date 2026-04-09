@@ -413,6 +413,10 @@ Viewer and above.
   code is deferred to `v1alpha2`. Until then, the hierarchy is Organization ->
   Project (two levels), and the cascade walk is trivially short.
 
+  **v1alpha2 specification**: See [ADR 020](020-v1alpha2-folder-hierarchy.md)
+  for the walk algorithm, per-request caching, and depth enforcement that
+  implement the model described in this ADR.
+
 ### Risks
 
 - **Unification conflicts.** Two templates in the same hierarchy path could
@@ -446,4 +450,5 @@ Viewer and above.
 - [ADR 015: Configuration Management RBAC Levels (revoked)](015-config-management-rbac-levels.md)
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md) — which ancestor templates participate in unification
+- [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md) — implementation specification for the walk algorithm and folder authorization
 - [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions
