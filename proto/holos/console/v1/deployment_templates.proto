@@ -13,6 +13,10 @@ service DeploymentTemplateService {
   rpc DeleteDeploymentTemplate(DeleteDeploymentTemplateRequest) returns (DeleteDeploymentTemplateResponse);
   rpc RenderDeploymentTemplate(RenderDeploymentTemplateRequest) returns (RenderDeploymentTemplateResponse);
   rpc CloneDeploymentTemplate(CloneDeploymentTemplateRequest) returns (CloneDeploymentTemplateResponse);
+  // ListLinkableOrgTemplates returns the set of enabled org templates for the
+  // project's organization that a deployment template may link against.
+  // Mandatory templates are included so the UI can display them as always-on.
+  rpc ListLinkableOrgTemplates(ListLinkableOrgTemplatesRequest) returns (ListLinkableOrgTemplatesResponse);
 }
 
 // DeploymentDefaults carries optional default values that a template provides
@@ -52,6 +56,11 @@ message DeploymentTemplate {
   string cue_template = 5;
   // defaults provides optional default values for deployment form fields.
   DeploymentDefaults defaults = 6;
+  // linked_org_templates lists the names of enabled org templates (platform
+  // templates) to unify with this deployment template at render time.
+  // Mandatory+enabled org templates always unify regardless of this list.
+  // Non-mandatory enabled org templates only unify when explicitly listed here.
+  repeated string linked_org_templates = 7;
 }
 
 message ListDeploymentTemplatesRequest {
@@ -79,6 +88,9 @@ message CreateDeploymentTemplateRequest {
   string cue_template = 5;
   // defaults provides optional default values for deployment form fields.
   DeploymentDefaults defaults = 6;
+  // linked_org_templates lists the names of enabled org templates (platform
+  // templates) to link against this deployment template at render time.
+  repeated string linked_org_templates = 7;
 }
 
 message CreateDeploymentTemplateResponse {
@@ -93,6 +105,9 @@ message UpdateDeploymentTemplateRequest {
   optional string cue_template = 5;
   // defaults provides optional default values for deployment form fields.
   optional DeploymentDefaults defaults = 6;
+  // linked_org_templates replaces the entire linking list when present.
+  // An empty list clears all explicit links (mandatory templates still apply).
+  repeated string linked_org_templates = 7;
 }
 
 message UpdateDeploymentTemplateResponse {}
@@ -124,6 +139,10 @@ message RenderDeploymentTemplateRequest {
   //     tag:       "latest"
   //   }
   string cue_input    = 6;
+  // linked_org_templates lists org template names to include in preview
+  // unification. Allows draft templates to preview their effective rendering
+  // with the chosen linking list before saving.
+  repeated string linked_org_templates = 8;
 }
 
 // RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.
@@ -152,4 +171,30 @@ message CloneDeploymentTemplateRequest {
 message CloneDeploymentTemplateResponse {
   // name is the name of the newly created template.
   string name = 1;
+}
+
+// ListLinkableOrgTemplatesRequest requests the set of enabled org templates
+// that a deployment template within the given project may link against.
+message ListLinkableOrgTemplatesRequest {
+  // project is the project whose organization's templates to query.
+  string project = 1;
+}
+
+// LinkableOrgTemplate describes a single org template available for linking.
+message LinkableOrgTemplate {
+  // name is the unique identifier (DNS label slug) of the org template.
+  string name = 1;
+  // display_name is the human-readable name.
+  string display_name = 2;
+  // description explains what the template produces.
+  string description = 3;
+  // mandatory indicates this template is always unified regardless of linking.
+  // The UI should render mandatory templates as always-selected and disabled
+  // (with a lock icon) to communicate that they cannot be opted out.
+  bool mandatory = 4;
+}
+
+// ListLinkableOrgTemplatesResponse returns the linkable org templates.
+message ListLinkableOrgTemplatesResponse {
+  repeated LinkableOrgTemplate templates = 1;
 }

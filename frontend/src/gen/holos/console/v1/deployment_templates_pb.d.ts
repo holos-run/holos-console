@@ -130,6 +130,16 @@ export declare type DeploymentTemplate = Message<"holos.console.v1.DeploymentTem
    * @generated from field: holos.console.v1.DeploymentDefaults defaults = 6;
    */
   defaults?: DeploymentDefaults;
+
+  /**
+   * linked_org_templates lists the names of enabled org templates (platform
+   * templates) to unify with this deployment template at render time.
+   * Mandatory+enabled org templates always unify regardless of this list.
+   * Non-mandatory enabled org templates only unify when explicitly listed here.
+   *
+   * @generated from field: repeated string linked_org_templates = 7;
+   */
+  linkedOrgTemplates: string[];
 };
 
 /**
@@ -242,6 +252,14 @@ export declare type CreateDeploymentTemplateRequest = Message<"holos.console.v1.
    * @generated from field: holos.console.v1.DeploymentDefaults defaults = 6;
    */
   defaults?: DeploymentDefaults;
+
+  /**
+   * linked_org_templates lists the names of enabled org templates (platform
+   * templates) to link against this deployment template at render time.
+   *
+   * @generated from field: repeated string linked_org_templates = 7;
+   */
+  linkedOrgTemplates: string[];
 };
 
 /**
@@ -301,6 +319,14 @@ export declare type UpdateDeploymentTemplateRequest = Message<"holos.console.v1.
    * @generated from field: optional holos.console.v1.DeploymentDefaults defaults = 6;
    */
   defaults?: DeploymentDefaults;
+
+  /**
+   * linked_org_templates replaces the entire linking list when present.
+   * An empty list clears all explicit links (mandatory templates still apply).
+   *
+   * @generated from field: repeated string linked_org_templates = 7;
+   */
+  linkedOrgTemplates: string[];
 };
 
 /**
@@ -393,6 +419,15 @@ export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.
    * @generated from field: string cue_input = 6;
    */
   cueInput: string;
+
+  /**
+   * linked_org_templates lists org template names to include in preview
+   * unification. Allows draft templates to preview their effective rendering
+   * with the chosen linking list before saving.
+   *
+   * @generated from field: repeated string linked_org_templates = 8;
+   */
+  linkedOrgTemplates: string[];
 };
 
 /**
@@ -491,6 +526,88 @@ export declare type CloneDeploymentTemplateResponse = Message<"holos.console.v1.
 export declare const CloneDeploymentTemplateResponseSchema: GenMessage<CloneDeploymentTemplateResponse>;
 
 /**
+ * ListLinkableOrgTemplatesRequest requests the set of enabled org templates
+ * that a deployment template within the given project may link against.
+ *
+ * @generated from message holos.console.v1.ListLinkableOrgTemplatesRequest
+ */
+export declare type ListLinkableOrgTemplatesRequest = Message<"holos.console.v1.ListLinkableOrgTemplatesRequest"> & {
+  /**
+   * project is the project whose organization's templates to query.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListLinkableOrgTemplatesRequest.
+ * Use `create(ListLinkableOrgTemplatesRequestSchema)` to create a new message.
+ */
+export declare const ListLinkableOrgTemplatesRequestSchema: GenMessage<ListLinkableOrgTemplatesRequest>;
+
+/**
+ * LinkableOrgTemplate describes a single org template available for linking.
+ *
+ * @generated from message holos.console.v1.LinkableOrgTemplate
+ */
+export declare type LinkableOrgTemplate = Message<"holos.console.v1.LinkableOrgTemplate"> & {
+  /**
+   * name is the unique identifier (DNS label slug) of the org template.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * display_name is the human-readable name.
+   *
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * description explains what the template produces.
+   *
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * mandatory indicates this template is always unified regardless of linking.
+   * The UI should render mandatory templates as always-selected and disabled
+   * (with a lock icon) to communicate that they cannot be opted out.
+   *
+   * @generated from field: bool mandatory = 4;
+   */
+  mandatory: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.LinkableOrgTemplate.
+ * Use `create(LinkableOrgTemplateSchema)` to create a new message.
+ */
+export declare const LinkableOrgTemplateSchema: GenMessage<LinkableOrgTemplate>;
+
+/**
+ * ListLinkableOrgTemplatesResponse returns the linkable org templates.
+ *
+ * @generated from message holos.console.v1.ListLinkableOrgTemplatesResponse
+ */
+export declare type ListLinkableOrgTemplatesResponse = Message<"holos.console.v1.ListLinkableOrgTemplatesResponse"> & {
+  /**
+   * @generated from field: repeated holos.console.v1.LinkableOrgTemplate templates = 1;
+   */
+  templates: LinkableOrgTemplate[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListLinkableOrgTemplatesResponse.
+ * Use `create(ListLinkableOrgTemplatesResponseSchema)` to create a new message.
+ */
+export declare const ListLinkableOrgTemplatesResponseSchema: GenMessage<ListLinkableOrgTemplatesResponse>;
+
+/**
  * DeploymentTemplateService manages CUE-based deployment templates.
  *
  * @generated from service holos.console.v1.DeploymentTemplateService
@@ -551,6 +668,18 @@ export declare const DeploymentTemplateService: GenService<{
     methodKind: "unary";
     input: typeof CloneDeploymentTemplateRequestSchema;
     output: typeof CloneDeploymentTemplateResponseSchema;
+  },
+  /**
+   * ListLinkableOrgTemplates returns the set of enabled org templates for the
+   * project's organization that a deployment template may link against.
+   * Mandatory templates are included so the UI can display them as always-on.
+   *
+   * @generated from rpc holos.console.v1.DeploymentTemplateService.ListLinkableOrgTemplates
+   */
+  listLinkableOrgTemplates: {
+    methodKind: "unary";
+    input: typeof ListLinkableOrgTemplatesRequestSchema;
+    output: typeof ListLinkableOrgTemplatesResponseSchema;
   },
 }>;
 

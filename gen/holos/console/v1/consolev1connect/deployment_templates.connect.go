@@ -55,6 +55,9 @@ const (
 	// DeploymentTemplateServiceCloneDeploymentTemplateProcedure is the fully-qualified name of the
 	// DeploymentTemplateService's CloneDeploymentTemplate RPC.
 	DeploymentTemplateServiceCloneDeploymentTemplateProcedure = "/holos.console.v1.DeploymentTemplateService/CloneDeploymentTemplate"
+	// DeploymentTemplateServiceListLinkableOrgTemplatesProcedure is the fully-qualified name of the
+	// DeploymentTemplateService's ListLinkableOrgTemplates RPC.
+	DeploymentTemplateServiceListLinkableOrgTemplatesProcedure = "/holos.console.v1.DeploymentTemplateService/ListLinkableOrgTemplates"
 )
 
 // DeploymentTemplateServiceClient is a client for the holos.console.v1.DeploymentTemplateService
@@ -67,6 +70,10 @@ type DeploymentTemplateServiceClient interface {
 	DeleteDeploymentTemplate(context.Context, *connect.Request[v1.DeleteDeploymentTemplateRequest]) (*connect.Response[v1.DeleteDeploymentTemplateResponse], error)
 	RenderDeploymentTemplate(context.Context, *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error)
 	CloneDeploymentTemplate(context.Context, *connect.Request[v1.CloneDeploymentTemplateRequest]) (*connect.Response[v1.CloneDeploymentTemplateResponse], error)
+	// ListLinkableOrgTemplates returns the set of enabled org templates for the
+	// project's organization that a deployment template may link against.
+	// Mandatory templates are included so the UI can display them as always-on.
+	ListLinkableOrgTemplates(context.Context, *connect.Request[v1.ListLinkableOrgTemplatesRequest]) (*connect.Response[v1.ListLinkableOrgTemplatesResponse], error)
 }
 
 // NewDeploymentTemplateServiceClient constructs a client for the
@@ -122,6 +129,12 @@ func NewDeploymentTemplateServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(deploymentTemplateServiceMethods.ByName("CloneDeploymentTemplate")),
 			connect.WithClientOptions(opts...),
 		),
+		listLinkableOrgTemplates: connect.NewClient[v1.ListLinkableOrgTemplatesRequest, v1.ListLinkableOrgTemplatesResponse](
+			httpClient,
+			baseURL+DeploymentTemplateServiceListLinkableOrgTemplatesProcedure,
+			connect.WithSchema(deploymentTemplateServiceMethods.ByName("ListLinkableOrgTemplates")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -134,6 +147,7 @@ type deploymentTemplateServiceClient struct {
 	deleteDeploymentTemplate *connect.Client[v1.DeleteDeploymentTemplateRequest, v1.DeleteDeploymentTemplateResponse]
 	renderDeploymentTemplate *connect.Client[v1.RenderDeploymentTemplateRequest, v1.RenderDeploymentTemplateResponse]
 	cloneDeploymentTemplate  *connect.Client[v1.CloneDeploymentTemplateRequest, v1.CloneDeploymentTemplateResponse]
+	listLinkableOrgTemplates *connect.Client[v1.ListLinkableOrgTemplatesRequest, v1.ListLinkableOrgTemplatesResponse]
 }
 
 // ListDeploymentTemplates calls holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates.
@@ -175,6 +189,12 @@ func (c *deploymentTemplateServiceClient) CloneDeploymentTemplate(ctx context.Co
 	return c.cloneDeploymentTemplate.CallUnary(ctx, req)
 }
 
+// ListLinkableOrgTemplates calls
+// holos.console.v1.DeploymentTemplateService.ListLinkableOrgTemplates.
+func (c *deploymentTemplateServiceClient) ListLinkableOrgTemplates(ctx context.Context, req *connect.Request[v1.ListLinkableOrgTemplatesRequest]) (*connect.Response[v1.ListLinkableOrgTemplatesResponse], error) {
+	return c.listLinkableOrgTemplates.CallUnary(ctx, req)
+}
+
 // DeploymentTemplateServiceHandler is an implementation of the
 // holos.console.v1.DeploymentTemplateService service.
 type DeploymentTemplateServiceHandler interface {
@@ -185,6 +205,10 @@ type DeploymentTemplateServiceHandler interface {
 	DeleteDeploymentTemplate(context.Context, *connect.Request[v1.DeleteDeploymentTemplateRequest]) (*connect.Response[v1.DeleteDeploymentTemplateResponse], error)
 	RenderDeploymentTemplate(context.Context, *connect.Request[v1.RenderDeploymentTemplateRequest]) (*connect.Response[v1.RenderDeploymentTemplateResponse], error)
 	CloneDeploymentTemplate(context.Context, *connect.Request[v1.CloneDeploymentTemplateRequest]) (*connect.Response[v1.CloneDeploymentTemplateResponse], error)
+	// ListLinkableOrgTemplates returns the set of enabled org templates for the
+	// project's organization that a deployment template may link against.
+	// Mandatory templates are included so the UI can display them as always-on.
+	ListLinkableOrgTemplates(context.Context, *connect.Request[v1.ListLinkableOrgTemplatesRequest]) (*connect.Response[v1.ListLinkableOrgTemplatesResponse], error)
 }
 
 // NewDeploymentTemplateServiceHandler builds an HTTP handler from the service implementation. It
@@ -236,6 +260,12 @@ func NewDeploymentTemplateServiceHandler(svc DeploymentTemplateServiceHandler, o
 		connect.WithSchema(deploymentTemplateServiceMethods.ByName("CloneDeploymentTemplate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentTemplateServiceListLinkableOrgTemplatesHandler := connect.NewUnaryHandler(
+		DeploymentTemplateServiceListLinkableOrgTemplatesProcedure,
+		svc.ListLinkableOrgTemplates,
+		connect.WithSchema(deploymentTemplateServiceMethods.ByName("ListLinkableOrgTemplates")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentTemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentTemplateServiceListDeploymentTemplatesProcedure:
@@ -252,6 +282,8 @@ func NewDeploymentTemplateServiceHandler(svc DeploymentTemplateServiceHandler, o
 			deploymentTemplateServiceRenderDeploymentTemplateHandler.ServeHTTP(w, r)
 		case DeploymentTemplateServiceCloneDeploymentTemplateProcedure:
 			deploymentTemplateServiceCloneDeploymentTemplateHandler.ServeHTTP(w, r)
+		case DeploymentTemplateServiceListLinkableOrgTemplatesProcedure:
+			deploymentTemplateServiceListLinkableOrgTemplatesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -287,4 +319,8 @@ func (UnimplementedDeploymentTemplateServiceHandler) RenderDeploymentTemplate(co
 
 func (UnimplementedDeploymentTemplateServiceHandler) CloneDeploymentTemplate(context.Context, *connect.Request[v1.CloneDeploymentTemplateRequest]) (*connect.Response[v1.CloneDeploymentTemplateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate is not implemented"))
+}
+
+func (UnimplementedDeploymentTemplateServiceHandler) ListLinkableOrgTemplates(context.Context, *connect.Request[v1.ListLinkableOrgTemplatesRequest]) (*connect.Response[v1.ListLinkableOrgTemplatesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentTemplateService.ListLinkableOrgTemplates is not implemented"))
 }

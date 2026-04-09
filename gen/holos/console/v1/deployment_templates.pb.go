@@ -147,9 +147,14 @@ type DeploymentTemplate struct {
 	// cue_template is the CUE source code.
 	CueTemplate string `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
 	// defaults provides optional default values for deployment form fields.
-	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Defaults *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
+	// linked_org_templates lists the names of enabled org templates (platform
+	// templates) to unify with this deployment template at render time.
+	// Mandatory+enabled org templates always unify regardless of this list.
+	// Non-mandatory enabled org templates only unify when explicitly listed here.
+	LinkedOrgTemplates []string `protobuf:"bytes,7,rep,name=linked_org_templates,json=linkedOrgTemplates,proto3" json:"linked_org_templates,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *DeploymentTemplate) Reset() {
@@ -220,6 +225,13 @@ func (x *DeploymentTemplate) GetCueTemplate() string {
 func (x *DeploymentTemplate) GetDefaults() *DeploymentDefaults {
 	if x != nil {
 		return x.Defaults
+	}
+	return nil
+}
+
+func (x *DeploymentTemplate) GetLinkedOrgTemplates() []string {
+	if x != nil {
+		return x.LinkedOrgTemplates
 	}
 	return nil
 }
@@ -416,9 +428,12 @@ type CreateDeploymentTemplateRequest struct {
 	Description string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	CueTemplate string                 `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
 	// defaults provides optional default values for deployment form fields.
-	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Defaults *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
+	// linked_org_templates lists the names of enabled org templates (platform
+	// templates) to link against this deployment template at render time.
+	LinkedOrgTemplates []string `protobuf:"bytes,7,rep,name=linked_org_templates,json=linkedOrgTemplates,proto3" json:"linked_org_templates,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateDeploymentTemplateRequest) Reset() {
@@ -493,6 +508,13 @@ func (x *CreateDeploymentTemplateRequest) GetDefaults() *DeploymentDefaults {
 	return nil
 }
 
+func (x *CreateDeploymentTemplateRequest) GetLinkedOrgTemplates() []string {
+	if x != nil {
+		return x.LinkedOrgTemplates
+	}
+	return nil
+}
+
 type CreateDeploymentTemplateResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -545,9 +567,12 @@ type UpdateDeploymentTemplateRequest struct {
 	Description *string                `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	CueTemplate *string                `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3,oneof" json:"cue_template,omitempty"`
 	// defaults provides optional default values for deployment form fields.
-	Defaults      *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3,oneof" json:"defaults,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Defaults *DeploymentDefaults `protobuf:"bytes,6,opt,name=defaults,proto3,oneof" json:"defaults,omitempty"`
+	// linked_org_templates replaces the entire linking list when present.
+	// An empty list clears all explicit links (mandatory templates still apply).
+	LinkedOrgTemplates []string `protobuf:"bytes,7,rep,name=linked_org_templates,json=linkedOrgTemplates,proto3" json:"linked_org_templates,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateDeploymentTemplateRequest) Reset() {
@@ -618,6 +643,13 @@ func (x *UpdateDeploymentTemplateRequest) GetCueTemplate() string {
 func (x *UpdateDeploymentTemplateRequest) GetDefaults() *DeploymentDefaults {
 	if x != nil {
 		return x.Defaults
+	}
+	return nil
+}
+
+func (x *UpdateDeploymentTemplateRequest) GetLinkedOrgTemplates() []string {
+	if x != nil {
+		return x.LinkedOrgTemplates
 	}
 	return nil
 }
@@ -767,9 +799,13 @@ type RenderDeploymentTemplateRequest struct {
 	//	  image:     "ghcr.io/holos-run/holos-console"
 	//	  tag:       "latest"
 	//	}
-	CueInput      string `protobuf:"bytes,6,opt,name=cue_input,json=cueInput,proto3" json:"cue_input,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CueInput string `protobuf:"bytes,6,opt,name=cue_input,json=cueInput,proto3" json:"cue_input,omitempty"`
+	// linked_org_templates lists org template names to include in preview
+	// unification. Allows draft templates to preview their effective rendering
+	// with the chosen linking list before saving.
+	LinkedOrgTemplates []string `protobuf:"bytes,8,rep,name=linked_org_templates,json=linkedOrgTemplates,proto3" json:"linked_org_templates,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RenderDeploymentTemplateRequest) Reset() {
@@ -821,6 +857,13 @@ func (x *RenderDeploymentTemplateRequest) GetCueInput() string {
 		return x.CueInput
 	}
 	return ""
+}
+
+func (x *RenderDeploymentTemplateRequest) GetLinkedOrgTemplates() []string {
+	if x != nil {
+		return x.LinkedOrgTemplates
+	}
+	return nil
 }
 
 // RenderDeploymentTemplateResponse contains the rendered output in both YAML and JSON formats.
@@ -999,6 +1042,173 @@ func (x *CloneDeploymentTemplateResponse) GetName() string {
 	return ""
 }
 
+// ListLinkableOrgTemplatesRequest requests the set of enabled org templates
+// that a deployment template within the given project may link against.
+type ListLinkableOrgTemplatesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// project is the project whose organization's templates to query.
+	Project       string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLinkableOrgTemplatesRequest) Reset() {
+	*x = ListLinkableOrgTemplatesRequest{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLinkableOrgTemplatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLinkableOrgTemplatesRequest) ProtoMessage() {}
+
+func (x *ListLinkableOrgTemplatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLinkableOrgTemplatesRequest.ProtoReflect.Descriptor instead.
+func (*ListLinkableOrgTemplatesRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListLinkableOrgTemplatesRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+// LinkableOrgTemplate describes a single org template available for linking.
+type LinkableOrgTemplate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the unique identifier (DNS label slug) of the org template.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// display_name is the human-readable name.
+	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// description explains what the template produces.
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// mandatory indicates this template is always unified regardless of linking.
+	// The UI should render mandatory templates as always-selected and disabled
+	// (with a lock icon) to communicate that they cannot be opted out.
+	Mandatory     bool `protobuf:"varint,4,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkableOrgTemplate) Reset() {
+	*x = LinkableOrgTemplate{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkableOrgTemplate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkableOrgTemplate) ProtoMessage() {}
+
+func (x *LinkableOrgTemplate) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkableOrgTemplate.ProtoReflect.Descriptor instead.
+func (*LinkableOrgTemplate) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *LinkableOrgTemplate) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LinkableOrgTemplate) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *LinkableOrgTemplate) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *LinkableOrgTemplate) GetMandatory() bool {
+	if x != nil {
+		return x.Mandatory
+	}
+	return false
+}
+
+// ListLinkableOrgTemplatesResponse returns the linkable org templates.
+type ListLinkableOrgTemplatesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Templates     []*LinkableOrgTemplate `protobuf:"bytes,1,rep,name=templates,proto3" json:"templates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLinkableOrgTemplatesResponse) Reset() {
+	*x = ListLinkableOrgTemplatesResponse{}
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLinkableOrgTemplatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLinkableOrgTemplatesResponse) ProtoMessage() {}
+
+func (x *ListLinkableOrgTemplatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployment_templates_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLinkableOrgTemplatesResponse.ProtoReflect.Descriptor instead.
+func (*ListLinkableOrgTemplatesResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployment_templates_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListLinkableOrgTemplatesResponse) GetTemplates() []*LinkableOrgTemplate {
+	if x != nil {
+		return x.Templates
+	}
+	return nil
+}
+
 var File_holos_console_v1_deployment_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
@@ -1012,14 +1222,15 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
 	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x12\n" +
 	"\x04name\x18\a \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\b \x01(\tR\vdescription\"\xec\x01\n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\"\x9e\x02\n" +
 	"\x12DeploymentTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12@\n" +
-	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\":\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\x120\n" +
+	"\x14linked_org_templates\x18\a \x03(\tR\x12linkedOrgTemplates\":\n" +
 	"\x1eListDeploymentTemplatesRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\"e\n" +
 	"\x1fListDeploymentTemplatesResponse\x12B\n" +
@@ -1028,23 +1239,25 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"a\n" +
 	"\x1dGetDeploymentTemplateResponse\x12@\n" +
-	"\btemplate\x18\x01 \x01(\v2$.holos.console.v1.DeploymentTemplateR\btemplate\"\xf9\x01\n" +
+	"\btemplate\x18\x01 \x01(\v2$.holos.console.v1.DeploymentTemplateR\btemplate\"\xab\x02\n" +
 	"\x1fCreateDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12@\n" +
-	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\"6\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsR\bdefaults\x120\n" +
+	"\x14linked_org_templates\x18\a \x03(\tR\x12linkedOrgTemplates\"6\n" +
 	" CreateDeploymentTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xcc\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xfe\x02\n" +
 	"\x1fUpdateDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12&\n" +
 	"\fdisplay_name\x18\x03 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
 	"\vdescription\x18\x04 \x01(\tH\x01R\vdescription\x88\x01\x01\x12&\n" +
 	"\fcue_template\x18\x05 \x01(\tH\x02R\vcueTemplate\x88\x01\x01\x12E\n" +
-	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsH\x03R\bdefaults\x88\x01\x01B\x0f\n" +
+	"\bdefaults\x18\x06 \x01(\v2$.holos.console.v1.DeploymentDefaultsH\x03R\bdefaults\x88\x01\x01\x120\n" +
+	"\x14linked_org_templates\x18\a \x03(\tR\x12linkedOrgTemplatesB\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_descriptionB\x0f\n" +
 	"\r_cue_templateB\v\n" +
@@ -1053,11 +1266,12 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x1fDeleteDeploymentTemplateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"\"\n" +
-	" DeleteDeploymentTemplateResponse\"\x8f\x01\n" +
+	" DeleteDeploymentTemplateResponse\"\xc1\x01\n" +
 	"\x1fRenderDeploymentTemplateRequest\x12!\n" +
 	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12,\n" +
 	"\x12cue_platform_input\x18\a \x01(\tR\x10cuePlatformInput\x12\x1b\n" +
-	"\tcue_input\x18\x06 \x01(\tR\bcueInput\"l\n" +
+	"\tcue_input\x18\x06 \x01(\tR\bcueInput\x120\n" +
+	"\x14linked_org_templates\x18\b \x03(\tR\x12linkedOrgTemplates\"l\n" +
 	" RenderDeploymentTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
 	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson\"\x92\x01\n" +
@@ -1068,7 +1282,16 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"5\n" +
 	"\x1fCloneDeploymentTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name2\xa5\a\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\";\n" +
+	"\x1fListLinkableOrgTemplatesRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\"\x8c\x01\n" +
+	"\x13LinkableOrgTemplate\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1c\n" +
+	"\tmandatory\x18\x04 \x01(\bR\tmandatory\"g\n" +
+	" ListLinkableOrgTemplatesResponse\x12C\n" +
+	"\ttemplates\x18\x01 \x03(\v2%.holos.console.v1.LinkableOrgTemplateR\ttemplates2\xa9\b\n" +
 	"\x19DeploymentTemplateService\x12~\n" +
 	"\x17ListDeploymentTemplates\x120.holos.console.v1.ListDeploymentTemplatesRequest\x1a1.holos.console.v1.ListDeploymentTemplatesResponse\x12x\n" +
 	"\x15GetDeploymentTemplate\x12..holos.console.v1.GetDeploymentTemplateRequest\x1a/.holos.console.v1.GetDeploymentTemplateResponse\x12\x81\x01\n" +
@@ -1076,7 +1299,8 @@ const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\x18UpdateDeploymentTemplate\x121.holos.console.v1.UpdateDeploymentTemplateRequest\x1a2.holos.console.v1.UpdateDeploymentTemplateResponse\x12\x81\x01\n" +
 	"\x18DeleteDeploymentTemplate\x121.holos.console.v1.DeleteDeploymentTemplateRequest\x1a2.holos.console.v1.DeleteDeploymentTemplateResponse\x12\x81\x01\n" +
 	"\x18RenderDeploymentTemplate\x121.holos.console.v1.RenderDeploymentTemplateRequest\x1a2.holos.console.v1.RenderDeploymentTemplateResponse\x12~\n" +
-	"\x17CloneDeploymentTemplate\x120.holos.console.v1.CloneDeploymentTemplateRequest\x1a1.holos.console.v1.CloneDeploymentTemplateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x17CloneDeploymentTemplate\x120.holos.console.v1.CloneDeploymentTemplateRequest\x1a1.holos.console.v1.CloneDeploymentTemplateResponse\x12\x81\x01\n" +
+	"\x18ListLinkableOrgTemplates\x121.holos.console.v1.ListLinkableOrgTemplatesRequest\x1a2.holos.console.v1.ListLinkableOrgTemplatesResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_deployment_templates_proto_rawDescOnce sync.Once
@@ -1090,7 +1314,7 @@ func file_holos_console_v1_deployment_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_deployment_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_holos_console_v1_deployment_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_holos_console_v1_deployment_templates_proto_goTypes = []any{
 	(*DeploymentDefaults)(nil),               // 0: holos.console.v1.DeploymentDefaults
 	(*DeploymentTemplate)(nil),               // 1: holos.console.v1.DeploymentTemplate
@@ -1108,34 +1332,40 @@ var file_holos_console_v1_deployment_templates_proto_goTypes = []any{
 	(*RenderDeploymentTemplateResponse)(nil), // 13: holos.console.v1.RenderDeploymentTemplateResponse
 	(*CloneDeploymentTemplateRequest)(nil),   // 14: holos.console.v1.CloneDeploymentTemplateRequest
 	(*CloneDeploymentTemplateResponse)(nil),  // 15: holos.console.v1.CloneDeploymentTemplateResponse
-	(*EnvVar)(nil),                           // 16: holos.console.v1.EnvVar
+	(*ListLinkableOrgTemplatesRequest)(nil),  // 16: holos.console.v1.ListLinkableOrgTemplatesRequest
+	(*LinkableOrgTemplate)(nil),              // 17: holos.console.v1.LinkableOrgTemplate
+	(*ListLinkableOrgTemplatesResponse)(nil), // 18: holos.console.v1.ListLinkableOrgTemplatesResponse
+	(*EnvVar)(nil),                           // 19: holos.console.v1.EnvVar
 }
 var file_holos_console_v1_deployment_templates_proto_depIdxs = []int32{
-	16, // 0: holos.console.v1.DeploymentDefaults.env:type_name -> holos.console.v1.EnvVar
+	19, // 0: holos.console.v1.DeploymentDefaults.env:type_name -> holos.console.v1.EnvVar
 	0,  // 1: holos.console.v1.DeploymentTemplate.defaults:type_name -> holos.console.v1.DeploymentDefaults
 	1,  // 2: holos.console.v1.ListDeploymentTemplatesResponse.templates:type_name -> holos.console.v1.DeploymentTemplate
 	1,  // 3: holos.console.v1.GetDeploymentTemplateResponse.template:type_name -> holos.console.v1.DeploymentTemplate
 	0,  // 4: holos.console.v1.CreateDeploymentTemplateRequest.defaults:type_name -> holos.console.v1.DeploymentDefaults
 	0,  // 5: holos.console.v1.UpdateDeploymentTemplateRequest.defaults:type_name -> holos.console.v1.DeploymentDefaults
-	2,  // 6: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:input_type -> holos.console.v1.ListDeploymentTemplatesRequest
-	4,  // 7: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:input_type -> holos.console.v1.GetDeploymentTemplateRequest
-	6,  // 8: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:input_type -> holos.console.v1.CreateDeploymentTemplateRequest
-	8,  // 9: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:input_type -> holos.console.v1.UpdateDeploymentTemplateRequest
-	10, // 10: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:input_type -> holos.console.v1.DeleteDeploymentTemplateRequest
-	12, // 11: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:input_type -> holos.console.v1.RenderDeploymentTemplateRequest
-	14, // 12: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:input_type -> holos.console.v1.CloneDeploymentTemplateRequest
-	3,  // 13: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
-	5,  // 14: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
-	7,  // 15: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
-	9,  // 16: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
-	11, // 17: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
-	13, // 18: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
-	15, // 19: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:output_type -> holos.console.v1.CloneDeploymentTemplateResponse
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	17, // 6: holos.console.v1.ListLinkableOrgTemplatesResponse.templates:type_name -> holos.console.v1.LinkableOrgTemplate
+	2,  // 7: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:input_type -> holos.console.v1.ListDeploymentTemplatesRequest
+	4,  // 8: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:input_type -> holos.console.v1.GetDeploymentTemplateRequest
+	6,  // 9: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:input_type -> holos.console.v1.CreateDeploymentTemplateRequest
+	8,  // 10: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:input_type -> holos.console.v1.UpdateDeploymentTemplateRequest
+	10, // 11: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:input_type -> holos.console.v1.DeleteDeploymentTemplateRequest
+	12, // 12: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:input_type -> holos.console.v1.RenderDeploymentTemplateRequest
+	14, // 13: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:input_type -> holos.console.v1.CloneDeploymentTemplateRequest
+	16, // 14: holos.console.v1.DeploymentTemplateService.ListLinkableOrgTemplates:input_type -> holos.console.v1.ListLinkableOrgTemplatesRequest
+	3,  // 15: holos.console.v1.DeploymentTemplateService.ListDeploymentTemplates:output_type -> holos.console.v1.ListDeploymentTemplatesResponse
+	5,  // 16: holos.console.v1.DeploymentTemplateService.GetDeploymentTemplate:output_type -> holos.console.v1.GetDeploymentTemplateResponse
+	7,  // 17: holos.console.v1.DeploymentTemplateService.CreateDeploymentTemplate:output_type -> holos.console.v1.CreateDeploymentTemplateResponse
+	9,  // 18: holos.console.v1.DeploymentTemplateService.UpdateDeploymentTemplate:output_type -> holos.console.v1.UpdateDeploymentTemplateResponse
+	11, // 19: holos.console.v1.DeploymentTemplateService.DeleteDeploymentTemplate:output_type -> holos.console.v1.DeleteDeploymentTemplateResponse
+	13, // 20: holos.console.v1.DeploymentTemplateService.RenderDeploymentTemplate:output_type -> holos.console.v1.RenderDeploymentTemplateResponse
+	15, // 21: holos.console.v1.DeploymentTemplateService.CloneDeploymentTemplate:output_type -> holos.console.v1.CloneDeploymentTemplateResponse
+	18, // 22: holos.console.v1.DeploymentTemplateService.ListLinkableOrgTemplates:output_type -> holos.console.v1.ListLinkableOrgTemplatesResponse
+	15, // [15:23] is the sub-list for method output_type
+	7,  // [7:15] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_deployment_templates_proto_init() }
@@ -1152,7 +1382,7 @@ func file_holos_console_v1_deployment_templates_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_deployment_templates_proto_rawDesc), len(file_holos_console_v1_deployment_templates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
