@@ -50,7 +50,9 @@ export enum Role {
 export declare const RoleSchema: GenEnum<Role>;
 
 /**
- * Permission represents granular permissions for secrets operations.
+ * Permission represents granular permissions for RBAC operations.
+ * v1alpha2: template permissions are collapsed to a single set applied
+ * uniformly at every scope level (ADR 021 Decision 2).
  *
  * @generated from enum holos.console.v1.Permission
  */
@@ -214,33 +216,6 @@ export enum Permission {
   DEPLOYMENTS_LOGS = 23,
 
   /**
-   * Deployment template permissions
-   *
-   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_LIST = 24;
-   */
-  DEPLOYMENT_TEMPLATES_LIST = 24,
-
-  /**
-   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_READ = 25;
-   */
-  DEPLOYMENT_TEMPLATES_READ = 25,
-
-  /**
-   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_WRITE = 26;
-   */
-  DEPLOYMENT_TEMPLATES_WRITE = 26,
-
-  /**
-   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_DELETE = 27;
-   */
-  DEPLOYMENT_TEMPLATES_DELETE = 27,
-
-  /**
-   * @generated from enum value: PERMISSION_DEPLOYMENT_TEMPLATES_ADMIN = 28;
-   */
-  DEPLOYMENT_TEMPLATES_ADMIN = 28,
-
-  /**
    * Project settings permissions
    *
    * @generated from enum value: PERMISSION_PROJECT_SETTINGS_READ = 29;
@@ -261,13 +236,82 @@ export enum Permission {
   PROJECT_DEPLOYMENTS_ENABLE = 31,
 
   /**
-   * PERMISSION_ORG_TEMPLATES_WRITE allows creating, updating, and deleting
-   * platform templates (org-level CUE templates). Granted only to org-level
-   * OWNERs via cascade — not inherited by project-level OWNERs.
+   * Folder permissions (v1alpha2).
+   * PERMISSION_FOLDERS_LIST allows listing folders.
    *
-   * @generated from enum value: PERMISSION_ORG_TEMPLATES_WRITE = 32;
+   * @generated from enum value: PERMISSION_FOLDERS_LIST = 33;
    */
-  ORG_TEMPLATES_WRITE = 32,
+  FOLDERS_LIST = 33,
+
+  /**
+   * PERMISSION_FOLDERS_READ allows reading folder metadata.
+   *
+   * @generated from enum value: PERMISSION_FOLDERS_READ = 34;
+   */
+  FOLDERS_READ = 34,
+
+  /**
+   * PERMISSION_FOLDERS_WRITE allows creating and updating folders.
+   *
+   * @generated from enum value: PERMISSION_FOLDERS_WRITE = 35;
+   */
+  FOLDERS_WRITE = 35,
+
+  /**
+   * PERMISSION_FOLDERS_DELETE allows deleting folders.
+   *
+   * @generated from enum value: PERMISSION_FOLDERS_DELETE = 36;
+   */
+  FOLDERS_DELETE = 36,
+
+  /**
+   * PERMISSION_FOLDERS_ADMIN allows administrative operations on folders.
+   *
+   * @generated from enum value: PERMISSION_FOLDERS_ADMIN = 37;
+   */
+  FOLDERS_ADMIN = 37,
+
+  /**
+   * PERMISSION_FOLDERS_CREATE allows creating new folders.
+   *
+   * @generated from enum value: PERMISSION_FOLDERS_CREATE = 38;
+   */
+  FOLDERS_CREATE = 38,
+
+  /**
+   * PERMISSION_TEMPLATES_LIST allows listing template names.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_LIST = 39;
+   */
+  TEMPLATES_LIST = 39,
+
+  /**
+   * PERMISSION_TEMPLATES_READ allows reading template CUE source.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_READ = 40;
+   */
+  TEMPLATES_READ = 40,
+
+  /**
+   * PERMISSION_TEMPLATES_WRITE allows creating and updating templates.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_WRITE = 41;
+   */
+  TEMPLATES_WRITE = 41,
+
+  /**
+   * PERMISSION_TEMPLATES_DELETE allows deleting templates.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_DELETE = 42;
+   */
+  TEMPLATES_DELETE = 42,
+
+  /**
+   * PERMISSION_TEMPLATES_ADMIN allows administrative operations on templates (IAM).
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_ADMIN = 43;
+   */
+  TEMPLATES_ADMIN = 43,
 }
 
 /**

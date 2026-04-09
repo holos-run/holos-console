@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package holos.console.v1;
 
+import "holos/console/v1/folders.proto";
 import "holos/console/v1/rbac.proto";
 import "holos/console/v1/secrets.proto";
 
@@ -57,7 +58,8 @@ message Project {
   repeated ShareGrant role_grants = 5;
   // user_role is the calling user's effective role on this project.
   Role user_role = 6;
-  // organization is the organization this project belongs to.
+  // organization is the root organization this project belongs to.
+  // Retained for convenience — use parent_type + parent_name for the immediate parent.
   string organization = 7;
   // default_user_grants are the per-user sharing grants applied by default to new secrets in this project.
   repeated ShareGrant default_user_grants = 8;
@@ -67,12 +69,23 @@ message Project {
   string creator_email = 10;
   // created_at is the RFC3339-formatted timestamp when this project was created.
   string created_at = 11;
+  // parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+  ParentType parent_type = 12;
+  // parent_name is the name of the immediate parent scope (v1alpha2).
+  // For a project directly under an org this is the org name.
+  // For a project under a folder this is the folder name.
+  string parent_name = 13;
 }
 
 // ListProjectsRequest contains optional filters for listing projects.
 message ListProjectsRequest {
   // organization filters projects by organization. When empty, returns all accessible projects.
   string organization = 1;
+  // parent_type and parent_name together filter to immediate children of a
+  // specific parent scope. When both are empty, returns all accessible projects
+  // in the organization.
+  ParentType parent_type = 2;
+  string parent_name = 3;
 }
 
 // ListProjectsResponse contains the list of projects the user can access.
@@ -105,8 +118,14 @@ message CreateProjectRequest {
   repeated ShareGrant user_grants = 4;
   // role_grants are the initial per-role sharing grants.
   repeated ShareGrant role_grants = 5;
-  // organization is the organization to create this project in.
+  // organization is the root organization to create this project in.
   string organization = 6;
+  // parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+  // Defaults to PARENT_TYPE_ORGANIZATION when unset.
+  ParentType parent_type = 7;
+  // parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
+  // When unset, defaults to organization.
+  string parent_name = 8;
 }
 
 // CreateProjectResponse contains the name of the created project.

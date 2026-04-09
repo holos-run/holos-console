@@ -19,8 +19,8 @@ service DeploymentService {
   rpc ListNamespaceSecrets(ListNamespaceSecretsRequest) returns (ListNamespaceSecretsResponse);
   // ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
   rpc ListNamespaceConfigMaps(ListNamespaceConfigMapsRequest) returns (ListNamespaceConfigMapsResponse);
-  // GetDeploymentRenderPreview returns the CUE template source, system input,
-  // user input, and rendered output for a deployment. This gives the frontend
+  // GetDeploymentRenderPreview returns the CUE template source, platform input,
+  // project input, and rendered output for a deployment. This gives the frontend
   // everything needed to display the template preview on the deployment detail page.
   rpc GetDeploymentRenderPreview(GetDeploymentRenderPreviewRequest) returns (GetDeploymentRenderPreviewResponse);
 }
@@ -242,10 +242,14 @@ message GetDeploymentRenderPreviewRequest {
 message GetDeploymentRenderPreviewResponse {
   // cue_template is the CUE template source used to render the deployment.
   string cue_template = 1;
-  // cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
+  // cue_platform_input is the platform-provided CUE input (project, namespace,
+  // folder ancestry, claims) in CUE format. Set by the backend from
+  // authenticated context; template authors can trust these values.
   string cue_platform_input = 2;
-  // cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
-  string cue_user_input = 3;
+  // cue_project_input is the user-provided CUE input (name, image, tag, etc.)
+  // in CUE format. Replaces cue_user_input from v1alpha1 to align with the
+  // platform/project input terminology used in api/v1alpha2.
+  string cue_project_input = 3;
   // rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
   string rendered_yaml = 4;
   // rendered_json is the rendered Kubernetes manifests as a JSON array.

@@ -1777,10 +1777,14 @@ type GetDeploymentRenderPreviewResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// cue_template is the CUE template source used to render the deployment.
 	CueTemplate string `protobuf:"bytes,1,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
-	// cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
+	// cue_platform_input is the platform-provided CUE input (project, namespace,
+	// folder ancestry, claims) in CUE format. Set by the backend from
+	// authenticated context; template authors can trust these values.
 	CuePlatformInput string `protobuf:"bytes,2,opt,name=cue_platform_input,json=cuePlatformInput,proto3" json:"cue_platform_input,omitempty"`
-	// cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
-	CueUserInput string `protobuf:"bytes,3,opt,name=cue_user_input,json=cueUserInput,proto3" json:"cue_user_input,omitempty"`
+	// cue_project_input is the user-provided CUE input (name, image, tag, etc.)
+	// in CUE format. Replaces cue_user_input from v1alpha1 to align with the
+	// platform/project input terminology used in api/v1alpha2.
+	CueProjectInput string `protobuf:"bytes,3,opt,name=cue_project_input,json=cueProjectInput,proto3" json:"cue_project_input,omitempty"`
 	// rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
 	RenderedYaml string `protobuf:"bytes,4,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
 	// rendered_json is the rendered Kubernetes manifests as a JSON array.
@@ -1833,9 +1837,9 @@ func (x *GetDeploymentRenderPreviewResponse) GetCuePlatformInput() string {
 	return ""
 }
 
-func (x *GetDeploymentRenderPreviewResponse) GetCueUserInput() string {
+func (x *GetDeploymentRenderPreviewResponse) GetCueProjectInput() string {
 	if x != nil {
-		return x.CueUserInput
+		return x.CueProjectInput
 	}
 	return ""
 }
@@ -1983,11 +1987,11 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"configMaps\"Q\n" +
 	"!GetDeploymentRenderPreviewRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xe5\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xeb\x01\n" +
 	"\"GetDeploymentRenderPreviewResponse\x12!\n" +
 	"\fcue_template\x18\x01 \x01(\tR\vcueTemplate\x12,\n" +
-	"\x12cue_platform_input\x18\x02 \x01(\tR\x10cuePlatformInput\x12$\n" +
-	"\x0ecue_user_input\x18\x03 \x01(\tR\fcueUserInput\x12#\n" +
+	"\x12cue_platform_input\x18\x02 \x01(\tR\x10cuePlatformInput\x12*\n" +
+	"\x11cue_project_input\x18\x03 \x01(\tR\x0fcueProjectInput\x12#\n" +
 	"\rrendered_yaml\x18\x04 \x01(\tR\frenderedYaml\x12#\n" +
 	"\rrendered_json\x18\x05 \x01(\tR\frenderedJson*\xac\x01\n" +
 	"\x0fDeploymentPhase\x12 \n" +

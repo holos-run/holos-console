@@ -80,8 +80,8 @@ type DeploymentServiceClient interface {
 	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
 	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
 	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
-	// GetDeploymentRenderPreview returns the CUE template source, system input,
-	// user input, and rendered output for a deployment. This gives the frontend
+	// GetDeploymentRenderPreview returns the CUE template source, platform input,
+	// project input, and rendered output for a deployment. This gives the frontend
 	// everything needed to display the template preview on the deployment detail page.
 	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
 }
@@ -239,8 +239,8 @@ type DeploymentServiceHandler interface {
 	ListNamespaceSecrets(context.Context, *connect.Request[v1.ListNamespaceSecretsRequest]) (*connect.Response[v1.ListNamespaceSecretsResponse], error)
 	// ListNamespaceConfigMaps lists Kubernetes ConfigMaps available for env var references.
 	ListNamespaceConfigMaps(context.Context, *connect.Request[v1.ListNamespaceConfigMapsRequest]) (*connect.Response[v1.ListNamespaceConfigMapsResponse], error)
-	// GetDeploymentRenderPreview returns the CUE template source, system input,
-	// user input, and rendered output for a deployment. This gives the frontend
+	// GetDeploymentRenderPreview returns the CUE template source, platform input,
+	// project input, and rendered output for a deployment. This gives the frontend
 	// everything needed to display the template preview on the deployment detail page.
 	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
 }

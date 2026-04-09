@@ -1,0 +1,219 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "holos/console/v1/rbac.proto";
+import "holos/console/v1/secrets.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// FolderService provides CRUD and hierarchy operations for folders.
+// A folder is an optional intermediate grouping level between an Organization
+// and a Project (or between two folder levels). Folders are stored as
+// Kubernetes Namespaces with a folder-type label (ADR 020 Decision 3).
+//
+// Maximum folder depth is 3 levels between an organization and a project
+// (ADR 020 Decision 5). CreateFolder enforces this at write time.
+service FolderService {
+  // ListFolders returns all folders the user has access to.
+  // When parent_name is set, returns only immediate children of that parent.
+  rpc ListFolders(ListFoldersRequest) returns (ListFoldersResponse);
+
+  // GetFolder retrieves a folder by name within its parent scope.
+  rpc GetFolder(GetFolderRequest) returns (GetFolderResponse);
+
+  // CreateFolder creates a new folder as a child of the given parent.
+  // Enforces the maximum depth of 3 folder levels (ADR 020 Decision 5).
+  // Requires PERMISSION_FOLDERS_CREATE on the parent scope.
+  rpc CreateFolder(CreateFolderRequest) returns (CreateFolderResponse);
+
+  // UpdateFolder updates folder metadata (display name, description).
+  // Requires PERMISSION_FOLDERS_WRITE on the folder.
+  rpc UpdateFolder(UpdateFolderRequest) returns (UpdateFolderResponse);
+
+  // DeleteFolder deletes a folder and its backing Kubernetes Namespace.
+  // Requires PERMISSION_FOLDERS_DELETE on the folder.
+  rpc DeleteFolder(DeleteFolderRequest) returns (DeleteFolderResponse);
+
+  // UpdateFolderSharing updates the sharing grants on a folder.
+  // Requires PERMISSION_FOLDERS_ADMIN on the folder.
+  rpc UpdateFolderSharing(UpdateFolderSharingRequest) returns (UpdateFolderSharingResponse);
+
+  // UpdateFolderDefaultSharing updates the default sharing grants on a folder.
+  // These grants are merged into the default-share cascade chain for new Secrets
+  // created in projects that are descendants of this folder (ADR 020 Decision 9).
+  // Requires PERMISSION_FOLDERS_ADMIN on the folder.
+  rpc UpdateFolderDefaultSharing(UpdateFolderDefaultSharingRequest) returns (UpdateFolderDefaultSharingResponse);
+
+  // GetFolderRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
+  // Requires authentication and PERMISSION_FOLDERS_READ.
+  rpc GetFolderRaw(GetFolderRawRequest) returns (GetFolderRawResponse);
+}
+
+// ParentType identifies the resource type of a parent in the hierarchy.
+enum ParentType {
+  PARENT_TYPE_UNSPECIFIED = 0;
+  // PARENT_TYPE_ORGANIZATION indicates the parent is an Organization.
+  PARENT_TYPE_ORGANIZATION = 1;
+  // PARENT_TYPE_FOLDER indicates the parent is a Folder.
+  PARENT_TYPE_FOLDER = 2;
+}
+
+// Folder represents a folder with its metadata and grants.
+message Folder {
+  // name is the folder name (slug, not the Kubernetes namespace name).
+  string name = 1;
+  // display_name is a human-readable display name for the folder.
+  string display_name = 2;
+  // description is a human-readable description of the folder.
+  string description = 3;
+  // organization is the root organization this folder belongs to.
+  string organization = 4;
+  // parent_type identifies whether the immediate parent is an org or folder.
+  ParentType parent_type = 5;
+  // parent_name is the name of the immediate parent (org name or folder name).
+  string parent_name = 6;
+  // user_grants are the per-user sharing grants on this folder.
+  repeated ShareGrant user_grants = 7;
+  // role_grants are the per-role sharing grants on this folder.
+  repeated ShareGrant role_grants = 8;
+  // default_user_grants are applied by default to new Secrets in descendant projects.
+  repeated ShareGrant default_user_grants = 9;
+  // default_role_grants are applied by default to new Secrets in descendant projects.
+  repeated ShareGrant default_role_grants = 10;
+  // user_role is the calling user's effective role on this folder.
+  Role user_role = 11;
+  // creator_email is the email address of the user who created this folder.
+  string creator_email = 12;
+  // created_at is the RFC3339-formatted timestamp when this folder was created.
+  string created_at = 13;
+}
+
+// ListFoldersRequest contains optional filters for listing folders.
+message ListFoldersRequest {
+  // organization filters folders to a specific root organization.
+  string organization = 1;
+  // parent_type and parent_name together filter to immediate children of a
+  // specific parent. When both are empty, returns all accessible folders in
+  // the organization.
+  ParentType parent_type = 2;
+  string parent_name = 3;
+}
+
+// ListFoldersResponse contains the list of folders the user can access.
+message ListFoldersResponse {
+  repeated Folder folders = 1;
+}
+
+// GetFolderRequest contains the name of the folder to retrieve.
+message GetFolderRequest {
+  // name is the folder name (slug).
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+}
+
+// GetFolderResponse contains the folder.
+message GetFolderResponse {
+  Folder folder = 1;
+}
+
+// CreateFolderRequest contains the fields for creating a new folder.
+message CreateFolderRequest {
+  // name is the folder slug (DNS label format).
+  string name = 1;
+  // display_name is a human-readable display name for the folder.
+  string display_name = 2;
+  // description is a human-readable description of the folder.
+  string description = 3;
+  // organization is the root organization name.
+  string organization = 4;
+  // parent_type identifies whether the immediate parent is an org or folder.
+  ParentType parent_type = 5;
+  // parent_name is the name of the immediate parent (org name or folder name).
+  string parent_name = 6;
+  // user_grants are the initial per-user sharing grants.
+  repeated ShareGrant user_grants = 7;
+  // role_grants are the initial per-role sharing grants.
+  repeated ShareGrant role_grants = 8;
+}
+
+// CreateFolderResponse contains the name of the created folder.
+message CreateFolderResponse {
+  // name is the name of the created folder.
+  string name = 1;
+}
+
+// UpdateFolderRequest contains the fields to update on a folder.
+message UpdateFolderRequest {
+  // name is the name of the folder to update.
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+  // display_name is the new display name. When unset, preserves the existing value.
+  optional string display_name = 3;
+  // description is the new description. When unset, preserves the existing value.
+  optional string description = 4;
+}
+
+// UpdateFolderResponse is empty on success.
+message UpdateFolderResponse {}
+
+// DeleteFolderRequest contains the name of the folder to delete.
+message DeleteFolderRequest {
+  // name is the name of the folder to delete.
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+}
+
+// DeleteFolderResponse is empty on success.
+message DeleteFolderResponse {}
+
+// UpdateFolderSharingRequest contains the sharing grants to set on a folder.
+message UpdateFolderSharingRequest {
+  // name is the name of the folder to update sharing for.
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+  // user_grants are the per-user sharing grants to set.
+  repeated ShareGrant user_grants = 3;
+  // role_grants are the per-role sharing grants to set.
+  repeated ShareGrant role_grants = 4;
+}
+
+// UpdateFolderSharingResponse contains the updated folder.
+message UpdateFolderSharingResponse {
+  Folder folder = 1;
+}
+
+// UpdateFolderDefaultSharingRequest contains the default sharing grants to set.
+message UpdateFolderDefaultSharingRequest {
+  // name is the name of the folder to update default sharing for.
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+  // default_user_grants are the per-user sharing grants applied by default to new Secrets.
+  repeated ShareGrant default_user_grants = 3;
+  // default_role_grants are the per-role sharing grants applied by default to new Secrets.
+  repeated ShareGrant default_role_grants = 4;
+}
+
+// UpdateFolderDefaultSharingResponse contains the updated folder.
+message UpdateFolderDefaultSharingResponse {
+  Folder folder = 1;
+}
+
+// GetFolderRawRequest contains the name of the folder to retrieve as raw JSON.
+message GetFolderRawRequest {
+  // name is the name of the folder to retrieve.
+  string name = 1;
+  // organization is the root organization of the folder.
+  string organization = 2;
+}
+
+// GetFolderRawResponse contains the full Kubernetes Namespace object as JSON.
+message GetFolderRawResponse {
+  // raw is the verbatim JSON-serialized Namespace object from the K8s API.
+  string raw = 1;
+}

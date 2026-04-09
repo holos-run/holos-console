@@ -118,7 +118,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   }
 
   const handleOpenLinkedEdit = () => {
-    setDraftLinkedOrgTemplates(template?.linkedOrgTemplates ?? [])
+    // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
+    // Extract names for the legacy string-array UI state until phase 11 migrates this.
+    setDraftLinkedOrgTemplates((template?.linkedTemplates ?? []).map(t => t.name))
     setLinkedEditError(null)
     setLinkedEditOpen(true)
   }
@@ -227,7 +229,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                 <div className="flex items-start gap-1 flex-1">
                   <div className="flex-1">
                     {(() => {
-                      const linkedNames = template?.linkedOrgTemplates ?? []
+                      // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
+                      const linkedNames = (template?.linkedTemplates ?? []).map(t => t.name)
                       const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
                       const allLinked = [
                         ...mandatoryTemplates.filter((t) => !linkedNames.includes(t.name)),
