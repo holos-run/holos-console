@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
@@ -28,8 +28,8 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 
 // ListOrganizations returns all namespaces with the organization resource-type label.
 func (c *K8sClient) ListOrganizations(ctx context.Context) ([]*corev1.Namespace, error) {
-	labelSelector := v1alpha1.LabelManagedBy + "=" + v1alpha1.ManagedByValue + "," +
-		v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeOrganization
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeOrganization
 	slog.DebugContext(ctx, "listing organizations from kubernetes",
 		slog.String("labelSelector", labelSelector),
 	)
@@ -71,10 +71,10 @@ func (c *K8sClient) GetOrganization(ctx context.Context, name string) (*corev1.N
 	if err != nil {
 		return nil, err
 	}
-	if ns.Labels == nil || ns.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, v1alpha1.ManagedByValue)
+	if ns.Labels == nil || ns.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, v1alpha2.ManagedByValue)
 	}
-	if ns.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeOrganization {
+	if ns.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeOrganization {
 		return nil, fmt.Errorf("namespace %q is not an organization", nsName)
 	}
 	return ns, nil
@@ -96,25 +96,25 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		v1alpha1.AnnotationShareUsers: string(usersJSON),
-		v1alpha1.AnnotationShareRoles: string(rolesJSON),
+		v1alpha2.AnnotationShareUsers: string(usersJSON),
+		v1alpha2.AnnotationShareRoles: string(rolesJSON),
 	}
 	if displayName != "" {
-		annotations[v1alpha1.AnnotationDisplayName] = displayName
+		annotations[v1alpha2.AnnotationDisplayName] = displayName
 	}
 	if description != "" {
-		annotations[v1alpha1.AnnotationDescription] = description
+		annotations[v1alpha2.AnnotationDescription] = description
 	}
 	if creatorEmail != "" {
-		annotations[v1alpha1.AnnotationCreatorEmail] = creatorEmail
+		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nsName,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeOrganization,
-				v1alpha1.LabelOrganization: name,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
+				v1alpha2.LabelOrganization: name,
 			},
 			Annotations: annotations,
 		},
@@ -137,16 +137,16 @@ func (c *K8sClient) UpdateOrganization(ctx context.Context, name string, display
 	}
 	if displayName != nil {
 		if *displayName == "" {
-			delete(ns.Annotations, v1alpha1.AnnotationDisplayName)
+			delete(ns.Annotations, v1alpha2.AnnotationDisplayName)
 		} else {
-			ns.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
+			ns.Annotations[v1alpha2.AnnotationDisplayName] = *displayName
 		}
 	}
 	if description != nil {
 		if *description == "" {
-			delete(ns.Annotations, v1alpha1.AnnotationDescription)
+			delete(ns.Annotations, v1alpha2.AnnotationDescription)
 		} else {
-			ns.Annotations[v1alpha1.AnnotationDescription] = *description
+			ns.Annotations[v1alpha2.AnnotationDescription] = *description
 		}
 	}
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
@@ -186,8 +186,8 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
-	ns.Annotations[v1alpha1.AnnotationShareUsers] = string(usersJSON)
-	ns.Annotations[v1alpha1.AnnotationShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
+	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -196,7 +196,7 @@ func GetDisplayName(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {
 		return ""
 	}
-	return ns.Annotations[v1alpha1.AnnotationDisplayName]
+	return ns.Annotations[v1alpha2.AnnotationDisplayName]
 }
 
 // GetDescription returns the description annotation value from a namespace.
@@ -204,30 +204,30 @@ func GetDescription(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {
 		return ""
 	}
-	return ns.Annotations[v1alpha1.AnnotationDescription]
+	return ns.Annotations[v1alpha2.AnnotationDescription]
 }
 
 // GetShareUsers parses the share-users annotation from a namespace.
 func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationShareUsers)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationShareUsers)
 }
 
 // GetShareRoles parses the share-roles annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationShareRoles)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationShareRoles)
 }
 
 // GetDefaultShareUsers parses the default-share-users annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetDefaultShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationDefaultShareUsers)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareUsers)
 }
 
 // GetDefaultShareRoles parses the default-share-roles annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationDefaultShareRoles)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareRoles)
 }
 
 // UpdateOrganizationDefaultSharing updates the default sharing annotations on an organization namespace.
@@ -250,8 +250,8 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 	if err != nil {
 		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 	}
-	ns.Annotations[v1alpha1.AnnotationDefaultShareUsers] = string(usersJSON)
-	ns.Annotations[v1alpha1.AnnotationDefaultShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
+	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
