@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 )
@@ -24,7 +24,7 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 		},
@@ -33,7 +33,7 @@ func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-foo",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      "foo",
 				resolver.OrganizationLabel: "acme",
@@ -66,7 +66,7 @@ func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-active",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "active",
 			},
@@ -76,7 +76,7 @@ func TestListOrganizations_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-terminating",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "terminating",
 			},
@@ -116,12 +116,12 @@ func TestGetOrganization_ReturnsOrgByName(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDisplayName:         "ACME Corp",
-				v1alpha1.AnnotationDescription: "Test org",
+				v1alpha2.AnnotationDisplayName:         "ACME Corp",
+				v1alpha2.AnnotationDescription: "Test org",
 			},
 		},
 	}
@@ -135,8 +135,8 @@ func TestGetOrganization_ReturnsOrgByName(t *testing.T) {
 	if result.Name != "holos-org-acme" {
 		t.Errorf("expected namespace org-acme, got %s", result.Name)
 	}
-	if result.Annotations[v1alpha1.AnnotationDisplayName] != "ACME Corp" {
-		t.Errorf("expected display name ACME Corp, got %s", result.Annotations[v1alpha1.AnnotationDisplayName])
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "ACME Corp" {
+		t.Errorf("expected display name ACME Corp, got %s", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
 }
 
@@ -159,7 +159,7 @@ func TestGetOrganization_RejectsNonOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-fake",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 			},
 		},
@@ -188,14 +188,14 @@ func TestCreateOrganization_CreatesNamespaceWithPrefixAndLabels(t *testing.T) {
 	if result.Name != "holos-org-acme" {
 		t.Errorf("expected org-acme, got %s", result.Name)
 	}
-	if result.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
+	if result.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
 		t.Error("expected managed-by label")
 	}
 	if result.Labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeOrganization {
 		t.Error("expected resource-type=organization label")
 	}
-	if result.Annotations[v1alpha1.AnnotationDisplayName] != "ACME Corp" {
-		t.Errorf("expected display name ACME Corp, got %s", result.Annotations[v1alpha1.AnnotationDisplayName])
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "ACME Corp" {
+		t.Errorf("expected display name ACME Corp, got %s", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
 	users, err := GetShareUsers(result)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 		},
@@ -246,11 +246,11 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+				v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 			},
 		},
 	}
@@ -270,7 +270,7 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 		t.Errorf("expected 'Updated desc', got %q", GetDescription(result))
 	}
 	// Verify share-users preserved
-	if result.Annotations[v1alpha1.AnnotationShareUsers] != `[{"principal":"alice@example.com","role":"owner"}]` {
+	if result.Annotations[v1alpha2.AnnotationShareUsers] != `[{"principal":"alice@example.com","role":"owner"}]` {
 		t.Errorf("expected share-users preserved")
 	}
 }
@@ -296,7 +296,7 @@ func TestDeleteOrganization_DeletesOrgNamespace(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 		},
@@ -319,7 +319,7 @@ func TestDeleteOrganization_RejectsNonOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-fake",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 			},
 		},
@@ -338,12 +338,12 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationShareUsers: `[{"principal":"old@example.com","role":"viewer"}]`,
-				v1alpha1.AnnotationShareRoles: `[]`,
+				v1alpha2.AnnotationShareUsers: `[{"principal":"old@example.com","role":"viewer"}]`,
+				v1alpha2.AnnotationShareRoles: `[]`,
 			},
 		},
 	}
@@ -384,7 +384,7 @@ func TestListOrganizations_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "acme",
 			},
@@ -394,7 +394,7 @@ func TestListOrganizations_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "other-org-beta",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "beta",
 			},
@@ -420,7 +420,7 @@ func TestGetDefaultShareUsers_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"editor"}]`,
+				v1alpha2.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"editor"}]`,
 			},
 		},
 	}
@@ -441,7 +441,7 @@ func TestGetDefaultShareRoles_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"viewer"}]`,
+				v1alpha2.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"viewer"}]`,
 			},
 		},
 	}
@@ -477,11 +477,11 @@ func TestUpdateOrgDefaultSharing_UpdatesAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+				v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 			},
 		},
 	}
@@ -513,7 +513,7 @@ func TestUpdateOrgDefaultSharing_UpdatesAnnotations(t *testing.T) {
 		t.Errorf("expected [{engineering viewer}], got %v", roles)
 	}
 	// Verify existing share-users preserved
-	if result.Annotations[v1alpha1.AnnotationShareUsers] != `[{"principal":"alice@example.com","role":"owner"}]` {
+	if result.Annotations[v1alpha2.AnnotationShareUsers] != `[{"principal":"alice@example.com","role":"owner"}]` {
 		t.Error("expected share-users annotation preserved")
 	}
 }
@@ -556,8 +556,8 @@ func TestCreateOrganization_StoresCreatorEmailAnnotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Annotations[v1alpha1.AnnotationCreatorEmail] != "creator@example.com" {
-		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[v1alpha1.AnnotationCreatorEmail])
+	if result.Annotations[v1alpha2.AnnotationCreatorEmail] != "creator@example.com" {
+		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[v1alpha2.AnnotationCreatorEmail])
 	}
 }
 
@@ -569,7 +569,7 @@ func TestCreateOrganization_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := result.Annotations[v1alpha1.AnnotationCreatorEmail]; ok {
+	if _, ok := result.Annotations[v1alpha2.AnnotationCreatorEmail]; ok {
 		t.Error("expected no creator-email annotation when email is empty")
 	}
 }
@@ -581,14 +581,14 @@ func TestBuildOrganization_PopulatesCreatorEmailAndCreatedAt(t *testing.T) {
 			Name:              "holos-org-acme",
 			CreationTimestamp: now,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "acme",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationCreatorEmail:        "creator@example.com",
-				v1alpha1.AnnotationShareUsers:  `[{"principal":"creator@example.com","role":"owner"}]`,
-				v1alpha1.AnnotationShareRoles:  `[]`,
+				v1alpha2.AnnotationCreatorEmail:        "creator@example.com",
+				v1alpha2.AnnotationShareUsers:  `[{"principal":"creator@example.com","role":"owner"}]`,
+				v1alpha2.AnnotationShareRoles:  `[]`,
 			},
 		},
 	}
@@ -615,7 +615,7 @@ func TestBuildOrganization_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "acme",
 			},
