@@ -92,6 +92,65 @@ func (a *Applier) Apply(ctx context.Context, namespace, deploymentName string, r
 	return nil
 }
 
+// Reconcile applies the desired resources via SSA and then deletes any owned
+// resources that are no longer in the desired set (orphan cleanup). This
+// implements a K8s controller-style reconciliation loop:
+//   1. Apply all desired resources.
+//   2. If apply fails, return the error immediately — orphan cleanup is skipped
+//      to preserve the previously working state.
+//   3. After a successful apply, list every owned resource by kind and delete
+//      any whose (kind, name) pair is not in the desired set.
+func (a *Applier) Reconcile(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error {
+	// Step 1: Apply all desired resources via SSA.
+	if err := a.Apply(ctx, namespace, deploymentName, resources); err != nil {
+		return err
+	}
+
+	// Build a set of (kind, name) tuples from the desired resources so we can
+	// quickly check whether a cluster resource is still wanted.
+	type kindName struct{ kind, name string }
+	desired := make(map[kindName]struct{}, len(resources))
+	for _, r := range resources {
+		desired[kindName{kind: r.GetKind(), name: r.GetName()}] = struct{}{}
+	}
+
+	// Step 2: Delete orphaned resources — those with the ownership label that
+	// are no longer in the desired set.
+	labelSelector := fmt.Sprintf("%s=%s", v1alpha1.AnnotationDeployment, deploymentName)
+
+	for kind, gvr := range allowedKinds {
+		list, err := a.client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		if err != nil {
+			// Some GVRs may not exist in the cluster; log and continue.
+			slog.DebugContext(ctx, "reconcile: list error (resource type may not exist)",
+				slog.String("kind", kind),
+				slog.String("namespace", namespace),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		for _, item := range list.Items {
+			if _, ok := desired[kindName{kind: kind, name: item.GetName()}]; ok {
+				continue // still desired; keep it
+			}
+			slog.InfoContext(ctx, "reconcile: deleting orphaned resource",
+				slog.String("kind", kind),
+				slog.String("name", item.GetName()),
+				slog.String("namespace", namespace),
+				slog.String("deployment", deploymentName),
+			)
+			if err := a.client.Resource(gvr).Namespace(namespace).Delete(
+				ctx, item.GetName(), metav1.DeleteOptions{}); err != nil {
+				return fmt.Errorf("deleting orphaned %s/%s: %w", kind, item.GetName(), err)
+			}
+		}
+	}
+	return nil
+}
+
 // Cleanup deletes all K8s resources that carry the deployment ownership label.
 func (a *Applier) Cleanup(ctx context.Context, namespace, deploymentName string) error {
 	labelSelector := fmt.Sprintf("%s=%s", v1alpha1.AnnotationDeployment, deploymentName)

@@ -71,6 +71,9 @@ type OrgTemplateProvider interface {
 // ResourceApplier applies and cleans up K8s resources for a deployment.
 type ResourceApplier interface {
 	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
+	// Reconcile applies desired resources via SSA then deletes owned resources
+	// that are no longer in the desired set (orphan cleanup). Use for updates.
+	Reconcile(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
 	Cleanup(ctx context.Context, namespace, deploymentName string) error
 }
 
@@ -307,7 +310,9 @@ func (h *Handler) CreateDeployment(
 		return nil, mapK8sError(err)
 	}
 
-	// Render and apply the deployment resources.
+	// Render and apply the deployment resources. On any failure, roll back by
+	// cleaning up partial K8s resources and deleting the deployment ConfigMap so
+	// the operation is all-or-nothing.
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
 		platformIn := h.buildPlatformInput(project, ns, claims)
@@ -322,19 +327,21 @@ func (h *Handler) CreateDeployment(
 		}
 		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn)
 		if renderErr != nil {
-			slog.WarnContext(ctx, "render failed after creating deployment",
+			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
 				slog.String("name", name),
 				slog.Any("error", renderErr),
 			)
+			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
 		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
-			slog.WarnContext(ctx, "apply failed after creating deployment",
+			slog.WarnContext(ctx, "apply failed after creating deployment — rolling back",
 				slog.String("project", project),
 				slog.String("name", name),
 				slog.Any("error", applyErr),
 			)
+			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
 		}
 	}
@@ -351,6 +358,28 @@ func (h *Handler) CreateDeployment(
 	return connect.NewResponse(&consolev1.CreateDeploymentResponse{
 		Name: name,
 	}), nil
+}
+
+// rollbackCreate attempts to undo a partially-applied CreateDeployment:
+//  1. Calls Cleanup to remove any K8s resources already applied.
+//  2. Deletes the deployment ConfigMap metadata record.
+//
+// Rollback errors are logged at warn level but do not replace the original error.
+func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) {
+	if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+		slog.WarnContext(ctx, "rollback: cleanup failed",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", cleanupErr),
+		)
+	}
+	if deleteErr := h.k8s.DeleteDeployment(ctx, project, name); deleteErr != nil {
+		slog.WarnContext(ctx, "rollback: delete ConfigMap failed",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", deleteErr),
+		)
+	}
 }
 
 // UpdateDeployment updates an existing deployment.
@@ -426,13 +455,16 @@ func (h *Handler) UpdateDeployment(
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
-		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
-			slog.WarnContext(ctx, "apply failed during deployment update",
+		// Use Reconcile instead of Apply so orphaned resources from template
+		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
+		// apply.
+		if reconcileErr := h.applier.Reconcile(ctx, ns, name, resources); reconcileErr != nil {
+			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
 				slog.String("name", name),
-				slog.Any("error", applyErr),
+				slog.Any("error", reconcileErr),
 			)
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
 		}
 	}
 

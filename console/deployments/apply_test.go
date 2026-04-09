@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -244,6 +245,144 @@ func TestApplier_Cleanup(t *testing.T) {
 		for _, a := range fakeClient.Actions() {
 			if a.GetVerb() == "delete" {
 				t.Error("cleanup deleted a resource it does not own")
+			}
+		}
+	})
+}
+
+func TestApplier_Reconcile(t *testing.T) {
+	namespace := "prj-my-project"
+	deploymentName := "web-app"
+	depGVR := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
+	svcGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}
+
+	t.Run("applies resources and cleans orphans", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+
+		// Pre-create an orphaned Service with the ownership label (it was in the
+		// old desired set but is no longer in the new one).
+		orphan := makeServiceResource("old-svc", namespace)
+		orphan.SetLabels(map[string]string{
+			v1alpha1.AnnotationDeployment: deploymentName,
+		})
+		_, err := fakeClient.Resource(svcGVR).Namespace(namespace).Create(
+			context.Background(), &orphan, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("pre-create orphan failed: %v", err)
+		}
+
+		// New desired set: only a Deployment.
+		resources := []unstructured.Unstructured{
+			makeDeploymentResource("web-app", namespace),
+		}
+
+		if err := applier.Reconcile(context.Background(), namespace, deploymentName, resources); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// The orphaned Service should have been deleted.
+		deleted := false
+		for _, a := range fakeClient.Actions() {
+			if a.GetVerb() == "delete" && a.GetResource() == svcGVR {
+				deleted = true
+				break
+			}
+		}
+		if !deleted {
+			t.Error("expected the orphaned Service to be deleted")
+		}
+	})
+
+	t.Run("does not delete resources in the desired set", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+
+		// Pre-create a Deployment that IS in the desired set.
+		existing := makeDeploymentResource("web-app", namespace)
+		existing.SetLabels(map[string]string{
+			v1alpha1.AnnotationDeployment: deploymentName,
+		})
+		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
+			context.Background(), &existing, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("pre-create failed: %v", err)
+		}
+
+		// Reconcile with the same Deployment in the desired set.
+		resources := []unstructured.Unstructured{
+			makeDeploymentResource("web-app", namespace),
+		}
+
+		if err := applier.Reconcile(context.Background(), namespace, deploymentName, resources); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// No delete actions should have occurred.
+		for _, a := range fakeClient.Actions() {
+			if a.GetVerb() == "delete" {
+				t.Errorf("expected no delete for resource in desired set, got delete action on %s", a.GetResource().Resource)
+			}
+		}
+	})
+
+	t.Run("does not delete resources owned by other deployments", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+
+		// Pre-create a resource owned by "other-app" (a different deployment).
+		other := makeDeploymentResource("other-app", namespace)
+		other.SetLabels(map[string]string{
+			v1alpha1.AnnotationDeployment: "other-app",
+		})
+		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
+			context.Background(), &other, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("pre-create failed: %v", err)
+		}
+
+		// Reconcile for "web-app" with an empty desired set.
+		if err := applier.Reconcile(context.Background(), namespace, deploymentName, nil); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// The resource owned by "other-app" must not be deleted.
+		for _, a := range fakeClient.Actions() {
+			if a.GetVerb() == "delete" {
+				t.Error("reconcile deleted a resource owned by a different deployment")
+			}
+		}
+	})
+
+	t.Run("apply failure skips orphan cleanup", func(t *testing.T) {
+		// Build a client that always fails patch (simulate apply failure) but has
+		// an orphaned Service pre-created so we can observe whether a delete occurs.
+		failClient := dynamicfake.NewSimpleDynamicClient(fakeDynamicScheme())
+		failClient.PrependReactor("patch", "*", func(action testing2.Action) (bool, runtime.Object, error) {
+			return true, nil, fmt.Errorf("simulated apply failure")
+		})
+
+		orphan := makeServiceResource("old-svc", namespace)
+		orphan.SetLabels(map[string]string{
+			v1alpha1.AnnotationDeployment: deploymentName,
+		})
+		_, err := failClient.Resource(svcGVR).Namespace(namespace).Create(
+			context.Background(), &orphan, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("pre-create orphan in failClient failed: %v", err)
+		}
+
+		failApplier := NewApplier(failClient)
+		resources := []unstructured.Unstructured{
+			makeDeploymentResource("web-app", namespace),
+		}
+
+		// Reconcile should return an error (apply failed).
+		if err := failApplier.Reconcile(context.Background(), namespace, deploymentName, resources); err == nil {
+			t.Fatal("expected an error from Reconcile when apply fails")
+		}
+
+		// No delete actions should have been attempted (orphan cleanup skipped).
+		for _, a := range failClient.Actions() {
+			if a.GetVerb() == "delete" {
+				t.Error("expected no delete when apply fails, but delete was called")
 			}
 		}
 	})
