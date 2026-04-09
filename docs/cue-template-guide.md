@@ -611,6 +611,82 @@ input: {
 }
 ```
 
+## Template Defaults
+
+Templates can declare default values for `#ProjectInput` fields using a `defaults` block. The
+backend reads this block to pre-fill the Create Deployment form, so users see sensible starting
+values without having to know which image or port the template expects.
+
+### The `defaults` + `input` pattern
+
+Declare defaults as a concrete `#ProjectInput` value at the top level of your template:
+
+```cue
+// defaults declares the template's default values as concrete CUE data.
+// The backend reads this block to pre-fill the Create Deployment form.
+defaults: #ProjectInput & {
+    name:        "httpbin"
+    image:       "ghcr.io/mccutchen/go-httpbin"
+    tag:         "2.21.0"
+    description: "A simple HTTP Request & Response Service"
+    port:        8080
+}
+```
+
+Then wire each default field into `input` using CUE's `*preferred | alternative` syntax:
+
+```cue
+// input wires defaults as overridable. User-supplied values from the form
+// override these defaults at render time via CUE unification.
+input: #ProjectInput & {
+    name:        *defaults.name        | _
+    image:       *defaults.image       | _
+    tag:         *defaults.tag         | _
+    description: *defaults.description | _
+    port:        *defaults.port        | _
+    env:         [...#EnvVar] | *[]
+}
+```
+
+The `*value | _` syntax makes `value` the CUE default while `_` (top) allows any override. At
+render time, the backend calls `FillPath("input", userInput)` to unify the form values with
+`input`. If a field is left at its zero value in the form, the CUE default wins. If the user
+fills in a value, that concrete value wins.
+
+### How defaults are extracted
+
+When the backend loads a template (in `GetDeploymentTemplate` or `ListDeploymentTemplates`),
+it evaluates the CUE source and reads the `defaults` path. It maps the concrete field values
+to `DeploymentDefaults` in the proto response:
+
+```
+defaults.name        → DeploymentDefaults.name
+defaults.image       → DeploymentDefaults.image
+defaults.tag         → DeploymentDefaults.tag
+defaults.description → DeploymentDefaults.description
+defaults.port        → DeploymentDefaults.port
+```
+
+The frontend receives these fields and uses them to pre-fill the Create Deployment form.
+
+Templates that do not have a `defaults` block continue to work unchanged. If a template was
+authored before this pattern existed and stored defaults in a ConfigMap annotation (the legacy
+approach), those annotation values are still read as a fallback.
+
+### The `description` field
+
+`description` is an optional field on `#ProjectInput` that holds a short human-readable
+description of the deployment. It appears in the Create Deployment form as a pre-filled
+description that users can change.
+
+```cue
+defaults: #ProjectInput & {
+    // description is displayed in the Create Deployment form.
+    description: "A simple HTTP Request & Response Service"
+    // ... other fields
+}
+```
+
 ## Template Input
 
 The console fills two separate CUE fields at render time:
@@ -629,13 +705,14 @@ The effective schema is:
 ```cue
 // Generated from api/v1alpha1.ProjectInput — do not redefine in templates.
 #ProjectInput: {
-    name:    string             // deployment name
-    image:   string             // container image repository (no tag)
-    tag:     string             // image tag
-    command?: [...string]       // container ENTRYPOINT override
-    args?:   [...string]        // container CMD override
-    env?:    [...#EnvVar]       // environment variables
-    port:    int                // container port (default applied by template)
+    name:         string             // deployment name
+    image:        string             // container image repository (no tag)
+    tag:          string             // image tag
+    command?:     [...string]        // container ENTRYPOINT override
+    args?:        [...string]        // container CMD override
+    env?:         [...#EnvVar]       // environment variables
+    port:         int                // container port (default applied by template)
+    description?: string             // short human-readable description (optional)
 }
 ```
 
@@ -671,15 +748,16 @@ The effective schema is:
 
 ### `#ProjectInput` Field Descriptions
 
-| Field       | Type       | Required | Description |
-|-------------|------------|----------|-------------|
-| `name`      | `string`   | Yes      | Deployment name. Must be a valid DNS label (`^[a-z][a-z0-9-]*$`). |
-| `image`     | `string`   | Yes      | Container image repository (e.g. `ghcr.io/holos-run/holos-console`). |
-| `tag`       | `string`   | Yes      | Image tag (e.g. `v1.2.3`, `latest`). |
-| `command`   | `[...string]` | No   | Overrides the container `ENTRYPOINT`. Omitted when not set. |
-| `args`      | `[...string]` | No   | Overrides the container `CMD`. Omitted when not set. |
-| `env`       | `[...#EnvVar]` | No  | Container environment variables. Defaults to `[]`. |
-| `port`      | `int`      | No       | Container port the application listens on. Must be between 1 and 65535. Defaults to `8080`. The default template names this port `"http"` and creates a Service that maps port 80 to this target. |
+| Field         | Type           | Required | Description |
+|---------------|----------------|----------|-------------|
+| `name`        | `string`       | Yes      | Deployment name. Must be a valid DNS label (`^[a-z][a-z0-9-]*$`). |
+| `image`       | `string`       | Yes      | Container image repository (e.g. `ghcr.io/holos-run/holos-console`). |
+| `tag`         | `string`       | Yes      | Image tag (e.g. `v1.2.3`, `latest`). |
+| `command`     | `[...string]`  | No       | Overrides the container `ENTRYPOINT`. Omitted when not set. |
+| `args`        | `[...string]`  | No       | Overrides the container `CMD`. Omitted when not set. |
+| `env`         | `[...#EnvVar]` | No       | Container environment variables. Defaults to `[]`. |
+| `port`        | `int`          | No       | Container port the application listens on. Must be between 1 and 65535. Defaults to `8080`. The default template names this port `"http"` and creates a Service that maps port 80 to this target. |
+| `description` | `string`       | No       | Short human-readable description of the deployment. Used in the `defaults` block to pre-fill the Create Deployment form description field. |
 
 ### `#PlatformInput` Field Descriptions
 
