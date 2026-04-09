@@ -302,6 +302,266 @@ port defined above — do not use `input.port` here.
 10. **Use the named port `"http"` and Service port `80`** when adding an `HTTPRoute` — the `backendRef.port` must match the `Service` port (`80`), not the container port (`input.port`).
 11. **Never define `platformResources` in a user deployment template** — the project-level renderer does not read `platformResources` (ADR 016 Decision 8). Any values defined there are silently ignored. Platform resources are defined in system templates evaluated at the organization/folder level.
 
+### Platform and Project Templates Working Together
+
+This section walks through a concrete two-template scenario: an org-level system
+template that provides an HTTPRoute and constrains which resource kinds project
+templates may produce, paired with a project-level template that deploys
+[go-httpbin](https://github.com/mccutchen/go-httpbin). Use this as a reference
+for the ADR 016 Decision 9 constraint pattern.
+
+#### Organization-Level System Template
+
+The org-level system template does two things in a single CUE file:
+
+1. **Provides the HTTPRoute** in `platformResources` so the gateway routes
+   traffic to the deployment's `Service`.
+2. **Closes `projectResources.namespacedResources`** to prevent project
+   templates from producing any resource kind other than `Deployment`,
+   `Service`, and `ServiceAccount`.
+
+```cue
+// Org-level system template — evaluated at organization scope.
+// Any changes here affect every project in the org.
+
+// input and platform are available because system templates are unified with
+// the deployment template before evaluation (ADR 016 Decision 8).
+input: #ProjectInput & {
+    port: >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+// ── Platform resources (managed by the platform team) ───────────────────────
+
+// platformResources holds resources the platform team manages. The renderer
+// reads these only from organization/folder-level templates — project templates
+// that define platformResources are silently ignored (ADR 016 Decision 8).
+platformResources: {
+    namespacedResources: (platform.namespace): {
+        // HTTPRoute exposes the deployment's Service via the gateway.
+        HTTPRoute: (input.name): {
+            apiVersion: "gateway.networking.k8s.io/v1"
+            kind:       "HTTPRoute"
+            metadata: {
+                name:      input.name
+                namespace: platform.namespace
+                labels: {
+                    "app.kubernetes.io/managed-by": "console.holos.run"
+                    "app.kubernetes.io/name":       input.name
+                }
+            }
+            spec: {
+                parentRefs: [{
+                    group:     "gateway.networking.k8s.io"
+                    kind:      "Gateway"
+                    namespace: platform.gatewayNamespace
+                    name:      "default"
+                }]
+                rules: [{
+                    backendRefs: [{
+                        name: input.name
+                        port: 80
+                    }]
+                }]
+            }
+        }
+    }
+    clusterResources: {}
+}
+
+// ── Project resource constraints (enforced by the platform team) ─────────────
+
+// _allowedKinds lists the only resource kinds project templates may produce.
+// Closing the struct to these keys means CUE evaluation fails immediately
+// if a project template tries to add any other Kind (ADR 016 Decision 9).
+_allowedKinds: ["Deployment", "Service", "ServiceAccount"]
+
+// Close projectResources.namespacedResources so that every namespace bucket
+// may only contain the keys listed in _allowedKinds.
+projectResources: namespacedResources: [_]: {
+    for kind in _allowedKinds {
+        (kind): _
+    }
+}
+```
+
+Key points:
+- **`platformResources`** is used because only the system-template render path
+  reads it — project templates that accidentally define `platformResources` are
+  silently ignored. This keeps platform resources exclusively under platform
+  control.
+- **`projectResources.namespacedResources: [_]: { ... }`** matches every
+  namespace bucket. Wrapping the body in the `for` loop closes the struct to
+  exactly the listed Kind keys, which makes any unlisted Kind a CUE constraint
+  violation at evaluation time.
+- The `input.name` and `platform.namespace` references work because system
+  templates are concatenated with the deployment template before compilation —
+  both `input` and `platform` are fully resolved.
+
+#### Project-Level Deployment Template
+
+The project-level template deploys `go-httpbin`. It produces only
+`ServiceAccount`, `Deployment`, and `Service` — exactly the three kinds allowed
+by the org-level constraint above.
+
+```cue
+// Project-level deployment template for go-httpbin.
+// Produces: ServiceAccount, Deployment, Service.
+// Allowed by the org constraint: Deployment, Service, ServiceAccount.
+
+input: #ProjectInput & {
+    name:  =~"^[a-z][a-z0-9-]*$"
+    image: string | *"ghcr.io/mccutchen/go-httpbin"
+    tag:   string | *"2.21.0"
+    port:  >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+_labels: {
+    "app.kubernetes.io/name":       input.name
+    "app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+_annotations: {
+    "console.holos.run/deployer-email": platform.claims.email
+}
+
+projectResources: {
+    namespacedResources: (platform.namespace): {
+        // ServiceAccount provides a Kubernetes identity for the pods.
+        ServiceAccount: (input.name): {
+            apiVersion: "v1"
+            kind:       "ServiceAccount"
+            metadata: {
+                name:        input.name
+                namespace:   platform.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+        }
+
+        // Deployment runs the go-httpbin container.
+        // go-httpbin listens on port 8080 by default and needs no special
+        // command or args — the image's default entrypoint works.
+        Deployment: (input.name): {
+            apiVersion: "apps/v1"
+            kind:       "Deployment"
+            metadata: {
+                name:        input.name
+                namespace:   platform.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+            spec: {
+                replicas: 1
+                selector: matchLabels: "app.kubernetes.io/name": input.name
+                template: {
+                    metadata: labels: _labels
+                    spec: {
+                        serviceAccountName: input.name
+                        containers: [{
+                            name:  input.name
+                            image: input.image + ":" + input.tag
+                            ports: [{containerPort: input.port, name: "http"}]
+                        }]
+                    }
+                }
+            }
+        }
+
+        // Service exposes port 80 → container port input.port.
+        // The HTTPRoute in the org system template routes gateway traffic here.
+        Service: (input.name): {
+            apiVersion: "v1"
+            kind:       "Service"
+            metadata: {
+                name:        input.name
+                namespace:   platform.namespace
+                labels:      _labels
+                annotations: _annotations
+            }
+            spec: {
+                selector: "app.kubernetes.io/name": input.name
+                ports: [{port: 80, targetPort: "http", name: "http"}]
+            }
+        }
+    }
+
+    clusterResources: {}
+}
+```
+
+Key points:
+- The `ReferenceGrant` present in the default template is omitted here — the
+  org-level constraint only allows `Deployment`, `Service`, `ServiceAccount`.
+  The gateway team is expected to manage cross-namespace traffic permissions at
+  the org level. If your org template needs a `ReferenceGrant`, add it to the
+  `_allowedKinds` list and produce it from the system template.
+- `go-httpbin` needs no command override — the image's default entrypoint
+  listens on `$PORT` (default `8080`) and the template's `input.port` default
+  matches. A `GET /get` request returns 200 and is a simple health-check.
+
+#### What Happens When a Project Template Violates the Constraint
+
+When the org-level system template closes `projectResources.namespacedResources`
+to `Deployment`, `Service`, and `ServiceAccount`, any project template that
+tries to add a disallowed Kind gets a CUE evaluation error immediately — before
+any Kubernetes API call.
+
+**Project template with a disallowed Kind:**
+
+```cue
+// This template tries to create a RoleBinding — not in the org's allowed list.
+projectResources: namespacedResources: (platform.namespace): {
+    RoleBinding: "my-binding": {
+        apiVersion: "rbac.authorization.k8s.io/v1"
+        kind:       "RoleBinding"
+        metadata: {
+            name:      "my-binding"
+            namespace: platform.namespace
+            labels: {"app.kubernetes.io/managed-by": "console.holos.run"}
+        }
+        roleRef: {
+            apiGroup: "rbac.authorization.k8s.io"
+            kind:     "ClusterRole"
+            name:     "view"
+        }
+        subjects: [{
+            kind:      "ServiceAccount"
+            name:      "my-app"
+            namespace: platform.namespace
+        }]
+    }
+}
+```
+
+**CUE evaluation error:**
+
+```
+projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
+```
+
+The error names the exact field path. Because it is a CUE evaluation error, it
+is reported by the `RenderDeploymentTemplate` preview RPC and by the deployment
+create/update RPC before any Kubernetes call is attempted.
+
+#### Enforcement Layers
+
+The system uses three complementary enforcement layers, applied in order:
+
+| Layer | Mechanism | When it runs |
+|-------|-----------|--------------|
+| **Layer 1 — CUE (early)** | Org template closes `projectResources.namespacedResources` struct → project template gets a CUE evaluation error for any unlisted Kind | At CUE evaluation time, before any Go or Kubernetes call |
+| **Layer 2 — Go safety net** | `allowedKindSet` in `render.go` and `allowedKinds` in `apply.go` validate every Kind after evaluation | After CUE evaluation, before Kubernetes apply |
+| **Layer 3 — Go hard boundary** | The project-level renderer (`Render()`) does not read `platformResources` from project templates (ADR 016 Decision 8) | At render time, unconditionally |
+
+Layer 1 provides the earliest and most actionable feedback — the template
+preview RPC surfaces the error before any deployment is created. Layer 2 is a
+hardcoded safety net that catches Kinds that slip past Layer 1 (for example,
+when no org-level constraint is defined). Layer 3 is structural: `platformResources`
+is simply not read from project-level templates, so a project template cannot
+contribute platform resources regardless of what it defines.
+
 ### Previewing Your Template
 
 Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
@@ -568,6 +828,11 @@ system template can add CUE constraints on `projectResources.namespacedResources
 output fields). For example, a system template could enforce a required label or
 annotation on all namespaced resources — any user template that violates the
 constraint will fail at CUE evaluation time before any Kubernetes call.
+
+For a full walkthrough of this pattern including complete CUE examples and an
+explanation of the three enforcement layers, see
+["Platform and Project Templates Working Together"](#platform-and-project-templates-working-together)
+in the "Writing a Custom Template" section.
 
 **Example: HTTPRoute System Template**
 
