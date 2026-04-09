@@ -34,7 +34,7 @@ var OrgCascadeProjectSettingsPerms = rbac.CascadeTable{
 }
 ```
 
-A second cascade table controls system template write access:
+A second cascade table controls platform template write access:
 
 ```go
 var OrgCascadeSystemTemplatePerms = rbac.CascadeTable{
@@ -44,7 +44,7 @@ var OrgCascadeSystemTemplatePerms = rbac.CascadeTable{
 }
 ```
 
-`PermissionSystemDeploymentsEdit` (`PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`) grants the ability to create, update, and delete org-scoped system templates. It is intentionally restricted to org-level OWNERs because system templates are applied automatically to every new project namespace — a misconfigured template can affect all projects in the org. Narrowing the grant to OWNERs prevents editors from inadvertently breaking project creation.
+`PermissionSystemDeploymentsEdit` (`PERMISSION_SYSTEM_DEPLOYMENTS_EDIT`) grants the ability to create, update, and delete org-scoped platform templates (code: `SystemTemplate`). It is intentionally restricted to org-level OWNERs because platform templates are applied automatically to every new project namespace — a misconfigured template can affect all projects in the org. Narrowing the grant to OWNERs prevents editors from inadvertently breaking project creation.
 
 To check access: resolve the user's best role from grants at the parent scope, then look up permissions in the cascade table.
 
