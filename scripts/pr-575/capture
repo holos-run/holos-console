@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #575: Load httpbin Example buttons
+# Usage: called by scripts/browser-capture-pr 575
+# Environment: HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR are set by the launcher
+
+set -euo pipefail
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:?PR_SCREENSHOT_DIR must be set}"
+
+echo "Capturing screenshot: new deployment template page (Load httpbin Example button)"
+agent-browser navigate "${BACKEND_URL}/projects/test-project/templates/new"
+agent-browser screenshot --full "${SCREENSHOT_DIR}/deployment-template-new.png"
+
+echo "Screenshots captured to ${SCREENSHOT_DIR}"
