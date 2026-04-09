@@ -223,21 +223,27 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 	return sources, nil
 }
 
-// ListLinkableOrgTemplateInfos returns all enabled org templates as Template
-// proto messages. Used by the TemplateService to populate the linking UI.
-// Only enabled templates are returned; disabled templates cannot be linked.
-func (k *K8sClient) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.Template, error) {
+// ListLinkableOrgTemplateInfos returns all enabled org templates as
+// LinkableTemplate proto messages. Used by the TemplateService to populate the
+// linking UI. Only enabled templates are returned; disabled templates cannot be linked.
+func (k *K8sClient) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableTemplate, error) {
 	cms, err := k.ListOrgTemplates(ctx, org)
 	if err != nil {
 		return nil, err
 	}
-	var result []*consolev1.Template
+	var result []*consolev1.LinkableTemplate
 	for _, cm := range cms {
 		tmpl := configMapToOrgTemplate(&cm, org)
 		if !tmpl.Enabled {
 			continue
 		}
-		result = append(result, tmpl)
+		result = append(result, &consolev1.LinkableTemplate{
+			ScopeRef:    tmpl.ScopeRef,
+			Name:        tmpl.Name,
+			DisplayName: tmpl.DisplayName,
+			Description: tmpl.Description,
+			Mandatory:   tmpl.Mandatory,
+		})
 	}
 	return result, nil
 }
