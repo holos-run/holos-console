@@ -10,7 +10,7 @@ var DefaultTemplate string
 
 // ExampleHttpbinTemplate is the example go-httpbin project-level deployment
 // template. It produces ServiceAccount, Deployment, and Service resources.
-// Pair with ExampleHttpbinPlatformTemplate (in the system_templates package)
+// Pair with ExampleHttpbinPlatformTemplate (in the org_templates package)
 // to add an HTTPRoute and enforce the closed-struct kind constraint.
 //
 //go:embed example_httpbin.cue

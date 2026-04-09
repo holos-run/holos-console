@@ -40,7 +40,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
-	system_templates "github.com/holos-run/holos-console/console/system_templates"
+	org_templates "github.com/holos-run/holos-console/console/org_templates"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -254,16 +254,16 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Platform template applier for mandatory templates on project creation.
 		// Wired before the projects handler so it can be injected.
-		sysTemplatesApplierK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
-		var sysTmplApplier projects.MandatoryTemplateApplier
+		orgTemplatesApplierK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
+		var orgTmplApplier projects.MandatoryTemplateApplier
 		if dynamicClient != nil {
-			sysTmplApplier = system_templates.NewMandatoryTemplateApplier(sysTemplatesApplierK8s, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+			orgTmplApplier = org_templates.NewMandatoryTemplateApplier(orgTemplatesApplierK8s, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
 		}
 
 		// Project service with org grant fallback
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
-		if sysTmplApplier != nil {
-			projectsHandler = projectsHandler.WithMandatoryTemplateApplier(sysTmplApplier)
+		if orgTmplApplier != nil {
+			projectsHandler = projectsHandler.WithMandatoryTemplateApplier(orgTmplApplier)
 		}
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
@@ -288,10 +288,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
 		// Platform template service (SystemTemplateService) with org-level RBAC
-		sysTemplatesK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
-		sysTemplatesHandler := system_templates.NewHandler(sysTemplatesK8s, orgGrantResolver, system_templates.NewCueRendererAdapter())
-		sysTemplatesPath, sysTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(sysTemplatesHandler, protectedInterceptors)
-		mux.Handle(sysTemplatesPath, sysTemplatesHTTPHandler)
+		orgTemplatesK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
+		orgTemplatesHandler := org_templates.NewHandler(orgTemplatesK8s, orgGrantResolver, org_templates.NewCueRendererAdapter())
+		orgTemplatesPath, orgTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(orgTemplatesHandler, protectedInterceptors)
+		mux.Handle(orgTemplatesPath, orgTemplatesHTTPHandler)
 
 		// Deployment service with project grant fallback
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
@@ -299,12 +299,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
-		// sysTemplatesK8s is reused here to provide platform template sources during
+		// orgTemplatesK8s is reused here to provide platform template sources during
 		// deployment render; the same K8sClient satisfies SystemTemplateProvider
 		// via ListEnabledSystemTemplateSources.
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
-			WithSystemTemplateProvider(sysTemplatesK8s)
+			WithOrgTemplateProvider(orgTemplatesK8s)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

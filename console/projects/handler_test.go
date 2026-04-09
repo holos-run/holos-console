@@ -1196,7 +1196,7 @@ type stubMandatoryTemplateApplier struct {
 	err     error
 }
 
-func (s *stubMandatoryTemplateApplier) ApplyMandatorySystemTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
+func (s *stubMandatoryTemplateApplier) ApplyMandatoryOrgTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
 	s.called = true
 	s.org = org
 	s.project = project

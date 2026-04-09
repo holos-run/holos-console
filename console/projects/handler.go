@@ -38,7 +38,7 @@ type OrgDefaultShareResolver interface {
 // MandatoryTemplateApplier renders and applies all mandatory platform templates
 // into a newly created project namespace.
 type MandatoryTemplateApplier interface {
-	ApplyMandatorySystemTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error
+	ApplyMandatoryOrgTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error
 }
 
 // Handler implements the ProjectService.
@@ -240,7 +240,7 @@ func (h *Handler) CreateProject(
 	// avoid leaving orphaned resources, then return the error.
 	if h.mandatoryTemplateApplier != nil && req.Msg.Organization != "" {
 		projectNamespace := h.k8s.Resolver.ProjectNamespace(req.Msg.Name)
-		if err := h.mandatoryTemplateApplier.ApplyMandatorySystemTemplates(ctx, req.Msg.Organization, req.Msg.Name, projectNamespace, claims); err != nil {
+		if err := h.mandatoryTemplateApplier.ApplyMandatoryOrgTemplates(ctx, req.Msg.Organization, req.Msg.Name, projectNamespace, claims); err != nil {
 			slog.ErrorContext(ctx, "mandatory platform template apply failed, cleaning up project",
 				slog.String("project", req.Msg.Name),
 				slog.String("organization", req.Msg.Organization),

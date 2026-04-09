@@ -1211,7 +1211,7 @@ projectResources: {
 
 // systemBothCollectionsTemplate is a platform template that defines resources in
 // both projectResources and platformResources. This validates that
-// RenderWithSystemTemplates returns resources from both collections.
+// RenderWithOrgTemplates returns resources from both collections.
 const systemBothCollectionsTemplate = `
 
 projectResources: {
@@ -1308,10 +1308,10 @@ projectResources: {
 }
 `
 
-// TestCueRenderer_SystemTemplateUnification verifies that a platform template CUE source
+// TestCueRenderer_OrgTemplateUnification verifies that a platform template CUE source
 // can be unified with a deployment template and that input.name is accessible in the
 // platform template's platformResources.namespacedResources.
-func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
+func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
@@ -1336,7 +1336,7 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	}
 
 	t.Run("platform template resources are included when unified with deployment template", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemUnificationTemplate},
 			system, user,
@@ -1367,7 +1367,7 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	})
 
 	t.Run("no platform templates returns only deployment resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			nil,
 			system, user,
@@ -1386,7 +1386,7 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 	// ADR 016 key insight: any template at any level can define values in any
 	// collection. A platform template is not restricted to platformResources only.
 	t.Run("platform template contributing to projectResources is unified", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemProjectResourcesTemplate},
 			system, user,
@@ -1412,10 +1412,10 @@ func TestCueRenderer_SystemTemplateUnification(t *testing.T) {
 		}
 	})
 
-	// Validate that RenderWithSystemTemplates returns resources from both
+	// Validate that RenderWithOrgTemplates returns resources from both
 	// projectResources and platformResources when a platform template defines both.
 	t.Run("platform template defining both collections returns all resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemBothCollectionsTemplate},
 			system, user,
@@ -1456,7 +1456,7 @@ func resourceKinds(resources []unstructured.Unstructured) []string {
 
 // TestCueRenderer_LevelBasedResourceReading verifies the ADR 016 Decision 8
 // hard boundary: evaluate() (project-level) must NOT read platformResources,
-// while evaluateWithSystemTemplates() (org/folder level) reads both collections.
+// while evaluateWithOrgTemplates() (org/folder level) reads both collections.
 func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
@@ -1482,10 +1482,10 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 		}
 	})
 
-	// RenderWithSystemTemplates() uses evaluateWithSystemTemplates() — the
+	// RenderWithOrgTemplates() uses evaluateWithOrgTemplates() — the
 	// org/folder level path. It must read BOTH projectResources and platformResources.
-	t.Run("RenderWithSystemTemplates reads both projectResources and platformResources", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(context.Background(),
+	t.Run("RenderWithOrgTemplates reads both projectResources and platformResources", func(t *testing.T) {
+		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
 			systemOutputTemplate,
 			nil, // no additional platform templates; the deployment template itself defines platformResources
 			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
@@ -1765,11 +1765,11 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// Sub-test 1: allowed kinds succeed.
 	// The org template closes projectResources.namespacedResources to Deployment,
 	// Service, ServiceAccount. The project template produces exactly those three
-	// kinds. RenderWithSystemTemplates should succeed and return all expected
+	// kinds. RenderWithOrgTemplates should succeed and return all expected
 	// resources: 3 project resources (Deployment, Service, ServiceAccount) from
 	// projectResources + 1 HTTPRoute from platformResources = 4 total.
 	t.Run("allowed kinds succeed", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(
+		resources, err := renderer.RenderWithOrgTemplates(
 			context.Background(),
 			closedStructProjectTemplate,
 			[]string{closedStructOrgTemplate},
@@ -1802,7 +1802,7 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// closed struct error), matching the documented error:
 	//   projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
 	t.Run("disallowed kind fails with CUE closed struct error", func(t *testing.T) {
-		_, err := renderer.RenderWithSystemTemplates(
+		_, err := renderer.RenderWithOrgTemplates(
 			context.Background(),
 			closedStructProjectTemplateForbidden,
 			[]string{closedStructOrgTemplate},
@@ -1843,7 +1843,7 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	root := repoRoot(t)
 
 	// Load the embedded CUE files from their source locations to avoid an
-	// import cycle (console/system_templates and console/templates already
+	// import cycle (console/org_templates and console/templates already
 	// import console/deployments).
 	projectTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/templates/example_httpbin.cue"))
 	if err != nil {
@@ -1851,7 +1851,7 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	}
 	projectTemplate := string(projectTemplateBytes)
 
-	platformTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/system_templates/example_httpbin_platform.cue"))
+	platformTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/org_templates/example_httpbin_platform.cue"))
 	if err != nil {
 		t.Fatalf("failed to read example_httpbin_platform.cue: %v", err)
 	}
@@ -1881,12 +1881,12 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	}
 
 	// Sub-test 1: Templates render together.
-	// RenderWithSystemTemplates with the org platform template and the
+	// RenderWithOrgTemplates with the org platform template and the
 	// project template as deployment template must produce 4 resources:
 	// 3 project resources (ServiceAccount, Deployment, Service) from
 	// projectResources + 1 platform resource (HTTPRoute) from platformResources.
 	t.Run("templates render together producing 4 resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithSystemTemplates(
+		resources, err := renderer.RenderWithOrgTemplates(
 			context.Background(),
 			projectTemplate,
 			[]string{platformTemplate},
@@ -1943,7 +1943,7 @@ projectResources: namespacedResources: (platform.namespace): {
 		// have a template that produces a disallowed kind alongside the allowed ones.
 		projectWithForbidden := projectTemplate + forbiddenAddition
 
-		_, err := renderer.RenderWithSystemTemplates(
+		_, err := renderer.RenderWithOrgTemplates(
 			context.Background(),
 			projectWithForbidden,
 			[]string{platformTemplate},

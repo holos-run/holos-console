@@ -53,9 +53,9 @@ const DefaultGatewayNamespace = "istio-ingress"
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
 	Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
-	// RenderWithSystemTemplates unifies one or more platform template CUE sources
+	// RenderWithOrgTemplates unifies one or more platform template CUE sources
 	// with the deployment template before filling in platform and project inputs.
-	RenderWithSystemTemplates(ctx context.Context, deploymentCUE string, systemCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
+	RenderWithOrgTemplates(ctx context.Context, deploymentCUE string, orgTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
 }
 
 // OrgProvider resolves the organization for a project.
@@ -63,9 +63,9 @@ type OrgProvider interface {
 	GetProjectOrg(ctx context.Context, project string) (string, error)
 }
 
-// SystemTemplateProvider lists enabled platform template CUE sources for an org.
-type SystemTemplateProvider interface {
-	ListEnabledSystemTemplateSources(ctx context.Context, org string) ([]string, error)
+// OrgTemplateProvider lists enabled platform template CUE sources for an org.
+type OrgTemplateProvider interface {
+	ListEnabledOrgTemplateSources(ctx context.Context, org string) ([]string, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -85,7 +85,7 @@ type Handler struct {
 	applier                ResourceApplier
 	logReader              LogReader
 	orgProvider            OrgProvider
-	systemTemplateProvider SystemTemplateProvider
+	orgTemplateProvider OrgTemplateProvider
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -107,18 +107,18 @@ func (h *Handler) WithOrgProvider(op OrgProvider) *Handler {
 	return h
 }
 
-// WithSystemTemplateProvider configures the handler with a SystemTemplateProvider
+// WithOrgTemplateProvider configures the handler with a OrgTemplateProvider
 // for loading enabled platform templates at render time.
-func (h *Handler) WithSystemTemplateProvider(stp SystemTemplateProvider) *Handler {
-	h.systemTemplateProvider = stp
+func (h *Handler) WithOrgTemplateProvider(stp OrgTemplateProvider) *Handler {
+	h.orgTemplateProvider = stp
 	return h
 }
 
 // renderResources renders deployment resources, unifying with enabled platform
-// templates when an OrgProvider and SystemTemplateProvider are configured.
+// templates when an OrgProvider and OrgTemplateProvider are configured.
 // If neither is configured, falls back to Render (deployment template only).
 func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
-	if h.orgProvider == nil || h.systemTemplateProvider == nil {
+	if h.orgProvider == nil || h.orgTemplateProvider == nil {
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
@@ -135,7 +135,7 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	systemSources, err := h.systemTemplateProvider.ListEnabledSystemTemplateSources(ctx, org)
+	orgTemplateSources, err := h.orgTemplateProvider.ListEnabledOrgTemplateSources(ctx, org)
 	if err != nil {
 		slog.WarnContext(ctx, "could not list enabled platform templates, skipping platform template unification",
 			slog.String("project", project),
@@ -145,7 +145,7 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	return h.renderer.RenderWithSystemTemplates(ctx, cueSource, systemSources, platform, projectInput)
+	return h.renderer.RenderWithOrgTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.

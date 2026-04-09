@@ -640,21 +640,21 @@ func TestCheckAccessGrants(t *testing.T) {
 	})
 }
 
-func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
+func TestOrgCascadeTemplatePerms(t *testing.T) {
 	t.Run("org OWNER has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if !HasCascadePermission(RoleOwner, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
+		if !HasCascadePermission(RoleOwner, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
 			t.Error("org OWNER should have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT via cascade")
 		}
 	})
 
 	t.Run("org EDITOR does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if HasCascadePermission(RoleEditor, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
+		if HasCascadePermission(RoleEditor, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
 			t.Error("org EDITOR should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
 		}
 	})
 
 	t.Run("org VIEWER does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if HasCascadePermission(RoleViewer, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
+		if HasCascadePermission(RoleViewer, PermissionOrgTemplatesWrite, OrgCascadeTemplatePerms) {
 			t.Error("org VIEWER should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
 		}
 	})
@@ -666,7 +666,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			map[string]string{"owner@example.com": "owner"},
 			nil,
 			PermissionOrgTemplatesWrite,
-			OrgCascadeSystemTemplatePerms,
+			OrgCascadeTemplatePerms,
 		)
 		if err != nil {
 			t.Errorf("expected access granted for org OWNER, got %v", err)
@@ -680,7 +680,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			map[string]string{"viewer@example.com": "viewer"},
 			nil,
 			PermissionOrgTemplatesWrite,
-			OrgCascadeSystemTemplatePerms,
+			OrgCascadeTemplatePerms,
 		)
 		if err == nil {
 			t.Error("expected access denied for org VIEWER, got nil")
@@ -694,7 +694,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			map[string]string{"editor@example.com": "editor"},
 			nil,
 			PermissionOrgTemplatesWrite,
-			OrgCascadeSystemTemplatePerms,
+			OrgCascadeTemplatePerms,
 		)
 		if err == nil {
 			t.Error("expected access denied for org EDITOR, got nil")

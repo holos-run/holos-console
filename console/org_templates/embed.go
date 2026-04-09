@@ -1,4 +1,4 @@
-package system_templates
+package org_templates
 
 import _ "embed"
 
