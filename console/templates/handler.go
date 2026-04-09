@@ -411,16 +411,42 @@ func validateCueSyntax(source string) error {
 }
 
 // configMapToTemplate converts a Kubernetes ConfigMap to a DeploymentTemplate protobuf message.
-// If the ConfigMap data contains a DefaultsKey entry, it is deserialized into the Defaults field.
-// Missing or empty DefaultsKey leaves the Defaults field nil.
+//
+// Defaults are populated in priority order:
+//  1. CUE extraction — reads the `defaults` field from the template CUE source.
+//     This is the canonical approach for templates authored using the ADR 018 pattern.
+//  2. Annotation fallback — reads DefaultsKey from ConfigMap data. Used for templates
+//     that predate ADR 018 and store defaults as JSON in a ConfigMap annotation.
+//
+// If CUE extraction succeeds and returns non-nil defaults, the annotation fallback
+// is skipped. If CUE extraction fails or the template has no `defaults` block, the
+// annotation fallback is attempted. If both are absent, Defaults is left nil.
 func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.DeploymentTemplate {
+	cueSource := cm.Data[CueTemplateKey]
 	tmpl := &consolev1.DeploymentTemplate{
 		Name:        cm.Name,
 		Project:     project,
 		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha1.AnnotationDescription],
-		CueTemplate: cm.Data[CueTemplateKey],
+		CueTemplate: cueSource,
 	}
+
+	// Priority 1: CUE extraction from the template source.
+	if cueSource != "" {
+		extracted, err := ExtractDefaults(cueSource)
+		if err != nil {
+			slog.Warn("failed to extract defaults from CUE template; falling back to annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		} else if extracted != nil {
+			tmpl.Defaults = extracted
+			return tmpl
+		}
+	}
+
+	// Priority 2: Annotation fallback for pre-ADR 018 templates.
 	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
 		var defaults consolev1.DeploymentDefaults
 		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
