@@ -343,7 +343,7 @@ func (h *Handler) RenderDeploymentTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CueSystemInput, req.Msg.CueInput)
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}

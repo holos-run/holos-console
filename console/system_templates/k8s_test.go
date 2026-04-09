@@ -35,7 +35,7 @@ func sysTemplateConfigMap(org, name, displayName, description, cueTemplate strin
 			Namespace: "org-" + org,
 			Labels: map[string]string{
 				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeSystemTemplate,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeOrgTemplate,
 			},
 			Annotations: map[string]string{
 				v1alpha1.AnnotationDisplayName: displayName,
@@ -135,7 +135,7 @@ func TestCreateSystemTemplate(t *testing.T) {
 		if cm.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
 			t.Error("expected managed-by label")
 		}
-		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeSystemTemplate {
+		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeOrgTemplate {
 			t.Error("expected resource-type label")
 		}
 		if cm.Annotations[v1alpha1.AnnotationDisplayName] != "ReferenceGrant" {

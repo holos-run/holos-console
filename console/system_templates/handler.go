@@ -48,7 +48,7 @@ type Renderer interface {
 
 // Handler implements the SystemTemplateService.
 type Handler struct {
-	consolev1connect.UnimplementedSystemTemplateServiceHandler
+	consolev1connect.UnimplementedOrgTemplateServiceHandler
 	k8s         *K8sClient
 	orgResolver OrgResolver
 	renderer    Renderer
@@ -60,10 +60,10 @@ func NewHandler(k8s *K8sClient, orgResolver OrgResolver, renderer Renderer) *Han
 }
 
 // ListSystemTemplates returns all platform templates in an org, seeding defaults on first access.
-func (h *Handler) ListSystemTemplates(
+func (h *Handler) ListOrgTemplates(
 	ctx context.Context,
-	req *connect.Request[consolev1.ListSystemTemplatesRequest],
-) (*connect.Response[consolev1.ListSystemTemplatesResponse], error) {
+	req *connect.Request[consolev1.ListOrgTemplatesRequest],
+) (*connect.Response[consolev1.ListOrgTemplatesResponse], error) {
 	org := req.Msg.Org
 	if org == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
@@ -100,7 +100,7 @@ func (h *Handler) ListSystemTemplates(
 		}
 	}
 
-	templates := make([]*consolev1.SystemTemplate, 0, len(cms))
+	templates := make([]*consolev1.OrgTemplate, 0, len(cms))
 	for _, cm := range cms {
 		templates = append(templates, configMapToSystemTemplate(&cm, org))
 	}
@@ -113,16 +113,16 @@ func (h *Handler) ListSystemTemplates(
 		slog.Int("count", len(templates)),
 	)
 
-	return connect.NewResponse(&consolev1.ListSystemTemplatesResponse{
+	return connect.NewResponse(&consolev1.ListOrgTemplatesResponse{
 		Templates: templates,
 	}), nil
 }
 
 // GetSystemTemplate returns a single platform template by name.
-func (h *Handler) GetSystemTemplate(
+func (h *Handler) GetOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.GetSystemTemplateRequest],
-) (*connect.Response[consolev1.GetSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.GetOrgTemplateRequest],
+) (*connect.Response[consolev1.GetOrgTemplateResponse], error) {
 	org := req.Msg.Org
 	name := req.Msg.Name
 	if org == "" {
@@ -154,16 +154,16 @@ func (h *Handler) GetSystemTemplate(
 		slog.String("sub", claims.Sub),
 	)
 
-	return connect.NewResponse(&consolev1.GetSystemTemplateResponse{
+	return connect.NewResponse(&consolev1.GetOrgTemplateResponse{
 		Template: configMapToSystemTemplate(cm, org),
 	}), nil
 }
 
 // CreateSystemTemplate creates a new platform template.
-func (h *Handler) CreateSystemTemplate(
+func (h *Handler) CreateOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.CreateSystemTemplateRequest],
-) (*connect.Response[consolev1.CreateSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.CreateOrgTemplateRequest],
+) (*connect.Response[consolev1.CreateOrgTemplateResponse], error) {
 	org := req.Msg.Org
 	name := req.Msg.Name
 	if org == "" {
@@ -199,16 +199,16 @@ func (h *Handler) CreateSystemTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.CreateSystemTemplateResponse{
+	return connect.NewResponse(&consolev1.CreateOrgTemplateResponse{
 		Name: name,
 	}), nil
 }
 
 // UpdateSystemTemplate updates an existing platform template.
-func (h *Handler) UpdateSystemTemplate(
+func (h *Handler) UpdateOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.UpdateSystemTemplateRequest],
-) (*connect.Response[consolev1.UpdateSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.UpdateOrgTemplateRequest],
+) (*connect.Response[consolev1.UpdateOrgTemplateResponse], error) {
 	org := req.Msg.Org
 	name := req.Msg.Name
 	if org == "" {
@@ -248,14 +248,14 @@ func (h *Handler) UpdateSystemTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.UpdateSystemTemplateResponse{}), nil
+	return connect.NewResponse(&consolev1.UpdateOrgTemplateResponse{}), nil
 }
 
 // DeleteSystemTemplate deletes a platform template.
-func (h *Handler) DeleteSystemTemplate(
+func (h *Handler) DeleteOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.DeleteSystemTemplateRequest],
-) (*connect.Response[consolev1.DeleteSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.DeleteOrgTemplateRequest],
+) (*connect.Response[consolev1.DeleteOrgTemplateResponse], error) {
 	org := req.Msg.Org
 	name := req.Msg.Name
 	if org == "" {
@@ -287,14 +287,14 @@ func (h *Handler) DeleteSystemTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.DeleteSystemTemplateResponse{}), nil
+	return connect.NewResponse(&consolev1.DeleteOrgTemplateResponse{}), nil
 }
 
 // CloneSystemTemplate copies an existing platform template to a new name.
-func (h *Handler) CloneSystemTemplate(
+func (h *Handler) CloneOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.CloneSystemTemplateRequest],
-) (*connect.Response[consolev1.CloneSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.CloneOrgTemplateRequest],
+) (*connect.Response[consolev1.CloneOrgTemplateResponse], error) {
 	org := req.Msg.Org
 	sourceName := req.Msg.SourceName
 	newName := req.Msg.Name
@@ -332,16 +332,16 @@ func (h *Handler) CloneSystemTemplate(
 		slog.String("email", claims.Email),
 	)
 
-	return connect.NewResponse(&consolev1.CloneSystemTemplateResponse{
+	return connect.NewResponse(&consolev1.CloneOrgTemplateResponse{
 		Name: newName,
 	}), nil
 }
 
 // RenderSystemTemplate evaluates a CUE platform template and returns rendered manifests.
-func (h *Handler) RenderSystemTemplate(
+func (h *Handler) RenderOrgTemplate(
 	ctx context.Context,
-	req *connect.Request[consolev1.RenderSystemTemplateRequest],
-) (*connect.Response[consolev1.RenderSystemTemplateResponse], error) {
+	req *connect.Request[consolev1.RenderOrgTemplateRequest],
+) (*connect.Response[consolev1.RenderOrgTemplateResponse], error) {
 	if req.Msg.CueTemplate == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cue_template is required"))
 	}
@@ -351,7 +351,7 @@ func (h *Handler) RenderSystemTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CueSystemInput, req.Msg.CueInput)
+	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}
@@ -373,7 +373,7 @@ func (h *Handler) RenderSystemTemplate(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal rendered resources to JSON: %w", err))
 	}
 
-	return connect.NewResponse(&consolev1.RenderSystemTemplateResponse{
+	return connect.NewResponse(&consolev1.RenderOrgTemplateResponse{
 		RenderedYaml: buf.String(),
 		RenderedJson: string(jsonBytes),
 	}), nil
@@ -410,7 +410,7 @@ func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, or
 		)
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionSystemDeploymentsEdit, rbac.OrgCascadeSystemTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionOrgTemplatesWrite, rbac.OrgCascadeSystemTemplatePerms)
 }
 
 // validateTemplateName checks that the name is a valid DNS label.

@@ -305,7 +305,7 @@ export function DeploymentDetailPage({
                 cueTemplate={preview.cueTemplate}
                 onChange={() => {}}
                 readOnly={true}
-                defaultSystemInput={preview.cueSystemInput}
+                defaultSystemInput={preview.cuePlatformInput}
                 defaultUserInput={preview.cueUserInput}
                 useRenderFn={useRenderDeploymentTemplate}
               />

@@ -290,7 +290,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Platform template service (SystemTemplateService) with org-level RBAC
 		sysTemplatesK8s := system_templates.NewK8sClient(k8sClientset, nsResolver)
 		sysTemplatesHandler := system_templates.NewHandler(sysTemplatesK8s, orgGrantResolver, system_templates.NewCueRendererAdapter())
-		sysTemplatesPath, sysTemplatesHTTPHandler := consolev1connect.NewSystemTemplateServiceHandler(sysTemplatesHandler, protectedInterceptors)
+		sysTemplatesPath, sysTemplatesHTTPHandler := consolev1connect.NewOrgTemplateServiceHandler(sysTemplatesHandler, protectedInterceptors)
 		mux.Handle(sysTemplatesPath, sysTemplatesHTTPHandler)
 
 		// Deployment service with project grant fallback
@@ -327,7 +327,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.DeploymentTemplateServiceName,
-		consolev1connect.SystemTemplateServiceName,
+		consolev1connect.OrgTemplateServiceName,
 		consolev1connect.DeploymentServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)

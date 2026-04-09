@@ -71,7 +71,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.ListSystemTemplates(ctx, connect.NewRequest(&consolev1.ListSystemTemplatesRequest{Org: "my-org"}))
+		resp, err := h.ListOrgTemplates(ctx, connect.NewRequest(&consolev1.ListOrgTemplatesRequest{Org: "my-org"}))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -88,7 +88,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.ListSystemTemplates(ctx, connect.NewRequest(&consolev1.ListSystemTemplatesRequest{Org: "my-org"}))
+		resp, err := h.ListOrgTemplates(ctx, connect.NewRequest(&consolev1.ListOrgTemplatesRequest{Org: "my-org"}))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -117,7 +117,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.ListSystemTemplates(ctx, connect.NewRequest(&consolev1.ListSystemTemplatesRequest{}))
+		_, err := h.ListOrgTemplates(ctx, connect.NewRequest(&consolev1.ListOrgTemplatesRequest{}))
 		if err == nil {
 			t.Fatal("expected error when org is empty")
 		}
@@ -129,7 +129,7 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 		h := NewHandler(k8s, ownerGrants("owner@example.com"), &stubRenderer{})
 
-		_, err := h.ListSystemTemplates(context.Background(), connect.NewRequest(&consolev1.ListSystemTemplatesRequest{Org: "my-org"}))
+		_, err := h.ListOrgTemplates(context.Background(), connect.NewRequest(&consolev1.ListOrgTemplatesRequest{Org: "my-org"}))
 		if err == nil {
 			t.Fatal("expected error for unauthenticated request")
 		}
@@ -146,7 +146,7 @@ func TestGetSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.GetSystemTemplate(ctx, connect.NewRequest(&consolev1.GetSystemTemplateRequest{Org: "my-org", Name: "ref-grant"}))
+		resp, err := h.GetOrgTemplate(ctx, connect.NewRequest(&consolev1.GetOrgTemplateRequest{Org: "my-org", Name: "ref-grant"}))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -168,7 +168,7 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.CreateSystemTemplate(ctx, connect.NewRequest(&consolev1.CreateSystemTemplateRequest{
+		resp, err := h.CreateOrgTemplate(ctx, connect.NewRequest(&consolev1.CreateOrgTemplateRequest{
 			Name:        "ref-grant",
 			Org:         "my-org",
 			DisplayName: "ReferenceGrant",
@@ -193,7 +193,7 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CreateSystemTemplate(ctx, connect.NewRequest(&consolev1.CreateSystemTemplateRequest{
+		_, err := h.CreateOrgTemplate(ctx, connect.NewRequest(&consolev1.CreateOrgTemplateRequest{
 			Name:        "ref-grant",
 			Org:         "my-org",
 			CueTemplate: validCue,
@@ -214,7 +214,7 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CreateSystemTemplate(ctx, connect.NewRequest(&consolev1.CreateSystemTemplateRequest{
+		_, err := h.CreateOrgTemplate(ctx, connect.NewRequest(&consolev1.CreateOrgTemplateRequest{
 			Name:        "ref-grant",
 			Org:         "my-org",
 			CueTemplate: "THIS IS NOT VALID CUE {{{{",
@@ -239,7 +239,7 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 
 		enabled := true
 		ctx := authedCtx(email, nil)
-		_, err := h.UpdateSystemTemplate(ctx, connect.NewRequest(&consolev1.UpdateSystemTemplateRequest{
+		_, err := h.UpdateOrgTemplate(ctx, connect.NewRequest(&consolev1.UpdateOrgTemplateRequest{
 			Name:    "ref-grant",
 			Org:     "my-org",
 			Enabled: &enabled,
@@ -259,7 +259,7 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 
 		enabled := true
 		ctx := authedCtx(email, nil)
-		_, err := h.UpdateSystemTemplate(ctx, connect.NewRequest(&consolev1.UpdateSystemTemplateRequest{
+		_, err := h.UpdateOrgTemplate(ctx, connect.NewRequest(&consolev1.UpdateOrgTemplateRequest{
 			Name:    "ref-grant",
 			Org:     "my-org",
 			Enabled: &enabled,
@@ -280,7 +280,7 @@ func TestDeleteSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.DeleteSystemTemplate(ctx, connect.NewRequest(&consolev1.DeleteSystemTemplateRequest{
+		_, err := h.DeleteOrgTemplate(ctx, connect.NewRequest(&consolev1.DeleteOrgTemplateRequest{
 			Name: "ref-grant",
 			Org:  "my-org",
 		}))
@@ -298,7 +298,7 @@ func TestDeleteSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.DeleteSystemTemplate(ctx, connect.NewRequest(&consolev1.DeleteSystemTemplateRequest{
+		_, err := h.DeleteOrgTemplate(ctx, connect.NewRequest(&consolev1.DeleteOrgTemplateRequest{
 			Name: "ref-grant",
 			Org:  "my-org",
 		}))
@@ -325,7 +325,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), renderer)
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{
+		resp, err := h.RenderOrgTemplate(ctx, connect.NewRequest(&consolev1.RenderOrgTemplateRequest{
 			CueTemplate: validCue,
 		}))
 		if err != nil {
@@ -347,7 +347,7 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{}))
+		_, err := h.RenderOrgTemplate(ctx, connect.NewRequest(&consolev1.RenderOrgTemplateRequest{}))
 		if err == nil {
 			t.Fatal("expected error when cue_template is empty")
 		}
@@ -382,9 +382,9 @@ func TestRenderSystemTemplateHandler(t *testing.T) {
 	image: "nginx"
 	tag:   "latest"
 }`
-		resp, err := h.RenderSystemTemplate(ctx, connect.NewRequest(&consolev1.RenderSystemTemplateRequest{
+		resp, err := h.RenderOrgTemplate(ctx, connect.NewRequest(&consolev1.RenderOrgTemplateRequest{
 			CueTemplate:    DefaultReferenceGrantTemplate,
-			CueSystemInput: systemInput,
+			CuePlatformInput: systemInput,
 			CueInput:       userInput,
 		}))
 		if err != nil {
@@ -423,7 +423,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		resp, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+		resp, err := h.CloneOrgTemplate(ctx, connect.NewRequest(&consolev1.CloneOrgTemplateRequest{
 			SourceName:  "ref-grant",
 			Org:         "my-org",
 			Name:        "ref-grant-copy",
@@ -446,7 +446,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+		_, err := h.CloneOrgTemplate(ctx, connect.NewRequest(&consolev1.CloneOrgTemplateRequest{
 			SourceName:  "ref-grant",
 			Org:         "my-org",
 			Name:        "ref-grant-copy",
@@ -474,7 +474,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, viewerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+		_, err := h.CloneOrgTemplate(ctx, connect.NewRequest(&consolev1.CloneOrgTemplateRequest{
 			SourceName:  "ref-grant",
 			Org:         "my-org",
 			Name:        "ref-grant-copy",
@@ -496,7 +496,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+		_, err := h.CloneOrgTemplate(ctx, connect.NewRequest(&consolev1.CloneOrgTemplateRequest{
 			SourceName:  "nonexistent",
 			Org:         "my-org",
 			Name:        "copy",
@@ -520,7 +520,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 		h := NewHandler(k8s, ownerGrants(email), &stubRenderer{})
 
 		ctx := authedCtx(email, nil)
-		_, err := h.CloneSystemTemplate(ctx, connect.NewRequest(&consolev1.CloneSystemTemplateRequest{
+		_, err := h.CloneOrgTemplate(ctx, connect.NewRequest(&consolev1.CloneOrgTemplateRequest{
 			SourceName:  "ref-grant",
 			Org:         "my-org",
 			Name:        "ref-grant-copy",

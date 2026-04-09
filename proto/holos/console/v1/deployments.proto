@@ -242,8 +242,8 @@ message GetDeploymentRenderPreviewRequest {
 message GetDeploymentRenderPreviewResponse {
   // cue_template is the CUE template source used to render the deployment.
   string cue_template = 1;
-  // cue_system_input is the system-provided CUE input (project, namespace, claims) in CUE format.
-  string cue_system_input = 2;
+  // cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
+  string cue_platform_input = 2;
   // cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
   string cue_user_input = 3;
   // rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.

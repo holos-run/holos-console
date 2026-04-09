@@ -1777,8 +1777,8 @@ type GetDeploymentRenderPreviewResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// cue_template is the CUE template source used to render the deployment.
 	CueTemplate string `protobuf:"bytes,1,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
-	// cue_system_input is the system-provided CUE input (project, namespace, claims) in CUE format.
-	CueSystemInput string `protobuf:"bytes,2,opt,name=cue_system_input,json=cueSystemInput,proto3" json:"cue_system_input,omitempty"`
+	// cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
+	CuePlatformInput string `protobuf:"bytes,2,opt,name=cue_platform_input,json=cuePlatformInput,proto3" json:"cue_platform_input,omitempty"`
 	// cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.
 	CueUserInput string `protobuf:"bytes,3,opt,name=cue_user_input,json=cueUserInput,proto3" json:"cue_user_input,omitempty"`
 	// rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
@@ -1826,9 +1826,9 @@ func (x *GetDeploymentRenderPreviewResponse) GetCueTemplate() string {
 	return ""
 }
 
-func (x *GetDeploymentRenderPreviewResponse) GetCueSystemInput() string {
+func (x *GetDeploymentRenderPreviewResponse) GetCuePlatformInput() string {
 	if x != nil {
-		return x.CueSystemInput
+		return x.CuePlatformInput
 	}
 	return ""
 }
@@ -1983,10 +1983,10 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"configMaps\"Q\n" +
 	"!GetDeploymentRenderPreviewRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xe1\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xe5\x01\n" +
 	"\"GetDeploymentRenderPreviewResponse\x12!\n" +
-	"\fcue_template\x18\x01 \x01(\tR\vcueTemplate\x12(\n" +
-	"\x10cue_system_input\x18\x02 \x01(\tR\x0ecueSystemInput\x12$\n" +
+	"\fcue_template\x18\x01 \x01(\tR\vcueTemplate\x12,\n" +
+	"\x12cue_platform_input\x18\x02 \x01(\tR\x10cuePlatformInput\x12$\n" +
 	"\x0ecue_user_input\x18\x03 \x01(\tR\fcueUserInput\x12#\n" +
 	"\rrendered_yaml\x18\x04 \x01(\tR\frenderedYaml\x12#\n" +
 	"\rrendered_json\x18\x05 \x01(\tR\frenderedJson*\xac\x01\n" +

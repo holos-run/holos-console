@@ -357,14 +357,14 @@ export declare type RenderDeploymentTemplateRequest = Message<"holos.console.v1.
   cueTemplate: string;
 
   /**
-   * cue_system_input contains CUE source for system-provided values (project,
+   * cue_platform_input contains CUE source for platform-provided values (project,
    * namespace, claims).  These values are trusted — set by the console backend
    * from authenticated context.  The claims field carries the OIDC ID token
    * claims of the authenticated user.
    *
-   * @generated from field: string cue_system_input = 7;
+   * @generated from field: string cue_platform_input = 7;
    */
-  cueSystemInput: string;
+  cuePlatformInput: string;
 
   /**
    * cue_input contains valid CUE source that is unified with cue_template at

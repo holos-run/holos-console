@@ -656,7 +656,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding project input: %w", err))
 	}
-	cueSystemInput := fmt.Sprintf("platform: %s", string(platformJSON))
+	cuePlatformInput := fmt.Sprintf("platform: %s", string(platformJSON))
 	cueUserInput := fmt.Sprintf("input: %s", string(projectJSON))
 
 	// Render the template to produce YAML and JSON output.
@@ -672,7 +672,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 			// Return the inputs even if render fails — the frontend can display the error.
 			return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 				CueTemplate:    cueTemplate,
-				CueSystemInput: cueSystemInput,
+				CuePlatformInput: cuePlatformInput,
 				CueUserInput:   cueUserInput,
 			}), nil
 		}
@@ -709,7 +709,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 		CueTemplate:    cueTemplate,
-		CueSystemInput: cueSystemInput,
+		CuePlatformInput: cuePlatformInput,
 		CueUserInput:   cueUserInput,
 		RenderedYaml:   renderedYAML,
 		RenderedJson:   renderedJSON,
