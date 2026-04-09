@@ -4,23 +4,23 @@ import "holos/console/v1/deployment_templates.proto";
 import "holos/console/v1/rbac.proto";
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
 
-// SystemTemplateService manages org-scoped CUE-based system templates.
-// System templates differ from deployment templates in that they are scoped to
+// OrgTemplateService manages org-scoped CUE-based platform templates.
+// Platform templates differ from deployment templates in that they are scoped to
 // an organization (not a project) and can be marked mandatory so they are
 // automatically rendered and applied when a project is created.
-service SystemTemplateService {
-  rpc ListSystemTemplates(ListSystemTemplatesRequest) returns (ListSystemTemplatesResponse);
-  rpc GetSystemTemplate(GetSystemTemplateRequest) returns (GetSystemTemplateResponse);
-  rpc CreateSystemTemplate(CreateSystemTemplateRequest) returns (CreateSystemTemplateResponse);
-  rpc UpdateSystemTemplate(UpdateSystemTemplateRequest) returns (UpdateSystemTemplateResponse);
-  rpc DeleteSystemTemplate(DeleteSystemTemplateRequest) returns (DeleteSystemTemplateResponse);
-  rpc RenderSystemTemplate(RenderSystemTemplateRequest) returns (RenderSystemTemplateResponse);
-  rpc CloneSystemTemplate(CloneSystemTemplateRequest) returns (CloneSystemTemplateResponse);
+service OrgTemplateService {
+  rpc ListOrgTemplates(ListOrgTemplatesRequest) returns (ListOrgTemplatesResponse);
+  rpc GetOrgTemplate(GetOrgTemplateRequest) returns (GetOrgTemplateResponse);
+  rpc CreateOrgTemplate(CreateOrgTemplateRequest) returns (CreateOrgTemplateResponse);
+  rpc UpdateOrgTemplate(UpdateOrgTemplateRequest) returns (UpdateOrgTemplateResponse);
+  rpc DeleteOrgTemplate(DeleteOrgTemplateRequest) returns (DeleteOrgTemplateResponse);
+  rpc RenderOrgTemplate(RenderOrgTemplateRequest) returns (RenderOrgTemplateResponse);
+  rpc CloneOrgTemplate(CloneOrgTemplateRequest) returns (CloneOrgTemplateResponse);
 }
 
-// SystemTemplate is a CUE template stored in an org namespace ConfigMap that
+// OrgTemplate is a CUE template stored in an org namespace ConfigMap that
 // produces K8s resource manifests applied to project namespaces.
-message SystemTemplate {
+message OrgTemplate {
   // name is the unique identifier (DNS label slug) within the organization.
   string name = 1;
   // org is the parent organization name.
@@ -40,24 +40,24 @@ message SystemTemplate {
   bool enabled = 7;
 }
 
-message ListSystemTemplatesRequest {
+message ListOrgTemplatesRequest {
   string org = 1;
 }
 
-message ListSystemTemplatesResponse {
-  repeated SystemTemplate templates = 1;
+message ListOrgTemplatesResponse {
+  repeated OrgTemplate templates = 1;
 }
 
-message GetSystemTemplateRequest {
+message GetOrgTemplateRequest {
   string name = 1;
   string org = 2;
 }
 
-message GetSystemTemplateResponse {
-  SystemTemplate template = 1;
+message GetOrgTemplateResponse {
+  OrgTemplate template = 1;
 }
 
-message CreateSystemTemplateRequest {
+message CreateOrgTemplateRequest {
   string name = 1;
   string org = 2;
   string display_name = 3;
@@ -67,11 +67,11 @@ message CreateSystemTemplateRequest {
   bool enabled = 7;
 }
 
-message CreateSystemTemplateResponse {
+message CreateOrgTemplateResponse {
   string name = 1;
 }
 
-message UpdateSystemTemplateRequest {
+message UpdateOrgTemplateRequest {
   string name = 1;
   string org = 2;
   optional string display_name = 3;
@@ -81,18 +81,18 @@ message UpdateSystemTemplateRequest {
   optional bool enabled = 7;
 }
 
-message UpdateSystemTemplateResponse {}
+message UpdateOrgTemplateResponse {}
 
-message DeleteSystemTemplateRequest {
+message DeleteOrgTemplateRequest {
   string name = 1;
   string org = 2;
 }
 
-message DeleteSystemTemplateResponse {}
+message DeleteOrgTemplateResponse {}
 
-// CloneSystemTemplateRequest copies an existing system template to a new name.
+// CloneOrgTemplateRequest copies an existing platform template to a new name.
 // The clone inherits the CUE template and other fields from the source.
-message CloneSystemTemplateRequest {
+message CloneOrgTemplateRequest {
   // source_name is the name of the template to copy.
   string source_name = 1;
   // org is the organization that owns the source template.
@@ -103,29 +103,29 @@ message CloneSystemTemplateRequest {
   string display_name = 4;
 }
 
-message CloneSystemTemplateResponse {
+message CloneOrgTemplateResponse {
   // name is the name of the newly created template.
   string name = 1;
 }
 
-// RenderSystemTemplateRequest evaluates a CUE system template unified with CUE
+// RenderOrgTemplateRequest evaluates a CUE platform template unified with CUE
 // input values and returns the rendered Kubernetes resource manifests as
 // multi-document YAML and as a pretty-printed JSON array.
 // The cue_template field is rendered directly (supports unsaved/draft templates).
-message RenderSystemTemplateRequest {
+message RenderOrgTemplateRequest {
   string cue_template = 2; // CUE source to evaluate
-  // cue_system_input contains CUE source for system-provided values (org,
+  // cue_platform_input contains CUE source for platform-provided values (org,
   // namespace, claims).  These values are trusted — set by the console backend
   // from authenticated context.  The claims field carries the OIDC ID token
   // claims of the authenticated user.
-  string cue_system_input = 7;
+  string cue_platform_input = 7;
   // cue_input contains valid CUE source that is unified with cue_template at
   // the "input" path to supply concrete values for template parameters.
   string cue_input = 6;
 }
 
-// RenderSystemTemplateResponse contains the rendered output in both YAML and JSON formats.
-message RenderSystemTemplateResponse {
+// RenderOrgTemplateResponse contains the rendered output in both YAML and JSON formats.
+message RenderOrgTemplateResponse {
   // rendered_yaml is the concatenated multi-document YAML of all rendered
   // resources, separated by "---\n".
   string rendered_yaml = 1;

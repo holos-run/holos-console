@@ -35,7 +35,7 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // ListSystemTemplates returns all platform template ConfigMaps in the org namespace.
 func (k *K8sClient) ListSystemTemplates(ctx context.Context, org string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.OrgNamespace(org)
-	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeSystemTemplate
+	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeOrgTemplate
 	slog.DebugContext(ctx, "listing platform templates from kubernetes",
 		slog.String("org", org),
 		slog.String("namespace", ns),
@@ -75,7 +75,7 @@ func (k *K8sClient) CreateSystemTemplate(ctx context.Context, org, name, display
 			Namespace: ns,
 			Labels: map[string]string{
 				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeSystemTemplate,
+				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeOrgTemplate,
 			},
 			Annotations: map[string]string{
 				v1alpha1.AnnotationDisplayName: displayName,
@@ -203,10 +203,10 @@ func (k *K8sClient) ListEnabledSystemTemplateSources(ctx context.Context, org st
 }
 
 // configMapToSystemTemplate converts a Kubernetes ConfigMap to a SystemTemplate protobuf message.
-func configMapToSystemTemplate(cm *corev1.ConfigMap, org string) *consolev1.SystemTemplate {
+func configMapToSystemTemplate(cm *corev1.ConfigMap, org string) *consolev1.OrgTemplate {
 	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationMandatory])
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationEnabled])
-	return &consolev1.SystemTemplate{
+	return &consolev1.OrgTemplate{
 		Name:        cm.Name,
 		Org:         org,
 		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],

@@ -21,7 +21,7 @@ const (
 	ResourceTypeProject          = "project"
 	ResourceTypeDeployment       = "deployment"
 	ResourceTypeDeploymentTemplate = "deployment-template"
-	ResourceTypeSystemTemplate   = "system-template"
+	ResourceTypeOrgTemplate = "org-template"
 
 	// Annotations.
 	AnnotationDisplayName       = "console.holos.run/display-name"

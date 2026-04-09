@@ -817,11 +817,11 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
   cueTemplate: string;
 
   /**
-   * cue_system_input is the system-provided CUE input (project, namespace, claims) in CUE format.
+   * cue_platform_input is the platform-provided CUE input (project, namespace, claims) in CUE format.
    *
-   * @generated from field: string cue_system_input = 2;
+   * @generated from field: string cue_platform_input = 2;
    */
-  cueSystemInput: string;
+  cuePlatformInput: string;
 
   /**
    * cue_user_input is the user-provided CUE input (name, image, tag, etc.) in CUE format.

@@ -106,11 +106,11 @@ message DeleteDeploymentTemplateResponse {}
 // The cue_template field is rendered directly (supports unsaved/draft templates).
 message RenderDeploymentTemplateRequest {
   string cue_template = 2; // CUE source to evaluate
-  // cue_system_input contains CUE source for system-provided values (project,
+  // cue_platform_input contains CUE source for platform-provided values (project,
   // namespace, claims).  These values are trusted — set by the console backend
   // from authenticated context.  The claims field carries the OIDC ID token
   // claims of the authenticated user.
-  string cue_system_input = 7;
+  string cue_platform_input = 7;
   // cue_input contains valid CUE source that is unified with cue_template at
   // the "input" path to supply concrete values for template parameters.
   // Example:

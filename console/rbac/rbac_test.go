@@ -642,19 +642,19 @@ func TestCheckAccessGrants(t *testing.T) {
 
 func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 	t.Run("org OWNER has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if !HasCascadePermission(RoleOwner, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+		if !HasCascadePermission(RoleOwner, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
 			t.Error("org OWNER should have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT via cascade")
 		}
 	})
 
 	t.Run("org EDITOR does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if HasCascadePermission(RoleEditor, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+		if HasCascadePermission(RoleEditor, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
 			t.Error("org EDITOR should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
 		}
 	})
 
 	t.Run("org VIEWER does not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT", func(t *testing.T) {
-		if HasCascadePermission(RoleViewer, PermissionSystemDeploymentsEdit, OrgCascadeSystemTemplatePerms) {
+		if HasCascadePermission(RoleViewer, PermissionOrgTemplatesWrite, OrgCascadeSystemTemplatePerms) {
 			t.Error("org VIEWER should not have PERMISSION_SYSTEM_DEPLOYMENTS_EDIT")
 		}
 	})
@@ -665,7 +665,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"owner@example.com": "owner"},
 			nil,
-			PermissionSystemDeploymentsEdit,
+			PermissionOrgTemplatesWrite,
 			OrgCascadeSystemTemplatePerms,
 		)
 		if err != nil {
@@ -679,7 +679,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"viewer@example.com": "viewer"},
 			nil,
-			PermissionSystemDeploymentsEdit,
+			PermissionOrgTemplatesWrite,
 			OrgCascadeSystemTemplatePerms,
 		)
 		if err == nil {
@@ -693,7 +693,7 @@ func TestOrgCascadeSystemTemplatePerms(t *testing.T) {
 			nil,
 			map[string]string{"editor@example.com": "editor"},
 			nil,
-			PermissionSystemDeploymentsEdit,
+			PermissionOrgTemplatesWrite,
 			OrgCascadeSystemTemplatePerms,
 		)
 		if err == nil {
