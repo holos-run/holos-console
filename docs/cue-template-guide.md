@@ -10,7 +10,7 @@ constraints enforced at render time.
 When a user creates or updates a deployment, the console:
 
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
-2. Loads all enabled `OrgTemplate` sources for the organization.
+2. Loads the set of platform templates that participate in this render: mandatory AND enabled templates always participate; additionally, enabled templates that are explicitly linked to the deployment template are included (see [Linking Platform Templates](#linking-platform-templates)).
 3. Builds a `PlatformInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `ProjectInput` (name, image, tag, etc.) from the API request fields.
 4. Prepends the generated CUE schema (produced from `api/v1alpha1` Go types via `cue get go`) before compiling templates. The renderer concatenates all template sources into a single compilation unit.
 5. Fills `ProjectInput` at the `input` path and `PlatformInput` at the `platform` path.
@@ -569,6 +569,57 @@ when no org-level constraint is defined). Layer 3 is structural: `platformResour
 is simply not read from project-level templates, so a project template cannot
 contribute platform resources regardless of what it defines.
 
+### Linking Platform Templates
+
+Platform templates are opt-in: a non-mandatory enabled platform template only
+participates in a deployment render when the deployment template explicitly links
+it. Mandatory platform templates always participate regardless of linking.
+
+**Why explicit linking?**
+
+An organization may have multiple platform templates targeting different
+archetypes — one that routes traffic through a public gateway, another for
+internal-only services, a third for batch jobs. Without explicit linking, every
+deployment would unify with all enabled templates simultaneously, causing
+conflicts when templates close disjoint resource structs. Explicit linking lets
+the deployment template declare exactly which platform templates apply, enabling
+multiple non-overlapping archetypes to coexist in the same organization.
+
+**How to link templates in the editor**
+
+When creating or editing a deployment template, the form shows a
+"Linked Platform Templates" section listing all enabled platform templates for
+the organization. Each non-mandatory template has a checkbox — check it to
+include that template in every render of this deployment template. Mandatory
+templates appear pre-checked with a lock icon; they are always included and
+cannot be deselected.
+
+**Render set formula**
+
+The set of platform templates that participate in a render is:
+
+```
+render_set = (mandatory AND enabled) UNION (enabled AND name IN linked_list)
+```
+
+The `linked_list` is the `linked_org_templates` annotation on the deployment
+template ConfigMap (JSON string array, annotation key
+`console.holos.run/linked-org-templates`). Disabled templates are never
+included, even if they appear in the linked list.
+
+**Authoring implications**
+
+Because explicit linking is scoped per deployment template, different deployment
+templates in the same project can link different platform templates. This means:
+
+- A public-facing service links the "HTTPRoute gateway" platform template.
+- An internal worker links the "internal network" platform template.
+- Both templates share the same org and project without conflicting.
+
+A platform template that should apply universally without any action from
+product engineers must set `mandatory = true`. The platform engineer controls
+the `mandatory` flag via the platform template editor.
+
 ### Previewing Your Template
 
 Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
@@ -877,11 +928,18 @@ operator. User-authored deployment templates should NOT define these fields.
 
 **Platform Template Unification**
 
-At deploy time, the console unifies enabled platform templates with the deployment
-template before CUE compilation. Because all templates share the same generated
-schema (prepended by the renderer), they have full access to all `input.*` and
-`platform.*` fields — including `input.name`, `input.port`, `platform.namespace`,
-and `platform.gatewayNamespace`.
+At deploy time, the console unifies the applicable platform templates with the
+deployment template before CUE compilation. The render set is:
+
+  `(mandatory AND enabled)` UNION `(enabled AND name IN linked list)`
+
+Mandatory templates apply regardless of linking. Non-mandatory enabled templates
+unify only when the deployment template explicitly links them (see
+[Linking Platform Templates](#linking-platform-templates)).
+
+Because all templates share the same generated schema (prepended by the renderer),
+they have full access to all `input.*` and `platform.*` fields — including
+`input.name`, `input.port`, `platform.namespace`, and `platform.gatewayNamespace`.
 
 Platform templates may define resources under `platformResources` and/or `projectResources`
 (ADR 016 Decision 8). The built-in example and operator-managed resources conventionally
@@ -1129,7 +1187,7 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `console/org_templates/handler.go` | `OrgTemplateService` handler — CRUD and render for org-scoped platform templates stored as ConfigMaps. Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE`. |
-| `console/org_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `org-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListOrgTemplates`. `ListEnabledOrgTemplateSources()` returns CUE sources for enabled platform templates (satisfies `deployments.OrgTemplateProvider`). |
+| `console/org_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `org-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListOrgTemplates`. `ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` implements the explicit linking formula `(mandatory AND enabled) UNION (enabled AND name IN linkedNames)` (satisfies `deployments.OrgTemplateProvider`). |
 | `console/org_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatoryOrgTemplates()` — called by the projects service after project namespace creation to apply platform templates that are both `mandatory=true` AND `enabled=true`. |
 
 ### Deployment Service

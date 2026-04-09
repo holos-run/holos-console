@@ -144,7 +144,7 @@ At render time, the console performs these steps:
    claims.
 2. Fills **project input** (`input.*`) from the deployment creation form or API
    request: image, tag, name, port, env vars, etc.
-3. Collects all enabled platform templates for the organization.
+3. Collects the applicable platform templates using the explicit linking formula: mandatory AND enabled templates always participate; additionally, enabled templates that are explicitly linked to the deployment template (stored in the `console.holos.run/linked-org-templates` annotation) are included. See [Linking Platform Templates](cue-template-guide.md#linking-platform-templates).
 4. Prepends the generated CUE schema (from `api/v1alpha1` Go types via
    `cue get go`) so type definitions like `#ProjectInput` and `#PlatformInput`
    are available without explicit imports.
@@ -276,10 +276,54 @@ Each platform template has two flags:
 
 - **mandatory** — Applied to the project namespace at project creation time.
   For example, a mandatory platform template might create a `NetworkPolicy` that
-  allows only intra-namespace traffic by default.
-- **enabled** — Unified with the deployment template at every render. A
-  non-enabled template is never unified. A mandatory template that is not enabled
-  is still applied at creation time but not at render time.
+  allows only intra-namespace traffic by default. Mandatory AND enabled templates
+  are also always unified at render time, regardless of whether the deployment
+  template links them.
+- **enabled** — Makes the template available for linking and render-time
+  unification. A disabled template is never unified, even if it appears in a
+  deployment template's linked list. A mandatory template that is not enabled is
+  still applied at project-namespace creation time but not at render time.
+
+### Explicit linking
+
+Non-mandatory enabled platform templates are **opt-in**: they unify at render
+time only when the deployment template explicitly links them. The deployment
+template stores its linked list as the annotation
+`console.holos.run/linked-org-templates` (a JSON string array of template names)
+on the deployment template ConfigMap.
+
+**Render set formula:**
+```
+render_set = (mandatory AND enabled) UNION (enabled AND name IN linked_list)
+```
+
+This explicit linking model allows multiple non-overlapping platform template
+archetypes to coexist in the same organization. A public-facing service can link
+the HTTPRoute gateway template; an internal worker can link an internal-network
+template — both without conflict.
+
+### End-to-end linking workflow
+
+**Platform engineer** — create and enable a platform template:
+
+1. Navigate to the organization → **Platform Templates** tab.
+2. Click **Create Platform Template** and author the CUE source.
+3. Set **enabled = true** so the template is available for linking.
+4. Optionally set **mandatory = true** if the template should apply to all
+   deployments without opt-in.
+
+**Product engineer** — link the platform template from a deployment template:
+
+1. Navigate to the project → **Templates** tab.
+2. Open the deployment template (or create a new one).
+3. In the **Linked Platform Templates** section, check the platform template(s)
+   you want to unify. Mandatory templates appear pre-checked with a lock icon
+   and cannot be deselected.
+4. Save the deployment template.
+
+**Deploy** — the next time a deployment is created or updated using this
+template, the linked platform templates are automatically unified with the
+deployment template at render time.
 
 ### Closing the projectResources struct
 
