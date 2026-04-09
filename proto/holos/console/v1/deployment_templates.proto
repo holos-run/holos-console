@@ -32,6 +32,10 @@ message DeploymentDefaults {
   repeated EnvVar env = 5;
   // port is the default container port the application listens on.
   int32 port = 6;
+  // name is the default deployment name (DNS label slug).
+  string name = 7;
+  // description is a short human-readable description of the deployment.
+  string description = 8;
 }
 
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.

@@ -38,7 +38,11 @@ type DeploymentDefaults struct {
 	// env sets default container environment variables.
 	Env []*EnvVar `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty"`
 	// port is the default container port the application listens on.
-	Port          int32 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	Port int32 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	// name is the default deployment name (DNS label slug).
+	Name string `protobuf:"bytes,7,opt,name=name,proto3" json:"name,omitempty"`
+	// description is a short human-readable description of the deployment.
+	Description   string `protobuf:"bytes,8,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -113,6 +117,20 @@ func (x *DeploymentDefaults) GetPort() int32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *DeploymentDefaults) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DeploymentDefaults) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 // DeploymentTemplate is a CUE template that produces K8s resource manifests.
@@ -985,14 +1003,16 @@ var File_holos_console_v1_deployment_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployment_templates_proto_rawDesc = "" +
 	"\n" +
-	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\"holos/console/v1/deployments.proto\x1a\x1bholos/console/v1/rbac.proto\"\xaa\x01\n" +
+	"+holos/console/v1/deployment_templates.proto\x12\x10holos.console.v1\x1a\"holos/console/v1/deployments.proto\x1a\x1bholos/console/v1/rbac.proto\"\xe0\x01\n" +
 	"\x12DeploymentDefaults\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
 	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x18\n" +
 	"\acommand\x18\x03 \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\x04 \x03(\tR\x04args\x12*\n" +
 	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
-	"\x04port\x18\x06 \x01(\x05R\x04port\"\xec\x01\n" +
+	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x12\n" +
+	"\x04name\x18\a \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\"\xec\x01\n" +
 	"\x12DeploymentTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12!\n" +

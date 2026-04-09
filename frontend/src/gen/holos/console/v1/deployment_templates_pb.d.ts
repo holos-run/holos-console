@@ -61,6 +61,20 @@ export declare type DeploymentDefaults = Message<"holos.console.v1.DeploymentDef
    * @generated from field: int32 port = 6;
    */
   port: number;
+
+  /**
+   * name is the default deployment name (DNS label slug).
+   *
+   * @generated from field: string name = 7;
+   */
+  name: string;
+
+  /**
+   * description is a short human-readable description of the deployment.
+   *
+   * @generated from field: string description = 8;
+   */
+  description: string;
 };
 
 /**
