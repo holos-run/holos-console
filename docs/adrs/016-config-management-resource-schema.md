@@ -181,6 +181,11 @@ The folder concept is planned for `v1alpha2`. The `v1alpha1` schema defines the
 Organization and Project types; the Folder type and `folderInput` are deferred
 to validate extensibility in `v1alpha2`.
 
+**v1alpha2 specification**: See [ADR 020](020-v1alpha2-folder-hierarchy.md)
+for the complete `Folder` type definition, namespace naming scheme, hierarchy
+walk algorithm, per-request caching, and depth enforcement. ADR 020 is the
+authoritative implementation specification for v1alpha2.
+
 ### 5. Input is split into platformInput and projectInput.
 
 Templates receive input from two scopes with different trust levels:
@@ -615,3 +620,4 @@ api/
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
 - [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
+- [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md)

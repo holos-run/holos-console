@@ -125,6 +125,16 @@ unifies them. A conflict (bottom, `_|_`) at any field causes evaluation to fail
 with a CUE error before any Kubernetes API call. See
 [ADR 016](adrs/016-config-management-resource-schema.md) Decision 8.
 
+### Folder
+
+An optional intermediate grouping level in the organization hierarchy, sitting
+between an Organization and a Project (or between two Folder levels). Stored as
+a Kubernetes Namespace with `console.holos.run/resource-type: folder` and a
+`console.holos.run/parent` label pointing to the immediate parent namespace (an
+organization or another folder). Up to three folder levels are supported between
+any Organization and Project (ADR 016 Decision 4). Introduced in `v1alpha2`; not
+present in `v1alpha1`. See [ADR 020](adrs/020-v1alpha2-folder-hierarchy.md).
+
 ### Hierarchy levels
 
 The organizational nesting within which templates are collected and unified at
@@ -132,12 +142,34 @@ render time:
 
 - **Organization** — the top level. Platform templates at this level apply
   across all projects in the organization.
-- **Folder** (planned, `v1alpha2`) — an optional intermediate level between
-  Organization and Project. Up to three folder levels are supported. Useful for
-  applying SRE standards to a subset of projects.
+- **Folder** (`v1alpha2`) — an optional intermediate level between Organization
+  and Project. Up to three folder levels are supported. Useful for applying SRE
+  standards to a subset of projects. See [ADR 020](adrs/020-v1alpha2-folder-hierarchy.md).
 - **Project** — the leaf level. The deployment template lives here and is
   written by the product engineer who owns the application.
 
 The renderer walks the hierarchy upward from the project, collects templates at
 each level, and unifies them all. See
 [ADR 016](adrs/016-config-management-resource-schema.md) Decision 4 and Decision 8.
+
+### Hierarchy walk
+
+The algorithm that traverses the Organization → Folder(s) → Project chain
+upward from a given namespace to collect templates or resolve effective
+permissions. The walk follows `console.holos.run/parent` labels, terminating at
+the Organization namespace. Bounded to 5 levels (1 org + up to 3 folders + 1
+project); results are cached per-request via a `context.Context`-attached
+`sync.Map`. See [ADR 020](adrs/020-v1alpha2-folder-hierarchy.md) Decision 6 and
+Decision 7.
+
+### Default-share cascade
+
+The mechanism by which a new resource (e.g., Secret) inherits share grants from
+its ancestor chain at creation time. Each ancestor's
+`console.holos.run/default-share-*` annotations are merged into the new
+resource's initial share state (highest role wins per principal). Runtime access
+to an existing resource requires explicit grants; the default-share cascade
+applies only at the moment of resource creation. This extends the non-cascading
+access model from [ADR 007](adrs/007-org-grants-no-cascade.md) with creation-time
+default propagation introduced in `v1alpha2`. See
+[ADR 020](adrs/020-v1alpha2-folder-hierarchy.md) Decision 9.
