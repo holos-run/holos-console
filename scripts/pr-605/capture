@@ -1,0 +1,19 @@
+#!/bin/bash
+# Capture screenshots for PR #605: API Access section on profile page.
+# Called by scripts/browser-capture-pr 605 with:
+#   HOLOS_BACKEND_PORT, HOLOS_BACKEND_URL, PR_SCREENSHOT_DIR set.
+
+set -euo pipefail
+
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-605}"
+URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+
+# Capture the profile page top section
+agent-browser navigate "${URL}/profile"
+agent-browser screenshot "${SCREENSHOT_DIR}/profile-top.png"
+
+# Scroll to the API Access section (near bottom) and capture
+agent-browser scroll 0 2000
+agent-browser screenshot "${SCREENSHOT_DIR}/profile-api-access.png"
+
+echo "Screenshots saved to ${SCREENSHOT_DIR}/"

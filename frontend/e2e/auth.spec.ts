@@ -233,8 +233,10 @@ test.describe('Profile Page', () => {
     // Click the Raw button in the segmented control
     await page.getByRole('button', { name: /raw/i }).last().click()
 
-    // Verify JSON is displayed
-    const pre = page.getByRole('code')
+    // Verify JSON is displayed. Use the explicit role="code" attribute on the
+    // raw-JSON pre element to avoid matching inline <code> elements that the
+    // API Access card adds to the same page.
+    const pre = page.locator('[role="code"]')
     await expect(pre).toBeVisible()
     await expect(pre).toContainText('"iss"')
     await expect(pre).toContainText('"aud"')
