@@ -589,7 +589,7 @@ health-check confirms the HTTPRoute is wired correctly.
 
 #### Inspect the Rendered Manifests
 
-The **Template Preview** tab on the deployment detail page shows the live
+The **Template** tab on the deployment detail page shows the live
 template, inputs, and rendered output side by side. This calls
 `GetDeploymentRenderPreview` and displays:
 
