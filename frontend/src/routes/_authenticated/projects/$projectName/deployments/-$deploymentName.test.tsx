@@ -533,21 +533,23 @@ describe('DeploymentDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentDetailPage />)
       await user.click(screen.getByRole('tab', { name: /template/i }))
-      const curl = screen.getByText(/curl -sk/)
+      const curl = screen.getByText(/curl -s --cacert/)
       expect(curl.textContent).toContain('Connect-Protocol-Version: 1')
       expect(curl.textContent).toContain('$HOLOS_ID_TOKEN')
       expect(curl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
       expect(curl.textContent).toContain('"project": "test-project"')
       expect(curl.textContent).toContain('"name": "api"')
+      expect(curl.textContent).not.toContain('-k')
     })
 
-    it('renders a grpcurl -insecure command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
+    it('renders a grpcurl command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
       const user = userEvent.setup()
       render(<DeploymentDetailPage />)
       await user.click(screen.getByRole('tab', { name: /template/i }))
-      const grpcurl = screen.getByText(/grpcurl -insecure/)
+      const grpcurl = screen.getByText(/grpcurl -cacert/)
       expect(grpcurl.textContent).toContain('$HOLOS_ID_TOKEN')
       expect(grpcurl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
+      expect(grpcurl.textContent).not.toContain('-insecure')
     })
 
     it('does not render the broken grpcurl -plaintext form', async () => {
@@ -589,7 +591,8 @@ describe('DeploymentDetailPage', () => {
       await user.click(screen.getByLabelText(/copy grpcurl command/i))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const copied = writeText.mock.calls[0][0] as string
-      expect(copied).toContain('-insecure')
+      expect(copied).toContain('-cacert')
+      expect(copied).not.toContain('-insecure')
       expect(copied).toContain('$HOLOS_ID_TOKEN')
       expect(copied).toContain('GetDeploymentRenderPreview')
       expect(copied).toContain('test-project')

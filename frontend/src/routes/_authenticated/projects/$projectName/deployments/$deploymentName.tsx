@@ -405,7 +405,7 @@ export function DeploymentDetailPage({
                   </p>
                   <div className="relative">
                     <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                      {`curl -sk ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
+                      {`curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
                     </pre>
                     <Button
                       variant="ghost"
@@ -414,7 +414,7 @@ export function DeploymentDetailPage({
                       className="absolute top-2 right-2 h-7 w-7"
                       onClick={() => {
                         const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
-                        const cmd = `curl -sk ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
+                        const cmd = `curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
                         navigator.clipboard.writeText(cmd)
                         toast.success('Copied to clipboard')
                       }}
@@ -429,7 +429,7 @@ export function DeploymentDetailPage({
                   </p>
                   <div className="relative">
                     <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                      {`grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
+                      {`grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
                     </pre>
                     <Button
                       variant="ghost"
@@ -438,7 +438,7 @@ export function DeploymentDetailPage({
                       className="absolute top-2 right-2 h-7 w-7"
                       onClick={() => {
                         const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
-                        const cmd = `grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
+                        const cmd = `grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
                         navigator.clipboard.writeText(cmd)
                         toast.success('Copied to clipboard')
                       }}

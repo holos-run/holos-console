@@ -280,14 +280,15 @@ function ApiAccessCard({ idToken, tokenRevealed, onToggleReveal }: ApiAccessCard
   const exportSnippet = `export HOLOS_ID_TOKEN="${idToken}"`
 
   const curlCmd =
-    `curl -sk ${origin}/holos.console.v1.OrganizationService/ListOrganizations \\\n` +
+    `curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n` +
+    `  ${origin}/holos.console.v1.OrganizationService/ListOrganizations \\\n` +
     `  -H "Content-Type: application/json" \\\n` +
     `  -H "Connect-Protocol-Version: 1" \\\n` +
     `  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n` +
     `  -d '{}'`
 
   const grpcurlCmd =
-    `grpcurl -insecure \\\n` +
+    `grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n` +
     `  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n` +
     `  -d '{}' \\\n` +
     `  ${host} \\\n` +
