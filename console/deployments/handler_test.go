@@ -111,17 +111,24 @@ func (s *stubRenderer) RenderWithOrgTemplates(_ context.Context, _ string, _ []s
 	return s.resources, s.err
 }
 
-// stubApplier implements Applier for tests.
+// stubApplier implements ResourceApplier for tests.
 type stubApplier struct {
-	applyCalled   bool
-	cleanupCalled bool
-	applyErr      error
-	cleanupErr    error
+	applyCalled     bool
+	reconcileCalled bool
+	cleanupCalled   bool
+	applyErr        error
+	reconcileErr    error
+	cleanupErr      error
 }
 
 func (s *stubApplier) Apply(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
 	s.applyCalled = true
 	return s.applyErr
+}
+
+func (s *stubApplier) Reconcile(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
+	s.reconcileCalled = true
+	return s.reconcileErr
 }
 
 func (s *stubApplier) Cleanup(_ context.Context, _, _ string) error {
@@ -808,7 +815,7 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		}
 	})
 
-	t.Run("UpdateDeployment calls renderer and applier", func(t *testing.T) {
+	t.Run("UpdateDeployment calls renderer and Reconcile", func(t *testing.T) {
 		ns := projectNS("my-project")
 		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
 		fakeClient := fake.NewClientset(ns, cm)
@@ -832,8 +839,11 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		if !renderer.called {
 			t.Error("expected renderer to be called on UpdateDeployment")
 		}
-		if !applier.applyCalled {
-			t.Error("expected applier.Apply to be called on UpdateDeployment")
+		if !applier.reconcileCalled {
+			t.Error("expected applier.Reconcile to be called on UpdateDeployment")
+		}
+		if applier.applyCalled {
+			t.Error("expected applier.Apply NOT to be called on UpdateDeployment (Reconcile is used instead)")
 		}
 	})
 
@@ -919,6 +929,85 @@ func TestHandler_RenderAndApply(t *testing.T) {
 		}
 		if !applier.cleanupCalled {
 			t.Error("expected applier.Cleanup to be called on DeleteDeployment")
+		}
+	})
+}
+
+// TestHandler_CreateDeploymentRollback tests that CreateDeployment rolls back on failure.
+func TestHandler_CreateDeploymentRollback(t *testing.T) {
+	t.Run("rolls back ConfigMap when apply fails", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{}
+		applier := &stubApplier{applyErr: fmt.Errorf("simulated apply failure")}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err == nil {
+			t.Fatal("expected error when apply fails")
+		}
+
+		// Cleanup should have been called to remove partial K8s resources.
+		if !applier.cleanupCalled {
+			t.Error("expected applier.Cleanup to be called on apply failure for rollback")
+		}
+
+		// The deployment ConfigMap should have been deleted (rolled back).
+		cms, listErr := fakeClient.CoreV1().ConfigMaps("prj-my-project").List(ctx, metav1.ListOptions{})
+		if listErr != nil {
+			t.Fatalf("listing configmaps: %v", listErr)
+		}
+		for _, cm := range cms.Items {
+			if cm.Name == "web-app" {
+				t.Error("expected deployment ConfigMap to be deleted after apply failure (rollback)")
+			}
+		}
+	})
+
+	t.Run("rolls back ConfigMap when render fails", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		renderer := &stubRenderer{err: fmt.Errorf("simulated render failure")}
+		applier := &stubApplier{}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, applier)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project:  "my-project",
+			Name:     "web-app",
+			Image:    "nginx",
+			Tag:      "1.25",
+			Template: "default",
+		})
+		_, err := handler.CreateDeployment(ctx, req)
+		if err == nil {
+			t.Fatal("expected error when render fails")
+		}
+
+		// Cleanup should have been called.
+		if !applier.cleanupCalled {
+			t.Error("expected applier.Cleanup to be called on render failure for rollback")
+		}
+
+		// The deployment ConfigMap should have been deleted (rolled back).
+		cms, listErr := fakeClient.CoreV1().ConfigMaps("prj-my-project").List(ctx, metav1.ListOptions{})
+		if listErr != nil {
+			t.Fatalf("listing configmaps: %v", listErr)
+		}
+		for _, cm := range cms.Items {
+			if cm.Name == "web-app" {
+				t.Error("expected deployment ConfigMap to be deleted after render failure (rollback)")
+			}
 		}
 	})
 }
