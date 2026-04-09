@@ -20,7 +20,7 @@ import (
 //
 // This function prepends the generated v1alpha1 schema (same as the renderer
 // does) so that templates can reference #ProjectInput and related types.
-func ExtractDefaults(cueSource string) (*consolev1.DeploymentDefaults, error) {
+func ExtractDefaults(cueSource string) (*consolev1.TemplateDefaults, error) {
 	cueCtx := cuecontext.New()
 
 	// Prepend generated schema so templates can use #ProjectInput, etc.
@@ -53,7 +53,7 @@ func ExtractDefaults(cueSource string) (*consolev1.DeploymentDefaults, error) {
 		return nil, fmt.Errorf("unmarshalling defaults into ProjectInput: %w", err)
 	}
 
-	d := &consolev1.DeploymentDefaults{
+	d := &consolev1.TemplateDefaults{
 		Name:        pi.Name,
 		Image:       pi.Image,
 		Tag:         pi.Tag,

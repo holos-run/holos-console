@@ -1,17 +1,16 @@
-// Package org_templates implements the OrgTemplateService RPC handler.
-// Platform templates (code: OrgTemplate) are org-scoped CUE templates stored
-// in org namespace ConfigMaps. They differ from deployment templates in that they
-// can be marked mandatory, causing them to be automatically applied to project
-// namespaces at creation time.
+// Package org_templates provides the TemplateService handler for org-scoped
+// (platform) CUE templates, plus K8s backend operations and the
+// MandatoryTemplateApplier used during project creation. This package is being
+// migrated to v1alpha2 as part of phase 9 (unified TemplateService). Until
+// that migration is complete the handler stubs all RPCs as Unimplemented — the
+// K8s backend (k8s.go) and template applier (apply.go) remain functional.
 package org_templates
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
-	"strings"
 
 	"connectrpc.com/connect"
 	"cuelang.org/go/cue/parser"
@@ -19,7 +18,6 @@ import (
 
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
@@ -40,347 +38,27 @@ type RenderResource struct {
 	Object map[string]any
 }
 
-// Renderer evaluates a CUE template unified with system and user CUE input strings
-// and returns a list of rendered Kubernetes manifests.
+// Renderer evaluates a CUE template unified with platform and project CUE
+// input strings and returns a list of rendered Kubernetes manifests.
 type Renderer interface {
 	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
-// Handler implements the OrgTemplateService.
+// Handler implements the TemplateService (stub — phase 9 will fill in the
+// full implementation against the unified v1alpha2 TemplateService).
 type Handler struct {
-	consolev1connect.UnimplementedOrgTemplateServiceHandler
+	consolev1connect.UnimplementedTemplateServiceHandler
 	k8s         *K8sClient
 	orgResolver OrgResolver
 	renderer    Renderer
 }
 
-// NewHandler creates an OrgTemplateService handler.
+// NewHandler creates a TemplateService handler stub for org-scoped templates.
 func NewHandler(k8s *K8sClient, orgResolver OrgResolver, renderer Renderer) *Handler {
 	return &Handler{k8s: k8s, orgResolver: orgResolver, renderer: renderer}
 }
 
-// ListOrgTemplates returns all platform templates in an org, seeding defaults on first access.
-func (h *Handler) ListOrgTemplates(
-	ctx context.Context,
-	req *connect.Request[consolev1.ListOrgTemplatesRequest],
-) (*connect.Response[consolev1.ListOrgTemplatesResponse], error) {
-	org := req.Msg.Org
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgReadAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	cms, err := h.k8s.ListOrgTemplates(ctx, org)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	// Seed built-in templates on first access (no existing templates found).
-	if len(cms) == 0 {
-		if seedErr := h.k8s.SeedDefaultTemplates(ctx, org); seedErr != nil {
-			// Log but don't fail: seeding is best-effort; the org namespace may not exist yet.
-			slog.WarnContext(ctx, "failed to seed default platform templates",
-				slog.String("org", org),
-				slog.Any("error", seedErr),
-			)
-		} else {
-			// Re-list after seeding.
-			cms, err = h.k8s.ListOrgTemplates(ctx, org)
-			if err != nil {
-				return nil, mapK8sError(err)
-			}
-		}
-	}
-
-	templates := make([]*consolev1.OrgTemplate, 0, len(cms))
-	for _, cm := range cms {
-		templates = append(templates, configMapToOrgTemplate(&cm, org))
-	}
-
-	slog.InfoContext(ctx, "platform templates listed",
-		slog.String("action", "org_templates_list"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("sub", claims.Sub),
-		slog.Int("count", len(templates)),
-	)
-
-	return connect.NewResponse(&consolev1.ListOrgTemplatesResponse{
-		Templates: templates,
-	}), nil
-}
-
-// GetOrgTemplate returns a single platform template by name.
-func (h *Handler) GetOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.GetOrgTemplateRequest],
-) (*connect.Response[consolev1.GetOrgTemplateResponse], error) {
-	org := req.Msg.Org
-	name := req.Msg.Name
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-	if name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgReadAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	cm, err := h.k8s.GetOrgTemplate(ctx, org, name)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "platform template read",
-		slog.String("action", "org_template_read"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("name", name),
-		slog.String("sub", claims.Sub),
-	)
-
-	return connect.NewResponse(&consolev1.GetOrgTemplateResponse{
-		Template: configMapToOrgTemplate(cm, org),
-	}), nil
-}
-
-// CreateOrgTemplate creates a new platform template.
-func (h *Handler) CreateOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.CreateOrgTemplateRequest],
-) (*connect.Response[consolev1.CreateOrgTemplateResponse], error) {
-	org := req.Msg.Org
-	name := req.Msg.Name
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-	if err := validateTemplateName(name); err != nil {
-		return nil, err
-	}
-	if err := validateCueSyntax(req.Msg.CueTemplate); err != nil {
-		return nil, err
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgEditAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	_, err := h.k8s.CreateOrgTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "platform template created",
-		slog.String("action", "org_template_create"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("name", name),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-	)
-
-	return connect.NewResponse(&consolev1.CreateOrgTemplateResponse{
-		Name: name,
-	}), nil
-}
-
-// UpdateOrgTemplate updates an existing platform template.
-func (h *Handler) UpdateOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.UpdateOrgTemplateRequest],
-) (*connect.Response[consolev1.UpdateOrgTemplateResponse], error) {
-	org := req.Msg.Org
-	name := req.Msg.Name
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-	if name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
-	}
-
-	// Validate CUE syntax if a new template is provided.
-	if req.Msg.CueTemplate != nil {
-		if err := validateCueSyntax(*req.Msg.CueTemplate); err != nil {
-			return nil, err
-		}
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgEditAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	_, err := h.k8s.UpdateOrgTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "platform template updated",
-		slog.String("action", "org_template_update"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("name", name),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-	)
-
-	return connect.NewResponse(&consolev1.UpdateOrgTemplateResponse{}), nil
-}
-
-// DeleteOrgTemplate deletes a platform template.
-func (h *Handler) DeleteOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.DeleteOrgTemplateRequest],
-) (*connect.Response[consolev1.DeleteOrgTemplateResponse], error) {
-	org := req.Msg.Org
-	name := req.Msg.Name
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-	if name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgEditAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	if err := h.k8s.DeleteOrgTemplate(ctx, org, name); err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "platform template deleted",
-		slog.String("action", "org_template_delete"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("name", name),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-	)
-
-	return connect.NewResponse(&consolev1.DeleteOrgTemplateResponse{}), nil
-}
-
-// CloneOrgTemplate copies an existing platform template to a new name.
-func (h *Handler) CloneOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.CloneOrgTemplateRequest],
-) (*connect.Response[consolev1.CloneOrgTemplateResponse], error) {
-	org := req.Msg.Org
-	sourceName := req.Msg.SourceName
-	newName := req.Msg.Name
-	if org == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("org is required"))
-	}
-	if sourceName == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source_name is required"))
-	}
-	if err := validateTemplateName(newName); err != nil {
-		return nil, err
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkOrgEditAccess(ctx, claims, org); err != nil {
-		return nil, err
-	}
-
-	_, err := h.k8s.CloneOrgTemplate(ctx, org, sourceName, newName, req.Msg.DisplayName)
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-
-	slog.InfoContext(ctx, "platform template cloned",
-		slog.String("action", "org_template_clone"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("org", org),
-		slog.String("source_name", sourceName),
-		slog.String("name", newName),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-	)
-
-	return connect.NewResponse(&consolev1.CloneOrgTemplateResponse{
-		Name: newName,
-	}), nil
-}
-
-// RenderOrgTemplate evaluates a CUE platform template and returns rendered manifests.
-func (h *Handler) RenderOrgTemplate(
-	ctx context.Context,
-	req *connect.Request[consolev1.RenderOrgTemplateRequest],
-) (*connect.Response[consolev1.RenderOrgTemplateResponse], error) {
-	if req.Msg.CueTemplate == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cue_template is required"))
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueInput)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
-	}
-
-	var buf strings.Builder
-	objects := make([]map[string]any, 0, len(resources))
-	for i, r := range resources {
-		if i > 0 {
-			buf.WriteString("---\n")
-		}
-		buf.WriteString(r.YAML)
-		if r.Object != nil {
-			objects = append(objects, r.Object)
-		}
-	}
-
-	jsonBytes, err := json.MarshalIndent(objects, "", "  ")
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal rendered resources to JSON: %w", err))
-	}
-
-	return connect.NewResponse(&consolev1.RenderOrgTemplateResponse{
-		RenderedYaml: buf.String(),
-		RenderedJson: string(jsonBytes),
-	}), nil
-}
-
-// checkOrgReadAccess verifies the user can read platform templates in the org.
-// Requires org-level grants (VIEWER or above).
+// checkOrgReadAccess verifies the user has read access at the org level.
 func (h *Handler) checkOrgReadAccess(ctx context.Context, claims *rpc.Claims, org string) error {
 	if h.orgResolver == nil {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
@@ -396,7 +74,7 @@ func (h *Handler) checkOrgReadAccess(ctx context.Context, claims *rpc.Claims, or
 	return rbac.CheckAccessGrants(claims.Email, claims.Roles, users, roles, rbac.PermissionOrganizationsRead)
 }
 
-// checkOrgEditAccess verifies the user has PERMISSION_ORG_TEMPLATES_WRITE
+// checkOrgEditAccess verifies the user has PERMISSION_TEMPLATES_WRITE
 // at the org level via the OrgCascadeTemplatePerms cascade table.
 func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, org string) error {
 	if h.orgResolver == nil {
@@ -410,7 +88,7 @@ func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, or
 		)
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionOrgTemplatesWrite, rbac.OrgCascadeTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionTemplatesWrite, rbac.OrgCascadeTemplatePerms)
 }
 
 // validateTemplateName checks that the name is a valid DNS label.

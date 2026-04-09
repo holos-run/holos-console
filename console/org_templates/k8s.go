@@ -223,37 +223,35 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 	return sources, nil
 }
 
-// ListLinkableOrgTemplateInfos returns all enabled org templates as LinkableOrgTemplate
-// proto messages. Used by the DeploymentTemplateService to populate the linking UI.
+// ListLinkableOrgTemplateInfos returns all enabled org templates as Template
+// proto messages. Used by the TemplateService to populate the linking UI.
 // Only enabled templates are returned; disabled templates cannot be linked.
-func (k *K8sClient) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableOrgTemplate, error) {
+func (k *K8sClient) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.Template, error) {
 	cms, err := k.ListOrgTemplates(ctx, org)
 	if err != nil {
 		return nil, err
 	}
-	var result []*consolev1.LinkableOrgTemplate
+	var result []*consolev1.Template
 	for _, cm := range cms {
 		tmpl := configMapToOrgTemplate(&cm, org)
 		if !tmpl.Enabled {
 			continue
 		}
-		result = append(result, &consolev1.LinkableOrgTemplate{
-			Name:        tmpl.Name,
-			DisplayName: tmpl.DisplayName,
-			Description: tmpl.Description,
-			Mandatory:   tmpl.Mandatory,
-		})
+		result = append(result, tmpl)
 	}
 	return result, nil
 }
 
-// configMapToOrgTemplate converts a Kubernetes ConfigMap to an OrgTemplate protobuf message.
-func configMapToOrgTemplate(cm *corev1.ConfigMap, org string) *consolev1.OrgTemplate {
+// configMapToOrgTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
+func configMapToOrgTemplate(cm *corev1.ConfigMap, org string) *consolev1.Template {
 	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationMandatory])
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha1.AnnotationEnabled])
-	return &consolev1.OrgTemplate{
-		Name:        cm.Name,
-		Org:         org,
+	return &consolev1.Template{
+		Name: cm.Name,
+		ScopeRef: &consolev1.TemplateScopeRef{
+			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			ScopeName: org,
+		},
 		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha1.AnnotationDescription],
 		CueTemplate: cm.Data[CueTemplateKey],

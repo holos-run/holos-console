@@ -1036,7 +1036,7 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 		if resp.Msg.CuePlatformInput == "" {
 			t.Error("expected non-empty cue_platform_input")
 		}
-		if resp.Msg.CueUserInput == "" {
+		if resp.Msg.CueProjectInput == "" {
 			t.Error("expected non-empty cue_user_input")
 		}
 	})
@@ -1122,11 +1122,11 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 			t.Errorf("expected cue_platform_input to contain project name, got: %q", resp.Msg.CuePlatformInput)
 		}
 		// User input should contain deployment name and image.
-		if !containsStr(resp.Msg.CueUserInput, "web-app") {
-			t.Errorf("expected cue_user_input to contain deployment name, got: %q", resp.Msg.CueUserInput)
+		if !containsStr(resp.Msg.CueProjectInput, "web-app") {
+			t.Errorf("expected cue_user_input to contain deployment name, got: %q", resp.Msg.CueProjectInput)
 		}
-		if !containsStr(resp.Msg.CueUserInput, "nginx") {
-			t.Errorf("expected cue_user_input to contain image, got: %q", resp.Msg.CueUserInput)
+		if !containsStr(resp.Msg.CueProjectInput, "nginx") {
+			t.Errorf("expected cue_user_input to contain image, got: %q", resp.Msg.CueProjectInput)
 		}
 	})
 }
