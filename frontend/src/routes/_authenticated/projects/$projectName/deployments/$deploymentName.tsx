@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -42,7 +43,17 @@ import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetD
 import { useRenderDeploymentTemplate } from '@/queries/deployment-templates'
 import { useGetProject } from '@/queries/projects'
 
+type DeploymentTab = 'status' | 'logs' | 'template'
+
+function validateTab(value: unknown): DeploymentTab {
+  if (value === 'logs' || value === 'template') return value
+  return 'status'
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/$deploymentName')({
+  validateSearch: (search): { tab: DeploymentTab } => ({
+    tab: validateTab(search.tab),
+  }),
   component: DeploymentDetailRoute,
 })
 
@@ -56,11 +67,15 @@ export function DeploymentDetailPage({
   deploymentName: propDeploymentName,
 }: { projectName?: string; deploymentName?: string } = {}) {
   let routeParams: { projectName?: string; deploymentName?: string } = {}
+  let routeSearch: { tab?: DeploymentTab } = {}
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     routeParams = Route.useParams()
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routeSearch = Route.useSearch()
   } catch {
     routeParams = {}
+    routeSearch = {}
   }
   const projectName = propProjectName ?? routeParams.projectName ?? ''
   const deploymentName = propDeploymentName ?? routeParams.deploymentName ?? ''
@@ -88,6 +103,19 @@ export function DeploymentDetailPage({
   const [redeployError, setRedeployError] = useState<string | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
+
+  // Local tab state initialised from the URL search param so that the component
+  // responds immediately to tab clicks without waiting for a navigation cycle.
+  // The URL is kept in sync via navigate so tabs are deep-linkable.
+  const [activeTab, setActiveTab] = useState<DeploymentTab>(() => routeSearch.tab ?? 'status')
+
+  const handleTabChange = (next: string) => {
+    const tab = validateTab(next)
+    setActiveTab(tab)
+    // Persist tab in URL so selections are shareable/bookmarkable.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    void (navigate as unknown as (opts: { search: { tab: DeploymentTab }; replace: boolean }) => void)({ search: { tab }, replace: true })
+  }
 
   useEffect(() => {
     if (deployment) {
@@ -171,6 +199,7 @@ export function DeploymentDetailPage({
     <>
       <Card>
         <CardContent className="pt-6 space-y-6">
+          {/* Header — stays above the tab bar, visible on every tab */}
           <div className="flex flex-col gap-4">
             <Link
               to="/projects/$projectName/deployments"
@@ -209,202 +238,218 @@ export function DeploymentDetailPage({
             </div>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium">Status</h3>
-            <Separator />
-            {status ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground w-36 shrink-0">Replicas</span>
-                  <span>{status.readyReplicas}/{status.desiredReplicas} ready, {status.availableReplicas} available</span>
-                </div>
+          {/* Tab bar */}
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <TabsList>
+              <TabsTrigger value="status">Status</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
+              <TabsTrigger value="template">Template</TabsTrigger>
+            </TabsList>
 
-                {status.conditions.length > 0 && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">Conditions</p>
-                    <div className="space-y-1">
-                      {status.conditions.map((cond) => (
-                        <div key={cond.type} className="flex items-center gap-2 text-sm">
-                          {cond.status === 'True' ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                          ) : (
-                            <XCircle className="h-4 w-4 text-red-600 shrink-0" />
-                          )}
-                          <span className="font-medium">{cond.type}</span>
-                          {cond.reason && <span className="text-muted-foreground">({cond.reason})</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {status.pods.length > 0 && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">Pods</p>
-                    <div className="space-y-1">
-                      {status.pods.map((pod) => (
-                        <div key={pod.name} className="flex items-center gap-3 text-sm font-mono">
-                          <span>{pod.name}</span>
-                          <Badge variant="outline" className="text-xs">{pod.phase}</Badge>
-                          {pod.ready && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs">Ready</Badge>}
-                          {pod.restartCount > 0 && <span className="text-muted-foreground text-xs">{pod.restartCount} restarts</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No status available.</p>
-            )}
-          </div>
-
-          {deployment && deployment.env && deployment.env.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium">Environment Variables</h3>
-              <Separator />
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Value / Reference</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deployment.env.map((ev, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{ev.name}</TableCell>
-                      <TableCell>
-                        {ev.source.case === 'value' && 'Value'}
-                        {ev.source.case === 'secretKeyRef' && 'Secret'}
-                        {ev.source.case === 'configMapKeyRef' && 'ConfigMap'}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {ev.source.case === 'value' && ev.source.value}
-                        {ev.source.case === 'secretKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
-                        {ev.source.case === 'configMapKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium">Template Preview</h3>
-            <Separator />
-            {isPreviewPending ? (
+            {/* Status tab — replicas, conditions, pods, environment variables */}
+            <TabsContent value="status" className="mt-4 space-y-6">
               <div className="space-y-4">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-64 w-full" />
-              </div>
-            ) : preview ? (
-              <CueTemplateEditor
-                cueTemplate={preview.cueTemplate}
-                onChange={() => {}}
-                readOnly={true}
-                defaultPlatformInput={preview.cuePlatformInput}
-                defaultUserInput={preview.cueUserInput}
-                useRenderFn={useRenderDeploymentTemplate}
-              />
-            ) : null}
-          </div>
+                <h3 className="text-sm font-medium">Status</h3>
+                <Separator />
+                {status ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground w-36 shrink-0">Replicas</span>
+                      <span>{status.readyReplicas}/{status.desiredReplicas} ready, {status.availableReplicas} available</span>
+                    </div>
 
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium">API Access</h3>
-            <Separator />
-            <p className="text-xs text-muted-foreground">
-              Call this RPC from the command line. Set{' '}
-              <code className="font-mono">$HOLOS_ID_TOKEN</code> first — see the API Access
-              section on your{' '}
-              <Link to="/profile" className="underline">
-                profile page
-              </Link>
-              .
-            </p>
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                curl (Connect protocol — recommended)
-              </p>
-              <div className="relative">
-                <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                  {`curl -sk ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Copy curl command"
-                  className="absolute top-2 right-2 h-7 w-7"
-                  onClick={() => {
-                    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
-                    const cmd = `curl -sk ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
-                    navigator.clipboard.writeText(cmd)
-                    toast.success('Copied to clipboard')
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                grpcurl (gRPC backward compatibility)
-              </p>
-              <div className="relative">
-                <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                  {`grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Copy grpcurl command"
-                  className="absolute top-2 right-2 h-7 w-7"
-                  onClick={() => {
-                    const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
-                    const cmd = `grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
-                    navigator.clipboard.writeText(cmd)
-                    toast.success('Copied to clipboard')
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
+                    {status.conditions.length > 0 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-2">Conditions</p>
+                        <div className="space-y-1">
+                          {status.conditions.map((cond) => (
+                            <div key={cond.type} className="flex items-center gap-2 text-sm">
+                              {cond.status === 'True' ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-600 shrink-0" />
+                              )}
+                              <span className="font-medium">{cond.type}</span>
+                              {cond.reason && <span className="text-muted-foreground">({cond.reason})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Logs</h3>
-              <div className="flex items-center gap-2">
-                <Select value={String(tailLines)} onValueChange={(v) => setTailLines(Number(v))}>
-                  <SelectTrigger className="w-28" aria-label="Tail lines">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="50">tail: 50</SelectItem>
-                    <SelectItem value="100">tail: 100</SelectItem>
-                    <SelectItem value="500">tail: 500</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    id="previous-logs"
-                    checked={previous}
-                    onChange={(e) => setPrevious(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <Label htmlFor="previous-logs" className="text-sm font-normal cursor-pointer">Previous</Label>
+                    {status.pods.length > 0 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-2">Pods</p>
+                        <div className="space-y-1">
+                          {status.pods.map((pod) => (
+                            <div key={pod.name} className="flex items-center gap-3 text-sm font-mono">
+                              <span>{pod.name}</span>
+                              <Badge variant="outline" className="text-xs">{pod.phase}</Badge>
+                              {pod.ready && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs">Ready</Badge>}
+                              {pod.restartCount > 0 && <span className="text-muted-foreground text-xs">{pod.restartCount} restarts</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No status available.</p>
+                )}
+              </div>
+
+              {deployment && deployment.env && deployment.env.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium">Environment Variables</h3>
+                  <Separator />
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Value / Reference</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deployment.env.map((ev, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-mono text-sm">{ev.name}</TableCell>
+                          <TableCell>
+                            {ev.source.case === 'value' && 'Value'}
+                            {ev.source.case === 'secretKeyRef' && 'Secret'}
+                            {ev.source.case === 'configMapKeyRef' && 'ConfigMap'}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm text-muted-foreground">
+                            {ev.source.case === 'value' && ev.source.value}
+                            {ev.source.case === 'secretKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
+                            {ev.source.case === 'configMapKeyRef' && `${ev.source.value.name} → ${ev.source.value.key}`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Logs tab — tail lines selector, previous checkbox, log viewer */}
+            <TabsContent value="logs" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Logs</h3>
+                <div className="flex items-center gap-2">
+                  <Select value={String(tailLines)} onValueChange={(v) => setTailLines(Number(v))}>
+                    <SelectTrigger className="w-28" aria-label="Tail lines">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">tail: 50</SelectItem>
+                      <SelectItem value="100">tail: 100</SelectItem>
+                      <SelectItem value="500">tail: 500</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      id="previous-logs"
+                      checked={previous}
+                      onChange={(e) => setPrevious(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor="previous-logs" className="text-sm font-normal cursor-pointer">Previous</Label>
+                  </div>
                 </div>
               </div>
-            </div>
-            <Separator />
-            <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap">
-              {logs || 'No logs available.'}
-            </pre>
-          </div>
+              <Separator />
+              <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-[70vh] whitespace-pre-wrap">
+                {logs || 'No logs available.'}
+              </pre>
+            </TabsContent>
+
+            {/* Template tab — read-only CUE editor and API access helpers */}
+            <TabsContent value="template" className="mt-4 space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium">Template Preview</h3>
+                <Separator />
+                {isPreviewPending ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-5 w-48" />
+                    <Skeleton className="h-64 w-full" />
+                  </div>
+                ) : preview ? (
+                  <CueTemplateEditor
+                    cueTemplate={preview.cueTemplate}
+                    onChange={() => {}}
+                    readOnly={true}
+                    defaultPlatformInput={preview.cuePlatformInput}
+                    defaultUserInput={preview.cueUserInput}
+                    useRenderFn={useRenderDeploymentTemplate}
+                  />
+                ) : null}
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium">API Access</h3>
+                <Separator />
+                <p className="text-xs text-muted-foreground">
+                  Call this RPC from the command line. Set{' '}
+                  <code className="font-mono">$HOLOS_ID_TOKEN</code> first — see the API Access
+                  section on your{' '}
+                  <Link to="/profile" className="underline">
+                    profile page
+                  </Link>
+                  .
+                </p>
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    curl (Connect protocol — recommended)
+                  </p>
+                  <div className="relative">
+                    <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+                      {`curl -sk ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
+                    </pre>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy curl command"
+                      className="absolute top-2 right-2 h-7 w-7"
+                      onClick={() => {
+                        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
+                        const cmd = `curl -sk ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
+                        navigator.clipboard.writeText(cmd)
+                        toast.success('Copied to clipboard')
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    grpcurl (gRPC backward compatibility)
+                  </p>
+                  <div className="relative">
+                    <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
+                      {`grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
+                    </pre>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy grpcurl command"
+                      className="absolute top-2 right-2 h-7 w-7"
+                      onClick={() => {
+                        const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
+                        const cmd = `grpcurl -insecure \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
+                        navigator.clipboard.writeText(cmd)
+                        toast.success('Copied to clipboard')
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 

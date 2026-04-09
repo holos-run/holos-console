@@ -87,6 +87,48 @@ Follow the Display Name + slug pattern documented in `docs/frontend-patterns.md`
 </div>
 ```
 
+## Page-Level Tab Layout for Resource Detail Pages
+
+When a resource detail page has multiple distinct concerns (e.g., Status, Logs, and a raw template view), use a **three-tab layout** rather than a single vertical scroll. This matches the pattern established by ArgoCD, Headlamp, Lens, and Rancher.
+
+Canonical example: `frontend/src/routes/_authenticated/projects/$projectName/deployments/$deploymentName.tsx`
+
+**Rules:**
+
+- Use the shadcn `Tabs` component (`frontend/src/components/ui/tabs.tsx`) with `TabsList`, `TabsTrigger`, and `TabsContent`.
+- Keep the page header (breadcrumb, title, primary action buttons) **above** the tab bar so it is visible regardless of which tab is active.
+- The **default tab** is always a status / overview view — never YAML, logs, or raw content.
+- Persist the active tab in the URL as `?tab=<name>` using `validateSearch` on the route, and initialize local tab state from the search param so tab switches are immediate.
+- Constrain tall content (log viewers, YAML blocks) with `max-h-[70vh]` instead of a fixed pixel height so the tab bar remains on screen.
+- Nested `Tabs` are fine — Radix `Tabs` are independent state roots.
+
+```tsx
+export const Route = createFileRoute('...')({{
+  validateSearch: (search): {{ tab: 'status' | 'logs' | 'template' }} => ({{
+    tab: search.tab === 'logs' || search.tab === 'template' ? search.tab : 'status',
+  }}),
+  component: MyDetailRoute,
+}})
+
+// Inside the component:
+const [activeTab, setActiveTab] = useState<Tab>(() => routeSearch.tab ?? 'status')
+const handleTabChange = (next: string) => {{
+  setActiveTab(validateTab(next))
+  // persist to URL ...
+}}
+
+<Tabs value={{activeTab}} onValueChange={{handleTabChange}}>
+  <TabsList>
+    <TabsTrigger value="status">Status</TabsTrigger>
+    <TabsTrigger value="logs">Logs</TabsTrigger>
+    <TabsTrigger value="template">Template</TabsTrigger>
+  </TabsList>
+  <TabsContent value="status">...</TabsContent>
+  <TabsContent value="logs">...</TabsContent>
+  <TabsContent value="template">...</TabsContent>
+</Tabs>
+```
+
 ## Dialog / Modal Patterns
 
 - Use `Dialog` from `frontend/src/components/ui/dialog.tsx`.

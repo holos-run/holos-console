@@ -1,7 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+
+// Default useSearch stub returns 'status' tab
+const mockUseSearch = vi.fn(() => ({ tab: 'status' as 'status' | 'logs' | 'template' }))
+const mockUseNavigate = vi.fn(() => vi.fn())
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -9,11 +14,12 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ...actual,
     createFileRoute: () => () => ({
       useParams: () => ({ projectName: 'test-project', deploymentName: 'api' }),
+      useSearch: () => mockUseSearch(),
     }),
     Link: ({ children, className, to, params }: { children: React.ReactNode; className?: string; to?: string; params?: Record<string, string> }) => (
       <a href={to} data-params={JSON.stringify(params)} className={className}>{children}</a>
     ),
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockUseNavigate(),
   }
 })
 
@@ -100,6 +106,7 @@ function setupMocks(userRole = Role.OWNER) {
 describe('DeploymentDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseSearch.mockReturnValue({ tab: 'status' })
   })
 
   it('renders deployment name', () => {
@@ -133,12 +140,6 @@ describe('DeploymentDetailPage', () => {
     setupMocks()
     render(<DeploymentDetailPage />)
     expect(screen.getByText('api-7d8f9b6c4-xk2m3')).toBeInTheDocument()
-  })
-
-  it('renders log content', () => {
-    setupMocks()
-    render(<DeploymentDetailPage />)
-    expect(screen.getByText(/Starting server/)).toBeInTheDocument()
   })
 
   it('renders Re-deploy button for owners', () => {
@@ -417,31 +418,121 @@ describe('DeploymentDetailPage', () => {
     expect(screen.getByDisplayValue('DB_URL')).toBeInTheDocument()
   })
 
-  describe('Template Preview section', () => {
-    it('renders Template Preview heading', () => {
+  // ── Tab layout tests ──────────────────────────────────────────────────────
+
+  it('renders Status tab by default', () => {
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    // Status tab trigger should be present and active
+    const statusTab = screen.getByRole('tab', { name: /status/i })
+    expect(statusTab).toBeInTheDocument()
+    expect(statusTab).toHaveAttribute('data-state', 'active')
+  })
+
+  it('Status tab content is visible by default without clicking', () => {
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    // Replica count visible on default Status tab
+    expect(screen.getByText(/1\/1 ready/)).toBeInTheDocument()
+  })
+
+  it('switches to Logs tab when clicked and shows log viewer', async () => {
+    const user = userEvent.setup()
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /logs/i }))
+    expect(screen.getByText(/Starting server/)).toBeInTheDocument()
+  })
+
+  it('switches to Template tab when clicked and shows CUE editor', async () => {
+    const user = userEvent.setup()
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /template/i }))
+    const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
+    expect(editor).toBeInTheDocument()
+    expect(editor.readOnly).toBe(true)
+    expect(editor.value).toContain('#ProjectInput')
+  })
+
+  it('keeps Re-deploy and Delete buttons visible on all tabs', async () => {
+    const user = userEvent.setup()
+    setupMocks(Role.OWNER)
+    render(<DeploymentDetailPage />)
+
+    // Visible on Status tab (default)
+    expect(screen.getByRole('button', { name: /re-?deploy/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete deployment/i })).toBeInTheDocument()
+
+    // Visible on Logs tab
+    await user.click(screen.getByRole('tab', { name: /logs/i }))
+    expect(screen.getByRole('button', { name: /re-?deploy/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete deployment/i })).toBeInTheDocument()
+
+    // Visible on Template tab
+    await user.click(screen.getByRole('tab', { name: /template/i }))
+    expect(screen.getByRole('button', { name: /re-?deploy/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete deployment/i })).toBeInTheDocument()
+  })
+
+  it('activates Logs tab when URL has ?tab=logs', () => {
+    mockUseSearch.mockReturnValue({ tab: 'logs' })
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    const logsTab = screen.getByRole('tab', { name: /logs/i })
+    expect(logsTab).toHaveAttribute('data-state', 'active')
+    expect(screen.getByText(/Starting server/)).toBeInTheDocument()
+  })
+
+  it('activates Template tab when URL has ?tab=template', () => {
+    mockUseSearch.mockReturnValue({ tab: 'template' })
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    const templateTab = screen.getByRole('tab', { name: /template/i })
+    expect(templateTab).toHaveAttribute('data-state', 'active')
+  })
+
+  it('log viewer does not have max-h-96 class (uses larger height)', async () => {
+    const user = userEvent.setup()
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    await user.click(screen.getByRole('tab', { name: /logs/i }))
+    // The log <pre> should not be capped at max-h-96
+    const logPre = screen.getByText(/Starting server/).closest('pre')
+    expect(logPre).not.toHaveClass('max-h-96')
+  })
+
+  describe('Template tab section', () => {
+    beforeEach(() => {
       setupMocks()
-      render(<DeploymentDetailPage />)
-      expect(screen.getByText('Template Preview')).toBeInTheDocument()
     })
 
-    it('renders CUE template source in read-only editor', () => {
-      setupMocks()
+    it('renders Template tab trigger', () => {
       render(<DeploymentDetailPage />)
+      expect(screen.getByRole('tab', { name: /template/i })).toBeInTheDocument()
+    })
+
+    it('renders CUE template source in read-only editor after clicking Template tab', async () => {
+      const user = userEvent.setup()
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
       expect(editor).toBeInTheDocument()
       expect(editor.readOnly).toBe(true)
       expect(editor.value).toContain('#ProjectInput')
     })
 
-    it('renders API Access section heading', () => {
-      setupMocks()
+    it('renders API Access section after clicking Template tab', async () => {
+      const user = userEvent.setup()
       render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       expect(screen.getByText('API Access')).toBeInTheDocument()
     })
 
-    it('renders a working curl command using HOLOS_ID_TOKEN', () => {
-      setupMocks()
+    it('renders a working curl command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
+      const user = userEvent.setup()
       render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       const curl = screen.getByText(/curl -sk/)
       expect(curl.textContent).toContain('Connect-Protocol-Version: 1')
       expect(curl.textContent).toContain('$HOLOS_ID_TOKEN')
@@ -450,26 +541,33 @@ describe('DeploymentDetailPage', () => {
       expect(curl.textContent).toContain('"name": "api"')
     })
 
-    it('renders a grpcurl -insecure command using HOLOS_ID_TOKEN', () => {
-      setupMocks()
+    it('renders a grpcurl -insecure command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
+      const user = userEvent.setup()
       render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       const grpcurl = screen.getByText(/grpcurl -insecure/)
       expect(grpcurl.textContent).toContain('$HOLOS_ID_TOKEN')
       expect(grpcurl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
     })
 
-    it('does not render the broken grpcurl -plaintext form', () => {
-      setupMocks()
+    it('does not render the broken grpcurl -plaintext form', async () => {
+      const user = userEvent.setup()
       render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       expect(screen.queryByText(/grpcurl -plaintext/)).not.toBeInTheDocument()
     })
 
-    it('copy button for curl command copies correct command', async () => {
-      setupMocks()
+    it('copy button for curl command copies correct command after clicking Template tab', async () => {
       const writeText = vi.fn().mockResolvedValue(undefined)
-      Object.assign(navigator, { clipboard: { writeText } })
+      // userEvent intercepts clipboard; wire up the spy on the userEvent clipboard mock
+      const user = userEvent.setup({ writeToClipboard: true })
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      })
       render(<DeploymentDetailPage />)
-      fireEvent.click(screen.getByLabelText(/copy curl command/i))
+      await user.click(screen.getByRole('tab', { name: /template/i }))
+      await user.click(screen.getByLabelText(/copy curl command/i))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const copied = writeText.mock.calls[0][0] as string
       expect(copied).toContain('Connect-Protocol-Version: 1')
@@ -479,12 +577,16 @@ describe('DeploymentDetailPage', () => {
       expect(copied).toContain('api')
     })
 
-    it('copy button for grpcurl command copies correct command', async () => {
-      setupMocks()
+    it('copy button for grpcurl command copies correct command after clicking Template tab', async () => {
       const writeText = vi.fn().mockResolvedValue(undefined)
-      Object.assign(navigator, { clipboard: { writeText } })
+      const user = userEvent.setup({ writeToClipboard: true })
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      })
       render(<DeploymentDetailPage />)
-      fireEvent.click(screen.getByLabelText(/copy grpcurl command/i))
+      await user.click(screen.getByRole('tab', { name: /template/i }))
+      await user.click(screen.getByLabelText(/copy grpcurl command/i))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const copied = writeText.mock.calls[0][0] as string
       expect(copied).toContain('-insecure')
@@ -494,7 +596,8 @@ describe('DeploymentDetailPage', () => {
       expect(copied).toContain('api')
     })
 
-    it('shows skeleton while preview is loading', () => {
+    it('shows skeleton while preview is loading after clicking Template tab', async () => {
+      const user = userEvent.setup()
       ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
       ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
       ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
@@ -505,8 +608,35 @@ describe('DeploymentDetailPage', () => {
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
       render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
       const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
       expect(skeletons.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('Logs tab section', () => {
+    it('renders log content after clicking Logs tab', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /logs/i }))
+      expect(screen.getByText(/Starting server/)).toBeInTheDocument()
+    })
+
+    it('renders tail lines selector in Logs tab', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /logs/i }))
+      expect(screen.getByRole('combobox', { name: /tail lines/i })).toBeInTheDocument()
+    })
+
+    it('renders previous checkbox in Logs tab', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /logs/i }))
+      expect(screen.getByLabelText(/previous/i)).toBeInTheDocument()
     })
   })
 })
