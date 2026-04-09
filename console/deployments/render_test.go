@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -1507,6 +1508,310 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 		}
 		if !kindSet["ServiceAccount"] {
 			t.Error("expected ServiceAccount resource from platformResources")
+		}
+	})
+}
+
+// closedStructOrgTemplate is an org-level system template that:
+//  1. Provides an HTTPRoute in platformResources (platform team manages traffic).
+//  2. Closes projectResources.namespacedResources to Deployment, Service, and
+//     ServiceAccount so that any project template producing another Kind causes
+//     a CUE evaluation error immediately (ADR 016 Decision 9).
+//
+// This template mirrors the documented example in docs/cue-template-guide.md
+// ("Platform and Project Templates Working Together").
+const closedStructOrgTemplate = `
+
+input: #ProjectInput & {
+	port: >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+platformResources: {
+	namespacedResources: (platform.namespace): {
+		HTTPRoute: (input.name): {
+			apiVersion: "gateway.networking.k8s.io/v1"
+			kind:       "HTTPRoute"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				parentRefs: [{
+					group:     "gateway.networking.k8s.io"
+					kind:      "Gateway"
+					namespace: platform.gatewayNamespace
+					name:      "default"
+				}]
+				rules: [{
+					backendRefs: [{
+						name: input.name
+						port: 80
+					}]
+				}]
+			}
+		}
+	}
+	clusterResources: {}
+}
+
+// Close projectResources.namespacedResources so that every namespace bucket
+// may only contain Deployment, Service, or ServiceAccount. Using close() with
+// optional fields is the correct CUE pattern: the close() call marks the struct
+// as closed (no additional fields allowed), and the ? marks each listed field
+// as optional (a namespace bucket need not contain all three). Any unlisted
+// Kind key — such as RoleBinding — is a CUE constraint violation.
+projectResources: namespacedResources: [_]: close({
+	Deployment?:     _
+	Service?:        _
+	ServiceAccount?: _
+})
+`
+
+// closedStructProjectTemplate is a project-level deployment template that
+// produces exactly the three resource kinds allowed by closedStructOrgTemplate:
+// Deployment, Service, and ServiceAccount. Unification with the org template
+// should succeed.
+const closedStructProjectTemplate = `
+
+input: #ProjectInput & {
+	port: >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+		}
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				replicas: 1
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: {
+						serviceAccountName: input.name
+						containers: [{
+							name:  input.name
+							image: input.image + ":" + input.tag
+							ports: [{containerPort: input.port, name: "http"}]
+						}]
+					}
+				}
+			}
+		}
+		Service: (input.name): {
+			apiVersion: "v1"
+			kind:       "Service"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: "app.kubernetes.io/name": input.name
+				ports: [{port: 80, targetPort: "http", name: "http"}]
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// closedStructProjectTemplateForbidden is a project-level deployment template
+// that produces the three allowed kinds plus a RoleBinding. Because the org
+// template (closedStructOrgTemplate) closes projectResources.namespacedResources
+// to Deployment, Service, and ServiceAccount, unifying this template with the
+// org template should cause a CUE evaluation error naming the disallowed field.
+const closedStructProjectTemplateForbidden = `
+
+input: #ProjectInput & {
+	port: >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+		}
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+		Service: (input.name): {
+			apiVersion: "v1"
+			kind:       "Service"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: "app.kubernetes.io/name": input.name
+				ports: [{port: 80, targetPort: "http", name: "http"}]
+			}
+		}
+		// RoleBinding is NOT in the org's _allowedKinds list — this should
+		// cause a CUE evaluation error: "field not allowed".
+		RoleBinding: "my-binding": {
+			apiVersion: "rbac.authorization.k8s.io/v1"
+			kind:       "RoleBinding"
+			metadata: {
+				name:      "my-binding"
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			roleRef: {
+				apiGroup: "rbac.authorization.k8s.io"
+				kind:     "ClusterRole"
+				name:     "view"
+			}
+			subjects: [{
+				kind:      "ServiceAccount"
+				name:      input.name
+				namespace: platform.namespace
+			}]
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// TestCueRenderer_ClosedStructKindConstraint verifies the ADR 016 Decision 9
+// constraint pattern: an org-level system template can close
+// projectResources.namespacedResources to a set of allowed Kinds, and any
+// project template that produces a disallowed Kind causes a CUE evaluation
+// error before any Kubernetes API call is made.
+//
+// The templates used here mirror the documented examples in
+// docs/cue-template-guide.md ("Platform and Project Templates Working Together").
+func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
+	renderer := &CueRenderer{}
+
+	platform := v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        "prj-my-project",
+		GatewayNamespace: "istio-ingress",
+		Organization:     "my-org",
+		Claims: v1alpha1.Claims{
+			Iss:           "https://example.com",
+			Sub:           "u1",
+			Exp:           9999999999,
+			Iat:           1000000000,
+			Email:         "test@example.com",
+			EmailVerified: true,
+		},
+	}
+	project := v1alpha1.ProjectInput{
+		Name:  "web-app",
+		Image: "nginx",
+		Tag:   "1.25",
+		Port:  8080,
+	}
+
+	// Sub-test 1: allowed kinds succeed.
+	// The org template closes projectResources.namespacedResources to Deployment,
+	// Service, ServiceAccount. The project template produces exactly those three
+	// kinds. RenderWithSystemTemplates should succeed and return all expected
+	// resources: 3 project resources (Deployment, Service, ServiceAccount) from
+	// projectResources + 1 HTTPRoute from platformResources = 4 total.
+	t.Run("allowed kinds succeed", func(t *testing.T) {
+		resources, err := renderer.RenderWithSystemTemplates(
+			context.Background(),
+			closedStructProjectTemplate,
+			[]string{closedStructOrgTemplate},
+			platform,
+			project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error for allowed kinds, got: %v", err)
+		}
+		// Expect 4 resources: Deployment, Service, ServiceAccount from
+		// projectResources + HTTPRoute from platformResources.
+		if len(resources) != 4 {
+			t.Fatalf("expected 4 resources (Deployment, Service, ServiceAccount, HTTPRoute), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			kindSet[r.GetKind()] = true
+		}
+		for _, expected := range []string{"Deployment", "Service", "ServiceAccount", "HTTPRoute"} {
+			if !kindSet[expected] {
+				t.Errorf("expected %s resource in output", expected)
+			}
+		}
+	})
+
+	// Sub-test 2: disallowed kind fails.
+	// Same org template, but the project template also produces a RoleBinding.
+	// CUE evaluation must fail with an error containing "not allowed" (the CUE
+	// closed struct error), matching the documented error:
+	//   projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
+	t.Run("disallowed kind fails with CUE closed struct error", func(t *testing.T) {
+		_, err := renderer.RenderWithSystemTemplates(
+			context.Background(),
+			closedStructProjectTemplateForbidden,
+			[]string{closedStructOrgTemplate},
+			platform,
+			project,
+		)
+		if err == nil {
+			t.Fatal("expected CUE evaluation error for disallowed RoleBinding kind, got nil")
+		}
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "not allowed") {
+			t.Errorf("expected error message to contain 'not allowed' (CUE closed struct error), got: %s", errMsg)
 		}
 	})
 }

@@ -371,18 +371,18 @@ platformResources: {
 
 // ── Project resource constraints (enforced by the platform team) ─────────────
 
-// _allowedKinds lists the only resource kinds project templates may produce.
-// Closing the struct to these keys means CUE evaluation fails immediately
-// if a project template tries to add any other Kind (ADR 016 Decision 9).
-_allowedKinds: ["Deployment", "Service", "ServiceAccount"]
-
 // Close projectResources.namespacedResources so that every namespace bucket
-// may only contain the keys listed in _allowedKinds.
-projectResources: namespacedResources: [_]: {
-    for kind in _allowedKinds {
-        (kind): _
-    }
-}
+// may only contain Deployment, Service, or ServiceAccount. Using close() with
+// optional fields is the correct CUE pattern: the close() call marks the struct
+// as closed (no additional fields allowed), and the ? marks each listed field
+// as optional (a namespace bucket need not contain all three). Any unlisted
+// Kind key — such as RoleBinding — is a CUE constraint violation at evaluation
+// time, before any Kubernetes API call (ADR 016 Decision 9).
+projectResources: namespacedResources: [_]: close({
+    Deployment?:     _
+    Service?:        _
+    ServiceAccount?: _
+})
 ```
 
 Key points:
@@ -390,10 +390,11 @@ Key points:
   reads it — project templates that accidentally define `platformResources` are
   silently ignored. This keeps platform resources exclusively under platform
   control.
-- **`projectResources.namespacedResources: [_]: { ... }`** matches every
-  namespace bucket. Wrapping the body in the `for` loop closes the struct to
-  exactly the listed Kind keys, which makes any unlisted Kind a CUE constraint
-  violation at evaluation time.
+- **`projectResources.namespacedResources: [_]: close({ ... })`** matches every
+  namespace bucket. The `close()` call marks the struct as closed so no additional
+  fields are allowed. Each listed Kind field carries `?` (optional) so a namespace
+  bucket need not contain all three kinds. Any unlisted Kind key — such as
+  `RoleBinding` — causes a CUE evaluation error before any Kubernetes API call.
 - The `input.name` and `platform.namespace` references work because system
   templates are concatenated with the deployment template before compilation —
   both `input` and `platform` are fully resolved.
