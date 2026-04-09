@@ -46,7 +46,7 @@ toggle a project setting. This model uses three roles (Viewer, Editor, Owner),
 annotation-based grants on Kubernetes Namespace and Secret objects, and cascade
 tables that map parent-level roles to child-level permissions.
 
-ADR 014 introduces a configuration management hierarchy (Organization ->
+ADR 016 defines a configuration management hierarchy (Organization ->
 Folder(s) -> Project) where templates at each level contribute to different
 resource collections (`platformResources` vs. `projectResources`). This
 hierarchy needs its own RBAC model that determines:
@@ -79,7 +79,7 @@ they are explained in terms of what they mean for the template author.
 
 For a visual overview of how the hierarchy, templates, inputs, and resource
 collections fit together, see the
-[Resource Model diagram in ADR 014](014-resource-model.svg).
+[Resource Model diagram](014-resource-model.svg) (originally from ADR 014, now maintained alongside ADR 016 as the active schema reference).
 
 ## Decisions
 
@@ -170,7 +170,7 @@ template's values. This is standard CUE unification — the same mechanism used
 everywhere else in the language. For example, a platform template can close the
 `projectResources` struct to restrict which resource Kinds a project template
 may produce — if a project template tries to add a `ClusterRoleBinding`, CUE
-evaluation fails before any Kubernetes API call (see ADR 014, Decision 9 for
+evaluation fails before any Kubernetes API call (see ADR 016, Decision 9 for
 the full mechanism and examples). Platform templates can also require labels,
 set minimum replica counts, or define any other value that project templates
 must satisfy through unification.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — refined by [ADR 016](016-config-management-resource-schema.md)
+Accepted — refined by [ADR 016](016-config-management-resource-schema.md). Note: ADR 016 renames output fields (output.* → projectResources.*/platformResources.*) and input identifiers (system.* → platform.*).
 
 ## Context
 
