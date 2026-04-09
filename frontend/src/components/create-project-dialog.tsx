@@ -12,13 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import { useListOrganizations } from '@/queries/organizations'
 import { useCreateProject } from '@/queries/projects'
 import { toSlug } from '@/lib/slug'
@@ -102,18 +96,18 @@ export function CreateProjectDialog({
             )}
             <div className="space-y-1">
               <Label htmlFor="project-org">Organization</Label>
-              <Select defaultValue={defaultOrganization} onValueChange={setOrganization}>
-                <SelectTrigger id="project-org">
-                  <SelectValue placeholder="Select organization" />
-                </SelectTrigger>
-                <SelectContent>
-                  {organizations.map((org) => (
-                    <SelectItem key={org.name} value={org.name}>
-                      {org.displayName || org.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                aria-label="Organization"
+                items={organizations.map((org) => ({
+                  value: org.name,
+                  label: org.displayName || org.name,
+                }))}
+                value={organization}
+                onValueChange={setOrganization}
+                placeholder="Select organization"
+                searchPlaceholder="Search organizations..."
+                emptyMessage="No organizations found."
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="project-display-name">Display Name</Label>

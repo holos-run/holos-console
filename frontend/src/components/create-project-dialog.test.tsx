@@ -62,37 +62,23 @@ vi.mock('@/components/ui/alert', () => ({
   AlertDescription: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ children, onValueChange, defaultValue }: {
-    children: React.ReactNode
-    onValueChange?: (v: string) => void
-    defaultValue?: string
+vi.mock('@/components/ui/combobox', () => ({
+  Combobox: ({ items, value, onValueChange, 'aria-label': ariaLabel }: {
+    items: { value: string; label: string }[]
+    value: string
+    onValueChange: (v: string) => void
+    'aria-label'?: string
   }) => (
-    <div data-testid="select" data-default={defaultValue}>
-      {React.Children.map(children, (child) => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<{ onValueChange?: (v: string) => void }>, { onValueChange })
-        }
-        return child
-      })}
-    </div>
-  ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
-  SelectContent: ({ children, onValueChange }: { children: React.ReactNode; onValueChange?: (v: string) => void }) => (
-    <div>
-      {React.Children.map(children, (child) => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<{ onValueChange?: (v: string) => void }>, { onValueChange })
-        }
-        return child
-      })}
-    </div>
-  ),
-  SelectItem: ({ children, value, onValueChange }: { children: React.ReactNode; value: string; onValueChange?: (v: string) => void }) => (
-    <button data-testid={`select-item-${value}`} onClick={() => onValueChange?.(value)}>
-      {children}
-    </button>
+    <select
+      data-testid="select"
+      aria-label={ariaLabel ?? 'Organization'}
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
+      {items.map((item) => (
+        <option key={item.value} value={item.value}>{item.label}</option>
+      ))}
+    </select>
   ),
 }))
 
@@ -131,8 +117,8 @@ describe('CreateProjectDialog', () => {
 
   it('pre-selects defaultOrganization in the org select', () => {
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
-    const select = screen.getByTestId('select')
-    expect(select.getAttribute('data-default')).toBe('my-org')
+    const select = screen.getByTestId('select') as HTMLSelectElement
+    expect(select.value).toBe('my-org')
   })
 
   it('auto-derives name from display name as user types', () => {
