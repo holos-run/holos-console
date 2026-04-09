@@ -97,6 +97,10 @@ type Config struct {
 	// Default: "org-"
 	OrganizationPrefix string
 
+	// FolderPrefix is prepended to folder namespace names.
+	// Default: "fld-"
+	FolderPrefix string
+
 	// ProjectPrefix is prepended to project namespace names.
 	// Default: "prj-"
 	ProjectPrefix string
@@ -160,6 +164,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Apply defaults for namespace prefixes
 	if s.cfg.OrganizationPrefix == "" {
 		s.cfg.OrganizationPrefix = "org-"
+	}
+	if s.cfg.FolderPrefix == "" {
+		s.cfg.FolderPrefix = "fld-"
 	}
 	if s.cfg.ProjectPrefix == "" {
 		s.cfg.ProjectPrefix = "prj-"
@@ -234,7 +241,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// Register services (protected - requires auth)
 	if k8sClientset != nil {
-		nsResolver := &resolver.Resolver{NamespacePrefix: s.cfg.NamespacePrefix, OrganizationPrefix: s.cfg.OrganizationPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		nsResolver := &resolver.Resolver{NamespacePrefix: s.cfg.NamespacePrefix, OrganizationPrefix: s.cfg.OrganizationPrefix, FolderPrefix: s.cfg.FolderPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
 		slog.Info("kubernetes client initialized")
 
 		// Organization service (projectsK8s created first for linked-project precondition check)

@@ -1,6 +1,6 @@
-// Package resolver translates user-facing resource names (organizations, projects)
-// to Kubernetes namespace names using independently configurable prefixes for each
-// resource type.
+// Package resolver translates user-facing resource names (organizations, folders,
+// projects) to Kubernetes namespace names using independently configurable prefixes
+// for each resource type.
 package resolver
 
 import (
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
 // Re-export constants from v1alpha1 so existing importers continue to compile.
@@ -22,10 +23,12 @@ var (
 
 // Resolver translates between user-facing resource names and Kubernetes namespace names.
 // Organization namespaces: {NamespacePrefix}{OrganizationPrefix}{name}
-// Project namespaces: {NamespacePrefix}{ProjectPrefix}{name}
+// Folder namespaces:       {NamespacePrefix}{FolderPrefix}{name}
+// Project namespaces:      {NamespacePrefix}{ProjectPrefix}{name}
 type Resolver struct {
 	NamespacePrefix    string // default "holos-"
 	OrganizationPrefix string // default "org-"
+	FolderPrefix       string // default "fld-"
 	ProjectPrefix      string // default "prj-"
 }
 
@@ -59,6 +62,44 @@ func (r *Resolver) ProjectFromNamespace(ns string) (string, error) {
 		return "", &PrefixMismatchError{Namespace: ns, Prefix: prefix}
 	}
 	return strings.TrimPrefix(ns, prefix), nil
+}
+
+// FolderNamespace returns the Kubernetes namespace name for a folder.
+func (r *Resolver) FolderNamespace(folder string) string {
+	return r.NamespacePrefix + r.FolderPrefix + folder
+}
+
+// FolderFromNamespace extracts the folder name from a Kubernetes namespace name.
+// Returns a *PrefixMismatchError when ns does not start with the expected prefix.
+func (r *Resolver) FolderFromNamespace(ns string) (string, error) {
+	prefix := r.NamespacePrefix + r.FolderPrefix
+	if !strings.HasPrefix(ns, prefix) {
+		return "", &PrefixMismatchError{Namespace: ns, Prefix: prefix}
+	}
+	return strings.TrimPrefix(ns, prefix), nil
+}
+
+// ResourceTypeFromNamespace returns the resource kind ("organization", "folder",
+// "project") and logical name for the given Kubernetes namespace, based on prefix
+// matching. Returns an error when the namespace does not match any known prefix.
+// This is used by the hierarchy walker to classify ancestors without an extra
+// K8s API call.
+func (r *Resolver) ResourceTypeFromNamespace(ns string) (kind, name string, err error) {
+	if orgName, e := r.OrgFromNamespace(ns); e == nil {
+		return v1alpha2.ResourceTypeOrganization, orgName, nil
+	}
+	if folderName, e := r.FolderFromNamespace(ns); e == nil {
+		return v1alpha2.ResourceTypeFolder, folderName, nil
+	}
+	if projName, e := r.ProjectFromNamespace(ns); e == nil {
+		return v1alpha2.ResourceTypeProject, projName, nil
+	}
+	return "", "", fmt.Errorf("namespace %q does not match any known prefix (org=%q, folder=%q, project=%q)",
+		ns,
+		r.NamespacePrefix+r.OrganizationPrefix,
+		r.NamespacePrefix+r.FolderPrefix,
+		r.NamespacePrefix+r.ProjectPrefix,
+	)
 }
 
 // PrefixMismatchError is returned when a namespace name does not begin with
