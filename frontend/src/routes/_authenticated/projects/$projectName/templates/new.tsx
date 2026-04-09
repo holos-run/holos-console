@@ -90,7 +90,7 @@ const EXAMPLE_HTTPBIN_TEMPLATE = `// Project-level deployment template for go-ht
 // Produces: ServiceAccount, Deployment, Service.
 // Allowed by the org constraint: Deployment, Service, ServiceAccount.
 //
-// Pair with an org-level system template to add an
+// Pair with console/system_templates/example_httpbin_platform.cue to add an
 // HTTPRoute that routes gateway traffic to the Service.
 
 // Use generated type definitions from api/v1alpha1 (prepended by renderer).
