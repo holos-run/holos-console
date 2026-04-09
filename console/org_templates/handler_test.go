@@ -1,4 +1,4 @@
-package system_templates
+package org_templates
 
 import (
 	"context"
@@ -61,10 +61,10 @@ const validCue = `
 #Input: {}
 `
 
-func TestListSystemTemplatesHandler(t *testing.T) {
+func TestListOrgTemplatesHandler(t *testing.T) {
 	t.Run("returns templates for org OWNER", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -136,10 +136,10 @@ func TestListSystemTemplatesHandler(t *testing.T) {
 	})
 }
 
-func TestGetSystemTemplateHandler(t *testing.T) {
+func TestGetOrgTemplateHandler(t *testing.T) {
 	t.Run("returns template for org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -159,7 +159,7 @@ func TestGetSystemTemplateHandler(t *testing.T) {
 	})
 }
 
-func TestCreateSystemTemplateHandler(t *testing.T) {
+func TestCreateOrgTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to create", func(t *testing.T) {
 		email := "owner@example.com"
 		ns := orgNS("my-org")
@@ -228,10 +228,10 @@ func TestCreateSystemTemplateHandler(t *testing.T) {
 	})
 }
 
-func TestUpdateSystemTemplateHandler(t *testing.T) {
+func TestUpdateOrgTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to update", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -251,7 +251,7 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 
 	t.Run("denies org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -270,10 +270,10 @@ func TestUpdateSystemTemplateHandler(t *testing.T) {
 	})
 }
 
-func TestDeleteSystemTemplateHandler(t *testing.T) {
+func TestDeleteOrgTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to delete", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -291,7 +291,7 @@ func TestDeleteSystemTemplateHandler(t *testing.T) {
 
 	t.Run("denies org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -311,7 +311,7 @@ func TestDeleteSystemTemplateHandler(t *testing.T) {
 	})
 }
 
-func TestRenderSystemTemplateHandler(t *testing.T) {
+func TestRenderOrgTemplateHandler(t *testing.T) {
 	t.Run("renders template for authenticated user", func(t *testing.T) {
 		email := "owner@example.com"
 		ns := orgNS("my-org")
@@ -413,10 +413,10 @@ func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
 
-func TestCloneSystemTemplateHandler(t *testing.T) {
+func TestCloneOrgTemplateHandler(t *testing.T) {
 	t.Run("allows org OWNER to clone", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -439,7 +439,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 
 	t.Run("clone starts with enabled=false", func(t *testing.T) {
 		email := "owner@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, true)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -467,7 +467,7 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 
 	t.Run("denies org VIEWER", func(t *testing.T) {
 		email := "viewer@example.com"
-		cm := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		cm := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -512,8 +512,8 @@ func TestCloneSystemTemplateHandler(t *testing.T) {
 
 	t.Run("returns error when target name already exists", func(t *testing.T) {
 		email := "owner@example.com"
-		source := sysTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
-		target := sysTemplateConfigMap("my-org", "ref-grant-copy", "ReferenceGrant Copy", "desc", validCue, false, false)
+		source := orgTemplateConfigMap("my-org", "ref-grant", "ReferenceGrant", "desc", validCue, true, false)
+		target := orgTemplateConfigMap("my-org", "ref-grant-copy", "ReferenceGrant Copy", "desc", validCue, false, false)
 		ns := orgNS("my-org")
 		fakeClient := fake.NewClientset(ns, source, target)
 		k8s := NewK8sClient(fakeClient, testResolver())

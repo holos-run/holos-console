@@ -1,4 +1,4 @@
-package system_templates
+package org_templates
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 )
 
-// minimalSystemTemplate is a minimal platform template (code: SystemTemplate) for
+// minimalOrgTemplate is a minimal platform template (code: SystemTemplate) for
 // testing the MandatoryTemplateApplier. It only references platform.namespace
 // (not input.*) so it can be rendered standalone at project creation time without
 // a deployment template or user input.
-const minimalSystemTemplate = `
+const minimalOrgTemplate = `
 
 platform: {
 	project:          string
@@ -83,11 +83,11 @@ func (s *stubResourceApplier) Apply(_ context.Context, namespace, deploymentName
 	return s.err
 }
 
-func TestApplyMandatorySystemTemplates_AppliesMandatoryAndEnabledTemplates(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_AppliesMandatoryAndEnabledTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=true AND enabled=true — should be applied.
 	// Use a minimal platform template that can render standalone without a deployment template.
-	cm := sysTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalSystemTemplate, true, true)
+	cm := orgTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalOrgTemplate, true, true)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{}
@@ -102,7 +102,7 @@ func TestApplyMandatorySystemTemplates_AppliesMandatoryAndEnabledTemplates(t *te
 		EmailVerified: true,
 	}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -121,10 +121,10 @@ func TestApplyMandatorySystemTemplates_AppliesMandatoryAndEnabledTemplates(t *te
 	}
 }
 
-func TestApplyMandatorySystemTemplates_SkipsNonMandatoryTemplates(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_SkipsNonMandatoryTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=false — should not be applied.
-	cm := sysTemplateConfigMap("my-org", "optional-template", "Optional", "desc", DefaultReferenceGrantTemplate, false, false)
+	cm := orgTemplateConfigMap("my-org", "optional-template", "Optional", "desc", DefaultReferenceGrantTemplate, false, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{}
@@ -132,7 +132,7 @@ func TestApplyMandatorySystemTemplates_SkipsNonMandatoryTemplates(t *testing.T) 
 
 	claims := &rpc.Claims{Sub: "user-123", Email: "owner@example.com"}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -142,7 +142,7 @@ func TestApplyMandatorySystemTemplates_SkipsNonMandatoryTemplates(t *testing.T) 
 	}
 }
 
-func TestApplyMandatorySystemTemplates_NoTemplates(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_NoTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	fakeClient := fake.NewClientset(ns)
 	k8s := NewK8sClient(fakeClient, testResolver())
@@ -151,7 +151,7 @@ func TestApplyMandatorySystemTemplates_NoTemplates(t *testing.T) {
 
 	claims := &rpc.Claims{Sub: "user-123", Email: "owner@example.com"}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err != nil {
 		t.Fatalf("expected no error when no templates exist, got %v", err)
 	}
@@ -161,10 +161,10 @@ func TestApplyMandatorySystemTemplates_NoTemplates(t *testing.T) {
 	}
 }
 
-func TestApplyMandatorySystemTemplates_ApplierErrorPropagates(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_ApplierErrorPropagates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=true AND enabled=true so the applier is reached and can fail.
-	cm := sysTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalSystemTemplate, true, true)
+	cm := orgTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalOrgTemplate, true, true)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{err: fmt.Errorf("apply failed")}
@@ -179,16 +179,16 @@ func TestApplyMandatorySystemTemplates_ApplierErrorPropagates(t *testing.T) {
 		EmailVerified: true,
 	}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err == nil {
 		t.Fatal("expected error when applier fails, got nil")
 	}
 }
 
-func TestApplyMandatorySystemTemplates_SkipsDisabledMandatoryTemplates(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_SkipsDisabledMandatoryTemplates(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=true but enabled=false — should NOT be applied.
-	cm := sysTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalSystemTemplate, true, false)
+	cm := orgTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalOrgTemplate, true, false)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	applier := &stubResourceApplier{}
@@ -196,7 +196,7 @@ func TestApplyMandatorySystemTemplates_SkipsDisabledMandatoryTemplates(t *testin
 
 	claims := &rpc.Claims{Sub: "user-123", Email: "owner@example.com"}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -206,10 +206,10 @@ func TestApplyMandatorySystemTemplates_SkipsDisabledMandatoryTemplates(t *testin
 	}
 }
 
-func TestApplyMandatorySystemTemplates_NilApplierSkips(t *testing.T) {
+func TestApplyMandatoryOrgTemplates_NilApplierSkips(t *testing.T) {
 	ns := orgNS("my-org")
 	// mandatory=true AND enabled=true so the nil-applier warning path is reached.
-	cm := sysTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalSystemTemplate, true, true)
+	cm := orgTemplateConfigMap("my-org", "minimal-template", "Minimal", "desc", minimalOrgTemplate, true, true)
 	fakeClient := fake.NewClientset(ns, cm)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	// nil applier — should log a warning and skip without error.
@@ -224,7 +224,7 @@ func TestApplyMandatorySystemTemplates_NilApplierSkips(t *testing.T) {
 		EmailVerified: true,
 	}
 
-	err := mta.ApplyMandatorySystemTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
+	err := mta.ApplyMandatoryOrgTemplates(context.Background(), "my-org", "my-project", "prj-my-project", claims)
 	if err != nil {
 		t.Fatalf("expected no error with nil applier (should skip), got %v", err)
 	}

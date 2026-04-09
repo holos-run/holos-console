@@ -1,4 +1,4 @@
-package system_templates
+package org_templates
 
 import (
 	"context"
@@ -31,21 +31,21 @@ func NewMandatoryTemplateApplier(k8s *K8sClient, renderer *deployments.CueRender
 	return &MandatoryTemplateApplier{k8s: k8s, renderer: renderer, applier: applier}
 }
 
-// ApplyMandatorySystemTemplates lists all mandatory platform templates for the
+// ApplyMandatoryOrgTemplates lists all mandatory platform templates for the
 // org, renders each one using PlatformInput derived from the project and caller
 // claims, and applies the rendered resources to the project namespace.
 //
 // If any template render or apply fails, an error is returned describing which
 // template failed. The caller (CreateProject) is responsible for cleanup.
-func (a *MandatoryTemplateApplier) ApplyMandatorySystemTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error {
-	templates, err := a.k8s.ListSystemTemplates(ctx, org)
+func (a *MandatoryTemplateApplier) ApplyMandatoryOrgTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error {
+	templates, err := a.k8s.ListOrgTemplates(ctx, org)
 	if err != nil {
 		return fmt.Errorf("listing platform templates for org %q: %w", org, err)
 	}
 
 	for _, cm := range templates {
 		// Only apply templates that are both mandatory AND enabled.
-		tmpl := configMapToSystemTemplate(&cm, org)
+		tmpl := configMapToOrgTemplate(&cm, org)
 		if !tmpl.Mandatory || !tmpl.Enabled {
 			continue
 		}

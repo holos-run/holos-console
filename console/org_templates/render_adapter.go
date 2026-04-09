@@ -1,4 +1,4 @@
-package system_templates
+package org_templates
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/holos-run/holos-console/console/deployments"
 )
 
-// CueRendererAdapter wraps deployments.CueRenderer to satisfy system_templates.Renderer.
+// CueRendererAdapter wraps deployments.CueRenderer to satisfy org_templates.Renderer.
 type CueRendererAdapter struct {
 	inner *deployments.CueRenderer
 }
@@ -23,10 +23,10 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 // trusted backend values (org, namespace, claims); cueInput carries
 // user-provided or system-configured template parameters. Both must be valid
 // CUE source; cuePlatformInput may be empty when not needed during preview.
-func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error) {
+func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error) {
 	// Combine cuePlatformInput and cueInput into a single CUE document so that
 	// both "platform" and "input" top-level fields are available to the template.
-	combined := cueSystemInput
+	combined := cuePlatformInput
 	if combined != "" && cueInput != "" {
 		combined = combined + "\n" + cueInput
 	} else if cueInput != "" {

@@ -3,7 +3,7 @@
 // in org namespace ConfigMaps. They differ from deployment templates in that they
 // can be marked mandatory, causing them to be automatically applied to project
 // namespaces at creation time.
-package system_templates
+package org_templates
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
-const auditResourceType = "system-template"
+const auditResourceType = "org-template"
 
 // dnsLabelRe validates template names as DNS labels.
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
@@ -43,7 +43,7 @@ type RenderResource struct {
 // Renderer evaluates a CUE template unified with system and user CUE input strings
 // and returns a list of rendered Kubernetes manifests.
 type Renderer interface {
-	Render(ctx context.Context, cueTemplate string, cueSystemInput string, cueInput string) ([]RenderResource, error)
+	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
 // Handler implements the SystemTemplateService.
@@ -59,7 +59,7 @@ func NewHandler(k8s *K8sClient, orgResolver OrgResolver, renderer Renderer) *Han
 	return &Handler{k8s: k8s, orgResolver: orgResolver, renderer: renderer}
 }
 
-// ListSystemTemplates returns all platform templates in an org, seeding defaults on first access.
+// ListOrgTemplates returns all platform templates in an org, seeding defaults on first access.
 func (h *Handler) ListOrgTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListOrgTemplatesRequest],
@@ -78,7 +78,7 @@ func (h *Handler) ListOrgTemplates(
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListSystemTemplates(ctx, org)
+	cms, err := h.k8s.ListOrgTemplates(ctx, org)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -93,7 +93,7 @@ func (h *Handler) ListOrgTemplates(
 			)
 		} else {
 			// Re-list after seeding.
-			cms, err = h.k8s.ListSystemTemplates(ctx, org)
+			cms, err = h.k8s.ListOrgTemplates(ctx, org)
 			if err != nil {
 				return nil, mapK8sError(err)
 			}
@@ -102,11 +102,11 @@ func (h *Handler) ListOrgTemplates(
 
 	templates := make([]*consolev1.OrgTemplate, 0, len(cms))
 	for _, cm := range cms {
-		templates = append(templates, configMapToSystemTemplate(&cm, org))
+		templates = append(templates, configMapToOrgTemplate(&cm, org))
 	}
 
 	slog.InfoContext(ctx, "platform templates listed",
-		slog.String("action", "system_templates_list"),
+		slog.String("action", "org_templates_list"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("sub", claims.Sub),
@@ -118,7 +118,7 @@ func (h *Handler) ListOrgTemplates(
 	}), nil
 }
 
-// GetSystemTemplate returns a single platform template by name.
+// GetOrgTemplate returns a single platform template by name.
 func (h *Handler) GetOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetOrgTemplateRequest],
@@ -141,13 +141,13 @@ func (h *Handler) GetOrgTemplate(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetSystemTemplate(ctx, org, name)
+	cm, err := h.k8s.GetOrgTemplate(ctx, org, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "platform template read",
-		slog.String("action", "system_template_read"),
+		slog.String("action", "org_template_read"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("name", name),
@@ -155,11 +155,11 @@ func (h *Handler) GetOrgTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.GetOrgTemplateResponse{
-		Template: configMapToSystemTemplate(cm, org),
+		Template: configMapToOrgTemplate(cm, org),
 	}), nil
 }
 
-// CreateSystemTemplate creates a new platform template.
+// CreateOrgTemplate creates a new platform template.
 func (h *Handler) CreateOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateOrgTemplateRequest],
@@ -185,13 +185,13 @@ func (h *Handler) CreateOrgTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.CreateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
+	_, err := h.k8s.CreateOrgTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "platform template created",
-		slog.String("action", "system_template_create"),
+		slog.String("action", "org_template_create"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("name", name),
@@ -204,7 +204,7 @@ func (h *Handler) CreateOrgTemplate(
 	}), nil
 }
 
-// UpdateSystemTemplate updates an existing platform template.
+// UpdateOrgTemplate updates an existing platform template.
 func (h *Handler) UpdateOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateOrgTemplateRequest],
@@ -234,13 +234,13 @@ func (h *Handler) UpdateOrgTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.UpdateSystemTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
+	_, err := h.k8s.UpdateOrgTemplate(ctx, org, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.CueTemplate, req.Msg.Mandatory, req.Msg.Enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "platform template updated",
-		slog.String("action", "system_template_update"),
+		slog.String("action", "org_template_update"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("name", name),
@@ -251,7 +251,7 @@ func (h *Handler) UpdateOrgTemplate(
 	return connect.NewResponse(&consolev1.UpdateOrgTemplateResponse{}), nil
 }
 
-// DeleteSystemTemplate deletes a platform template.
+// DeleteOrgTemplate deletes a platform template.
 func (h *Handler) DeleteOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.DeleteOrgTemplateRequest],
@@ -274,12 +274,12 @@ func (h *Handler) DeleteOrgTemplate(
 		return nil, err
 	}
 
-	if err := h.k8s.DeleteSystemTemplate(ctx, org, name); err != nil {
+	if err := h.k8s.DeleteOrgTemplate(ctx, org, name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "platform template deleted",
-		slog.String("action", "system_template_delete"),
+		slog.String("action", "org_template_delete"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("name", name),
@@ -290,7 +290,7 @@ func (h *Handler) DeleteOrgTemplate(
 	return connect.NewResponse(&consolev1.DeleteOrgTemplateResponse{}), nil
 }
 
-// CloneSystemTemplate copies an existing platform template to a new name.
+// CloneOrgTemplate copies an existing platform template to a new name.
 func (h *Handler) CloneOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CloneOrgTemplateRequest],
@@ -317,13 +317,13 @@ func (h *Handler) CloneOrgTemplate(
 		return nil, err
 	}
 
-	_, err := h.k8s.CloneSystemTemplate(ctx, org, sourceName, newName, req.Msg.DisplayName)
+	_, err := h.k8s.CloneOrgTemplate(ctx, org, sourceName, newName, req.Msg.DisplayName)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "platform template cloned",
-		slog.String("action", "system_template_clone"),
+		slog.String("action", "org_template_clone"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("org", org),
 		slog.String("source_name", sourceName),
@@ -337,7 +337,7 @@ func (h *Handler) CloneOrgTemplate(
 	}), nil
 }
 
-// RenderSystemTemplate evaluates a CUE platform template and returns rendered manifests.
+// RenderOrgTemplate evaluates a CUE platform template and returns rendered manifests.
 func (h *Handler) RenderOrgTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.RenderOrgTemplateRequest],
@@ -397,7 +397,7 @@ func (h *Handler) checkOrgReadAccess(ctx context.Context, claims *rpc.Claims, or
 }
 
 // checkOrgEditAccess verifies the user has PERMISSION_SYSTEM_DEPLOYMENTS_EDIT
-// at the org level via the OrgCascadeSystemTemplatePerms cascade table.
+// at the org level via the OrgCascadeTemplatePerms cascade table.
 func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, org string) error {
 	if h.orgResolver == nil {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
@@ -410,7 +410,7 @@ func (h *Handler) checkOrgEditAccess(ctx context.Context, claims *rpc.Claims, or
 		)
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionOrgTemplatesWrite, rbac.OrgCascadeSystemTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, rbac.PermissionOrgTemplatesWrite, rbac.OrgCascadeTemplatePerms)
 }
 
 // validateTemplateName checks that the name is a valid DNS label.

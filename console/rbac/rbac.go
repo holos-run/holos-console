@@ -63,7 +63,7 @@ const (
 	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
 
 	// PermissionOrgTemplatesWrite allows creating, updating, and deleting
-	// platform templates (org-level CUE templates). Granted only to org-level OWNERs via OrgCascadeSystemTemplatePerms cascade table.
+	// platform templates (org-level CUE templates). Granted only to org-level OWNERs via OrgCascadeTemplatePerms cascade table.
 	PermissionOrgTemplatesWrite = consolev1.Permission_PERMISSION_ORG_TEMPLATES_WRITE
 )
 
@@ -345,11 +345,11 @@ var OrgCascadeProjectSettingsPerms = CascadeTable{
 	},
 }
 
-// OrgCascadeSystemTemplatePerms defines what platform template
+// OrgCascadeTemplatePerms defines what platform template
 // permissions each org role grants via cascade. Only org-level OWNERs can create,
 // update, and delete platform templates — this permission is intentionally not
 // inherited by project-level OWNERs.
-var OrgCascadeSystemTemplatePerms = CascadeTable{
+var OrgCascadeTemplatePerms = CascadeTable{
 	RoleOwner: {
 		PermissionOrgTemplatesWrite: true,
 	},
