@@ -281,6 +281,17 @@ This produces:
 
 See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissions-guide.md` for permission design guidelines including narrow scoping, multi-level grantability, and the cascade table pattern.
 
+### API Access
+
+Users and agents can call any RPC from the command line using `curl` (Connect protocol — recommended) or `grpcurl` (gRPC backward compatibility). See `docs/api-access.md` for the canonical reference covering:
+
+- How to obtain an ID token from the profile page (`/profile`)
+- Shell-history-safe `export HOLOS_ID_TOKEN=...` workflow
+- `curl` Connect-protocol invocation (`-H "Connect-Protocol-Version: 1"`)
+- `grpcurl -insecure` invocation (never `-plaintext` — the listener is TLS-only)
+- gRPC reflection (`grpcurl -insecure localhost:8443 list`)
+- Troubleshooting the `first record does not look like a TLS handshake` error
+
 ### Terminology
 
 **Authoritative reference**: `docs/glossary.md`
