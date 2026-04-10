@@ -11,26 +11,6 @@ import (
 // timeNow is a function returning the current time, overridable in tests.
 var timeNow = time.Now
 
-// CheckProjectReadAccess verifies the user has read permission on the project.
-func CheckProjectReadAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
-	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionProjectsRead)
-}
-
-// CheckProjectWriteAccess verifies the user has write permission on the project.
-func CheckProjectWriteAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
-	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionProjectsWrite)
-}
-
-// CheckProjectDeleteAccess verifies the user has delete permission on the project.
-func CheckProjectDeleteAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
-	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionProjectsDelete)
-}
-
-// CheckProjectAdminAccess verifies the user has admin permission on the project.
-func CheckProjectAdminAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
-	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionProjectsAdmin)
-}
-
 // CheckProjectListAccess verifies the user has list permission on the project.
 func CheckProjectListAccess(email string, roles []string, shareUsers, shareRoles map[string]string) error {
 	return rbac.CheckAccessGrants(email, roles, shareUsers, shareRoles, rbac.PermissionProjectsList)

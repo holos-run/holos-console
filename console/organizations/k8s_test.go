@@ -263,11 +263,11 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if GetDisplayName(result) != "Updated Name" {
-		t.Errorf("expected 'Updated Name', got %q", GetDisplayName(result))
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "Updated Name" {
+		t.Errorf("expected 'Updated Name', got %q", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
-	if GetDescription(result) != "Updated desc" {
-		t.Errorf("expected 'Updated desc', got %q", GetDescription(result))
+	if result.Annotations[v1alpha2.AnnotationDescription] != "Updated desc" {
+		t.Errorf("expected 'Updated desc', got %q", result.Annotations[v1alpha2.AnnotationDescription])
 	}
 	// Verify share-users preserved
 	if result.Annotations[v1alpha2.AnnotationShareUsers] != `[{"principal":"alice@example.com","role":"owner"}]` {

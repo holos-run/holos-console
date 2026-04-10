@@ -350,11 +350,11 @@ func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if GetDescription(result) != "Updated desc" {
-		t.Errorf("expected description 'Updated desc', got %q", GetDescription(result))
+	if result.Annotations[v1alpha2.AnnotationDescription] != "Updated desc" {
+		t.Errorf("expected description 'Updated desc', got %q", result.Annotations[v1alpha2.AnnotationDescription])
 	}
-	if GetDisplayName(result) != "Updated Name" {
-		t.Errorf("expected display-name 'Updated Name', got %q", GetDisplayName(result))
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "Updated Name" {
+		t.Errorf("expected display-name 'Updated Name', got %q", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
 }
 
