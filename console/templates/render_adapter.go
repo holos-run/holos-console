@@ -20,13 +20,8 @@ func NewCueRendererAdapter() *CueRendererAdapter {
 }
 
 // Render evaluates cueTemplate unified with cuePlatformInput and cueInput and
-// returns the rendered Kubernetes resource manifests.  cuePlatformInput carries
-// trusted backend values (project, namespace, claims); cueInput carries
-// user-provided deployment parameters.  Both must be valid CUE source;
-// cuePlatformInput may be empty when the template does not require platform values.
+// returns the rendered Kubernetes resource manifests.
 func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error) {
-	// Combine cuePlatformInput and cueInput into a single CUE document so that
-	// both "platform" and "input" top-level fields are available to the template.
 	combined := cuePlatformInput
 	if combined != "" && cueInput != "" {
 		combined = combined + "\n" + cueInput
@@ -40,23 +35,17 @@ func (a *CueRendererAdapter) Render(ctx context.Context, cueTemplate string, cue
 	return unstructuredToRenderResources(resources)
 }
 
-// RenderWithOrgTemplateSources evaluates the deployment template unified with
-// zero or more platform template CUE sources, then with the CUE input.
-// Used by the RenderDeploymentTemplate preview RPC when linked_org_templates
-// is provided so draft templates can preview their effective unified output.
-func (a *CueRendererAdapter) RenderWithOrgTemplateSources(ctx context.Context, cueTemplate string, orgTemplateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error) {
-	// Combine cuePlatformInput and cueInput into a single CUE document.
+// RenderWithTemplateSources evaluates the template unified with zero or more
+// ancestor template CUE sources, then with the CUE input.
+func (a *CueRendererAdapter) RenderWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error) {
 	combinedInput := cuePlatformInput
 	if combinedInput != "" && cueInput != "" {
 		combinedInput = combinedInput + "\n" + cueInput
 	} else if cueInput != "" {
 		combinedInput = cueInput
 	}
-	// Append org template sources to the deployment template CUE, then evaluate
-	// with the combined input. This mirrors evaluateWithOrgTemplates but uses the
-	// CUE-input path so that the raw CUE input document provides platform values.
 	combined := cueTemplate
-	for _, src := range orgTemplateSources {
+	for _, src := range templateSources {
 		if src != "" {
 			combined = combined + "\n" + src
 		}

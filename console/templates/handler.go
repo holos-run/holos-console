@@ -1,7 +1,7 @@
-// Package templates provides the TemplateService handler for project-scoped
-// CUE deployment templates. This package implements the unified v1alpha2
-// TemplateService for TEMPLATE_SCOPE_PROJECT templates. Phase 9 will extend
-// this to handle org- and folder-scoped templates in a single handler.
+// Package templates provides the unified TemplateService handler for CUE-based
+// templates at every hierarchy level (organization, folder, project). This
+// package replaces the separate DeploymentTemplateService (console/templates/)
+// and OrgTemplateService (console/org_templates/) from v1alpha1 (ADR 021).
 package templates
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -17,8 +18,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -29,20 +31,24 @@ const auditResourceType = "template"
 // dnsLabelRe validates template names as DNS labels.
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 
-// ProjectResolver resolves project namespace grants for access checks.
-type ProjectResolver interface {
+// OrgGrantResolver resolves organization-level grants.
+type OrgGrantResolver interface {
+	GetOrgGrants(ctx context.Context, org string) (users, roles map[string]string, err error)
+}
+
+// FolderGrantResolver resolves folder-level grants.
+type FolderGrantResolver interface {
+	GetFolderGrants(ctx context.Context, folder string) (users, roles map[string]string, err error)
+}
+
+// ProjectGrantResolver resolves project namespace grants for access checks.
+type ProjectGrantResolver interface {
 	GetProjectGrants(ctx context.Context, project string) (shareUsers, shareRoles map[string]string, err error)
 }
 
-// OrgResolver resolves the organization for a project.
-type OrgResolver interface {
-	GetProjectOrganization(ctx context.Context, project string) (string, error)
-}
-
-// OrgTemplateLister lists linkable platform templates for an organization.
-// Satisfied structurally by org_templates.K8sClient.
-type OrgTemplateLister interface {
-	ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableTemplate, error)
+// AncestorWalker walks the namespace hierarchy to collect ancestor namespaces.
+type AncestorWalker interface {
+	WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error)
 }
 
 // RenderResource is a single rendered resource with its YAML representation
@@ -52,60 +58,65 @@ type RenderResource struct {
 	Object map[string]any
 }
 
-// Renderer evaluates a CUE template unified with platform and user CUE input strings
-// and returns a list of rendered Kubernetes manifests with both YAML and structured
-// object data.  cuePlatformInput carries trusted backend values (project, namespace,
-// claims); cueInput carries user-provided deployment parameters.
+// Renderer evaluates a CUE template unified with platform and user CUE input
+// strings and returns a list of rendered Kubernetes manifests.
 type Renderer interface {
 	Render(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
-	// RenderWithOrgTemplateSources evaluates the deployment template unified with
-	// zero or more platform template CUE sources, then with the CUE input.
-	// Used by the preview RPC when linked_org_templates is supplied.
-	RenderWithOrgTemplateSources(ctx context.Context, cueTemplate string, orgTemplateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
+	// RenderWithTemplateSources evaluates the template unified with zero or more
+	// ancestor template CUE sources, then with the CUE input.
+	RenderWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
 }
 
-// Handler implements the TemplateService (stub — phase 9 will fill in the
-// full implementation against the unified v1alpha2 TemplateService).
+// Handler implements the unified TemplateService (ADR 021).
 type Handler struct {
 	consolev1connect.UnimplementedTemplateServiceHandler
-	k8s              *K8sClient
-	projectResolver  ProjectResolver
-	renderer         Renderer
-	orgResolver      OrgResolver
-	orgTemplateLister OrgTemplateLister
+	k8s                 *K8sClient
+	orgGrantResolver    OrgGrantResolver
+	folderGrantResolver FolderGrantResolver
+	projectGrantResolver ProjectGrantResolver
+	walker              AncestorWalker
+	resolver            *resolver.Resolver
+	renderer            Renderer
 }
 
-// NewHandler creates a TemplateService handler stub.
-func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, renderer Renderer) *Handler {
-	return &Handler{k8s: k8s, projectResolver: projectResolver, renderer: renderer}
+// NewHandler creates a TemplateService handler.
+func NewHandler(k8s *K8sClient, r *resolver.Resolver, renderer Renderer) *Handler {
+	return &Handler{k8s: k8s, resolver: r, renderer: renderer}
 }
 
-// WithOrgResolver configures the handler with an OrgResolver for resolving
-// the project's organization.
-func (h *Handler) WithOrgResolver(or OrgResolver) *Handler {
-	h.orgResolver = or
+// WithOrgGrantResolver configures the handler with an OrgGrantResolver.
+func (h *Handler) WithOrgGrantResolver(ogr OrgGrantResolver) *Handler {
+	h.orgGrantResolver = ogr
 	return h
 }
 
-// WithOrgTemplateLister configures the handler with an OrgTemplateLister for
-// listing linkable platform templates.
-func (h *Handler) WithOrgTemplateLister(l OrgTemplateLister) *Handler {
-	h.orgTemplateLister = l
+// WithFolderGrantResolver configures the handler with a FolderGrantResolver.
+func (h *Handler) WithFolderGrantResolver(fgr FolderGrantResolver) *Handler {
+	h.folderGrantResolver = fgr
 	return h
 }
 
-// ListTemplates returns all templates in the given scope (project only in this phase).
+// WithProjectGrantResolver configures the handler with a ProjectGrantResolver.
+func (h *Handler) WithProjectGrantResolver(pgr ProjectGrantResolver) *Handler {
+	h.projectGrantResolver = pgr
+	return h
+}
+
+// WithAncestorWalker configures the handler with an AncestorWalker for
+// hierarchy-aware permission checks and ancestor template collection.
+func (h *Handler) WithAncestorWalker(w AncestorWalker) *Handler {
+	h.walker = w
+	return h
+}
+
+// ListTemplates returns all templates in the given scope.
 func (h *Handler) ListTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListTemplatesRequest],
 ) (*connect.Response[consolev1.ListTemplatesResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
-	}
-	project := scope.ScopeName
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -113,24 +124,25 @@ func (h *Handler) ListTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesList); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListTemplates(ctx, project)
+	cms, err := h.k8s.ListTemplates(ctx, scope, scopeName)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	templates := make([]*consolev1.Template, 0, len(cms))
 	for _, cm := range cms {
-		templates = append(templates, configMapToTemplate(&cm, project))
+		templates = append(templates, configMapToTemplate(&cm, scope, scopeName))
 	}
 
 	slog.InfoContext(ctx, "templates listed",
 		slog.String("action", "templates_list"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("sub", claims.Sub),
 		slog.Int("count", len(templates)),
 	)
@@ -145,15 +157,11 @@ func (h *Handler) GetTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetTemplateRequest],
 ) (*connect.Response[consolev1.GetTemplateResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
-	project := scope.ScopeName
 	name := req.Msg.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
-	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
@@ -163,11 +171,11 @@ func (h *Handler) GetTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesRead); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetTemplate(ctx, project, name)
+	cm, err := h.k8s.GetTemplate(ctx, scope, scopeName, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -175,34 +183,31 @@ func (h *Handler) GetTemplate(
 	slog.InfoContext(ctx, "template read",
 		slog.String("action", "template_read"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplateResponse{
-		Template: configMapToTemplate(cm, project),
+		Template: configMapToTemplate(cm, scope, scopeName),
 	}), nil
 }
 
-// CreateTemplate creates a new template.
+// CreateTemplate creates a new template at the given scope.
 func (h *Handler) CreateTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateTemplateRequest],
 ) (*connect.Response[consolev1.CreateTemplateResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
-	project := scope.ScopeName
 	tmpl := req.Msg.GetTemplate()
 	if tmpl == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template is required"))
 	}
 	name := tmpl.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
-	}
 	if err := validateTemplateName(name); err != nil {
 		return nil, err
 	}
@@ -217,19 +222,11 @@ func (h *Handler) CreateTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
 		return nil, err
 	}
 
-	// Extract linked org template names from LinkedTemplates.
-	var linkedOrgTemplates []string
-	for _, ref := range tmpl.LinkedTemplates {
-		if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.Name != "" {
-			linkedOrgTemplates = append(linkedOrgTemplates, ref.Name)
-		}
-	}
-
-	_, err := h.k8s.CreateTemplate(ctx, project, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, linkedOrgTemplates)
+	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Mandatory, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -237,7 +234,8 @@ func (h *Handler) CreateTemplate(
 	slog.InfoContext(ctx, "template created",
 		slog.String("action", "template_create"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -253,19 +251,15 @@ func (h *Handler) UpdateTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateTemplateRequest],
 ) (*connect.Response[consolev1.UpdateTemplateResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
-	project := scope.ScopeName
 	tmpl := req.Msg.GetTemplate()
 	if tmpl == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template is required"))
 	}
 	name := tmpl.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
-	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
@@ -280,22 +274,16 @@ func (h *Handler) UpdateTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
 		return nil, err
-	}
-
-	// Extract linked org template names from LinkedTemplates.
-	var linkedOrgTemplates []string
-	for _, ref := range tmpl.LinkedTemplates {
-		if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.Name != "" {
-			linkedOrgTemplates = append(linkedOrgTemplates, ref.Name)
-		}
 	}
 
 	displayName := tmpl.DisplayName
 	description := tmpl.Description
 	cueTemplate := tmpl.CueTemplate
-	_, err := h.k8s.UpdateTemplate(ctx, project, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, linkedOrgTemplates)
+	mandatory := tmpl.Mandatory
+	enabled := tmpl.Enabled
+	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &mandatory, &enabled, tmpl.LinkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -303,7 +291,8 @@ func (h *Handler) UpdateTemplate(
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -317,15 +306,11 @@ func (h *Handler) DeleteTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.DeleteTemplateRequest],
 ) (*connect.Response[consolev1.DeleteTemplateResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
-	project := scope.ScopeName
 	name := req.Msg.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
-	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
@@ -335,18 +320,19 @@ func (h *Handler) DeleteTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesDelete); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesDelete); err != nil {
 		return nil, err
 	}
 
-	if err := h.k8s.DeleteTemplate(ctx, project, name); err != nil {
+	if err := h.k8s.DeleteTemplate(ctx, scope, scopeName, name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "template deleted",
 		slog.String("action", "template_delete"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
@@ -360,16 +346,12 @@ func (h *Handler) CloneTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CloneTemplateRequest],
 ) (*connect.Response[consolev1.CloneTemplateResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
-	project := scope.ScopeName
 	sourceName := req.Msg.SourceName
 	newName := req.Msg.Name
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
-	}
 	if sourceName == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source_name is required"))
 	}
@@ -382,11 +364,11 @@ func (h *Handler) CloneTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesWrite); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
 		return nil, err
 	}
 
-	_, err := h.k8s.CloneTemplate(ctx, project, sourceName, newName, req.Msg.DisplayName)
+	_, err = h.k8s.CloneTemplate(ctx, scope, scopeName, sourceName, newName, req.Msg.DisplayName)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -394,7 +376,8 @@ func (h *Handler) CloneTemplate(
 	slog.InfoContext(ctx, "template cloned",
 		slog.String("action", "template_clone"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", project),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("source_name", sourceName),
 		slog.String("name", newName),
 		slog.String("sub", claims.Sub),
@@ -452,19 +435,15 @@ func (h *Handler) RenderTemplate(
 	}), nil
 }
 
-// ListLinkableTemplates returns the set of enabled org templates for the
-// project's organization that a deployment template may link against (ADR 019).
+// ListLinkableTemplates returns all enabled templates in ancestor scopes that
+// the given scope may link against (ADR 021 Decision 7).
 func (h *Handler) ListLinkableTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListLinkableTemplatesRequest],
 ) (*connect.Response[consolev1.ListLinkableTemplatesResponse], error) {
-	scope := req.Msg.GetScope()
-	if scope == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
-	}
-	project := scope.ScopeName
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name (project) is required"))
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -472,51 +451,233 @@ func (h *Handler) ListLinkableTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionTemplatesList); err != nil {
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
 		return nil, err
 	}
 
-	if h.orgResolver == nil || h.orgTemplateLister == nil {
+	if h.walker == nil {
 		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
 
-	org, err := h.orgResolver.GetProjectOrganization(ctx, project)
-	if err != nil || org == "" {
+	// Walk ancestors of the given scope's namespace.
+	startNs, nsErr := h.k8s.namespaceForScope(scope, scopeName)
+	if nsErr != nil {
+		return nil, connect.NewError(connect.CodeInternal, nsErr)
+	}
+
+	ancestors, walkErr := h.walker.WalkAncestors(ctx, startNs)
+	if walkErr != nil {
+		slog.WarnContext(ctx, "failed to walk ancestors for linkable templates",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.Any("error", walkErr),
+		)
 		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
 
-	templates, err := h.orgTemplateLister.ListLinkableOrgTemplateInfos(ctx, org)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("listing linkable platform templates: %w", err))
+	// Collect linkable (enabled) templates from all ancestors (skip the first
+	// namespace since that's the scope itself — we only return ancestor templates).
+	var result []*consolev1.LinkableTemplate
+	for i, ns := range ancestors {
+		if i == 0 {
+			continue // skip the scope itself
+		}
+		ancestorScope, ancestorName := scopeAndNameFromNs(h.resolver, ns.Name)
+		if ancestorScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+			continue
+		}
+		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, ancestorScope, ancestorName)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to list linkable templates from ancestor",
+				slog.String("namespace", ns.Name),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		result = append(result, infos...)
 	}
 
-	slog.InfoContext(ctx, "linkable platform templates listed",
+	slog.InfoContext(ctx, "linkable templates listed",
 		slog.String("action", "linkable_templates_list"),
-		slog.String("project", project),
-		slog.String("org", org),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("sub", claims.Sub),
-		slog.Int("count", len(templates)),
+		slog.Int("count", len(result)),
 	)
 
 	return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{
+		Templates: result,
+	}), nil
+}
+
+// ListAncestorTemplates returns templates from all ancestor scopes that
+// participate in the effective render set for the given scope. This is used by
+// the renderer to compute the effective template set (ADR 021 Decision 6).
+func (h *Handler) ListAncestorTemplates(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListAncestorTemplatesRequest],
+) (*connect.Response[consolev1.ListAncestorTemplatesResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	templates, err := h.collectAncestorTemplates(ctx, scope, scopeName, nil)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&consolev1.ListAncestorTemplatesResponse{
 		Templates: templates,
 	}), nil
 }
 
-// checkProjectAccess verifies that the user has the given permission via project cascade grants.
-func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, permission rbac.Permission) error {
-	if h.projectResolver == nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+// collectAncestorTemplates walks the hierarchy and collects templates from all
+// ancestor scopes plus the current scope itself. The render set formula is:
+// (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
+// Results are returned in org→folders→project order for correct CUE unification.
+// If linkedRefs is nil, only mandatory+enabled templates are returned.
+func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
+	if h.walker == nil {
+		return nil, nil
 	}
-	users, roles, err := h.projectResolver.GetProjectGrants(ctx, project)
+
+	startNs, err := h.k8s.namespaceForScope(scope, scopeName)
 	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve project grants",
-			slog.String("project", project),
-			slog.Any("error", err),
-		)
+		return nil, err
+	}
+
+	ancestors, err := h.walker.WalkAncestors(ctx, startNs)
+	if err != nil {
+		return nil, fmt.Errorf("walking ancestors for %s/%s: %w", scope, scopeName, err)
+	}
+
+	// Build a set of linked refs for O(1) lookup.
+	linkedSet := make(map[linkedRef]bool, len(linkedRefs))
+	for _, ref := range linkedRefs {
+		if ref != nil {
+			linkedSet[linkedRefFromProto(ref)] = true
+		}
+	}
+
+	// Collect templates from each ancestor, in reverse (org first, child last).
+	// ancestors is child→parent order; reverse to get org→child.
+	var result []*consolev1.Template
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		ns := ancestors[i]
+		ancestorScope, ancestorName := scopeAndNameFromNs(h.resolver, ns.Name)
+		if ancestorScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+			continue
+		}
+
+		cms, err := h.k8s.ListTemplates(ctx, ancestorScope, ancestorName)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to list templates from ancestor, skipping",
+				slog.String("namespace", ns.Name),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		for _, cm := range cms {
+			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+			if !enabled {
+				continue
+			}
+			ref := linkedRef{
+				scope:     scopeLabelValue(ancestorScope),
+				scopeName: ancestorName,
+				name:      cm.Name,
+			}
+			if !mandatory && !linkedSet[ref] {
+				continue
+			}
+			tmplCopy := cm
+			result = append(result, configMapToTemplate(&tmplCopy, ancestorScope, ancestorName))
+		}
+	}
+
+	return result, nil
+}
+
+// checkAccess verifies the caller has the given permission for the requested scope.
+// For org-scope: checks org grants with OrgCascadeTemplatePerms.
+// For folder-scope: checks folder grants with FolderCascadeTemplatePerms, then
+//
+//	falls back to ancestor org grants.
+//
+// For project-scope: checks project grants with ProjectCascadeTemplatePerms.
+func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, perm rbac.Permission) error {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return h.checkOrgAccess(ctx, claims, scopeName, perm)
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return h.checkFolderAccess(ctx, claims, scopeName, perm)
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+		return h.checkProjectAccess(ctx, claims, scopeName, perm)
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))
+	}
+}
+
+func (h *Handler) checkOrgAccess(ctx context.Context, claims *rpc.Claims, org string, perm rbac.Permission) error {
+	if h.orgGrantResolver == nil {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, permission, rbac.ProjectCascadeTemplatePerms)
+	users, roles, err := h.orgGrantResolver.GetOrgGrants(ctx, org)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to resolve org grants", slog.String("org", org), slog.Any("error", err))
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	}
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.OrgCascadeTemplatePerms)
+}
+
+func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, folder string, perm rbac.Permission) error {
+	if h.folderGrantResolver == nil {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	}
+	users, roles, err := h.folderGrantResolver.GetFolderGrants(ctx, folder)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to resolve folder grants", slog.String("folder", folder), slog.Any("error", err))
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	}
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.FolderCascadeTemplatePerms)
+}
+
+func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, perm rbac.Permission) error {
+	if h.projectGrantResolver == nil {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	}
+	users, roles, err := h.projectGrantResolver.GetProjectGrants(ctx, project)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to resolve project grants", slog.String("project", project), slog.Any("error", err))
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	}
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.ProjectCascadeTemplatePerms)
+}
+
+// extractScope validates and extracts the scope and scope_name from a TemplateScopeRef.
+func extractScope(ref *consolev1.TemplateScopeRef) (consolev1.TemplateScope, string, error) {
+	if ref == nil {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope must be specified"))
+	}
+	if ref.ScopeName == "" {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name is required"))
+	}
+	return ref.Scope, ref.ScopeName, nil
 }
 
 // validateTemplateName checks that the name is a valid DNS label.
@@ -540,82 +701,6 @@ func validateCueSyntax(source string) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid CUE syntax: %w", err))
 	}
 	return nil
-}
-
-// configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
-//
-// Defaults are populated in priority order:
-//  1. CUE extraction — reads the `defaults` field from the template CUE source.
-//     This is the canonical approach for templates authored using the ADR 018 pattern.
-//  2. Annotation fallback — reads DefaultsKey from ConfigMap data. Used for templates
-//     that predate ADR 018 and store defaults as JSON in a ConfigMap annotation.
-//
-// If CUE extraction succeeds and returns non-nil defaults, the annotation fallback
-// is skipped. If CUE extraction fails or the template has no `defaults` block, the
-// annotation fallback is attempted. If both are absent, Defaults is left nil.
-func configMapToTemplate(cm *corev1.ConfigMap, project string) *consolev1.Template {
-	cueSource := cm.Data[CueTemplateKey]
-	tmpl := &consolev1.Template{
-		Name:        cm.Name,
-		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
-		Description: cm.Annotations[v1alpha1.AnnotationDescription],
-		CueTemplate: cueSource,
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
-			ScopeName: project,
-		},
-	}
-
-	// Populate linked templates from annotation (ADR 019).
-	if raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
-		var linked []string
-		if err := json.Unmarshal([]byte(raw), &linked); err == nil {
-			refs := make([]*consolev1.LinkedTemplateRef, 0, len(linked))
-			for _, name := range linked {
-				refs = append(refs, &consolev1.LinkedTemplateRef{
-					Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-					Name:  name,
-				})
-			}
-			tmpl.LinkedTemplates = refs
-		} else {
-			slog.Warn("failed to parse linked-org-templates annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		}
-	}
-
-	// Priority 1: CUE extraction from the template source.
-	if cueSource != "" {
-		extracted, err := ExtractDefaults(cueSource)
-		if err != nil {
-			slog.Warn("failed to extract defaults from CUE template; falling back to annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		} else if extracted != nil {
-			tmpl.Defaults = extracted
-			return tmpl
-		}
-	}
-
-	// Priority 2: Annotation fallback for pre-ADR 018 templates.
-	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
-		var defaults consolev1.TemplateDefaults
-		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
-			tmpl.Defaults = &defaults
-		} else {
-			slog.Warn("failed to deserialize template defaults from ConfigMap",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		}
-	}
-	return tmpl
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

@@ -41,7 +41,6 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
-	org_templates "github.com/holos-run/holos-console/console/org_templates"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -266,12 +265,21 @@ func (s *Server) Serve(ctx context.Context) error {
 			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
 		}
 
-		// Platform template applier for mandatory templates on project creation.
-		// Wired before the projects handler so it can be injected.
-		orgTemplatesApplierK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
+		// Namespace hierarchy walker for ancestor chain resolution.
+		// Used by the mandatory template applier, project grant resolver, and
+		// the unified TemplateService handler.
+		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
+
+		// Unified templates K8s client (replaces both templates.K8sClient and
+		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
+		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
+
+		// Mandatory template applier for project creation: walks the project's
+		// ancestor chain (org + folder ancestors) and applies all mandatory+enabled
+		// templates to the project namespace (ADR 021 Decision 3).
 		var orgTmplApplier projects.MandatoryTemplateApplier
 		if dynamicClient != nil {
-			orgTmplApplier = org_templates.NewMandatoryTemplateApplier(orgTemplatesApplierK8s, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+			orgTmplApplier = templates.NewMandatoryTemplateApplier(templatesK8s, nsWalker, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
 		}
 
 		// Project service with org grant fallback
@@ -284,7 +292,6 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Secrets service with project grant fallback and ancestor default-share cascade.
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
-		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s).WithWalker(nsWalker)
 		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
@@ -296,31 +303,28 @@ func (s *Server) Serve(ctx context.Context) error {
 		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
 		mux.Handle(settingsPath, settingsHTTPHandler)
 
-		// Unified TemplateService handler (project-scoped templates).
-		// Phase 9 will wire full implementations; these stubs return Unimplemented for now.
-		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
-		templatesHandler := templates.NewHandler(templatesK8s, projectResolver, templates.NewCueRendererAdapter()).
-			WithOrgResolver(projectResolver).
-			WithOrgTemplateLister(org_templates.NewK8sClient(k8sClientset, nsResolver))
+		// Unified TemplateService handler — manages templates at org, folder, and
+		// project scopes in a single service (ADR 021).
+		folderGrantResolver := folders.NewFolderGrantResolver(foldersK8s)
+		templatesHandler := templates.NewHandler(templatesK8s, nsResolver, templates.NewCueRendererAdapter()).
+			WithOrgGrantResolver(orgGrantResolver).
+			WithFolderGrantResolver(folderGrantResolver).
+			WithProjectGrantResolver(projectResolver).
+			WithAncestorWalker(nsWalker)
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
-		// Platform template service (org-scoped templates, stub handler).
-		orgTemplatesK8s := org_templates.NewK8sClient(k8sClientset, nsResolver)
-		orgTemplatesHandler := org_templates.NewHandler(orgTemplatesK8s, orgGrantResolver, org_templates.NewCueRendererAdapter())
-		_ = orgTemplatesHandler // registered via TemplateService above in phase 9
-
 		// Deployment service with project grant fallback.
-		// orgTemplatesK8s satisfies OrgTemplateProvider via ListOrgTemplateSourcesForRender,
+		// templatesK8s satisfies OrgTemplateProvider via ListOrgTemplateSourcesForRender,
 		// implementing the explicit linking model (ADR 019).
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
 		var deploymentsApplier deployments.ResourceApplier
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
-		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templatesK8s, &deployments.CueRenderer{}, deploymentsApplier).
+		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
-			WithOrgTemplateProvider(orgTemplatesK8s)
+			WithOrgTemplateProvider(templatesK8s)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {
