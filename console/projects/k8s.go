@@ -288,22 +288,6 @@ func (r *ProjectFolderResolver) GetProjectFolders(ctx context.Context, project s
 	return folders, nil
 }
 
-// GetDisplayName returns the display-name annotation value from a namespace.
-func GetDisplayName(ns *corev1.Namespace) string {
-	if ns.Annotations == nil {
-		return ""
-	}
-	return ns.Annotations[v1alpha2.AnnotationDisplayName]
-}
-
-// GetDescription returns the description annotation value from a namespace.
-func GetDescription(ns *corev1.Namespace) string {
-	if ns.Annotations == nil {
-		return ""
-	}
-	return ns.Annotations[v1alpha2.AnnotationDescription]
-}
-
 // GetShareUsers parses the share-users annotation from a namespace.
 func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 	return parseGrantAnnotation(ns, v1alpha2.AnnotationShareUsers)

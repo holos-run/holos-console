@@ -117,7 +117,3 @@ export function useUpdateSecretSharing(project: string) {
   })
 }
 
-export function useSecretsClient() {
-  const transport = useTransport()
-  return useMemo(() => createClient(SecretsService, transport), [transport])
-}

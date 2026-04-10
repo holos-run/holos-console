@@ -118,8 +118,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   }
 
   const handleOpenLinkedEdit = () => {
-    // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
-    // Extract names for the legacy string-array UI state until phase 11 migrates this.
     setDraftLinkedOrgTemplates((template?.linkedTemplates ?? []).map(t => t.name))
     setLinkedEditError(null)
     setLinkedEditOpen(true)

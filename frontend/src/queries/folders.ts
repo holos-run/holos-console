@@ -80,15 +80,3 @@ export function useUpdateFolder(organization: string, name: string) {
   })
 }
 
-export function useDeleteFolder(organization: string) {
-  const transport = useTransport()
-  const client = useMemo(() => createClient(FolderService, transport), [transport])
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (params: { name: string }) =>
-      client.deleteFolder({ organization, ...params }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders', 'list', organization] })
-    },
-  })
-}

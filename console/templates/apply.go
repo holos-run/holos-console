@@ -12,7 +12,6 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/rpc"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -192,21 +191,3 @@ func (a *MandatoryTemplateApplier) applyMandatoryFromNamespace(ctx context.Conte
 // templates applied at project creation time. The fields must match the CUE
 // #Input struct field names in the template.
 type mandatoryTemplateProjectInput struct{}
-
-// OrgTemplateListerAdapter wraps K8sClient to satisfy the old OrgTemplateLister
-// interface used by the pre-unified templates handler. Provides backward
-// compatibility for wiring in console.go.
-type OrgTemplateListerAdapter struct {
-	k8s *K8sClient
-}
-
-// NewOrgTemplateListerAdapter creates an adapter.
-func NewOrgTemplateListerAdapter(k8s *K8sClient) *OrgTemplateListerAdapter {
-	return &OrgTemplateListerAdapter{k8s: k8s}
-}
-
-// ListLinkableOrgTemplateInfos returns enabled org-level templates as
-// LinkableTemplate proto messages. Satisfies the old OrgTemplateLister interface.
-func (a *OrgTemplateListerAdapter) ListLinkableOrgTemplateInfos(ctx context.Context, org string) ([]*consolev1.LinkableTemplate, error) {
-	return a.k8s.ListLinkableTemplateInfos(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org)
-}
