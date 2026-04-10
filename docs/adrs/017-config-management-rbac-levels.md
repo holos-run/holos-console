@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — revokes [ADR 015](015-config-management-rbac-levels.md)
+Accepted — revokes [ADR 015](revoked/015-config-management-rbac-levels.md)
 
 ## CUE Unification: No Distinction Between "Write" and "Constrain"
 
@@ -431,8 +431,8 @@ Viewer and above.
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
-- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
-- [ADR 015: Configuration Management RBAC Levels (revoked)](015-config-management-rbac-levels.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](revoked/014-config-management-resource-schema.md)
+- [ADR 015: Configuration Management RBAC Levels (revoked)](revoked/015-config-management-rbac-levels.md)
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md)
 - [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md) — which ancestor templates participate in unification
 - [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md) — implementation specification for the walk algorithm and folder authorization

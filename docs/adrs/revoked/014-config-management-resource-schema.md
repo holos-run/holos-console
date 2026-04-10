@@ -1,8 +1,13 @@
 # ADR 014: Configuration Management Resource Schema
 
+> **REVOKED** — This ADR has been superseded by
+> [ADR 016](../016-config-management-resource-schema.md). Do not use this
+> document for implementation decisions. It is preserved for historical context
+> only.
+
 ## Status
 
-Revoked by [ADR 016](016-config-management-resource-schema.md)
+Revoked by [ADR 016](../016-config-management-resource-schema.md)
 
 ## Context
 
@@ -54,7 +59,7 @@ does (see ADR 015).
 The diagram below shows how templates, inputs, and resource collections fit
 together. Start here if you are new to the system and want to build a template.
 
-![Resource Model](014-resource-model.svg)
+![Resource Model](../014-resource-model.svg)
 
 ## Decisions
 
@@ -562,6 +567,6 @@ api/
 
 ## References
 
-- [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
-- [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
-- [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
+- [ADR 012: Structured Resource Output for CUE Templates](../012-structured-resource-output.md)
+- [ADR 013: Separate System and User Input Trust Boundary](../013-separate-system-user-template-input.md)
+- [ADR 007: Organization Grants Do Not Cascade](../007-org-grants-no-cascade.md)
