@@ -44,7 +44,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useGetFolder, useUpdateFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { FolderDetailPage } from './$folderName'
+import { FolderDetailPage } from './$folderName/index'
 
 const mockFolder = {
   name: 'payments',
