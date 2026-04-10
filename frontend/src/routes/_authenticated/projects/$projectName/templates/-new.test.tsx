@@ -188,10 +188,10 @@ describe('CreateTemplatePage', () => {
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     expect(calls.length).toBeGreaterThan(0)
     // 4th arg is cuePlatformInput
-    const systemInput = calls[0][3]
-    expect(systemInput).toContain('platform:')
-    expect(systemInput).toContain('claims')
-    expect(systemInput).toContain('email')
+    const platformInput = calls[0][3]
+    expect(platformInput).toContain('platform:')
+    expect(platformInput).toContain('claims')
+    expect(platformInput).toContain('email')
   })
 
   it('useRenderDeploymentTemplate is called with user input (not project/namespace)', () => {

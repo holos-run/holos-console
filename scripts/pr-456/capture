@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Capture visual verification screenshots for PR #456
-# Shows the split system/user input areas in the template editor preview tab.
+# Shows the split platform/project input areas in the template editor preview tab.
 set -euo pipefail
 
 # Environment variables set by scripts/browser-capture-pr:
@@ -17,8 +17,8 @@ agent-browser screenshot "${PR_SCREENSHOT_DIR}/01-template-editor-tab.png"
 agent-browser eval "(() => { const tabs = Array.from(document.querySelectorAll('[role=tab]')); const previewTab = tabs.find(t => t.textContent.trim() === 'Preview'); if (previewTab) { previewTab.focus(); previewTab.click(); return 'clicked'; } return 'not found'; })()"
 sleep 2
 
-# Take screenshot of the top of the Preview tab showing System Input textarea
-agent-browser screenshot "${PR_SCREENSHOT_DIR}/02-template-preview-system-input.png"
+# Take screenshot of the top of the Preview tab showing Platform Input textarea
+agent-browser screenshot "${PR_SCREENSHOT_DIR}/02-template-preview-platform-input.png"
 
 # Scroll down to see the User Input textarea
 agent-browser scroll down 400

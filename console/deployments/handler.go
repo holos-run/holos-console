@@ -658,8 +658,8 @@ func (h *Handler) ListNamespaceConfigMaps(
 	}), nil
 }
 
-// GetDeploymentRenderPreview returns the CUE template source, system input,
-// user input, and rendered output for a deployment.
+// GetDeploymentRenderPreview returns the CUE template source, platform input,
+// project input, and rendered output for a deployment.
 func (h *Handler) GetDeploymentRenderPreview(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetDeploymentRenderPreviewRequest],

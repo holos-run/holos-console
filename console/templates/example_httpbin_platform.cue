@@ -1,4 +1,4 @@
-// Org-level system template — evaluated at organization scope.
+// Org-level platform template — evaluated at organization scope.
 // Any changes here affect every project in the org.
 //
 // This template does two things:
@@ -10,7 +10,7 @@
 //
 // Pair with console/templates/example_httpbin.cue for the project-level template.
 
-// input and platform are available because system templates are unified with
+// input and platform are available because platform templates are unified with
 // the deployment template before evaluation (ADR 016 Decision 8).
 input: #ProjectInput & {
 	port: >0 & <=65535 | *8080

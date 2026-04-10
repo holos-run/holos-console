@@ -243,7 +243,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const previewCueSystemInput = `platform: {
+  const previewCuePlatformInput = `platform: {
 \tproject:          "${projectName}"
 \tnamespace:        "holos-prj-${projectName}"
 \tgatewayNamespace: "istio-ingress"
@@ -269,7 +269,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     debouncedCueTemplate,
     previewCueInput,
     previewOpen,
-    previewCueSystemInput,
+    previewCuePlatformInput,
   )
 
   const handleLoadHttpbinExample = () => {

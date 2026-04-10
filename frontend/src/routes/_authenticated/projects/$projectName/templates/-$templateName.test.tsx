@@ -275,12 +275,12 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(userInput.value).toContain('port')
   })
 
-  it('useRenderDeploymentTemplate receives separate system and user inputs', async () => {
+  it('useRenderDeploymentTemplate receives separate platform and project inputs', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    // The 4th arg is the system input string
+    // The 4th arg is the platform input string
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     const lastCall = calls[calls.length - 1]
     expect(lastCall[1]).toContain('input:')

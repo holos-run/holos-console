@@ -14,12 +14,12 @@ mkdir -p "$SCREENSHOT_DIR"
 echo "Logging in..."
 scripts/browser-login
 
-echo "Capturing system templates list page with enabled/disabled badges..."
-agent-browser navigate "$BACKEND_URL/orgs/acme/settings/system-templates" \
-  --screenshot "$SCREENSHOT_DIR/system-templates-list.png"
+echo "Capturing platform templates list page with enabled/disabled badges..."
+agent-browser navigate "$BACKEND_URL/orgs/acme/settings/org-templates" \
+  --screenshot "$SCREENSHOT_DIR/platform-templates-list.png"
 
-echo "Capturing system template detail page with enabled toggle and clone button..."
-agent-browser navigate "$BACKEND_URL/orgs/acme/settings/system-templates/reference-grant" \
-  --screenshot "$SCREENSHOT_DIR/system-template-detail-enabled-toggle.png"
+echo "Capturing platform template detail page with enabled toggle and clone button..."
+agent-browser navigate "$BACKEND_URL/orgs/acme/settings/org-templates/reference-grant" \
+  --screenshot "$SCREENSHOT_DIR/platform-template-detail-enabled-toggle.png"
 
 echo "Screenshots saved to $SCREENSHOT_DIR"
