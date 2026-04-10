@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/table'
 import { Pencil, Trash2, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListDeploymentTemplates, useDeleteDeploymentTemplate, useCloneDeploymentTemplate } from '@/queries/deployment-templates'
+import { useListTemplates, useDeleteTemplate, useCloneTemplate, makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
@@ -47,10 +47,11 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   }
   const projectName = propProjectName ?? routeProjectName ?? ''
 
-  const { data: templates = [], isLoading, error } = useListDeploymentTemplates(projectName)
+  const scope = makeProjectScope(projectName)
+  const { data: templates = [], isLoading, error } = useListTemplates(scope)
   const { data: project } = useGetProject(projectName)
-  const deleteMutation = useDeleteDeploymentTemplate(projectName)
-  const cloneMutation = useCloneDeploymentTemplate(projectName)
+  const deleteMutation = useDeleteTemplate(scope)
+  const cloneMutation = useCloneTemplate(scope)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)

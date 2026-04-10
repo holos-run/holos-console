@@ -16,9 +16,10 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
-vi.mock('@/queries/org-templates', () => ({
-  useListOrgTemplates: vi.fn(),
-  useCreateOrgTemplate: vi.fn(),
+vi.mock('@/queries/templates', () => ({
+  useListTemplates: vi.fn(),
+  useCreateTemplate: vi.fn(),
+  makeOrgScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-org' }),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -27,15 +28,15 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListOrgTemplates, useCreateOrgTemplate } from '@/queries/org-templates'
+import { useListTemplates, useCreateTemplate } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatesListPage } from './index'
 
 function setupMocks(userRole = Role.OWNER) {
-  ;(useListOrgTemplates as Mock).mockReturnValue({ data: [], isPending: false, error: null })
+  ;(useListTemplates as Mock).mockReturnValue({ data: [], isPending: false, error: null })
   ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole } })
-  ;(useCreateOrgTemplate as Mock).mockReturnValue({
+  ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })

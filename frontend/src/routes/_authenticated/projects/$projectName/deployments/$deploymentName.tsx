@@ -40,7 +40,7 @@ import { ArrowLeft, CheckCircle2, Copy, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
-import { useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 
 type DeploymentTab = 'status' | 'logs' | 'template'
@@ -382,7 +382,7 @@ export function DeploymentDetailPage({
                     readOnly={true}
                     defaultPlatformInput={preview.cuePlatformInput}
                     defaultProjectInput={preview.cueProjectInput}
-                    useRenderFn={useRenderDeploymentTemplate}
+                    scope={makeProjectScope(projectName)}
                   />
                 ) : null}
               </div>

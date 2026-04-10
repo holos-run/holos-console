@@ -21,7 +21,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetDeploymentTemplate, useUpdateDeploymentTemplate, useDeleteDeploymentTemplate, useCloneDeploymentTemplate, useRenderDeploymentTemplate, useListLinkableOrgTemplates } from '@/queries/deployment-templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope } from '@/queries/templates'
+import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
@@ -47,12 +48,13 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const templateName = propTemplateName ?? routeParams.templateName ?? ''
 
   const navigate = useNavigate()
-  const { data: template, isPending, error } = useGetDeploymentTemplate(projectName, templateName)
+  const scope = makeProjectScope(projectName)
+  const { data: template, isPending, error } = useGetTemplate(scope, templateName)
   const { data: project } = useGetProject(projectName)
-  const { data: linkableTemplates = [] } = useListLinkableOrgTemplates(projectName)
-  const updateMutation = useUpdateDeploymentTemplate(projectName, templateName)
-  const deleteMutation = useDeleteDeploymentTemplate(projectName)
-  const cloneMutation = useCloneDeploymentTemplate(projectName)
+  const { data: linkableTemplates = [] } = useListLinkableTemplates(scope)
+  const updateMutation = useUpdateTemplate(scope, templateName)
+  const deleteMutation = useDeleteTemplate(scope)
+  const cloneMutation = useCloneTemplate(scope)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -64,7 +66,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [cloneDisplayName, setCloneDisplayName] = useState('')
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [linkedEditOpen, setLinkedEditOpen] = useState(false)
-  const [draftLinkedOrgTemplates, setDraftLinkedOrgTemplates] = useState<string[]>([])
+  const [draftLinkedTemplateNames, setDraftLinkedTemplateNames] = useState<string[]>([])
   const [linkedEditError, setLinkedEditError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -118,14 +120,23 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   }
 
   const handleOpenLinkedEdit = () => {
-    setDraftLinkedOrgTemplates((template?.linkedTemplates ?? []).map(t => t.name))
+    setDraftLinkedTemplateNames((template?.linkedTemplates ?? []).map(t => t.name))
     setLinkedEditError(null)
     setLinkedEditOpen(true)
   }
 
   const handleSaveLinkedTemplates = async () => {
     try {
-      await updateMutation.mutateAsync({ linkedOrgTemplates: draftLinkedOrgTemplates })
+      // Build LinkedTemplateRef objects from the selected names using scopeRef
+      // from the linkable template list returned by the server.
+      const linkedTemplates: LinkedTemplateRef[] = draftLinkedTemplateNames
+        .map((name) => {
+          const lt = linkableTemplates.find((t) => t.name === name)
+          if (!lt?.scopeRef) return null
+          return { scope: lt.scopeRef.scope, scopeName: lt.scopeRef.scopeName, name } as LinkedTemplateRef
+        })
+        .filter((ref): ref is LinkedTemplateRef => ref !== null)
+      await updateMutation.mutateAsync({ linkedTemplates })
       toast.success('Saved')
       setLinkedEditOpen(false)
     } catch (err) {
@@ -283,7 +294,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
-              useRenderFn={useRenderDeploymentTemplate}
+              scope={scope}
             />
           </div>
 
@@ -366,11 +377,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               <div key={t.name} className="flex items-start gap-2">
                 <Checkbox
                   id={`linked-edit-${t.name}`}
-                  checked={t.mandatory || draftLinkedOrgTemplates.includes(t.name)}
+                  checked={t.mandatory || draftLinkedTemplateNames.includes(t.name)}
                   disabled={t.mandatory}
                   onCheckedChange={(checked) => {
                     if (t.mandatory) return
-                    setDraftLinkedOrgTemplates((prev) =>
+                    setDraftLinkedTemplateNames((prev) =>
                       checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
                     )
                   }}

@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListOrgTemplates, useCreateOrgTemplate } from '@/queries/org-templates'
+import { useListTemplates, useCreateTemplate, makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -120,9 +120,10 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const { data: templates, isPending, error } = useListOrgTemplates(orgName)
+  const scope = makeOrgScope(orgName)
+  const { data: templates, isPending, error } = useListTemplates(scope)
   const { data: org } = useGetOrganization(orgName)
-  const createMutation = useCreateOrgTemplate(orgName)
+  const createMutation = useCreateTemplate(scope)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')

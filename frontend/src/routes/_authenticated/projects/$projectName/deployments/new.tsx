@@ -10,7 +10,7 @@ import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useCreateDeployment } from '@/queries/deployments'
-import { useListDeploymentTemplates } from '@/queries/deployment-templates'
+import { useListTemplates, makeProjectScope } from '@/queries/templates'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/new')({
   component: CreateDeploymentRoute,
@@ -33,7 +33,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
 
   const navigate = useNavigate()
   const createMutation = useCreateDeployment(projectName)
-  const { data: templates = [] } = useListDeploymentTemplates(projectName)
+  const { data: templates = [] } = useListTemplates(makeProjectScope(projectName))
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')

@@ -1,15 +1,14 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { Info, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useCreateDeploymentTemplate, useRenderDeploymentTemplate, useListLinkableOrgTemplates } from '@/queries/deployment-templates'
+import { Info } from 'lucide-react'
+import { useCreateTemplate, useRenderTemplate, makeProjectScope } from '@/queries/templates'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha1 (prepended by renderer).
@@ -232,14 +231,13 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const projectName = propProjectName ?? routeProjectName ?? ''
 
   const navigate = useNavigate()
-  const createMutation = useCreateDeploymentTemplate(projectName)
-  const { data: linkableTemplates = [] } = useListLinkableOrgTemplates(projectName)
+  const scope = makeProjectScope(projectName)
+  const createMutation = useCreateTemplate(scope)
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
-  const [linkedOrgTemplates, setLinkedOrgTemplates] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
@@ -265,7 +263,8 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 }`
 
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
-  const renderQuery = useRenderDeploymentTemplate(
+  const renderQuery = useRenderTemplate(
+    scope,
     debouncedCueTemplate,
     previewCueInput,
     previewOpen,
@@ -296,7 +295,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
         displayName: displayName.trim(),
         description: description.trim(),
         cueTemplate,
-        linkedOrgTemplates,
       })
       await navigate({
         to: '/projects/$projectName/templates/$templateName',
@@ -347,60 +345,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               placeholder="What does this template produce?"
             />
           </div>
-          {linkableTemplates.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Label>Linked Platform Templates</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 text-muted-foreground cursor-default" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Select org-level platform templates to unify with this deployment template at render time. Mandatory templates (shown with a lock icon) are always included and cannot be deselected.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <div className="space-y-2" aria-label="Linked platform templates">
-                {linkableTemplates.map((t) => (
-                  <div key={t.name} className="flex items-start gap-2">
-                    <Checkbox
-                      id={`link-${t.name}`}
-                      checked={t.mandatory || linkedOrgTemplates.includes(t.name)}
-                      disabled={t.mandatory}
-                      onCheckedChange={(checked) => {
-                        if (t.mandatory) return
-                        setLinkedOrgTemplates((prev) =>
-                          checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
-                        )
-                      }}
-                    />
-                    <div className="flex flex-col">
-                      <label htmlFor={`link-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
-                        {t.displayName || t.name}
-                        {t.mandatory && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>This platform template is mandatory and always applied.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </label>
-                      {t.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label htmlFor="template-cue-template">CUE Template</Label>
