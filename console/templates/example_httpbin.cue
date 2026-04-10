@@ -2,7 +2,7 @@
 // Produces: ServiceAccount, Deployment, Service.
 // Allowed by the org constraint: Deployment, Service, ServiceAccount.
 //
-// Pair with console/system_templates/example_httpbin_platform.cue to add an
+// Pair with console/templates/example_httpbin_platform.cue to add an
 // HTTPRoute that routes gateway traffic to the Service.
 
 // Use generated type definitions from api/v1alpha2 (prepended by renderer).
@@ -100,7 +100,7 @@ projectResources: {
 			}
 
 			// Service exposes port 80 → container port input.port (named "http").
-			// The HTTPRoute in the org system template routes gateway traffic here.
+			// The HTTPRoute in the org platform template routes gateway traffic here.
 			Service: (input.name): {
 				apiVersion: "v1"
 				kind:       "Service"

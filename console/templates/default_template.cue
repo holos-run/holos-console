@@ -158,7 +158,7 @@ projectResources: {
 
 			// ReferenceGrant allows HTTPRoute resources in the gateway namespace to
 			// reference Service resources in the project namespace.
-			// This enables system templates (such as the example HTTPRoute template)
+			// This enables platform templates (such as the example HTTPRoute template)
 			// to expose deployments via the gateway.
 			// See: https://gateway-api.sigs.k8s.io/api-types/referencegrant/
 			ReferenceGrant: "allow-gateway-httproute": {
