@@ -1,7 +1,6 @@
-// org-templates.ts provides backward-compatible query hooks over the new
-// unified TemplateService (v1alpha2). Route files continue to use these hooks
-// until phase 11 (frontend folder-aware routing) migrates them to
-// useListTemplates, useGetTemplate, etc. directly.
+// org-templates.ts provides backward-compatible organization-scoped query
+// hooks over the unified TemplateService. New routes should import the
+// scope-agnostic hooks from @/queries/templates directly.
 import { useMemo } from 'react'
 import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
@@ -111,19 +110,6 @@ export function useUpdateOrgTemplate(org: string, name: string) {
   })
 }
 
-export function useDeleteOrgTemplate(org: string) {
-  const transport = useTransport()
-  const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (params: { name: string }) =>
-      client.deleteTemplate({ scope: makeOrgScope(org), ...params }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: orgTemplateListKey(org) })
-    },
-  })
-}
-
 export function useCloneOrgTemplate(org: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
@@ -151,7 +137,7 @@ export function useRenderOrgTemplate(
     queryFn: async () => {
       const response = await client.renderTemplate({
         // Scope is not known in this legacy hook — use a placeholder.
-        // Phase 11 will migrate callers to useRenderTemplate with explicit scope.
+        // Scope is not available in this legacy hook; caller must use explicit scope.
         scope: create(TemplateScopeRefSchema, { scope: TemplateScope.ORGANIZATION, scopeName: '' }),
         cueTemplate,
         cueProjectInput: cueInput,

@@ -12,7 +12,7 @@ interface RenderStatusIndicatorProps {
   hasError: boolean
 }
 
-export function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusIndicatorProps) {
+function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusIndicatorProps) {
   if (isRendering) {
     return (
       <span aria-label="Render status: rendering" className="flex items-center gap-1 text-xs text-muted-foreground">
