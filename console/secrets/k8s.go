@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,7 +76,7 @@ func (c *K8sClient) GetSecret(ctx context.Context, project, name string) (*corev
 // ListSecrets retrieves secrets with the console label from the project's namespace.
 func (c *K8sClient) ListSecrets(ctx context.Context, project string) (*corev1.SecretList, error) {
 	ns := c.Resolver.ProjectNamespace(project)
-	labelSelector := v1alpha1.LabelManagedBy + "=" + v1alpha1.ManagedByValue
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue
 	slog.DebugContext(ctx, "listing secrets from kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
@@ -104,21 +104,21 @@ func (c *K8sClient) CreateSecret(ctx context.Context, project, name string, data
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		v1alpha1.AnnotationShareUsers: string(usersJSON),
-		v1alpha1.AnnotationShareRoles: string(rolesJSON),
+		v1alpha2.AnnotationShareUsers: string(usersJSON),
+		v1alpha2.AnnotationShareRoles: string(rolesJSON),
 	}
 	if description != "" {
-		annotations[v1alpha1.AnnotationDescription] = description
+		annotations[v1alpha2.AnnotationDescription] = description
 	}
 	if url != "" {
-		annotations[v1alpha1.AnnotationURL] = url
+		annotations[v1alpha2.AnnotationURL] = url
 	}
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 			Annotations: annotations,
 		},
@@ -139,8 +139,8 @@ func (c *K8sClient) UpdateSecret(ctx context.Context, project, name string, data
 	if err != nil {
 		return nil, err
 	}
-	if secret.Labels == nil || secret.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-		return nil, fmt.Errorf("secret %q is not managed by %s", name, v1alpha1.ManagedByValue)
+	if secret.Labels == nil || secret.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		return nil, fmt.Errorf("secret %q is not managed by %s", name, v1alpha2.ManagedByValue)
 	}
 	secret.Data = data
 	if description != nil || url != nil {
@@ -149,16 +149,16 @@ func (c *K8sClient) UpdateSecret(ctx context.Context, project, name string, data
 		}
 		if description != nil {
 			if *description == "" {
-				delete(secret.Annotations, v1alpha1.AnnotationDescription)
+				delete(secret.Annotations, v1alpha2.AnnotationDescription)
 			} else {
-				secret.Annotations[v1alpha1.AnnotationDescription] = *description
+				secret.Annotations[v1alpha2.AnnotationDescription] = *description
 			}
 		}
 		if url != nil {
 			if *url == "" {
-				delete(secret.Annotations, v1alpha1.AnnotationURL)
+				delete(secret.Annotations, v1alpha2.AnnotationURL)
 			} else {
-				secret.Annotations[v1alpha1.AnnotationURL] = *url
+				secret.Annotations[v1alpha2.AnnotationURL] = *url
 			}
 		}
 	}
@@ -176,8 +176,8 @@ func (c *K8sClient) DeleteSecret(ctx context.Context, project, name string) erro
 	if err != nil {
 		return err
 	}
-	if secret.Labels == nil || secret.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-		return fmt.Errorf("secret %q is not managed by %s", name, v1alpha1.ManagedByValue)
+	if secret.Labels == nil || secret.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		return fmt.Errorf("secret %q is not managed by %s", name, v1alpha2.ManagedByValue)
 	}
 	return c.client.CoreV1().Secrets(secret.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
@@ -193,8 +193,8 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, sha
 	if err != nil {
 		return nil, err
 	}
-	if secret.Labels == nil || secret.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-		return nil, fmt.Errorf("secret %q is not managed by %s", name, v1alpha1.ManagedByValue)
+	if secret.Labels == nil || secret.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		return nil, fmt.Errorf("secret %q is not managed by %s", name, v1alpha2.ManagedByValue)
 	}
 	if secret.Annotations == nil {
 		secret.Annotations = make(map[string]string)
@@ -207,8 +207,8 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, sha
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
-	secret.Annotations[v1alpha1.AnnotationShareUsers] = string(usersJSON)
-	secret.Annotations[v1alpha1.AnnotationShareRoles] = string(rolesJSON)
+	secret.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
+	secret.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
 }
 
@@ -216,14 +216,14 @@ func (c *K8sClient) UpdateSharing(ctx context.Context, project, name string, sha
 // Returns an empty slice if the annotation is missing.
 // Returns an error if the annotation contains invalid JSON.
 func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
-	return parseGrantAnnotation(secret, v1alpha1.AnnotationShareUsers)
+	return parseGrantAnnotation(secret, v1alpha2.AnnotationShareUsers)
 }
 
 // GetShareRoles parses the console.holos.run/share-roles annotation from a secret.
 // Returns nil if the annotation is absent.
 // Returns an error if the annotation contains invalid JSON.
 func GetShareRoles(secret *corev1.Secret) ([]AnnotationGrant, error) {
-	return parseGrantAnnotation(secret, v1alpha1.AnnotationShareRoles)
+	return parseGrantAnnotation(secret, v1alpha2.AnnotationShareRoles)
 }
 
 // GetDescription returns the description annotation value from a secret.
@@ -232,7 +232,7 @@ func GetDescription(secret *corev1.Secret) string {
 	if secret.Annotations == nil {
 		return ""
 	}
-	return secret.Annotations[v1alpha1.AnnotationDescription]
+	return secret.Annotations[v1alpha2.AnnotationDescription]
 }
 
 // GetURL returns the URL annotation value from a secret.
@@ -241,7 +241,7 @@ func GetURL(secret *corev1.Secret) string {
 	if secret.Annotations == nil {
 		return ""
 	}
-	return secret.Annotations[v1alpha1.AnnotationURL]
+	return secret.Annotations[v1alpha2.AnnotationURL]
 }
 
 // parseGrantAnnotation parses a JSON annotation value into a slice of AnnotationGrant.

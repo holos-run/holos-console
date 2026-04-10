@@ -650,8 +650,36 @@ func (h *Handler) resolveProjectGrants(ctx context.Context, project string) (map
 }
 
 // checkAccess verifies access using per-secret grants, then project grants.
-// Organization grants do not cascade to secret operations
+//
+// # Non-cascading access for secrets (intentional)
+//
+// Hierarchy walking is used ONLY to collect default-share grants at create
+// time (org → folders → project → new secret). It is NOT used for access
+// checks on existing secrets. This is a principled design decision:
+//
+//   - Templates are policy: it is appropriate for an org-level OWNER to apply
+//     a platform template everywhere — the template is a policy artifact that
+//     must reach every project.
+//   - Secrets are data: an org-level OWNER should NOT automatically be able to
+//     read a secret stored in a specific project namespace unless they have an
+//     explicit grant on that secret or project (ADR 007). Secrets may contain
+//     credentials that are intentionally isolated to a team.
+//
+// The access path for secrets is:
+//
+//  1. Per-secret grants (full permission via PermissionSecretsRead/Write/Delete).
+//  2. Project grants via ProjectCascadeSecretPerms (EDITORs and OWNERs may
+//     write; VIEWERs cannot read — PermissionSecretsRead never cascades).
+//
+// PermissionSecretsRead is NOT in ProjectCascadeSecretPerms. This means even a
+// project-level OWNER cannot read a specific secret via cascade — they need an
+// explicit per-secret grant. An org-level OWNER (with no project grant) is
+// denied at step 2 as well. Organization grants do not cascade at all
 // (see docs/adrs/007-org-grants-no-cascade.md).
+//
+// To gain read access through the default-share mechanism, the secret's
+// default-share grants (inherited at create time from ancestors) must include
+// the user's email or role — these appear as direct per-secret grants at step 1.
 func (h *Handler) checkAccess(
 	email string,
 	roles []string,

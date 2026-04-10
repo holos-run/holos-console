@@ -282,9 +282,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
-		// Secrets service with project grant fallback
+		// Secrets service with project grant fallback and ancestor default-share cascade.
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
-		projectResolver := projects.NewProjectGrantResolver(projectsK8s)
+		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
+		projectResolver := projects.NewProjectGrantResolver(projectsK8s).WithWalker(nsWalker)
 		secretsHandler := secrets.NewProjectScopedHandler(secretsK8s, projectResolver)
 		secretsPath, secretsHTTPHandler := consolev1connect.NewSecretsServiceHandler(secretsHandler, protectedInterceptors)
 		mux.Handle(secretsPath, secretsHTTPHandler)
