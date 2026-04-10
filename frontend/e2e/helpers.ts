@@ -216,6 +216,75 @@ export async function apiDeleteProject(page: Page, name: string): Promise<void> 
 }
 
 /**
+ * Create a folder via the RPC API.
+ * parentType: 1 = ORGANIZATION, 2 = FOLDER
+ */
+export async function apiCreateFolder(
+  page: Page,
+  name: string,
+  organization: string,
+  parentType: 1 | 2,
+  parentName: string,
+): Promise<void> {
+  const { token, email } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, organization, parentType, parentName, email, token }) => {
+      const resp = await fetch('/holos.console.v1.FolderService/CreateFolder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name,
+          displayName: name,
+          organization,
+          parentType,
+          parentName,
+          userGrants: [{ principal: email, role: 3 }],
+          roleGrants: [],
+        }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`CreateFolder failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, organization, parentType, parentName, email, token },
+  )
+}
+
+/**
+ * Delete a folder via the RPC API.
+ */
+export async function apiDeleteFolder(
+  page: Page,
+  name: string,
+  organization: string,
+): Promise<void> {
+  const { token } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ name, organization, token }) => {
+      const resp = await fetch('/holos.console.v1.FolderService/DeleteFolder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connect-Protocol-Version': '1',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, organization }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(`DeleteFolder failed (${resp.status}): ${text}`)
+      }
+    },
+    { name, organization, token },
+  )
+}
+
+/**
  * Select an org in the sidebar org picker.
  * Navigates to /profile to ensure the sidebar is loaded with org data.
  */
