@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -16,27 +17,64 @@ import (
 
 const (
 	CueTemplateKey = "template.cue"
-	// DefaultsKey is the ConfigMap data key that stores DeploymentDefaults as JSON.
+	// DefaultsKey is the ConfigMap data key that stores TemplateDefaults as JSON.
 	DefaultsKey = "defaults.json"
+
+	// DefaultReferenceGrantName is the name of the seeded built-in platform template.
+	DefaultReferenceGrantName = "reference-grant"
 )
 
-// K8sClient wraps Kubernetes client operations for deployment templates.
+// K8sClient wraps Kubernetes client operations for unified template CRUD at
+// any scope level (organization, folder, project). This replaces the separate
+// templates.K8sClient and org_templates.K8sClient from v1alpha1 (ADR 021 Decision 1).
 type K8sClient struct {
 	client   kubernetes.Interface
 	Resolver *resolver.Resolver
 }
 
-// NewK8sClient creates a client for deployment template operations.
+// NewK8sClient creates a client for template operations.
 func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
 }
 
-// ListTemplates returns all deployment template ConfigMaps in the project namespace.
-func (k *K8sClient) ListTemplates(ctx context.Context, project string) ([]corev1.ConfigMap, error) {
-	ns := k.Resolver.ProjectNamespace(project)
-	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeDeploymentTemplate
-	slog.DebugContext(ctx, "listing deployment templates from kubernetes",
-		slog.String("project", project),
+// namespaceForScope returns the Kubernetes namespace for the given scope and name.
+func (k *K8sClient) namespaceForScope(scope consolev1.TemplateScope, scopeName string) (string, error) {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return k.Resolver.OrgNamespace(scopeName), nil
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return k.Resolver.FolderNamespace(scopeName), nil
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+		return k.Resolver.ProjectNamespace(scopeName), nil
+	default:
+		return "", fmt.Errorf("unknown template scope %v", scope)
+	}
+}
+
+// scopeLabelValue returns the label string for a TemplateScope enum value.
+func scopeLabelValue(scope consolev1.TemplateScope) string {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return v1alpha2.TemplateScopeOrganization
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return v1alpha2.TemplateScopeFolder
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+		return v1alpha2.TemplateScopeProject
+	default:
+		return ""
+	}
+}
+
+// ListTemplates returns all template ConfigMaps for the given scope and name.
+func (k *K8sClient) ListTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplate
+	slog.DebugContext(ctx, "listing templates from kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("namespace", ns),
 		slog.String("labelSelector", labelSelector),
 	)
@@ -44,30 +82,35 @@ func (k *K8sClient) ListTemplates(ctx context.Context, project string) ([]corev1
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listing deployment templates: %w", err)
+		return nil, fmt.Errorf("listing templates: %w", err)
 	}
 	return list.Items, nil
 }
 
-// GetTemplate retrieves a deployment template ConfigMap by name.
-func (k *K8sClient) GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error) {
-	ns := k.Resolver.ProjectNamespace(project)
-	slog.DebugContext(ctx, "getting deployment template from kubernetes",
-		slog.String("project", project),
+// GetTemplate retrieves a template ConfigMap by name for the given scope.
+func (k *K8sClient) GetTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (*corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	slog.DebugContext(ctx, "getting template from kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
 	return k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 }
 
-// CreateTemplate creates a new deployment template ConfigMap.
-// If defaults is non-nil, it is serialized to JSON and stored under DefaultsKey.
-// If linkedOrgTemplates is non-nil and non-empty, it is stored as a JSON array
-// in the console.holos.run/linked-org-templates annotation.
-func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
-	ns := k.Resolver.ProjectNamespace(project)
-	slog.DebugContext(ctx, "creating deployment template in kubernetes",
-		slog.String("project", project),
+// CreateTemplate creates a new template ConfigMap at the given scope.
+func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, mandatory, enabled bool, linkedTemplates []*consolev1.LinkedTemplateRef) (*corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	slog.DebugContext(ctx, "creating template in kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
@@ -77,28 +120,31 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 	if defaults != nil {
 		b, err := json.Marshal(defaults)
 		if err != nil {
-			return nil, fmt.Errorf("serializing deployment defaults: %w", err)
+			return nil, fmt.Errorf("serializing template defaults: %w", err)
 		}
 		data[DefaultsKey] = string(b)
 	}
 	annotations := map[string]string{
-		v1alpha1.AnnotationDisplayName: displayName,
-		v1alpha1.AnnotationDescription: description,
+		v1alpha2.AnnotationDisplayName: displayName,
+		v1alpha2.AnnotationDescription: description,
+		v1alpha2.AnnotationMandatory:   strconv.FormatBool(mandatory),
+		v1alpha2.AnnotationEnabled:     strconv.FormatBool(enabled),
 	}
-	if len(linkedOrgTemplates) > 0 {
-		b, err := json.Marshal(linkedOrgTemplates)
+	if len(linkedTemplates) > 0 {
+		b, err := marshalLinkedTemplates(linkedTemplates)
 		if err != nil {
-			return nil, fmt.Errorf("serializing linked org templates: %w", err)
+			return nil, err
 		}
-		annotations[v1alpha1.AnnotationLinkedOrgTemplates] = string(b)
+		annotations[v1alpha2.AnnotationLinkedTemplates] = string(b)
 	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeploymentTemplate,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
 			},
 			Annotations: annotations,
 		},
@@ -107,31 +153,37 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, project, name, displayNa
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }
 
-// UpdateTemplate updates an existing deployment template ConfigMap.
-// Only non-nil fields are updated. If defaults is non-nil, it is serialized to
-// JSON and stored under DefaultsKey. If clearDefaults is true, the DefaultsKey
-// is removed from the ConfigMap data regardless of the defaults parameter.
-// linkedOrgTemplates replaces the entire linking annotation when present (even
-// when empty, to allow clearing all links). Pass nil to leave the annotation unchanged.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, linkedOrgTemplates []string) (*corev1.ConfigMap, error) {
-	ns := k.Resolver.ProjectNamespace(project)
-	slog.DebugContext(ctx, "updating deployment template in kubernetes",
-		slog.String("project", project),
+// UpdateTemplate updates an existing template ConfigMap.
+// Only non-nil pointer fields are updated.
+func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, mandatory, enabled *bool, linkedTemplates []*consolev1.LinkedTemplateRef, clearLinks bool) (*corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	slog.DebugContext(ctx, "updating template in kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
 	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("getting deployment template for update: %w", err)
+		return nil, fmt.Errorf("getting template for update: %w", err)
 	}
 	if cm.Annotations == nil {
 		cm.Annotations = make(map[string]string)
 	}
 	if displayName != nil {
-		cm.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
+		cm.Annotations[v1alpha2.AnnotationDisplayName] = *displayName
 	}
 	if description != nil {
-		cm.Annotations[v1alpha1.AnnotationDescription] = *description
+		cm.Annotations[v1alpha2.AnnotationDescription] = *description
+	}
+	if mandatory != nil {
+		cm.Annotations[v1alpha2.AnnotationMandatory] = strconv.FormatBool(*mandatory)
+	}
+	if enabled != nil {
+		cm.Annotations[v1alpha2.AnnotationEnabled] = strconv.FormatBool(*enabled)
 	}
 	if cm.Data == nil {
 		cm.Data = make(map[string]string)
@@ -144,33 +196,46 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, project, name string, di
 	} else if defaults != nil {
 		b, err := json.Marshal(defaults)
 		if err != nil {
-			return nil, fmt.Errorf("serializing deployment defaults: %w", err)
+			return nil, fmt.Errorf("serializing template defaults: %w", err)
 		}
 		cm.Data[DefaultsKey] = string(b)
 	}
-	// linkedOrgTemplates is non-nil when the caller wants to update the linking
-	// list (including clearing it with an empty slice). Nil means "no change".
-	if linkedOrgTemplates != nil {
-		if len(linkedOrgTemplates) == 0 {
-			delete(cm.Annotations, v1alpha1.AnnotationLinkedOrgTemplates)
+	if clearLinks {
+		delete(cm.Annotations, v1alpha2.AnnotationLinkedTemplates)
+	} else if linkedTemplates != nil {
+		if len(linkedTemplates) == 0 {
+			delete(cm.Annotations, v1alpha2.AnnotationLinkedTemplates)
 		} else {
-			b, err := json.Marshal(linkedOrgTemplates)
+			b, err := marshalLinkedTemplates(linkedTemplates)
 			if err != nil {
-				return nil, fmt.Errorf("serializing linked org templates: %w", err)
+				return nil, err
 			}
-			cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates] = string(b)
+			cm.Annotations[v1alpha2.AnnotationLinkedTemplates] = string(b)
 		}
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
 
-// CloneTemplate copies an existing deployment template to a new name.
-// The clone inherits the CUE template, description, defaults, and linked org
-// templates from the source.
-func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
-	source, err := k.GetTemplate(ctx, project, sourceName)
+// DeleteTemplate deletes a template ConfigMap.
+func (k *K8sClient) DeleteTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) error {
+	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
-		return nil, fmt.Errorf("getting source deployment template for clone: %w", err)
+		return err
+	}
+	slog.DebugContext(ctx, "deleting template from kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("namespace", ns),
+		slog.String("name", name),
+	)
+	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// CloneTemplate copies an existing template to a new name within the same scope.
+func (k *K8sClient) CloneTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
+	source, err := k.GetTemplate(ctx, scope, scopeName, sourceName)
+	if err != nil {
+		return nil, fmt.Errorf("getting source template for clone: %w", err)
 	}
 	// Extract defaults from source if present.
 	var defaults *consolev1.TemplateDefaults
@@ -180,30 +245,371 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, project, sourceName, newN
 			defaults = &d
 		}
 	}
-	// Inherit linked org templates from source.
-	var linkedOrgTemplates []string
-	if raw, ok := source.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
-		_ = json.Unmarshal([]byte(raw), &linkedOrgTemplates)
+	// Inherit linked templates from source.
+	var linkedTemplates []*consolev1.LinkedTemplateRef
+	if raw, ok := source.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+		linkedTemplates, _ = unmarshalLinkedTemplates(raw)
 	}
+	mandatory, _ := strconv.ParseBool(source.Annotations[v1alpha2.AnnotationMandatory])
+	// New clones start as disabled.
 	return k.CreateTemplate(
 		ctx,
-		project,
+		scope,
+		scopeName,
 		newName,
 		newDisplayName,
-		source.Annotations[v1alpha1.AnnotationDescription],
+		source.Annotations[v1alpha2.AnnotationDescription],
 		source.Data[CueTemplateKey],
 		defaults,
-		linkedOrgTemplates,
+		mandatory,
+		false, // new clones start disabled
+		linkedTemplates,
 	)
 }
 
-// DeleteTemplate deletes a deployment template ConfigMap.
-func (k *K8sClient) DeleteTemplate(ctx context.Context, project, name string) error {
-	ns := k.Resolver.ProjectNamespace(project)
-	slog.DebugContext(ctx, "deleting deployment template from kubernetes",
-		slog.String("project", project),
-		slog.String("namespace", ns),
-		slog.String("name", name),
+// ProjectScopedResolver wraps K8sClient and exposes the 2-argument GetTemplate
+// and DeleteTemplate methods expected by the deployments package. This avoids
+// coupling the deployments package to the unified scope-discriminated API while
+// the deployment service is still project-scoped.
+type ProjectScopedResolver struct {
+	k8s *K8sClient
+}
+
+// NewProjectScopedResolver creates a ProjectScopedResolver from a K8sClient.
+func NewProjectScopedResolver(k8s *K8sClient) *ProjectScopedResolver {
+	return &ProjectScopedResolver{k8s: k8s}
+}
+
+// GetTemplate satisfies deployments.TemplateResolver using project scope.
+func (r *ProjectScopedResolver) GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error) {
+	return r.k8s.GetTemplate(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, name)
+}
+
+// ListTemplatesInNamespace returns all template ConfigMaps in a specific namespace.
+// Used by the ancestry walker to collect templates from ancestor namespaces.
+func (k *K8sClient) ListTemplatesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
+	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplate
+	list, err := k.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing templates in namespace %q: %w", ns, err)
+	}
+	return list.Items, nil
+}
+
+// ListTemplateSourcesForRender returns CUE sources for the effective template set
+// participating in render from the given namespace's templates. The effective set
+// is: (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
+// Disabled templates are never included even when explicitly linked.
+// The result is deduplicated so a mandatory+explicitly-linked template appears once.
+func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string, linkedRefs []linkedRef) ([]string, error) {
+	cms, err := k.ListTemplatesInNamespace(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a set for O(1) lookup.
+	linked := make(map[linkedRef]bool, len(linkedRefs))
+	for _, r := range linkedRefs {
+		linked[r] = true
+	}
+
+	seen := make(map[string]bool)
+	var sources []string
+	for _, cm := range cms {
+		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+		if !enabled {
+			continue // disabled templates never participate
+		}
+		// Determine which scope this template belongs to from the label.
+		scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
+		scopeName := scopeNameFromNs(k.Resolver, ns, scopeLabel)
+		ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
+		include := mandatory || linked[ref]
+		if !include {
+			continue
+		}
+		key := scopeLabel + "/" + scopeName + "/" + cm.Name
+		if seen[key] {
+			continue // deduplicate
+		}
+		src := cm.Data[CueTemplateKey]
+		if src == "" {
+			continue
+		}
+		seen[key] = true
+		sources = append(sources, src)
+	}
+	return sources, nil
+}
+
+// ListOrgTemplateSourcesForRender satisfies the deployments.OrgTemplateProvider
+// interface. It returns CUE sources for the effective set of org-level templates
+// using the legacy org-only linking model (linkedNames are bare template names
+// within the org scope). Used by DeploymentService until Phase 10 migrates to
+// the full cross-level linking model.
+func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedNames []string) ([]string, error) {
+	cms, err := k.ListTemplates(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org)
+	if err != nil {
+		return nil, err
+	}
+
+	linked := make(map[string]bool, len(linkedNames))
+	for _, n := range linkedNames {
+		linked[n] = true
+	}
+
+	seen := make(map[string]bool)
+	var sources []string
+	for _, cm := range cms {
+		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+		if !enabled {
+			continue
+		}
+		include := mandatory || linked[cm.Name]
+		if !include {
+			continue
+		}
+		if seen[cm.Name] {
+			continue
+		}
+		src := cm.Data[CueTemplateKey]
+		if src == "" {
+			continue
+		}
+		seen[cm.Name] = true
+		sources = append(sources, src)
+	}
+	return sources, nil
+}
+
+// ListLinkableTemplateInfos returns all enabled templates at the given scope
+// as LinkableTemplate proto messages. Used by the TemplateService to populate
+// the linking UI.
+func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]*consolev1.LinkableTemplate, error) {
+	cms, err := k.ListTemplates(ctx, scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	var result []*consolev1.LinkableTemplate
+	for _, cm := range cms {
+		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+		if !enabled {
+			continue
+		}
+		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+		result = append(result, &consolev1.LinkableTemplate{
+			ScopeRef: &consolev1.TemplateScopeRef{
+				Scope:     scope,
+				ScopeName: scopeName,
+			},
+			Name:        cm.Name,
+			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
+			Description: cm.Annotations[v1alpha2.AnnotationDescription],
+			Mandatory:   mandatory,
+		})
+	}
+	return result, nil
+}
+
+// SeedDefaultOrgTemplates seeds the built-in HTTPRoute platform template into
+// the org namespace if no templates exist. Called on first List to avoid a
+// separate migration step. The template is seeded as disabled.
+func (k *K8sClient) SeedDefaultOrgTemplates(ctx context.Context, org string) error {
+	_, err := k.CreateTemplate(
+		ctx,
+		consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		org,
+		DefaultReferenceGrantName,
+		"HTTPRoute",
+		"Exposes a deployment's Service via an HTTPRoute through the gateway. Requires a ReferenceGrant in the project namespace (provided by the default deployment template).",
+		DefaultReferenceGrantTemplate,
+		nil,
+		false, // not mandatory
+		false, // disabled: configure the Gateway name before enabling
+		nil,
 	)
-	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	return err
+}
+
+// configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
+// The scope and scopeName must be provided by the caller since they are encoded
+// in the namespace (which the ConfigMap stores but the proto carries explicitly).
+func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.Template {
+	cueSource := cm.Data[CueTemplateKey]
+	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+	tmpl := &consolev1.Template{
+		Name:        cm.Name,
+		DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
+		Description: cm.Annotations[v1alpha2.AnnotationDescription],
+		CueTemplate: cueSource,
+		Mandatory:   mandatory,
+		Enabled:     enabled,
+		ScopeRef: &consolev1.TemplateScopeRef{
+			Scope:     scope,
+			ScopeName: scopeName,
+		},
+	}
+
+	// Populate linked templates from the v1alpha2 annotation.
+	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+		refs, err := unmarshalLinkedTemplates(raw)
+		if err == nil {
+			tmpl.LinkedTemplates = refs
+		} else {
+			slog.Warn("failed to parse linked-templates annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	// Priority 1: CUE extraction from the template source (ADR 018 pattern).
+	// Only project-scope templates carry deployment defaults.
+	if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && cueSource != "" {
+		extracted, err := ExtractDefaults(cueSource)
+		if err != nil {
+			slog.Warn("failed to extract defaults from CUE template; falling back to annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		} else if extracted != nil {
+			tmpl.Defaults = extracted
+			return tmpl
+		}
+	}
+
+	// Priority 2: Annotation fallback for templates with defaults stored as JSON.
+	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
+		var defaults consolev1.TemplateDefaults
+		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
+			tmpl.Defaults = &defaults
+		} else {
+			slog.Warn("failed to deserialize template defaults from ConfigMap",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		}
+	}
+	return tmpl
+}
+
+// linkedRef is a deduplicated key for a cross-level template reference.
+type linkedRef struct {
+	scope     string // e.g. "organization", "folder", "project"
+	scopeName string
+	name      string
+}
+
+// linkedRefFromProto converts a proto LinkedTemplateRef to a linkedRef key.
+func linkedRefFromProto(ref *consolev1.LinkedTemplateRef) linkedRef {
+	return linkedRef{
+		scope:     scopeLabelValue(ref.Scope),
+		scopeName: ref.ScopeName,
+		name:      ref.Name,
+	}
+}
+
+// marshalLinkedTemplates serializes LinkedTemplateRef slice to JSON for annotation storage.
+func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error) {
+	type storedRef struct {
+		Scope     string `json:"scope"`
+		ScopeName string `json:"scope_name"`
+		Name      string `json:"name"`
+	}
+	stored := make([]storedRef, 0, len(refs))
+	for _, r := range refs {
+		if r == nil {
+			continue
+		}
+		stored = append(stored, storedRef{
+			Scope:     scopeLabelValue(r.Scope),
+			ScopeName: r.ScopeName,
+			Name:      r.Name,
+		})
+	}
+	b, err := json.Marshal(stored)
+	if err != nil {
+		return nil, fmt.Errorf("serializing linked templates: %w", err)
+	}
+	return b, nil
+}
+
+// unmarshalLinkedTemplates parses the AnnotationLinkedTemplates JSON into proto refs.
+func unmarshalLinkedTemplates(raw string) ([]*consolev1.LinkedTemplateRef, error) {
+	type storedRef struct {
+		Scope     string `json:"scope"`
+		ScopeName string `json:"scope_name"`
+		Name      string `json:"name"`
+	}
+	var stored []storedRef
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return nil, fmt.Errorf("parsing linked templates: %w", err)
+	}
+	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
+	for _, s := range stored {
+		refs = append(refs, &consolev1.LinkedTemplateRef{
+			Scope:     scopeFromLabel(s.Scope),
+			ScopeName: s.ScopeName,
+			Name:      s.Name,
+		})
+	}
+	return refs, nil
+}
+
+// scopeFromLabel converts a label string back to a TemplateScope enum value.
+func scopeFromLabel(label string) consolev1.TemplateScope {
+	switch label {
+	case v1alpha2.TemplateScopeOrganization:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+	case v1alpha2.TemplateScopeFolder:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+	case v1alpha2.TemplateScopeProject:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+	default:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+	}
+}
+
+// scopeNameFromNs extracts the logical scope name from a namespace name using the resolver.
+func scopeNameFromNs(r *resolver.Resolver, ns, scopeLabel string) string {
+	switch scopeLabel {
+	case v1alpha2.TemplateScopeOrganization:
+		name, err := r.OrgFromNamespace(ns)
+		if err == nil {
+			return name
+		}
+	case v1alpha2.TemplateScopeFolder:
+		name, err := r.FolderFromNamespace(ns)
+		if err == nil {
+			return name
+		}
+	case v1alpha2.TemplateScopeProject:
+		name, err := r.ProjectFromNamespace(ns)
+		if err == nil {
+			return name
+		}
+	}
+	return ""
+}
+
+// scopeAndNameFromNs infers the scope and logical name from a Kubernetes namespace.
+func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScope, string) {
+	if name, err := r.OrgFromNamespace(ns); err == nil {
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, name
+	}
+	if name, err := r.FolderFromNamespace(ns); err == nil {
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, name
+	}
+	if name, err := r.ProjectFromNamespace(ns); err == nil {
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, name
+	}
+	return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, ""
 }

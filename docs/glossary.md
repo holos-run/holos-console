@@ -12,14 +12,16 @@ align with the resource collection names (`platformResources`) and the input
 name (`PlatformInput`). Code identifiers were subsequently renamed in phases
 1–3 of issue #558: `SystemTemplate` → `OrgTemplate`, `SystemTemplateService` →
 `OrgTemplateService`, `console/system_templates/` → `console/org_templates/`,
-and `system_templates.proto` → `org_templates.proto`. In prose, always use the
-canonical term "platform template."
+and `system_templates.proto` → `org_templates.proto`. ADR 021 further collapsed
+the separate `DeploymentTemplateService` and `OrgTemplateService` into a single
+scope-aware `TemplateService` (`console/templates/`, proto: `templates.proto`).
+In prose, always use the canonical term "platform template."
 
 ---
 
 ## Terms
 
-### Platform template (code: `OrgTemplate`, proto: `OrgTemplateService`)
+### Platform template (code: `OrgTemplate`, proto: `TemplateService` with `TEMPLATE_SCOPE_ORGANIZATION`)
 
 An organization-level CUE template managed by platform engineers. Platform
 templates are stored as Kubernetes ConfigMaps in the organization namespace and
@@ -36,7 +38,7 @@ OWNERs. See [ADR 013](adrs/013-separate-system-user-template-input.md),
 [ADR 016](adrs/016-config-management-resource-schema.md), and
 [ADR 019](adrs/019-explicit-template-linking.md) for the design rationale.
 
-### Deployment template (code: `DeploymentTemplate`, proto: `DeploymentTemplateService`)
+### Deployment template (code: `Template` at project scope, proto: `TemplateService` with `TEMPLATE_SCOPE_PROJECT`)
 
 A project-level CUE template that defines the application resources for a
 deployment. Deployment templates are stored as Kubernetes ConfigMaps in the
@@ -46,17 +48,18 @@ project namespace and written by product engineers. They produce resources in
 Deployment form. At render time, the deployment template is unified with the
 applicable platform templates — always including mandatory platform templates,
 plus any enabled platform templates explicitly linked via the
-`console.holos.run/linked-org-templates` annotation (see
+`console.holos.run/linked-templates` annotation (see
 [Linked platform template](#linked-platform-template)).
 
 ### Linked platform template
 
-An enabled org-level platform template that a deployment template has explicitly
-opted into by including its name in the `console.holos.run/linked-org-templates`
-annotation on the deployment template ConfigMap. Linked non-mandatory templates
-are included in the render set for that deployment template. The product engineer
-selects linked templates using the "Linked Platform Templates" section in the
-deployment template editor. See [ADR 019](adrs/019-explicit-template-linking.md).
+An enabled platform template (at org or folder scope) that a deployment template
+has explicitly opted into by including a `{scope, scope_name, name}` reference
+in the `console.holos.run/linked-templates` annotation (JSON array) on the
+deployment template ConfigMap. Linked non-mandatory templates are included in
+the render set for that deployment template. The product engineer selects linked
+templates using the "Linked Platform Templates" section in the deployment
+template editor. See [ADR 019](adrs/019-explicit-template-linking.md).
 
 ### Mandatory platform template
 

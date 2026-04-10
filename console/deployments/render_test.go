@@ -1843,15 +1843,16 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	root := repoRoot(t)
 
 	// Load the embedded CUE files from their source locations to avoid an
-	// import cycle (console/org_templates and console/templates already
-	// import console/deployments).
+	// import cycle (console/templates already imports console/deployments).
 	projectTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/templates/example_httpbin.cue"))
 	if err != nil {
 		t.Fatalf("failed to read example_httpbin.cue: %v", err)
 	}
 	projectTemplate := string(projectTemplateBytes)
 
-	platformTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/org_templates/example_httpbin_platform.cue"))
+	// example_httpbin_platform.cue was moved from console/org_templates/ to
+	// console/templates/ as part of the v1alpha2 unified TemplateService (ADR 021).
+	platformTemplateBytes, err := os.ReadFile(filepath.Join(root, "console/templates/example_httpbin_platform.cue"))
 	if err != nil {
 		t.Fatalf("failed to read example_httpbin_platform.cue: %v", err)
 	}

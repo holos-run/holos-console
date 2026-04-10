@@ -8,19 +8,19 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// stubProjectResolver implements ProjectResolver for tests.
-type stubProjectResolver struct {
+// stubProjectGrantResolver implements ProjectGrantResolver for tests.
+type stubProjectGrantResolver struct {
 	users map[string]string
 	roles map[string]string
 	err   error
 }
 
-func (s *stubProjectResolver) GetProjectGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+func (s *stubProjectGrantResolver) GetProjectGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
 	return s.users, s.roles, s.err
 }
 
@@ -34,7 +34,7 @@ func (r *stubRenderer) Render(_ context.Context, _ string, _ string, _ string) (
 	return r.resources, r.err
 }
 
-func (r *stubRenderer) RenderWithOrgTemplateSources(_ context.Context, _ string, _ []string, _ string, _ string) ([]RenderResource, error) {
+func (r *stubRenderer) RenderWithTemplateSources(_ context.Context, _ string, _ []string, _ string, _ string) ([]RenderResource, error) {
 	return r.resources, r.err
 }
 
@@ -53,23 +53,26 @@ const validCue = `
 `
 
 // TestConfigMapToTemplate verifies that configMapToTemplate correctly converts
-// a ConfigMap to the new v1alpha2 Template proto message.
+// a ConfigMap to the Template proto message.
 func TestConfigMapToTemplate(t *testing.T) {
-	t.Run("basic fields populated", func(t *testing.T) {
+	t.Run("basic project scope fields populated", func(t *testing.T) {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "web-app",
 				Namespace: "prj-my-project",
+				Labels: map[string]string{
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
+				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationDisplayName: "Web App",
-					v1alpha1.AnnotationDescription: "A web app",
+					v1alpha2.AnnotationDisplayName: "Web App",
+					v1alpha2.AnnotationDescription: "A web app",
 				},
 			},
 			Data: map[string]string{
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, "my-project")
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
 		if tmpl.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", tmpl.Name)
 		}
@@ -93,32 +96,64 @@ func TestConfigMapToTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("linked templates from annotation", func(t *testing.T) {
-		linkedJSON, _ := json.Marshal([]string{"httproute", "security-policy"})
+	t.Run("org scope fields populated with mandatory and enabled", func(t *testing.T) {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ref-grant",
+				Namespace: "org-acme",
+				Annotations: map[string]string{
+					v1alpha2.AnnotationDisplayName: "ReferenceGrant",
+					v1alpha2.AnnotationMandatory:   "true",
+					v1alpha2.AnnotationEnabled:     "true",
+				},
+			},
+			Data: map[string]string{},
+		}
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "acme")
+		if !tmpl.Mandatory {
+			t.Error("expected mandatory=true")
+		}
+		if !tmpl.Enabled {
+			t.Error("expected enabled=true")
+		}
+		if tmpl.ScopeRef.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
+			t.Errorf("expected org scope, got %v", tmpl.ScopeRef.Scope)
+		}
+	})
+
+	t.Run("linked templates from v1alpha2 annotation", func(t *testing.T) {
+		type storedRef struct {
+			Scope     string `json:"scope"`
+			ScopeName string `json:"scope_name"`
+			Name      string `json:"name"`
+		}
+		refs := []storedRef{
+			{Scope: "organization", ScopeName: "acme", Name: "httproute"},
+			{Scope: "folder", ScopeName: "payments", Name: "payments-policy"},
+		}
+		linkedJSON, _ := json.Marshal(refs)
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "web-app",
 				Namespace: "prj-my-project",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationLinkedOrgTemplates: string(linkedJSON),
+					v1alpha2.AnnotationLinkedTemplates: string(linkedJSON),
 				},
 			},
 			Data: map[string]string{},
 		}
-		tmpl := configMapToTemplate(cm, "my-project")
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
 		if len(tmpl.LinkedTemplates) != 2 {
 			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.LinkedTemplates))
 		}
 		if tmpl.LinkedTemplates[0].Name != "httproute" {
 			t.Errorf("expected 'httproute', got %q", tmpl.LinkedTemplates[0].Name)
 		}
-		if tmpl.LinkedTemplates[1].Name != "security-policy" {
-			t.Errorf("expected 'security-policy', got %q", tmpl.LinkedTemplates[1].Name)
+		if tmpl.LinkedTemplates[0].Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
+			t.Errorf("expected org scope, got %v", tmpl.LinkedTemplates[0].Scope)
 		}
-		for _, ref := range tmpl.LinkedTemplates {
-			if ref.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
-				t.Errorf("expected org scope for linked template %q, got %v", ref.Name, ref.Scope)
-			}
+		if tmpl.LinkedTemplates[1].Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
+			t.Errorf("expected folder scope, got %v", tmpl.LinkedTemplates[1].Scope)
 		}
 	})
 
@@ -133,7 +168,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				DefaultsKey: defaultsJSON,
 			},
 		}
-		tmpl := configMapToTemplate(cm, "my-project")
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
 		if tmpl.Defaults == nil {
 			t.Fatal("expected non-nil defaults from annotation fallback")
 		}
@@ -142,6 +177,22 @@ func TestConfigMapToTemplate(t *testing.T) {
 		}
 		if tmpl.Defaults.Tag != "v1.0" {
 			t.Errorf("expected tag 'v1.0', got %q", tmpl.Defaults.Tag)
+		}
+	})
+
+	t.Run("no defaults for org-scope templates even when CUE present", func(t *testing.T) {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ref-grant",
+				Namespace: "org-acme",
+			},
+			Data: map[string]string{
+				CueTemplateKey: validCue,
+			},
+		}
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "acme")
+		if tmpl.Defaults != nil {
+			t.Errorf("expected nil defaults for org-scope template, got %+v", tmpl.Defaults)
 		}
 	})
 
@@ -155,7 +206,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, "my-project")
+		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
 		if tmpl.Defaults != nil {
 			t.Errorf("expected nil defaults when neither CUE defaults nor annotation present, got %+v", tmpl.Defaults)
 		}
