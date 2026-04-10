@@ -244,12 +244,12 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(screen.getByRole('textbox', { name: /platform input/i })).toBeInTheDocument()
   })
 
-  it('User Input textarea is rendered in the preview tab', async () => {
+  it('Project Input textarea is rendered in the preview tab', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    expect(screen.getByRole('textbox', { name: /user input/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /project input/i })).toBeInTheDocument()
   })
 
   it('Platform Input textarea contains project, namespace, and claims with email', async () => {
@@ -263,16 +263,16 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(platformInput.value).toContain('email')
   })
 
-  it('User Input textarea contains name, image, tag, and port', async () => {
+  it('Project Input textarea contains name, image, tag, and port', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    const userInput = screen.getByRole('textbox', { name: /user input/i }) as HTMLTextAreaElement
-    expect(userInput.value).toContain('name')
-    expect(userInput.value).toContain('image')
-    expect(userInput.value).toContain('tag')
-    expect(userInput.value).toContain('port')
+    const projectInput = screen.getByRole('textbox', { name: /project input/i }) as HTMLTextAreaElement
+    expect(projectInput.value).toContain('name')
+    expect(projectInput.value).toContain('image')
+    expect(projectInput.value).toContain('tag')
+    expect(projectInput.value).toContain('port')
   })
 
   it('useRenderDeploymentTemplate receives separate platform and project inputs', async () => {
@@ -287,12 +287,12 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(lastCall[3]).toContain('platform:')
   })
 
-  it('modifying User Input calls useRenderDeploymentTemplate with updated value', async () => {
+  it('modifying Project Input calls useRenderDeploymentTemplate with updated value', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
     await user.click(screen.getByRole('tab', { name: /preview/i }))
-    const inputEditor = screen.getByRole('textbox', { name: /user input/i })
+    const inputEditor = screen.getByRole('textbox', { name: /project input/i })
     fireEvent.change(inputEditor, { target: { value: 'input: { name: "custom" }' } })
     // With the identity mock for useDebouncedValue, debounced value equals raw value immediately
     expect(useRenderDeploymentTemplate as Mock).toHaveBeenCalledWith(
@@ -426,8 +426,8 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('tab', { name: /preview/i }))
-      // Change the user input — raw state will differ from debounced value
-      const inputEditor = screen.getByRole('textbox', { name: /user input/i })
+      // Change the project input — raw state will differ from debounced value
+      const inputEditor = screen.getByRole('textbox', { name: /project input/i })
       await act(async () => {
         fireEvent.change(inputEditor, { target: { value: 'new-value' } })
       })
@@ -440,7 +440,7 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('tab', { name: /preview/i }))
-      const inputEditor = screen.getByRole('textbox', { name: /user input/i })
+      const inputEditor = screen.getByRole('textbox', { name: /project input/i })
       await act(async () => {
         fireEvent.change(inputEditor, { target: { value: 'new-value' } })
       })

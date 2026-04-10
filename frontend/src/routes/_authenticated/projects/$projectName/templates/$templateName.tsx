@@ -78,7 +78,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canDelete = userRole === Role.OWNER
 
   const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
-  const defaultUserInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
+  const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {
     try {
@@ -282,7 +282,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               onSave={handleSave}
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
-              defaultUserInput={defaultUserInput}
+              defaultProjectInput={defaultProjectInput}
               useRenderFn={useRenderDeploymentTemplate}
             />
           </div>

@@ -146,7 +146,7 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/components/raw-view.test.tsx` | JSON pretty-print, field filtering, copy |
 | `src/components/secret-data-editor.test.tsx` | Editor add/remove key |
 | `src/components/secret-data-viewer.test.tsx` | Viewer reveal/hide/copy |
-| `src/components/cue-template-editor.test.tsx` | CUE editor: textarea, onChange, readOnly, save button, preview tab (system/user input, rendered YAML), render error, render status indicator |
+| `src/components/cue-template-editor.test.tsx` | CUE editor: textarea, onChange, readOnly, save button, preview tab (platform input, project input, rendered YAML), render error, render status indicator |
 | `src/components/env-var-editor.test.tsx` | Env var editor: add/remove rows, literal value, secretKeyRef, configMapKeyRef, name/key select population |
 | `src/components/linkified-text.test.tsx` | LinkifiedText: plain text, single/multiple URLs, mid-sentence URL, empty/undefined, link styling |
 | `src/routes/_authenticated/-about.test.tsx` | About page: Server Version card, license card |

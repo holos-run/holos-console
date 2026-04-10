@@ -381,7 +381,7 @@ export function DeploymentDetailPage({
                     onChange={() => {}}
                     readOnly={true}
                     defaultPlatformInput={preview.cuePlatformInput}
-                    defaultUserInput={preview.cueProjectInput}
+                    defaultProjectInput={preview.cueProjectInput}
                     useRenderFn={useRenderDeploymentTemplate}
                   />
                 ) : null}

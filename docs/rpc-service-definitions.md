@@ -17,9 +17,10 @@ proto/                          # Protobuf source files
     version.proto               # VersionService
     organizations.proto         # OrganizationService
     projects.proto              # ProjectService
+    folders.proto               # FolderService
     secrets.proto               # SecretsService
     project_settings.proto      # ProjectSettingsService
-    deployment_templates.proto  # DeploymentTemplateService
+    templates.proto             # TemplateService (organization, folder, and project scopes)
     deployments.proto           # DeploymentService (CRUD, status, logs, command/args override, env vars, K8s resource listing, render preview)
     rbac.proto                  # Role definitions
 
