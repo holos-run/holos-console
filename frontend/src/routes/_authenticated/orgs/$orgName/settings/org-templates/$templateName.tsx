@@ -69,7 +69,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     }
   }, [template?.cueTemplate])
 
-  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_ORG_TEMPLATES_WRITE).
+  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_TEMPLATES_WRITE).
   // Frontend mirrors this: show Save only for OWNER.
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER

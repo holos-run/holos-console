@@ -330,32 +330,12 @@ var ProjectCascadeDeploymentPerms = CascadeTable{
 	},
 }
 
-// ProjectCascadeTemplatePerms defines what template permissions each project
-// role grants via cascade.
-var ProjectCascadeTemplatePerms = CascadeTable{
-	RoleViewer: {
-		PermissionTemplatesList: true,
-		PermissionTemplatesRead: true,
-	},
-	RoleEditor: {
-		PermissionTemplatesList:  true,
-		PermissionTemplatesRead:  true,
-		PermissionTemplatesWrite: true,
-	},
-	RoleOwner: {
-		PermissionTemplatesList:   true,
-		PermissionTemplatesRead:   true,
-		PermissionTemplatesWrite:  true,
-		PermissionTemplatesDelete: true,
-		PermissionTemplatesAdmin:  true,
-	},
-}
-
-// FolderCascadeTemplatePerms defines what template permissions each folder role
-// grants via cascade to resources in child scopes (sub-folders and projects).
-// Structurally identical to ProjectCascadeTemplatePerms (ADR 017 Decision 5)
-// but defined separately so the two tables can diverge independently.
-var FolderCascadeTemplatePerms = CascadeTable{
+// TemplateCascadePerms defines what template permissions each role grants via
+// cascade. The same table applies uniformly at every scope level (organization,
+// folder, project) per ADR 017 Decision 5 and ADR 021 Decision 2. This replaces
+// the former per-scope tables (ProjectCascadeTemplatePerms, FolderCascadeTemplatePerms,
+// OrgCascadeTemplatePerms).
+var TemplateCascadePerms = CascadeTable{
 	RoleViewer: {
 		PermissionTemplatesList: true,
 		PermissionTemplatesRead: true,
@@ -379,18 +359,6 @@ var FolderCascadeTemplatePerms = CascadeTable{
 var OrgCascadeProjectSettingsPerms = CascadeTable{
 	RoleOwner: {
 		PermissionProjectDeploymentsEnable: true,
-	},
-}
-
-// OrgCascadeTemplatePerms defines what platform template permissions each org
-// role grants via cascade. Only org-level OWNERs can create, update, and delete
-// platform templates — this permission is intentionally not inherited by
-// project-level OWNERs.
-var OrgCascadeTemplatePerms = CascadeTable{
-	RoleOwner: {
-		PermissionTemplatesWrite:  true,
-		PermissionTemplatesDelete: true,
-		PermissionTemplatesAdmin:  true,
 	},
 }
 

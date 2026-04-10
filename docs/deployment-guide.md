@@ -71,9 +71,9 @@ A platform template applies to every project in the organization. It can:
   Kubernetes Kinds a project template may produce.
 
 Platform templates are stored as Kubernetes ConfigMaps in the organization
-namespace. Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE`, granted
-only to org-level Owners. In code, platform templates use the identifier
-`OrgTemplate` and the service `OrgTemplateService` (see the
+namespace. Edit access requires `PERMISSION_TEMPLATES_WRITE`, granted to
+EDITORs and OWNERs via the unified `TemplateCascadePerms` table. In code,
+platform templates use the unified `TemplateService` at org scope (see the
 [Glossary — Naming History Note](glossary.md#naming-history-note)).
 
 **Folder level** — SREs write templates here to enforce standards for a group

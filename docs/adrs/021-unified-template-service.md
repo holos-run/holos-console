@@ -137,62 +137,19 @@ These replace, in full:
 `PERMISSION_ORG_TEMPLATES_WRITE` had no corresponding List, Read, Delete, or
 Admin permissions. `v1alpha2` fills all five slots uniformly at every scope.
 
-### 3. Cascade tables per scope level.
+### 3. Single unified cascade table applied at every scope level.
 
-Three cascade tables define what each role grants for template operations, one
-per scope level. They are defined separately so they can diverge if needed in
-a future version.
+A single `TemplateCascadePerms` table defines what each role grants for template
+operations. The same table is used at every scope level (organization, folder,
+project) — the cascade scope is determined by `ancestor.ResourceType` in the
+walker, not by which table is selected. This collapses the three formerly-separate
+tables (`OrgCascadeTemplatePerms`, `FolderCascadeTemplatePerms`,
+`ProjectCascadeTemplatePerms`) into one.
 
 ```go
-// OrgCascadeTemplatePerms defines template permissions granted by an org-level
-// role to all descendant scopes (folders and projects).
-var OrgCascadeTemplatePerms = CascadeTable{
-    RoleViewer: {
-        PermissionTemplatesList: true,
-        PermissionTemplatesRead: true,
-    },
-    RoleEditor: {
-        PermissionTemplatesList:  true,
-        PermissionTemplatesRead:  true,
-        PermissionTemplatesWrite: true,
-    },
-    RoleOwner: {
-        PermissionTemplatesList:   true,
-        PermissionTemplatesRead:   true,
-        PermissionTemplatesWrite:  true,
-        PermissionTemplatesDelete: true,
-        PermissionTemplatesAdmin:  true,
-    },
-}
-
-// FolderCascadeTemplatePerms defines template permissions granted by a
-// folder-level role to descendant sub-folders and projects.
-var FolderCascadeTemplatePerms = CascadeTable{
-    RoleViewer: {
-        PermissionTemplatesList: true,
-        PermissionTemplatesRead: true,
-    },
-    RoleEditor: {
-        PermissionTemplatesList:  true,
-        PermissionTemplatesRead:  true,
-        PermissionTemplatesWrite: true,
-    },
-    RoleOwner: {
-        PermissionTemplatesList:   true,
-        PermissionTemplatesRead:   true,
-        PermissionTemplatesWrite:  true,
-        PermissionTemplatesDelete: true,
-        PermissionTemplatesAdmin:  true,
-    },
-}
-
-// ProjectCascadeTemplatePerms defines template permissions granted by a
-// project-level role within that project scope.
-//
-// Project grants do not cascade downward (projects are the leaf level).
-// This table is used to compute what a project-level role grants for templates
-// stored in the same project.
-var ProjectCascadeTemplatePerms = CascadeTable{
+// TemplateCascadePerms defines template permissions uniformly at every scope
+// level (organization, folder, project) per ADR 021 Decision 2.
+var TemplateCascadePerms = CascadeTable{
     RoleViewer: {
         PermissionTemplatesList: true,
         PermissionTemplatesRead: true,
@@ -398,10 +355,9 @@ These updates are part of the `v1alpha2` implementation PR, not this ADR.
 
 **ADR 017** references: Append after Decision 5 (Template authoring permissions):
 
-> **v1alpha2 implementation**: The cascade tables `OrgCascadeTemplatePerms`,
-> `FolderCascadeTemplatePerms`, and `ProjectCascadeTemplatePerms` are defined
-> in `api/v1alpha2/iam.go`. See [ADR 021](021-unified-template-service.md) for
-> the exact table values and the collapsed permission set.
+> **v1alpha2 implementation**: A single `TemplateCascadePerms` table defined in
+> `console/rbac/rbac.go` replaces the three former per-scope tables. See
+> [ADR 021](021-unified-template-service.md) for the collapsed permission set.
 
 **ADR 019** references: Append after "Deferred" section:
 
@@ -438,8 +394,8 @@ in sync.
 The existing `PERMISSION_DEPLOYMENT_TEMPLATES_*` and `PERMISSION_ORG_TEMPLATES_*`
 sets could be extended with `PERMISSION_FOLDER_TEMPLATES_*`. Rejected because it
 adds five new permission enum values per scope level and makes the cascade tables
-harder to read. The single set with three scope-specific cascade tables achieves
-the same access control with simpler code.
+harder to read. The single `TemplateCascadePerms` table used uniformly at every
+scope achieves the same access control with simpler code.
 
 ### Tag-based template selection (Model C from ADR 019)
 

@@ -88,8 +88,8 @@ enum Permission {
   PERMISSION_FOLDERS_CREATE = 38;
 
   // Collapsed template permissions (v1alpha2, ADR 021 Decision 2).
-  // These replace PERMISSION_DEPLOYMENT_TEMPLATES_* and PERMISSION_ORG_TEMPLATES_WRITE.
-  // They apply uniformly at every scope level (organization, folder, project).
+  // Uniform across every scope level (organization, folder, project).
+  // The cascade table (TemplateCascadePerms) distinguishes scope; the enum does not.
 
   // PERMISSION_TEMPLATES_LIST allows listing template names.
   PERMISSION_TEMPLATES_LIST = 39;

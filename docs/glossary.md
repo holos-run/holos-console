@@ -33,8 +33,8 @@ namespace) and define CUE constraints over `projectResources` (e.g., closing
 the struct to restrict allowed resource kinds). Platform templates may be marked
 `mandatory` (always applied at render time and at project namespace creation)
 and/or `enabled` (available for linking and render-time unification). Edit
-access requires `PERMISSION_ORG_TEMPLATES_WRITE`, granted only to org-level
-OWNERs. See [ADR 013](adrs/013-separate-system-user-template-input.md),
+access requires `PERMISSION_TEMPLATES_WRITE`, granted to EDITORs and OWNERs
+via `TemplateCascadePerms`. See [ADR 013](adrs/013-separate-system-user-template-input.md),
 [ADR 016](adrs/016-config-management-resource-schema.md), and
 [ADR 019](adrs/019-explicit-template-linking.md) for the design rationale.
 

@@ -244,30 +244,9 @@ Cascade tables define what each role grants for template operations at child
 levels:
 
 ```go
-// OrgCascadeTemplatePerms defines template permissions granted by org roles
-// to all folders and projects beneath the organization.
-var OrgCascadeTemplatePerms = CascadeTable{
-    RoleViewer: {
-        PermissionTemplatesList: true,
-        PermissionTemplatesRead: true,
-    },
-    RoleEditor: {
-        PermissionTemplatesList:  true,
-        PermissionTemplatesRead:  true,
-        PermissionTemplatesWrite: true,
-    },
-    RoleOwner: {
-        PermissionTemplatesList:   true,
-        PermissionTemplatesRead:   true,
-        PermissionTemplatesWrite:  true,
-        PermissionTemplatesDelete: true,
-        PermissionTemplatesAdmin:  true,
-    },
-}
-
-// FolderCascadeTemplatePerms defines template permissions granted by folder
-// roles to sub-folders and projects beneath the folder.
-var FolderCascadeTemplatePerms = CascadeTable{
+// TemplateCascadePerms defines template permissions uniformly at every scope
+// level (organization, folder, project) per ADR 021 Decision 2.
+var TemplateCascadePerms = CascadeTable{
     RoleViewer: {
         PermissionTemplatesList: true,
         PermissionTemplatesRead: true,
@@ -287,18 +266,17 @@ var FolderCascadeTemplatePerms = CascadeTable{
 }
 ```
 
-These tables are structurally identical today. They are defined separately so
-that they can diverge independently — for example, a future policy might restrict
-folder-level Editor from deleting templates while allowing org-level Editor to
-do so.
+A single `TemplateCascadePerms` table applies uniformly at every scope level
+(ADR 021 Decision 2). The cascade scope is determined by the `ancestor.ResourceType`
+field in the walker; the permission policy is the same at each level.
 
-**v1alpha2 implementation**: The cascade tables `OrgCascadeTemplatePerms`,
-`FolderCascadeTemplatePerms`, and `ProjectCascadeTemplatePerms` are defined in
-`api/v1alpha2/iam.go`. The permission set collapses the separate
-`PERMISSION_DEPLOYMENT_TEMPLATES_*` and `PERMISSION_ORG_TEMPLATES_WRITE` enums
-into five unified `PermissionTemplates*` constants. See
-[ADR 021](021-unified-template-service.md) for the exact table values and the
-`TemplateScope` discriminator.
+**v1alpha2 implementation**: The single `TemplateCascadePerms` table is defined
+in `console/rbac/rbac.go` and replaces the former per-scope tables
+(`OrgCascadeTemplatePerms`, `FolderCascadeTemplatePerms`, `ProjectCascadeTemplatePerms`).
+The permission set collapses the separate `PERMISSION_DEPLOYMENT_TEMPLATES_*`
+and `PERMISSION_ORG_TEMPLATES_WRITE` enums into five unified `PermissionTemplates*`
+constants. See [ADR 021](021-unified-template-service.md) for the `TemplateScope`
+discriminator.
 
 ### 6. Resource collection scope is enforced by the renderer, not by RBAC.
 
@@ -338,18 +316,17 @@ project = 5 levels maximum). Each level requires one Kubernetes API call to
 read the Namespace object. The walk is cached per-request to avoid redundant
 API calls when multiple permission checks are needed in a single RPC handler.
 
-### 8. The existing `PermissionOrgTemplatesWrite` maps to org-level template authoring.
+### 8. Template permission naming history.
 
-The current `PermissionOrgTemplatesWrite` permission (used for platform
-templates) is the org-level grant for `platformResources` authoring. During
-migration from the earlier `PermissionSystemDeploymentsEdit` name:
+Naming evolved through several phases:
 
-- `OrgTemplate` objects are organization-level templates that write to
-  `platformResources`.
-- `PermissionSystemDeploymentsEdit` was replaced by
-  `PermissionOrgTemplatesWrite` checked at the organization level.
-- The `OrgCascadeSystemTemplatePerms` table was renamed to
-  `OrgCascadeTemplatePerms`.
+- `PermissionSystemDeploymentsEdit` → `PermissionOrgTemplatesWrite` (v1alpha1)
+- `PERMISSION_DEPLOYMENT_TEMPLATES_*` + `PERMISSION_ORG_TEMPLATES_WRITE` (separate per-scope enums)
+- Collapsed to `PERMISSION_TEMPLATES_*` with a single `TemplateCascadePerms` table applied uniformly
+  at every scope level (ADR 021 Decision 2, implemented in #639).
+
+The three per-scope tables (`OrgCascadeTemplatePerms`, `FolderCascadeTemplatePerms`,
+`ProjectCascadeTemplatePerms`) were merged into the single `TemplateCascadePerms` table.
 
 ### 9. Alignment between RPC authorization and configuration RBAC.
 

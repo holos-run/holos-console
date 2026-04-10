@@ -88,21 +88,20 @@ project namespace.
 
 | RPC | Required Permission | Description |
 |-----|-------------------|-------------|
-| `ListDeploymentTemplates` | `PERMISSION_DEPLOYMENT_TEMPLATES_LIST` | Lists all deployment templates in a project. |
-| `GetDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_READ` | Returns a single deployment template including its CUE source and default values. |
-| `CreateDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_WRITE` | Creates a new template in the project. |
-| `UpdateDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or default values of an existing template. |
-| `DeleteDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_DELETE` | Deletes a deployment template. |
-| `RenderDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_READ` | Renders a CUE template against supplied inputs and returns the resulting Kubernetes manifests as YAML and JSON. Does not create or modify any deployment — useful for previewing during authoring. |
-| `CloneDeploymentTemplate` | `PERMISSION_DEPLOYMENT_TEMPLATES_WRITE` | Copies an existing template to a new name within the same project. |
+| `ListTemplates` | `PERMISSION_TEMPLATES_LIST` | Lists all templates in a scope. |
+| `GetTemplate` | `PERMISSION_TEMPLATES_READ` | Returns a single template including its CUE source and default values. |
+| `CreateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Creates a new template in the scope. |
+| `UpdateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or default values of an existing template. |
+| `DeleteTemplate` | `PERMISSION_TEMPLATES_DELETE` | Deletes a template. |
+| `RenderDeploymentTemplate` | `PERMISSION_TEMPLATES_READ` | Renders a CUE template against supplied inputs and returns the resulting Kubernetes manifests as YAML and JSON. Does not create or modify any deployment — useful for previewing during authoring. |
 
-### OrgTemplateService
+### TemplateService (platform templates — org and folder scope)
 
-_Platform templates_ (org-level templates, code: `OrgTemplate`) are organization-scoped CUE programs
+_Platform templates_ are organization- or folder-scoped CUE programs
 authored by platform engineers. They run alongside every deployment template
 at render time and can contribute platform-managed resources (`platformResources`)
 and enforce constraints on what project templates are allowed to produce. They
-are stored as Kubernetes ConfigMaps in the org namespace.
+are stored as Kubernetes ConfigMaps in the org or folder namespace.
 
 A platform template may be marked **mandatory** (applied to every project
 namespace at project creation time) and/or **enabled** (unified with the
@@ -110,17 +109,16 @@ deployment template at deploy time). New templates start disabled.
 
 | RPC | Required Permission | Description |
 |-----|-------------------|-------------|
-| `ListOrgTemplates` | `PERMISSION_ORG_TEMPLATES_WRITE` | Lists all platform templates in an organization. |
-| `GetOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Returns a single platform template including its CUE source. |
-| `CreateOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Creates a new org-level platform template. Starts disabled and non-mandatory by default. |
-| `UpdateOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
-| `DeleteOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Deletes an org-level platform template. |
-| `RenderOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
-| `CloneOrgTemplate` | `PERMISSION_ORG_TEMPLATES_WRITE` | Copies an existing platform template to a new name within the same org. |
+| `ListTemplates` | `PERMISSION_TEMPLATES_LIST` | Lists all platform templates in the scope. |
+| `GetTemplate` | `PERMISSION_TEMPLATES_READ` | Returns a single platform template including its CUE source. |
+| `CreateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Creates a new platform template. Starts disabled and non-mandatory by default. |
+| `UpdateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
+| `DeleteTemplate` | `PERMISSION_TEMPLATES_DELETE` | Deletes a platform template. |
+| `RenderDeploymentTemplate` | `PERMISSION_TEMPLATES_READ` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
 
-> All `OrgTemplateService` operations require `PERMISSION_ORG_TEMPLATES_WRITE`,
-> which is granted exclusively to org-level OWNERs. Project-level OWNERs do not
-> inherit this permission.
+> All `TemplateService` write operations require `PERMISSION_TEMPLATES_WRITE`.
+> The unified `TemplateCascadePerms` table applies the same role→permission mapping
+> (VIEWER=read, EDITOR=read/write, OWNER=full) at every scope level (ADR 021 Decision 2).
 
 ### DeploymentService
 
