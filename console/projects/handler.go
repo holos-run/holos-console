@@ -12,9 +12,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
-	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -71,7 +70,17 @@ func (h *Handler) ListProjects(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	allProjects, err := h.k8s.ListProjects(ctx, req.Msg.Organization)
+	// Resolve parent namespace filter when parent_type+parent_name are set.
+	var parentNs string
+	if req.Msg.ParentType != consolev1.ParentType_PARENT_TYPE_UNSPECIFIED && req.Msg.ParentName != "" {
+		var err error
+		parentNs, err = h.resolveParentNS(req.Msg.ParentType, req.Msg.ParentName)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+	}
+
+	allProjects, err := h.k8s.ListProjects(ctx, req.Msg.Organization, parentNs)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -177,9 +186,25 @@ func (h *Handler) CreateProject(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
+	// Resolve the immediate parent namespace.
+	// parent_name defaults to organization when unset (backwards-compatible).
+	parentName := req.Msg.ParentName
+	parentType := req.Msg.ParentType
+	if parentName == "" {
+		parentName = req.Msg.Organization
+		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	}
+	if parentType == consolev1.ParentType_PARENT_TYPE_UNSPECIFIED {
+		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	}
+	parentNs, err := h.resolveParentNS(parentType, parentName)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("resolving parent: %w", err))
+	}
+
 	// Check create access: user must be owner on at least one existing project
 	// or have owner grant on the organization
-	allProjects, err := h.k8s.ListProjects(ctx, "")
+	allProjects, err := h.k8s.ListProjects(ctx, "", "")
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -230,7 +255,7 @@ func (h *Handler) CreateProject(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -572,64 +597,78 @@ func (h *Handler) GetProjectRaw(
 }
 
 // buildProject creates a Project proto message from a namespace.
-func (h *Handler) buildProject(ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
+func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
 	p := &consolev1.Project{
 		UserGrants: annotationGrantsToProto(shareUsers),
 		RoleGrants: annotationGrantsToProto(shareRoles),
 		UserRole:   consolev1.Role(userRole),
 	}
 
-	// Type-assert to get annotations and labels for metadata
-	type annotated interface {
-		GetAnnotations() map[string]string
-	}
-	type labeled interface {
-		GetLabels() map[string]string
-	}
-	if a, ok := ns.(annotated); ok {
-		annotations := a.GetAnnotations()
-		if annotations != nil {
-			p.DisplayName = annotations[v1alpha1.AnnotationDisplayName]
-			p.Description = annotations[v1alpha1.AnnotationDescription]
-			p.CreatorEmail = annotations[v1alpha1.AnnotationCreatorEmail]
-		}
-		// Populate default sharing grants and creation timestamp from typed namespace
-		if nsTyped, ok := ns.(*corev1.Namespace); ok {
-			if defaultUsers, err := GetDefaultShareUsers(nsTyped); err == nil {
-				p.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
+	if ns.Labels != nil {
+		p.Organization = ns.Labels[v1alpha2.LabelOrganization]
+		p.Name = ns.Labels[v1alpha2.LabelProject]
+
+		// Derive parent info from the parent label.
+		parentNs := ns.Labels[v1alpha2.AnnotationParent]
+		if parentNs != "" {
+			kind, name, err := h.k8s.Resolver.ResourceTypeFromNamespace(parentNs)
+			if err == nil {
+				p.ParentName = name
+				switch kind {
+				case v1alpha2.ResourceTypeOrganization:
+					p.ParentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+				case v1alpha2.ResourceTypeFolder:
+					p.ParentType = consolev1.ParentType_PARENT_TYPE_FOLDER
+				}
 			}
-			if defaultRoles, err := GetDefaultShareRoles(nsTyped); err == nil {
-				p.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
-			}
-			p.CreatedAt = nsTyped.CreationTimestamp.UTC().Format(time.RFC3339)
 		}
 	}
-	if l, ok := ns.(labeled); ok {
-		labels := l.GetLabels()
-		if labels != nil {
-			p.Organization = labels[resolver.OrganizationLabel]
-			p.Name = labels[resolver.ProjectLabel]
-		}
-	}
+
 	// Fallback: derive project name from namespace if label is missing (pre-label namespaces)
 	if p.Name == "" {
 		name, err := h.k8s.Resolver.ProjectFromNamespace(ns.GetName())
 		if err != nil {
 			slog.Warn("project namespace missing label and prefix mismatch",
 				slog.String("namespace", ns.GetName()),
-				slog.String("label", resolver.ProjectLabel),
+				slog.String("label", v1alpha2.LabelProject),
 				slog.Any("error", err),
 			)
 		} else {
 			p.Name = name
 			slog.Warn("project namespace missing label, falling back to namespace parsing",
 				slog.String("namespace", ns.GetName()),
-				slog.String("label", resolver.ProjectLabel),
+				slog.String("label", v1alpha2.LabelProject),
 			)
 		}
 	}
 
+	if ns.Annotations != nil {
+		p.DisplayName = ns.Annotations[v1alpha2.AnnotationDisplayName]
+		p.Description = ns.Annotations[v1alpha2.AnnotationDescription]
+		p.CreatorEmail = ns.Annotations[v1alpha2.AnnotationCreatorEmail]
+	}
+
+	if defaultUsers, err := GetDefaultShareUsers(ns); err == nil {
+		p.DefaultUserGrants = annotationGrantsToProto(defaultUsers)
+	}
+	if defaultRoles, err := GetDefaultShareRoles(ns); err == nil {
+		p.DefaultRoleGrants = annotationGrantsToProto(defaultRoles)
+	}
+	p.CreatedAt = ns.CreationTimestamp.UTC().Format(time.RFC3339)
+
 	return p
+}
+
+// resolveParentNS converts a ParentType+ParentName pair to a Kubernetes namespace name.
+func (h *Handler) resolveParentNS(parentType consolev1.ParentType, parentName string) (string, error) {
+	switch parentType {
+	case consolev1.ParentType_PARENT_TYPE_ORGANIZATION:
+		return h.k8s.Resolver.OrgNamespace(parentName), nil
+	case consolev1.ParentType_PARENT_TYPE_FOLDER:
+		return h.k8s.Resolver.FolderNamespace(parentName), nil
+	default:
+		return "", fmt.Errorf("unknown parent_type %v", parentType)
+	}
 }
 
 // resolveOrgGrants returns the active grant maps for the given organization.

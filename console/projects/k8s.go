@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
@@ -27,14 +27,16 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 }
 
 // ListProjects returns all project namespaces. When org is non-empty, filters by organization.
-func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Namespace, error) {
-	labelSelector := v1alpha1.LabelManagedBy + "=" + v1alpha1.ManagedByValue + "," +
-		v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeProject
+// When parentNs is non-empty, additionally filters to direct children of that parent namespace.
+func (c *K8sClient) ListProjects(ctx context.Context, org, parentNs string) ([]*corev1.Namespace, error) {
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeProject
 	if org != "" {
-		labelSelector += "," + v1alpha1.LabelOrganization + "=" + org
+		labelSelector += "," + v1alpha2.LabelOrganization + "=" + org
 	}
 	slog.DebugContext(ctx, "listing projects from kubernetes",
 		slog.String("labelSelector", labelSelector),
+		slog.String("parentNs", parentNs),
 	)
 	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
@@ -57,6 +59,10 @@ func (c *K8sClient) ListProjects(ctx context.Context, org string) ([]*corev1.Nam
 				continue
 			}
 		}
+		// Filter by parent namespace when specified.
+		if parentNs != "" && list.Items[i].Labels[v1alpha2.AnnotationParent] != parentNs {
+			continue
+		}
 		result = append(result, &list.Items[i])
 	}
 	return result, nil
@@ -74,21 +80,24 @@ func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namesp
 	if err != nil {
 		return nil, err
 	}
-	if ns.Labels == nil || ns.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, v1alpha1.ManagedByValue)
+	if ns.Labels == nil || ns.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		return nil, fmt.Errorf("namespace %q is not managed by %s", nsName, v1alpha2.ManagedByValue)
 	}
-	if ns.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeProject {
+	if ns.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeProject {
 		return nil, fmt.Errorf("namespace %q is not a project", nsName)
 	}
 	return ns, nil
 }
 
 // CreateProject creates a new namespace with managed-by and resource-type labels.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+// parentNs is the Kubernetes namespace name of the immediate parent (org or folder namespace).
+// When non-empty, it is stored in the v1alpha2.AnnotationParent label for hierarchy traversal.
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.Resolver.ProjectNamespace(name)
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
 		slog.String("namespace", nsName),
+		slog.String("parent", parentNs),
 	)
 	usersJSON, err := json.Marshal(shareUsers)
 	if err != nil {
@@ -99,39 +108,42 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
 	annotations := map[string]string{
-		v1alpha1.AnnotationShareUsers: string(usersJSON),
-		v1alpha1.AnnotationShareRoles: string(rolesJSON),
+		v1alpha2.AnnotationShareUsers: string(usersJSON),
+		v1alpha2.AnnotationShareRoles: string(rolesJSON),
 	}
 	if len(defaultShareUsers) > 0 {
 		defaultUsersJSON, err := json.Marshal(defaultShareUsers)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling default-share-users: %w", err)
 		}
-		annotations[v1alpha1.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
+		annotations[v1alpha2.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
 	}
 	if len(defaultShareRoles) > 0 {
 		defaultRolesJSON, err := json.Marshal(defaultShareRoles)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 		}
-		annotations[v1alpha1.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
+		annotations[v1alpha2.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
 	}
 	if displayName != "" {
-		annotations[v1alpha1.AnnotationDisplayName] = displayName
+		annotations[v1alpha2.AnnotationDisplayName] = displayName
 	}
 	if description != "" {
-		annotations[v1alpha1.AnnotationDescription] = description
+		annotations[v1alpha2.AnnotationDescription] = description
 	}
 	if creatorEmail != "" {
-		annotations[v1alpha1.AnnotationCreatorEmail] = creatorEmail
+		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
 	}
 	labels := map[string]string{
-		v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-		v1alpha1.LabelResourceType: v1alpha1.ResourceTypeProject,
-		v1alpha1.LabelProject:      name,
+		v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+		v1alpha2.LabelProject:      name,
 	}
 	if org != "" {
-		labels[v1alpha1.LabelOrganization] = org
+		labels[v1alpha2.LabelOrganization] = org
+	}
+	if parentNs != "" {
+		labels[v1alpha2.AnnotationParent] = parentNs
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,16 +170,16 @@ func (c *K8sClient) UpdateProject(ctx context.Context, name string, displayName,
 	}
 	if displayName != nil {
 		if *displayName == "" {
-			delete(ns.Annotations, v1alpha1.AnnotationDisplayName)
+			delete(ns.Annotations, v1alpha2.AnnotationDisplayName)
 		} else {
-			ns.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
+			ns.Annotations[v1alpha2.AnnotationDisplayName] = *displayName
 		}
 	}
 	if description != nil {
 		if *description == "" {
-			delete(ns.Annotations, v1alpha1.AnnotationDescription)
+			delete(ns.Annotations, v1alpha2.AnnotationDescription)
 		} else {
-			ns.Annotations[v1alpha1.AnnotationDescription] = *description
+			ns.Annotations[v1alpha2.AnnotationDescription] = *description
 		}
 	}
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
@@ -207,8 +219,8 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
-	ns.Annotations[v1alpha1.AnnotationShareUsers] = string(usersJSON)
-	ns.Annotations[v1alpha1.AnnotationShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
+	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -217,7 +229,7 @@ func GetOrganization(ns *corev1.Namespace) string {
 	if ns.Labels == nil {
 		return ""
 	}
-	return ns.Labels[v1alpha1.LabelOrganization]
+	return ns.Labels[v1alpha2.LabelOrganization]
 }
 
 // GetProjectOrg returns the organization name for the given project.
@@ -235,7 +247,7 @@ func GetDisplayName(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {
 		return ""
 	}
-	return ns.Annotations[v1alpha1.AnnotationDisplayName]
+	return ns.Annotations[v1alpha2.AnnotationDisplayName]
 }
 
 // GetDescription returns the description annotation value from a namespace.
@@ -243,30 +255,30 @@ func GetDescription(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {
 		return ""
 	}
-	return ns.Annotations[v1alpha1.AnnotationDescription]
+	return ns.Annotations[v1alpha2.AnnotationDescription]
 }
 
 // GetShareUsers parses the share-users annotation from a namespace.
 func GetShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationShareUsers)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationShareUsers)
 }
 
 // GetShareRoles parses the share-roles annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationShareRoles)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationShareRoles)
 }
 
 // GetDefaultShareUsers parses the default-share-users annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetDefaultShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationDefaultShareUsers)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareUsers)
 }
 
 // GetDefaultShareRoles parses the default-share-roles annotation from a namespace.
 // Returns nil if the annotation is absent.
 func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
-	return parseGrantAnnotation(ns, v1alpha1.AnnotationDefaultShareRoles)
+	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareRoles)
 }
 
 // UpdateProjectDefaultSharing updates the default sharing annotations on a managed namespace.
@@ -289,8 +301,8 @@ func (c *K8sClient) UpdateProjectDefaultSharing(ctx context.Context, name string
 	if err != nil {
 		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 	}
-	ns.Annotations[v1alpha1.AnnotationDefaultShareUsers] = string(usersJSON)
-	ns.Annotations[v1alpha1.AnnotationDefaultShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
+	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 

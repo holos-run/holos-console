@@ -418,7 +418,7 @@ type mockProjectLister struct {
 	err      error
 }
 
-func (m *mockProjectLister) ListProjects(_ context.Context, _ string) ([]*corev1.Namespace, error) {
+func (m *mockProjectLister) ListProjects(_ context.Context, _, _ string) ([]*corev1.Namespace, error) {
 	return m.projects, m.err
 }
 

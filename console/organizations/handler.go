@@ -24,7 +24,7 @@ const auditResourceType = "organization"
 
 // ProjectLister checks for projects linked to an organization.
 type ProjectLister interface {
-	ListProjects(ctx context.Context, org string) ([]*corev1.Namespace, error)
+	ListProjects(ctx context.Context, org, parentNs string) ([]*corev1.Namespace, error)
 }
 
 // Handler implements the OrganizationService.
@@ -278,7 +278,7 @@ func (h *Handler) DeleteOrganization(
 	}
 
 	if h.projectLister != nil {
-		projects, err := h.projectLister.ListProjects(ctx, req.Msg.Name)
+		projects, err := h.projectLister.ListProjects(ctx, req.Msg.Name, "")
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("checking for linked projects: %w", err))
 		}
