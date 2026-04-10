@@ -27,6 +27,12 @@
 #ResourceTypeDeploymentTemplate: "deployment-template"
 #ResourceTypeOrgTemplate:        "org-template"
 
+// ResourceTypeTemplate is the unified v1alpha2 template resource type.
+// It replaces ResourceTypeDeploymentTemplate (project-scoped) and
+// ResourceTypeOrgTemplate (org-scoped) with a single label value used
+// across all hierarchy levels (ADR 021 Decision 4).
+#ResourceTypeTemplate: "template"
+
 // Annotations.
 #AnnotationDisplayName:  "console.holos.run/display-name"
 #AnnotationDescription:  "console.holos.run/description"
@@ -65,6 +71,25 @@
 // always participate in render regardless of this annotation.
 // Example: ["microservice-v2", "istio-gateway"]
 #AnnotationLinkedOrgTemplates: "console.holos.run/linked-org-templates"
+
+// AnnotationLinkedTemplates stores the list of explicitly linked cross-level
+// template references as a JSON array of LinkedTemplateRef objects on a
+// template ConfigMap. Replaces AnnotationLinkedOrgTemplates in v1alpha2.
+// Example: [{"scope":"organization","scope_name":"acme","name":"microservice-v2"}]
+#AnnotationLinkedTemplates: "console.holos.run/linked-templates"
+
+// LabelTemplateScope identifies the hierarchy level of a template ConfigMap.
+// Values: "organization", "folder", "project" (ADR 021 Decision 4).
+#LabelTemplateScope: "console.holos.run/template-scope"
+
+// TemplateScopeOrganization is the LabelTemplateScope value for org-level templates.
+#TemplateScopeOrganization: "organization"
+
+// TemplateScopeFolder is the LabelTemplateScope value for folder-level templates.
+#TemplateScopeFolder: "folder"
+
+// TemplateScopeProject is the LabelTemplateScope value for project-level templates.
+#TemplateScopeProject: "project"
 
 // --- hierarchy_go_gen.cue ---
 

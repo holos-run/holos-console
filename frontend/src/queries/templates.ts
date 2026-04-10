@@ -151,6 +151,24 @@ export function useListLinkableTemplates(scope: TemplateScopeRef) {
   })
 }
 
+function ancestorTemplatesKey(scope: TemplateScopeRef) {
+  return ['templates', 'ancestors', scope.scope, scope.scopeName] as const
+}
+
+export function useListAncestorTemplates(scope: TemplateScopeRef) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: ancestorTemplatesKey(scope),
+    queryFn: async () => {
+      const response = await client.listAncestorTemplates({ scope })
+      return response.templates
+    },
+    enabled: isAuthenticated && !!scope.scopeName,
+  })
+}
+
 export function useRenderTemplate(
   scope: TemplateScopeRef,
   cueTemplate: string,
