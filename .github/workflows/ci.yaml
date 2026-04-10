@@ -78,7 +78,14 @@ jobs:
           curl -sfL https://get.k3s.io | sh -s - --disable=traefik
           sudo chmod 644 /etc/rancher/k3s/k3s.yaml
           echo "KUBECONFIG=/etc/rancher/k3s/k3s.yaml" >> $GITHUB_ENV
-          KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl wait --for=condition=Ready nodes --all --timeout=120s
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          # Wait for k3s to register a node before waiting for Ready condition
+          for i in $(seq 1 30); do
+            if kubectl get nodes -o name 2>/dev/null | grep -q .; then break; fi
+            echo "Waiting for k3s node to register ($i/30)..."
+            sleep 2
+          done
+          kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
       - name: Install Playwright browsers
         run: cd frontend && npx playwright install --with-deps chromium
