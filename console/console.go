@@ -322,9 +322,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
+		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
-			WithOrgTemplateProvider(templatesK8s)
+			WithOrgTemplateProvider(templatesK8s).
+			WithAncestorWalker(projectFolderResolver)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

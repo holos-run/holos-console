@@ -1211,7 +1211,7 @@ projectResources: {
 
 // systemBothCollectionsTemplate is a platform template that defines resources in
 // both projectResources and platformResources. This validates that
-// RenderWithOrgTemplates returns resources from both collections.
+// RenderWithAncestorTemplates returns resources from both collections.
 const systemBothCollectionsTemplate = `
 
 projectResources: {
@@ -1269,6 +1269,7 @@ platform: #Platform
 	namespace:        string
 	gatewayNamespace: string
 	organization:     string
+	folders?: [...string]
 	claims: {
 		iss:            string
 		sub:            string
@@ -1336,7 +1337,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	}
 
 	t.Run("platform template resources are included when unified with deployment template", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemUnificationTemplate},
 			system, user,
@@ -1367,7 +1368,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	})
 
 	t.Run("no platform templates returns only deployment resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			nil,
 			system, user,
@@ -1386,7 +1387,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	// ADR 016 key insight: any template at any level can define values in any
 	// collection. A platform template is not restricted to platformResources only.
 	t.Run("platform template contributing to projectResources is unified", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemProjectResourcesTemplate},
 			system, user,
@@ -1412,10 +1413,10 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 		}
 	})
 
-	// Validate that RenderWithOrgTemplates returns resources from both
+	// Validate that RenderWithAncestorTemplates returns resources from both
 	// projectResources and platformResources when a platform template defines both.
 	t.Run("platform template defining both collections returns all resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemBothCollectionsTemplate},
 			system, user,
@@ -1482,10 +1483,10 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 		}
 	})
 
-	// RenderWithOrgTemplates() uses evaluateWithOrgTemplates() — the
+	// RenderWithAncestorTemplates() uses evaluateWithOrgTemplates() — the
 	// org/folder level path. It must read BOTH projectResources and platformResources.
-	t.Run("RenderWithOrgTemplates reads both projectResources and platformResources", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(context.Background(),
+	t.Run("RenderWithAncestorTemplates reads both projectResources and platformResources", func(t *testing.T) {
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			systemOutputTemplate,
 			nil, // no additional platform templates; the deployment template itself defines platformResources
 			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
@@ -1765,11 +1766,11 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// Sub-test 1: allowed kinds succeed.
 	// The org template closes projectResources.namespacedResources to Deployment,
 	// Service, ServiceAccount. The project template produces exactly those three
-	// kinds. RenderWithOrgTemplates should succeed and return all expected
+	// kinds. RenderWithAncestorTemplates should succeed and return all expected
 	// resources: 3 project resources (Deployment, Service, ServiceAccount) from
 	// projectResources + 1 HTTPRoute from platformResources = 4 total.
 	t.Run("allowed kinds succeed", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(
+		resources, err := renderer.RenderWithAncestorTemplates(
 			context.Background(),
 			closedStructProjectTemplate,
 			[]string{closedStructOrgTemplate},
@@ -1802,7 +1803,7 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// closed struct error), matching the documented error:
 	//   projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
 	t.Run("disallowed kind fails with CUE closed struct error", func(t *testing.T) {
-		_, err := renderer.RenderWithOrgTemplates(
+		_, err := renderer.RenderWithAncestorTemplates(
 			context.Background(),
 			closedStructProjectTemplateForbidden,
 			[]string{closedStructOrgTemplate},
@@ -1882,12 +1883,12 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	}
 
 	// Sub-test 1: Templates render together.
-	// RenderWithOrgTemplates with the org platform template and the
+	// RenderWithAncestorTemplates with the org platform template and the
 	// project template as deployment template must produce 4 resources:
 	// 3 project resources (ServiceAccount, Deployment, Service) from
 	// projectResources + 1 platform resource (HTTPRoute) from platformResources.
 	t.Run("templates render together producing 4 resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithOrgTemplates(
+		resources, err := renderer.RenderWithAncestorTemplates(
 			context.Background(),
 			projectTemplate,
 			[]string{platformTemplate},
@@ -1944,7 +1945,7 @@ projectResources: namespacedResources: (platform.namespace): {
 		// have a template that produces a disallowed kind alongside the allowed ones.
 		projectWithForbidden := projectTemplate + forbiddenAddition
 
-		_, err := renderer.RenderWithOrgTemplates(
+		_, err := renderer.RenderWithAncestorTemplates(
 			context.Background(),
 			projectWithForbidden,
 			[]string{platformTemplate},
@@ -1984,6 +1985,253 @@ projectResources: namespacedResources: (platform.namespace): {
 			if !kindSet[expected] {
 				t.Errorf("expected %s resource in standalone output", expected)
 			}
+		}
+	})
+}
+
+// foldersTemplate accesses platform.folders in a resource annotation.
+// Used to verify that PlatformInput.Folders is propagated into CUE templates.
+// The template sets an annotation to the first folder name when folders are present.
+const foldersTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+	organization:     string
+	folders?: [...string]
+	claims: {
+		iss:            string
+		sub:            string
+		exp:            int
+		iat:            int
+		email:          string
+		email_verified: bool
+	}
+}
+
+// _firstFolder is the first folder name, or "none" when the list is absent/empty.
+_firstFolder: *"none" | string
+if platform.folders != _|_ {
+	if len(platform.folders) > 0 {
+		_firstFolder: platform.folders[0]
+	}
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: (input.name): {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+				annotations: {
+					"test.holos.run/first-folder": _firstFolder
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// TestCueRenderer_FoldersPropagation verifies that PlatformInput.Folders
+// is propagated into CUE templates via platform.folders.
+func TestCueRenderer_FoldersPropagation(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("folders list is available in template when populated", func(t *testing.T) {
+		platform := v1alpha1.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+			Organization:     "my-org",
+			Folders:          []string{"platform", "payments"},
+			Claims: v1alpha1.Claims{
+				Iss:           "https://example.com",
+				Sub:           "u1",
+				Exp:           9999999999,
+				Iat:           1000000000,
+				Email:         "test@example.com",
+				EmailVerified: true,
+			},
+		}
+		project := v1alpha1.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		resources, err := renderer.Render(context.Background(), foldersTemplate, platform, project)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		annotations := resources[0].GetAnnotations()
+		got := annotations["test.holos.run/first-folder"]
+		if got != "platform" {
+			t.Errorf("expected first-folder annotation 'platform', got %q", got)
+		}
+	})
+
+	t.Run("nil folders renders without error and uses default value", func(t *testing.T) {
+		platform := v1alpha1.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+			Organization:     "my-org",
+			Folders:          nil, // no folders — omitted from JSON
+			Claims: v1alpha1.Claims{
+				Iss:           "https://example.com",
+				Sub:           "u1",
+				Exp:           9999999999,
+				Iat:           1000000000,
+				Email:         "test@example.com",
+				EmailVerified: true,
+			},
+		}
+		project := v1alpha1.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		resources, err := renderer.Render(context.Background(), foldersTemplate, platform, project)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resources) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(resources))
+		}
+		annotations := resources[0].GetAnnotations()
+		got := annotations["test.holos.run/first-folder"]
+		if got != "none" {
+			t.Errorf("expected first-folder annotation 'none', got %q", got)
+		}
+	})
+}
+
+// folderPlatformTemplate simulates a folder-level platform template that
+// contributes a resource using platform.folders to identify the folder context.
+const folderPlatformTemplate = `
+
+platformResources: {
+	namespacedResources: (platform.namespace): {
+		ServiceAccount: "folder-sa": {
+			apiVersion: "v1"
+			kind:       "ServiceAccount"
+			metadata: {
+				name:      "folder-sa"
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       "folder-sa"
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// TestCueRenderer_AncestorTemplateWalk verifies that
+// RenderWithAncestorTemplates correctly unifies folder-level and org-level
+// platform templates with the deployment template.
+func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	platform := v1alpha1.PlatformInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: "istio-ingress",
+		Organization:     "my-org",
+		Folders:          []string{"payments"},
+		Claims: v1alpha1.Claims{
+			Iss:           "https://example.com",
+			Sub:           "u1",
+			Exp:           9999999999,
+			Iat:           1000000000,
+			Email:         "test@example.com",
+			EmailVerified: true,
+		},
+	}
+	project := v1alpha1.ProjectInput{
+		Name:  "web-app",
+		Image: "nginx",
+		Tag:   "1.25",
+		Port:  8080,
+	}
+
+	t.Run("folder-level platform template unified with deployment template", func(t *testing.T) {
+		resources, err := renderer.RenderWithAncestorTemplates(
+			context.Background(),
+			deploymentTemplateForUnification,
+			[]string{folderPlatformTemplate},
+			platform,
+			project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect: 1 Deployment from deployment template + 1 ServiceAccount from folder platform template.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources (Deployment + folder ServiceAccount), got %d: %v",
+				len(resources), resourceKinds(resources))
+		}
+		nameSet := make(map[string]bool)
+		for _, r := range resources {
+			nameSet[r.GetName()] = true
+		}
+		if !nameSet["web-app"] {
+			t.Error("expected Deployment 'web-app' from deployment template")
+		}
+		if !nameSet["folder-sa"] {
+			t.Error("expected ServiceAccount 'folder-sa' from folder platform template")
+		}
+	})
+
+	t.Run("multiple ancestor templates (org + folder) are all unified", func(t *testing.T) {
+		resources, err := renderer.RenderWithAncestorTemplates(
+			context.Background(),
+			deploymentTemplateForUnification,
+			[]string{systemUnificationTemplate, folderPlatformTemplate},
+			platform,
+			project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Expect: 1 Deployment + 1 SA from org template (system-from-web-app) + 1 SA from folder template (folder-sa).
+		if len(resources) != 3 {
+			t.Fatalf("expected 3 resources, got %d: %v", len(resources), resourceKinds(resources))
+		}
+		nameSet := make(map[string]bool)
+		for _, r := range resources {
+			nameSet[r.GetName()] = true
+		}
+		if !nameSet["web-app"] {
+			t.Error("expected Deployment 'web-app'")
+		}
+		if !nameSet["system-from-web-app"] {
+			t.Error("expected ServiceAccount 'system-from-web-app' from org template")
+		}
+		if !nameSet["folder-sa"] {
+			t.Error("expected ServiceAccount 'folder-sa' from folder template")
 		}
 	})
 }

@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -53,14 +54,24 @@ const DefaultGatewayNamespace = "istio-ingress"
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
 	Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
-	// RenderWithOrgTemplates unifies one or more platform template CUE sources
-	// with the deployment template before filling in platform and project inputs.
-	RenderWithOrgTemplates(ctx context.Context, deploymentCUE string, orgTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
+	// RenderWithAncestorTemplates unifies one or more ancestor (organization- and
+	// folder-level) template CUE sources with the deployment template before
+	// filling in platform and project inputs.
+	RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
 }
 
 // OrgProvider resolves the organization for a project.
 type OrgProvider interface {
 	GetProjectOrg(ctx context.Context, project string) (string, error)
+}
+
+// AncestorWalker resolves the folder ancestry for a project namespace.
+// It returns the list of folder user-facing names from the organization down
+// to (but not including) the project (i.e. org → folder1 → folder2 → project
+// yields ["folder1", "folder2"] when folder namespaces exist). Used to
+// populate PlatformInput.Folders so CUE templates can reference platform.folders.
+type AncestorWalker interface {
+	GetProjectFolders(ctx context.Context, project string) ([]string, error)
 }
 
 // OrgTemplateProvider resolves platform template CUE sources for render (ADR 019).
@@ -85,15 +96,16 @@ type ResourceApplier interface {
 // Handler implements the DeploymentService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentServiceHandler
-	k8s                    *K8sClient
-	projectResolver        ProjectResolver
-	settingsResolver       SettingsResolver
-	templateResolver       TemplateResolver
-	renderer               Renderer
-	applier                ResourceApplier
-	logReader              LogReader
-	orgProvider            OrgProvider
+	k8s                 *K8sClient
+	projectResolver     ProjectResolver
+	settingsResolver    SettingsResolver
+	templateResolver    TemplateResolver
+	renderer            Renderer
+	applier             ResourceApplier
+	logReader           LogReader
+	orgProvider         OrgProvider
 	orgTemplateProvider OrgTemplateProvider
+	ancestorWalker      AncestorWalker
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -119,6 +131,14 @@ func (h *Handler) WithOrgProvider(op OrgProvider) *Handler {
 // for loading enabled platform templates at render time.
 func (h *Handler) WithOrgTemplateProvider(stp OrgTemplateProvider) *Handler {
 	h.orgTemplateProvider = stp
+	return h
+}
+
+// WithAncestorWalker configures the handler with an AncestorWalker for
+// resolving folder ancestry. When set, PlatformInput.Folders is populated
+// so CUE templates can reference platform.folders.
+func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
+	h.ancestorWalker = aw
 	return h
 }
 
@@ -160,7 +180,7 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	return h.renderer.RenderWithOrgTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
+	return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.
@@ -303,7 +323,7 @@ func (h *Handler) CreateDeployment(
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", req.Msg.Template, project))
 		}
 		cueSource = tmplCM.Data[cueTemplateKey]
-		linkedOrgTemplates = linkedOrgTemplatesFromAnnotation(tmplCM)
+		linkedOrgTemplates = linkedTemplateNamesFromAnnotation(tmplCM)
 	}
 
 	envInputs, err := validateEnvVars(req.Msg.Env)
@@ -330,7 +350,7 @@ func (h *Handler) CreateDeployment(
 	// the operation is all-or-nothing.
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(project, ns, claims)
+		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha1.ProjectInput{
 			Name:    name,
 			Image:   req.Msg.Image,
@@ -450,12 +470,12 @@ func (h *Handler) UpdateDeployment(
 				)
 			} else {
 				cueSource = tmplCM.Data[cueTemplateKey]
-				linkedOrgTemplatesUpdate = linkedOrgTemplatesFromAnnotation(tmplCM)
+				linkedOrgTemplatesUpdate = linkedTemplateNamesFromAnnotation(tmplCM)
 			}
 		}
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(project, ns, claims)
+		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha1.ProjectInput{
 			Name:    name,
 			Image:   image,
@@ -682,11 +702,11 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
-	linkedOrgTemplatesPreview := linkedOrgTemplatesFromAnnotation(tmplCM)
+	linkedOrgTemplatesPreview := linkedTemplateNamesFromAnnotation(tmplCM)
 
 	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
-	platformIn := h.buildPlatformInput(project, ns, claims)
+	platformIn := h.buildPlatformInput(ctx, project, ns, claims)
 
 	// Build project input from the deployment's stored fields.
 	projectIn := v1alpha1.ProjectInput{
@@ -936,7 +956,10 @@ func defaultPort(port int) int {
 }
 
 // buildPlatformInput constructs a v1alpha1.PlatformInput from handler context.
-func (h *Handler) buildPlatformInput(project, namespace string, claims *rpc.Claims) v1alpha1.PlatformInput {
+// When an AncestorWalker is configured, Folders is populated with the ordered
+// list of folder names in the ancestor chain (org → folders → project) so CUE
+// templates can reference platform.folders.
+func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha1.PlatformInput {
 	pi := v1alpha1.PlatformInput{
 		Project:          project,
 		Namespace:        namespace,
@@ -954,30 +977,72 @@ func (h *Handler) buildPlatformInput(project, namespace string, claims *rpc.Clai
 			Groups:        claims.Roles,
 		}
 	}
+	if h.ancestorWalker != nil {
+		folders, err := h.ancestorWalker.GetProjectFolders(ctx, project)
+		if err != nil {
+			slog.WarnContext(ctx, "could not resolve folder ancestry for platform input",
+				slog.String("project", project),
+				slog.Any("error", err),
+			)
+		} else {
+			pi.Folders = folders
+		}
+	}
 	return pi
 }
 
-// linkedOrgTemplatesFromAnnotation reads the linked org template names from the
-// console.holos.run/linked-org-templates annotation on a deployment template ConfigMap.
-// Returns nil if the annotation is absent or unparseable.
-func linkedOrgTemplatesFromAnnotation(cm *corev1.ConfigMap) []string {
+// linkedTemplateNamesFromAnnotation reads the linked template names from a
+// deployment template ConfigMap. It prefers the v1alpha2
+// console.holos.run/linked-templates annotation (JSON array of
+// {scope, scope_name, name} objects) and falls back to the legacy
+// console.holos.run/linked-org-templates annotation (JSON array of strings).
+// Returns only the template names (for compatibility with OrgTemplateProvider
+// which expects names, not full refs). Returns nil if no annotation is present
+// or if parsing fails.
+func linkedTemplateNamesFromAnnotation(cm *corev1.ConfigMap) []string {
 	if cm == nil || cm.Annotations == nil {
 		return nil
 	}
-	raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]
-	if !ok || raw == "" {
-		return nil
+
+	// v1alpha2: console.holos.run/linked-templates — JSON array of {scope, scope_name, name}
+	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+		var refs []struct {
+			Scope     string `json:"scope"`
+			ScopeName string `json:"scope_name"`
+			Name      string `json:"name"`
+		}
+		if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+			slog.Warn("failed to parse linked-templates annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+		} else {
+			names := make([]string, 0, len(refs))
+			for _, ref := range refs {
+				if ref.Name != "" {
+					names = append(names, ref.Name)
+				}
+			}
+			return names
+		}
 	}
-	var names []string
-	if err := json.Unmarshal([]byte(raw), &names); err != nil {
-		slog.Warn("failed to parse linked-org-templates annotation",
-			slog.String("name", cm.Name),
-			slog.String("namespace", cm.Namespace),
-			slog.Any("error", err),
-		)
-		return nil
+
+	// Legacy v1alpha1: console.holos.run/linked-org-templates — JSON array of strings.
+	if raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
+		var names []string
+		if err := json.Unmarshal([]byte(raw), &names); err != nil {
+			slog.Warn("failed to parse linked-org-templates annotation",
+				slog.String("name", cm.Name),
+				slog.String("namespace", cm.Namespace),
+				slog.Any("error", err),
+			)
+			return nil
+		}
+		return names
 	}
-	return names
+
+	return nil
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.

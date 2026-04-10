@@ -242,6 +242,52 @@ func (c *K8sClient) GetProjectOrg(ctx context.Context, project string) (string, 
 	return GetOrganization(ns), nil
 }
 
+// ProjectFolderResolver wraps K8sClient and a Walker to implement
+// deployments.AncestorWalker by resolving the folder ancestry of a project.
+type ProjectFolderResolver struct {
+	k8s    *K8sClient
+	walker walkerAncestors
+}
+
+// walkerAncestors is the minimal interface needed from resolver.Walker.
+type walkerAncestors interface {
+	WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error)
+}
+
+// NewProjectFolderResolver creates a resolver that returns folder names for a project.
+func NewProjectFolderResolver(k8s *K8sClient, walker walkerAncestors) *ProjectFolderResolver {
+	return &ProjectFolderResolver{k8s: k8s, walker: walker}
+}
+
+// GetProjectFolders returns the ordered list of folder names in the ancestor chain
+// from the organization down to (but not including) the project.
+// Implements deployments.AncestorWalker.
+func (r *ProjectFolderResolver) GetProjectFolders(ctx context.Context, project string) ([]string, error) {
+	if r.walker == nil {
+		return nil, nil
+	}
+	projectNs := r.k8s.Resolver.ProjectNamespace(project)
+	ancestors, err := r.walker.WalkAncestors(ctx, projectNs)
+	if err != nil {
+		return nil, fmt.Errorf("walking ancestors for project %q: %w", project, err)
+	}
+
+	// ancestors is child→parent order (project first, org last).
+	// Reverse to get org→project order, then extract only folder namespaces.
+	var folders []string
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		ns := ancestors[i]
+		kind, name, err := r.k8s.Resolver.ResourceTypeFromNamespace(ns.Name)
+		if err != nil {
+			continue
+		}
+		if kind == v1alpha2.ResourceTypeFolder {
+			folders = append(folders, name)
+		}
+	}
+	return folders, nil
+}
+
 // GetDisplayName returns the display-name annotation value from a namespace.
 func GetDisplayName(ns *corev1.Namespace) string {
 	if ns.Annotations == nil {
