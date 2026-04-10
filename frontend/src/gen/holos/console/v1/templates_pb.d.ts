@@ -457,7 +457,7 @@ export declare type RenderTemplateRequest = Message<"holos.console.v1.RenderTemp
   /**
    * cue_project_input contains valid CUE source that is unified with
    * cue_template at the "input" path to supply concrete values for template
-   * parameters. Replaces cue_input / cue_user_input from v1alpha1.
+   * parameters matching the ProjectInput schema.
    *
    * @generated from field: string cue_project_input = 4;
    */

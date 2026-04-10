@@ -919,7 +919,7 @@ type RenderTemplateRequest struct {
 	CuePlatformInput string `protobuf:"bytes,3,opt,name=cue_platform_input,json=cuePlatformInput,proto3" json:"cue_platform_input,omitempty"`
 	// cue_project_input contains valid CUE source that is unified with
 	// cue_template at the "input" path to supply concrete values for template
-	// parameters. Replaces cue_input / cue_user_input from v1alpha1.
+	// parameters matching the ProjectInput schema.
 	CueProjectInput string `protobuf:"bytes,4,opt,name=cue_project_input,json=cueProjectInput,proto3" json:"cue_project_input,omitempty"`
 	// linked_templates lists scope-qualified template references to include in
 	// preview unification. Allows draft templates to preview their effective
