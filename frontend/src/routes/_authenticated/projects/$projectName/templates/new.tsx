@@ -11,7 +11,7 @@ import { Info } from 'lucide-react'
 import { useCreateTemplate, useRenderTemplate, makeProjectScope } from '@/queries/templates'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
-const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
 input: #ProjectInput & {
   name: =~"^[a-z][a-z0-9-]*$"
@@ -93,7 +93,7 @@ const EXAMPLE_HTTPBIN_TEMPLATE = `// Project-level deployment template for go-ht
 // Pair with console/org_templates/example_httpbin_platform.cue to add an
 // HTTPRoute that routes gateway traffic to the Service.
 
-// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
 input: #ProjectInput & {
 	name:  =~"^[a-z][a-z0-9-]*$" // DNS label
