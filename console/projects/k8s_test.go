@@ -9,8 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
-	"github.com/holos-run/holos-console/console/resolver"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/secrets"
 )
 
@@ -19,10 +18,10 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-a",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "project-a",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "project-a",
+				v1alpha2.LabelOrganization: "acme",
 			},
 		},
 	}
@@ -30,10 +29,10 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-b",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "project-b",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "project-b",
+				v1alpha2.LabelOrganization: "acme",
 			},
 		},
 	}
@@ -41,8 +40,8 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-acme",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
 			},
 		},
 	}
@@ -54,7 +53,7 @@ func TestListProjects_ReturnsOnlyProjectNamespaces(t *testing.T) {
 	fakeClient := fake.NewClientset(managed1, managed2, orgNS, unmanaged)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	projects, err := k8s.ListProjects(context.Background(), "")
+	projects, err := k8s.ListProjects(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -72,7 +71,7 @@ func TestListProjects_ReturnsEmptyListWhenNoManagedNamespaces(t *testing.T) {
 	fakeClient := fake.NewClientset(unmanaged)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	projects, err := k8s.ListProjects(context.Background(), "")
+	projects, err := k8s.ListProjects(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -90,9 +89,9 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-active",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "active",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "active",
 			},
 		},
 	}
@@ -100,9 +99,9 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-terminating",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "terminating",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "terminating",
 			},
 			DeletionTimestamp: &now,
 		},
@@ -110,7 +109,7 @@ func TestListProjects_ExcludesTerminatingNamespaces(t *testing.T) {
 	fakeClient := fake.NewClientset(active, terminating)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	projects, err := k8s.ListProjects(context.Background(), "")
+	projects, err := k8s.ListProjects(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -127,10 +126,10 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-foo",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "foo",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "foo",
+				v1alpha2.LabelOrganization: "acme",
 			},
 		},
 	}
@@ -138,10 +137,10 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-bar",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "bar",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "bar",
+				v1alpha2.LabelOrganization: "acme",
 			},
 		},
 	}
@@ -149,17 +148,17 @@ func TestListProjects_FilterByOrg(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-baz",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "baz",
-				resolver.OrganizationLabel: "beta",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "baz",
+				v1alpha2.LabelOrganization: "beta",
 			},
 		},
 	}
 	fakeClient := fake.NewClientset(prj1, prj2, prj3)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	projects, err := k8s.ListProjects(context.Background(), "acme")
+	projects, err := k8s.ListProjects(context.Background(), "acme", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -173,14 +172,14 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
+				v1alpha2.LabelOrganization: "acme",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDisplayName:         "My Project",
-				v1alpha1.AnnotationDescription: "Test project",
+				v1alpha2.AnnotationDisplayName:         "My Project",
+				v1alpha2.AnnotationDescription: "Test project",
 			},
 		},
 	}
@@ -194,8 +193,8 @@ func TestGetProject_ReturnsByDerivedNamespace(t *testing.T) {
 	if result.Name != "holos-prj-my-project" {
 		t.Errorf("expected namespace 'holos-prj-my-project', got %q", result.Name)
 	}
-	if result.Annotations[v1alpha1.AnnotationDisplayName] != "My Project" {
-		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[v1alpha1.AnnotationDisplayName])
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "My Project" {
+		t.Errorf("expected display-name 'My Project', got %q", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
 }
 
@@ -204,10 +203,10 @@ func TestGetProject_ReturnsOrganization(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
+				v1alpha2.LabelOrganization: "acme",
 			},
 		},
 	}
@@ -258,24 +257,24 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
 	shareRoles := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
 
-	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", "", shareUsers, shareRoles, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", "", "", shareUsers, shareRoles, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if result.Name != "holos-prj-new-project" {
 		t.Errorf("expected namespace 'holos-prj-new-project', got %q", result.Name)
 	}
-	if result.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
+	if result.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
 		t.Errorf("expected managed-by label, got %v", result.Labels)
 	}
-	if result.Labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeProject {
+	if result.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeProject {
 		t.Error("expected resource-type=project label")
 	}
-	if result.Labels[resolver.ProjectLabel] != "new-project" {
-		t.Errorf("expected project label 'new-project', got %q", result.Labels[resolver.ProjectLabel])
+	if result.Labels[v1alpha2.LabelProject] != "new-project" {
+		t.Errorf("expected project label 'new-project', got %q", result.Labels[v1alpha2.LabelProject])
 	}
-	if result.Annotations[v1alpha1.AnnotationDisplayName] != "New Project" {
-		t.Errorf("expected display-name 'New Project', got %q", result.Annotations[v1alpha1.AnnotationDisplayName])
+	if result.Annotations[v1alpha2.AnnotationDisplayName] != "New Project" {
+		t.Errorf("expected display-name 'New Project', got %q", result.Annotations[v1alpha2.AnnotationDisplayName])
 	}
 }
 
@@ -283,12 +282,12 @@ func TestCreateProject_SetsOrgLabelWhenProvided(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Labels[resolver.OrganizationLabel] != "acme" {
-		t.Errorf("expected organization label 'acme', got %q", result.Labels[resolver.OrganizationLabel])
+	if result.Labels[v1alpha2.LabelOrganization] != "acme" {
+		t.Errorf("expected organization label 'acme', got %q", result.Labels[v1alpha2.LabelOrganization])
 	}
 }
 
@@ -296,11 +295,11 @@ func TestCreateProject_OmitsOrgLabelWhenEmpty(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := result.Labels[resolver.OrganizationLabel]; ok {
+	if _, ok := result.Labels[v1alpha2.LabelOrganization]; ok {
 		t.Error("expected no organization label when org is empty")
 	}
 }
@@ -310,16 +309,16 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-existing",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "existing",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "existing",
 			},
 		},
 	}
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", "", nil, nil, nil, nil)
+	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", "", "", nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -333,12 +332,12 @@ func TestUpdateProject_UpdatesDescriptionAndDisplayName(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+				v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 			},
 		},
 	}
@@ -378,9 +377,9 @@ func TestDeleteProject_DeletesManagedNamespace(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 		},
 	}
@@ -415,9 +414,9 @@ func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-project-a",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "project-a",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "project-a",
 			},
 		},
 	}
@@ -425,16 +424,16 @@ func TestListProjects_FiltersPrefixMismatchNamespaces(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "other-prj-project-b",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "project-b",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "project-b",
 			},
 		},
 	}
 	fakeClient := fake.NewClientset(matching, mismatched)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	projects, err := k8s.ListProjects(context.Background(), "")
+	projects, err := k8s.ListProjects(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -451,12 +450,12 @@ func TestGetDefaultShareUsers_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
+				v1alpha2.AnnotationDefaultShareUsers: `[{"principal":"alice@example.com","role":"viewer"}]`,
 			},
 		},
 	}
@@ -477,9 +476,9 @@ func TestGetDefaultShareUsers_ReturnsNilWhenAbsent(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 		},
 	}
@@ -497,12 +496,12 @@ func TestGetDefaultShareRoles_ParsesAnnotation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"editor"}]`,
+				v1alpha2.AnnotationDefaultShareRoles: `[{"principal":"engineering","role":"editor"}]`,
 			},
 		},
 	}
@@ -523,9 +522,9 @@ func TestUpdateProjectDefaultSharing_PersistsAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 		},
 	}
@@ -573,13 +572,13 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationShareUsers: `[{"principal":"old@example.com","role":"viewer"}]`,
-				v1alpha1.AnnotationShareRoles: `[]`,
+				v1alpha2.AnnotationShareUsers: `[{"principal":"old@example.com","role":"viewer"}]`,
+				v1alpha2.AnnotationShareRoles: `[]`,
 			},
 		},
 	}
@@ -611,12 +610,12 @@ func TestCreateProject_StoresCreatorEmailAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "creator@example.com", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "creator@example.com", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Annotations[v1alpha1.AnnotationCreatorEmail] != "creator@example.com" {
-		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[v1alpha1.AnnotationCreatorEmail])
+	if result.Annotations[v1alpha2.AnnotationCreatorEmail] != "creator@example.com" {
+		t.Errorf("expected creator-email annotation %q, got %q", "creator@example.com", result.Annotations[v1alpha2.AnnotationCreatorEmail])
 	}
 }
 
@@ -624,11 +623,11 @@ func TestCreateProject_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := result.Annotations[v1alpha1.AnnotationCreatorEmail]; ok {
+	if _, ok := result.Annotations[v1alpha2.AnnotationCreatorEmail]; ok {
 		t.Error("expected no creator-email annotation when email is empty")
 	}
 }
@@ -640,15 +639,15 @@ func TestBuildProject_PopulatesCreatorEmailAndCreatedAt(t *testing.T) {
 			Name:              "holos-prj-my-project",
 			CreationTimestamp: now,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
-				resolver.OrganizationLabel: "acme",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
+				v1alpha2.LabelOrganization: "acme",
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationCreatorEmail:       "creator@example.com",
-				v1alpha1.AnnotationShareUsers: `[{"principal":"creator@example.com","role":"owner"}]`,
-				v1alpha1.AnnotationShareRoles: `[]`,
+				v1alpha2.AnnotationCreatorEmail:       "creator@example.com",
+				v1alpha2.AnnotationShareUsers: `[{"principal":"creator@example.com","role":"owner"}]`,
+				v1alpha2.AnnotationShareRoles: `[]`,
 			},
 		},
 	}
@@ -676,9 +675,9 @@ func TestBuildProject_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:     v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "my-project",
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "my-project",
 			},
 		},
 	}
