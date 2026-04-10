@@ -611,12 +611,8 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 }
 
 // checkAccess verifies the caller has the given permission for the requested scope.
-// For org-scope: checks org grants with OrgCascadeTemplatePerms.
-// For folder-scope: checks folder grants with FolderCascadeTemplatePerms, then
-//
-//	falls back to ancestor org grants.
-//
-// For project-scope: checks project grants with ProjectCascadeTemplatePerms.
+// All scope levels (org, folder, project) use the unified TemplateCascadePerms
+// table per ADR 021 Decision 2.
 func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, perm rbac.Permission) error {
 	switch scope {
 	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
@@ -639,7 +635,7 @@ func (h *Handler) checkOrgAccess(ctx context.Context, claims *rpc.Claims, org st
 		slog.WarnContext(ctx, "failed to resolve org grants", slog.String("org", org), slog.Any("error", err))
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.OrgCascadeTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
 }
 
 func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, folder string, perm rbac.Permission) error {
@@ -651,7 +647,7 @@ func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, fol
 		slog.WarnContext(ctx, "failed to resolve folder grants", slog.String("folder", folder), slog.Any("error", err))
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.FolderCascadeTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
 }
 
 func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, perm rbac.Permission) error {
@@ -663,7 +659,7 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 		slog.WarnContext(ctx, "failed to resolve project grants", slog.String("project", project), slog.Any("error", err))
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.ProjectCascadeTemplatePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
 }
 
 // extractScope validates and extracts the scope and scope_name from a TemplateScopeRef.

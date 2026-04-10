@@ -94,9 +94,9 @@ func EffectiveTemplateRole(
 	}
 
 	templateTables := map[string]CascadeTable{
-		"organization": OrgCascadeTemplatePerms,
-		"folder":       FolderCascadeTemplatePerms,
-		"project":      ProjectCascadeTemplatePerms,
+		"organization": TemplateCascadePerms,
+		"folder":       TemplateCascadePerms,
+		"project":      TemplateCascadePerms,
 	}
 
 	bestLevel := 0

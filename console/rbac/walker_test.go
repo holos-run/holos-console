@@ -50,12 +50,12 @@ func projectAncestor(ns string, shareUsers, shareRoles map[string]string) Ancest
 	}
 }
 
-// templateCascadeTables maps resource types to the template cascade tables
-// used in tests.
+// templateCascadeTables maps resource types to the unified template cascade
+// table used in tests (ADR 021 Decision 2: uniform permissions at all scopes).
 var templateCascadeTables = map[string]CascadeTable{
-	v1alpha2.ResourceTypeOrganization: OrgCascadeTemplatePerms,
-	v1alpha2.ResourceTypeFolder:       FolderCascadeTemplatePerms,
-	v1alpha2.ResourceTypeProject:      ProjectCascadeTemplatePerms,
+	v1alpha2.ResourceTypeOrganization: TemplateCascadePerms,
+	v1alpha2.ResourceTypeFolder:       TemplateCascadePerms,
+	v1alpha2.ResourceTypeProject:      TemplateCascadePerms,
 }
 
 // secretCascadeTables maps resource types to secret cascade tables.
