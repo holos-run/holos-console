@@ -145,7 +145,7 @@ At render time, the console performs these steps:
 2. Fills **project input** (`input.*`) from the deployment creation form or API
    request: image, tag, name, port, env vars, etc.
 3. Collects the applicable platform templates using the explicit linking formula: mandatory AND enabled templates always participate; additionally, enabled templates that are explicitly linked to the deployment template (stored in the `console.holos.run/linked-org-templates` annotation) are included. See [Linking Platform Templates](cue-template-guide.md#linking-platform-templates).
-4. Prepends the generated CUE schema (from `api/v1alpha1` Go types via
+4. Prepends the generated CUE schema (from `api/v1alpha2` Go types via
    `cue get go`) so type definitions like `#ProjectInput` and `#PlatformInput`
    are available without explicit imports.
 5. Unifies all template sources — platform templates and the deployment template
@@ -243,7 +243,7 @@ include:
 | `platform.organization` | The organization name |
 | `platform.claims.email` | The authenticated user's email (from OIDC ID token) |
 
-Go type: `api/v1alpha1.PlatformInput`
+Go type: `api/v1alpha2.PlatformInput`
 
 ### Project input (`input.*`)
 
@@ -261,7 +261,7 @@ values and apply appropriate CUE constraints. Fields include:
 | `input.args` | Container command override (optional) |
 | `input.env` | Container environment variables (optional) |
 
-Go type: `api/v1alpha1.ProjectInput`
+Go type: `api/v1alpha2.ProjectInput`
 
 ---
 

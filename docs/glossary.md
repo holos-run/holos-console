@@ -98,7 +98,7 @@ request — template authors can rely on them being correct and verified. Fields
 include `project`, `namespace`, `gatewayNamespace`, `organization`, and `claims`
 (OIDC ID token claims). In CUE templates, platform input is accessed via the
 `platform` top-level identifier (e.g., `platform.namespace`,
-`platform.claims.email`). Go type: `api/v1alpha1.PlatformInput`.
+`platform.claims.email`). Go type: `api/v1alpha2.PlatformInput`.
 
 ### Project input (`ProjectInput`, CUE path: `input`)
 
@@ -107,7 +107,7 @@ form or the template preview editor. Fields include `name`, `image`, `tag`,
 `command`, `args`, `env`, and `port`. Template authors should treat these as
 user-controlled values and apply appropriate CUE constraints. In CUE templates,
 project input is accessed via the `input` top-level identifier (e.g.,
-`input.name`, `input.port`). Go type: `api/v1alpha1.ProjectInput`.
+`input.name`, `input.port`). Go type: `api/v1alpha2.ProjectInput`.
 
 ### Template scope
 
@@ -124,7 +124,7 @@ Decision 3). See [ADR 021](adrs/021-unified-template-service.md).
 The complete output produced by unifying all templates in the hierarchy with
 their inputs. A resource set contains both `platformResources` and
 `projectResources`. It is the artifact that the renderer validates and then
-applies to Kubernetes via server-side apply. The Go type `api/v1alpha1.ResourceSet`
+applies to Kubernetes via server-side apply. The Go type `api/v1alpha2.ResourceSet`
 represents this concept; `ResourceSetSpec` groups the input and output sections.
 
 ### Template unification
