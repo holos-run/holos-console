@@ -104,7 +104,7 @@ func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha1.Pla
 	return s.resources, s.err
 }
 
-func (s *stubRenderer) RenderWithOrgTemplates(_ context.Context, _ string, _ []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	s.called = true
 	s.lastPlatform = platform
 	s.lastProject = project

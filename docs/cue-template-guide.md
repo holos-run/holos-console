@@ -310,7 +310,7 @@ platform template that provides an HTTPRoute and constrains which resource kinds
 project templates may produce, paired with a project-level template that deploys
 [go-httpbin](https://github.com/mccutchen/go-httpbin). Use this as a reference
 for the ADR 016 Decision 9 constraint pattern. The examples below are the actual
-embedded templates (`console/org_templates/example_httpbin_platform.cue` and
+embedded templates (`console/templates/example_httpbin_platform.cue` and
 `console/templates/example_httpbin.cue`) available via the **Load httpbin
 Example** buttons in the platform template create dialog and the deployment
 template create page.
@@ -602,9 +602,9 @@ The set of platform templates that participate in a render is:
 render_set = (mandatory AND enabled) UNION (enabled AND name IN linked_list)
 ```
 
-The `linked_list` is the `linked_org_templates` annotation on the deployment
-template ConfigMap (JSON string array, annotation key
-`console.holos.run/linked-org-templates`). Disabled templates are never
+The `linked_list` is derived from the `console.holos.run/linked-templates`
+annotation on the deployment template ConfigMap (v1alpha2 format: JSON array of
+`{scope, scope_name, name}` objects). Disabled templates are never
 included, even if they appear in the linked list.
 
 **Authoring implications**
@@ -955,7 +955,7 @@ Resources placed in `platformResources.namespacedResources` and
   (ADR 016 Decision 8) in Go code: when rendering a project-level template (`Render()`),
   it does not read `platformResources` from the evaluated CUE value. A project template
   that defines `platformResources` fields is valid CUE but the values are silently
-  ignored. Only the organization/folder-level path (`RenderWithOrgTemplates()`) reads
+  ignored. Only the organization/folder-level path (`RenderWithAncestorTemplates()`) reads
   both collections.
 - **Always applied alongside user resources** — the render engine collects resources
   from all four output fields at the organization/folder level and applies them in a
@@ -1156,8 +1156,8 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 |------|---------|
 | `console/templates/default_template.cue` | Default CUE template. Narrows generated `#ProjectInput` and `#PlatformInput` types with additional CUE constraints, defines `_envSpec` env var transformation, `_annotations` helper (stamps `platform.claims.email`), `#Namespaced`/`#Cluster` structural constraints, and resource definitions nested under `projectResources.namespacedResources`/`projectResources.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. No `package` declaration — the renderer prepends the generated schema. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
-| `console/org_templates/default_referencegrant.cue` | Built-in example HTTPRoute platform template (code: `OrgTemplate`). References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListOrgTemplates` access. Embedded via `console/org_templates/embed.go`. No `package` declaration. |
-| `api/v1alpha1/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. |
+| `console/templates/default_referencegrant.cue` | Built-in example HTTPRoute platform template. References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListTemplates` access. Embedded via `console/templates/embed.go`. No `package` declaration. |
+| `api/v1alpha1/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. `PlatformInput.Folders` (v1alpha2, `folders?`) carries the ordered folder ancestor names from the organization down to the project. |
 
 ### Go Rendering Pipeline
 
@@ -1166,36 +1166,28 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `console/deployments/render.go` | `CueRenderer.Render()` — project-level render path: prepends generated schema, compiles CUE source, fills `"input"` and `"platform"`, then calls `evaluateStructured(..., false)` which reads only `projectResources` (ADR 016 Decision 8 hard boundary — `platformResources` is intentionally skipped). |
-| `console/deployments/render.go` | `CueRenderer.RenderWithOrgTemplates()` — organization/folder-level render path: unifies platform template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
+| `console/deployments/render.go` | `CueRenderer.RenderWithAncestorTemplates()` — organization/folder-level render path: unifies ancestor (org + folder) template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
 | `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in platform templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
-| `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
+| `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, folders, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go` | `Applier.Reconcile()` — calls `Apply()` then deletes owned resources whose (kind, name) is not in the desired set (orphan cleanup). Used by `UpdateDeployment`. Orphan cleanup is skipped if apply fails so the previously working state is preserved. |
 | `console/deployments/apply.go` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. Used by `DeleteDeployment` (unconditional removal) and `CreateDeployment` rollback. |
 
-### Template Service
+### Template Service (unified, ADR 021)
 
 | File | Purpose |
 |------|---------|
-| `console/templates/handler.go` | `DeploymentTemplateService` handler — CRUD for templates stored as ConfigMaps. |
-| `console/templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `deployment-template` resource-type label. |
+| `console/templates/handler.go` | Unified `TemplateService` handler — scope-aware CRUD for templates at organization, folder, and project levels. Dispatches access checks to `OrgGrantResolver`, `FolderGrantResolver`, or `ProjectGrantResolver` depending on scope. `collectAncestorTemplates()` walks the hierarchy (org → folders → project) to build the render set. |
+| `console/templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `console.holos.run/template-scope` label (`organization|folder|project`), `mandatory` and `enabled` annotations. `ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` implements the explicit linking formula `(mandatory AND enabled) UNION (enabled AND name IN linkedNames)` (satisfies `deployments.OrgTemplateProvider`). |
+| `console/templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatoryOrgTemplates()` — walks the full ancestor chain and applies all mandatory+enabled templates at project creation time. |
 | `console/templates/render_adapter.go` | `CueRendererAdapter` — wraps `deployments.CueRenderer` to produce YAML and structured object data for the template preview RPC. |
-
-### Platform Template Service (code: `OrgTemplateService`)
-
-| File | Purpose |
-|------|---------|
-| `console/org_templates/handler.go` | `OrgTemplateService` handler — CRUD and render for org-scoped platform templates stored as ConfigMaps. Edit access requires `PERMISSION_ORG_TEMPLATES_WRITE`. |
-| `console/org_templates/k8s.go` | ConfigMap storage: templates stored with `template.cue` data key, `org-template` resource-type label, `mandatory` and `enabled` annotations. Seeds `default_referencegrant.cue` (HTTPRoute example) on first `ListOrgTemplates`. `ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` implements the explicit linking formula `(mandatory AND enabled) UNION (enabled AND name IN linkedNames)` (satisfies `deployments.OrgTemplateProvider`). |
-| `console/org_templates/apply.go` | `MandatoryTemplateApplier.ApplyMandatoryOrgTemplates()` — called by the projects service after project namespace creation to apply platform templates that are both `mandatory=true` AND `enabled=true`. |
 
 ### Deployment Service
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create flow — builds `PlatformInput` and `ProjectInput`, calls `renderResources()`, then `Apply()`. All-or-nothing: if render or apply fails, `rollbackCreate()` calls `Cleanup()` then `DeleteDeployment()` to remove partial state. Update flow uses `Reconcile()` instead of `Apply()` so orphaned resources are cleaned up after a successful apply. |
-| `console/deployments/handler.go:607-656` | `protoToEnvVarInput()` / `envVarInputToProto()` — converts between protobuf `EnvVar` and `EnvVarInput` for CUE. |
+| `console/deployments/handler.go` | Create flow — builds `PlatformInput` (including `Folders` from `AncestorWalker`) and `ProjectInput`, calls `renderResources()`, then `Apply()`. All-or-nothing: if render or apply fails, `rollbackCreate()` calls `Cleanup()` then `DeleteDeployment()` to remove partial state. Update flow uses `Reconcile()` instead of `Apply()` so orphaned resources are cleaned up after a successful apply. `linkedTemplateNamesFromAnnotation()` reads the v1alpha2 `console.holos.run/linked-templates` annotation (with legacy fallback to `console.holos.run/linked-org-templates`). |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
 ### Protobuf Definitions
@@ -1203,8 +1195,7 @@ Two render paths exist — one for the deployment service and one for the templa
 | File | Purpose |
 |------|---------|
 | `proto/holos/console/v1/deployments.proto` | `Deployment`, `EnvVar`, `SecretKeyRef`, `ConfigMapKeyRef` messages; `DeploymentService` RPCs. |
-| `proto/holos/console/v1/deployment_templates.proto` | `DeploymentTemplate` message; `DeploymentTemplateService` RPCs including `RenderDeploymentTemplate`. |
-| `proto/holos/console/v1/org_templates.proto` | `OrgTemplate` message (platform template); `OrgTemplateService` RPCs including `RenderOrgTemplate`. |
+| `proto/holos/console/v1/templates.proto` | Unified `Template` message with `TemplateScopeRef` discriminator; `TemplateService` RPCs covering all three scopes. |
 
 ### Generated Code
 

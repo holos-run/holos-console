@@ -39,6 +39,12 @@ type PlatformInput struct {
 	GatewayNamespace string `json:"gatewayNamespace" yaml:"gatewayNamespace" cue:"gatewayNamespace"`
 	// Organization is the parent organization name.
 	Organization string `json:"organization"     yaml:"organization"     cue:"organization"`
+	// Folders is the ordered list of folder names in the ancestor chain from
+	// the organization down to (but not including) the project. The first
+	// element is the immediate child of the organization; the last element is
+	// the immediate parent of the project. Empty when the project has no folder
+	// ancestors. Available in CUE templates as platform.folders.
+	Folders []string `json:"folders,omitempty" yaml:"folders,omitempty" cue:"folders?"`
 	// Claims carries the OIDC ID token claims of the authenticated user.
 	Claims Claims `json:"claims"           yaml:"claims"           cue:"claims"`
 }

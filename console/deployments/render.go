@@ -58,12 +58,13 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1a
 	}
 }
 
-// RenderWithOrgTemplates evaluates the deployment template unified with zero or
-// more platform template CUE sources. Each platform template is unified with the
-// deployment template before filling in the platform and project inputs.
-// All templates can define values for both projectResources and platformResources.
-// The renderer reads both collections when platform templates are present (organization/folder level).
-func (r *CueRenderer) RenderWithOrgTemplates(ctx context.Context, deploymentCUE string, orgTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+// RenderWithAncestorTemplates evaluates the deployment template unified with zero
+// or more ancestor template CUE sources (organization- and folder-level). Each
+// ancestor template is concatenated with the deployment template before filling in
+// the platform and project inputs. All templates can define values for both
+// projectResources and platformResources. The renderer reads both collections when
+// ancestor templates are present (organization/folder level).
+func (r *CueRenderer) RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
 
@@ -73,7 +74,7 @@ func (r *CueRenderer) RenderWithOrgTemplates(ctx context.Context, deploymentCUE 
 	}
 	ch := make(chan result, 1)
 	go func() {
-		resources, err := evaluateWithOrgTemplates(deploymentCUE, orgTemplateCUESources, platform, project)
+		resources, err := evaluateWithOrgTemplates(deploymentCUE, ancestorTemplateCUESources, platform, project)
 		ch <- result{resources, err}
 	}()
 
