@@ -194,15 +194,15 @@ describe('CreateTemplatePage', () => {
     expect(platformInput).toContain('email')
   })
 
-  it('useRenderDeploymentTemplate is called with user input (not project/namespace)', () => {
+  it('useRenderDeploymentTemplate is called with project input (not platform project/namespace)', () => {
     render(<CreateTemplatePage projectName="test-project" />)
     const calls = (useRenderDeploymentTemplate as Mock).mock.calls
     expect(calls.length).toBeGreaterThan(0)
-    // 2nd arg is cueInput (user input)
-    const userInput = calls[0][1]
-    expect(userInput).toContain('input:')
-    expect(userInput).not.toContain('project:')
-    expect(userInput).not.toContain('namespace:')
+    // 2nd arg is cueInput (project input)
+    const projectInput = calls[0][1]
+    expect(projectInput).toContain('input:')
+    expect(projectInput).not.toContain('project:')
+    expect(projectInput).not.toContain('namespace:')
   })
 
   describe('Load httpbin Example button', () => {
