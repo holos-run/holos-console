@@ -7,6 +7,7 @@ import {
   apiDeleteFolder,
   apiCreateProject,
   apiDeleteProject,
+  selectOrg,
 } from './helpers'
 
 /**
@@ -33,8 +34,8 @@ test.describe('Folder list page', () => {
     await page.goto(`/orgs/${orgName}/folders`)
     await page.waitForLoadState('networkidle')
 
-    // Folder should appear in the list
-    await expect(page.getByText(folderName)).toBeVisible({ timeout: 10000 })
+    // Folder should appear in the list (target the display-name column span to avoid strict mode violations)
+    await expect(page.locator('span.font-medium', { hasText: folderName })).toBeVisible({ timeout: 10000 })
 
     // Cleanup
     await apiDeleteFolder(page, folderName, orgName)
@@ -70,10 +71,12 @@ test.describe('Folder detail page', () => {
     await page.goto(`/orgs/${orgName}/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
-    // Folder name should appear in the page
-    await expect(page.getByText(folderName)).toBeVisible({ timeout: 10000 })
-    // Organization should appear as breadcrumb or label
-    await expect(page.getByText(orgName)).toBeVisible({ timeout: 5000 })
+    // Folder name should appear in the page heading (use role to avoid strict mode violations
+    // since the name also appears in the breadcrumb and detail fields)
+    await expect(page.getByRole('heading', { name: folderName })).toBeVisible({ timeout: 10000 })
+    // Organization should appear in the Organization field row (font-mono span to avoid matching
+    // the breadcrumb link which also renders orgName as an anchor element)
+    await expect(page.locator('span.font-mono', { hasText: orgName }).first()).toBeVisible({ timeout: 5000 })
 
     await apiDeleteFolder(page, folderName, orgName)
     await apiDeleteOrg(page, orgName)
@@ -98,12 +101,12 @@ test.describe('Nested folder workflow', () => {
     // Navigate to org's top-level folders page — only parent folder should appear
     await page.goto(`/orgs/${orgName}/folders`)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText(parentFolder)).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('span.font-medium', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
 
-    // Navigate to parent folder detail page — child should be listed in sub-folders
+    // Navigate to parent folder detail page — heading should show the folder name
     await page.goto(`/orgs/${orgName}/folders/${parentFolder}`)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText(parentFolder)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: parentFolder })).toBeVisible({ timeout: 10000 })
 
     // Cleanup (child first, then parent, then org)
     await apiDeleteFolder(page, childFolder, orgName)
@@ -127,8 +130,8 @@ test.describe('Nested folder workflow', () => {
     await page.goto(`/orgs/${orgName}/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
-    // Folder name should be visible in the page heading/breadcrumb
-    await expect(page.getByText(folderName)).toBeVisible({ timeout: 10000 })
+    // Folder name should be visible in the page heading
+    await expect(page.getByRole('heading', { name: folderName })).toBeVisible({ timeout: 10000 })
 
     // Cleanup
     await apiDeleteProject(page, projectName)
@@ -144,12 +147,20 @@ test.describe('Sidebar Folders navigation', () => {
     const orgName = `e2e-sidebar-folders-${Date.now()}`
     await apiCreateOrg(page, orgName)
 
-    await page.goto(`/orgs/${orgName}/projects`)
-    await page.waitForLoadState('networkidle')
+    try {
+      // Select the org in the sidebar picker so the org nav items appear
+      await selectOrg(page, orgName)
 
-    // Sidebar should show a Folders link for the selected org
-    await expect(page.getByRole('link', { name: /folders/i })).toBeVisible({ timeout: 10000 })
+      // On mobile, open the sidebar drawer
+      const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+      if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await sidebarTrigger.click()
+      }
 
-    await apiDeleteOrg(page, orgName)
+      // Sidebar should show a Folders link for the selected org
+      await expect(page.getByRole('link', { name: /^folders$/i })).toBeVisible({ timeout: 10000 })
+    } finally {
+      await apiDeleteOrg(page, orgName)
+    }
   })
 })

@@ -39,9 +39,10 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
     // Navigate to folder list — folder should be visible (owner can list)
+    // Use the display-name span to avoid strict mode violations (name also appears in name column)
     await page.goto(`/orgs/${orgName}/folders`)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText(folderName)).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('span.font-medium', { hasText: folderName })).toBeVisible({ timeout: 10000 })
 
     // Navigate to folder detail — delete button should be visible for owner
     await page.goto(`/orgs/${orgName}/folders/${folderName}`)

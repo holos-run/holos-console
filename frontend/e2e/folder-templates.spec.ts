@@ -29,7 +29,7 @@ const SCOPE_FOLDER = 2
 async function apiCreateFolderTemplate(
   page: Page,
   folderName: string,
-  organization: string,
+  _organization: string,
   templateName: string,
   cueSource: string,
 ): Promise<void> {
@@ -41,7 +41,9 @@ async function apiCreateFolderTemplate(
   })
 
   await page.evaluate(
-    async ({ folderName, organization, templateName, cueSource, token }) => {
+    async ({ folderName, templateName, cueSource, token }) => {
+      // CreateTemplateRequest shape: { scope: TemplateScopeRef, template: Template }
+      // Template fields use camelCase JSON names matching the proto snake_case fields.
       const resp = await fetch('/holos.console.v1.TemplateService/CreateTemplate', {
         method: 'POST',
         headers: {
@@ -51,13 +53,14 @@ async function apiCreateFolderTemplate(
         },
         body: JSON.stringify({
           scope: { scope: 2 /* TEMPLATE_SCOPE_FOLDER */, scopeName: folderName },
-          name: templateName,
-          displayName: templateName,
-          description: 'E2E test folder template',
-          cueSource,
-          organization,
-          enabled: true,
-          mandatory: false,
+          template: {
+            name: templateName,
+            displayName: templateName,
+            description: 'E2E test folder template',
+            cueTemplate: cueSource,
+            enabled: true,
+            mandatory: false,
+          },
         }),
       })
       if (!resp.ok) {
@@ -65,7 +68,7 @@ async function apiCreateFolderTemplate(
         throw new Error(`CreateTemplate failed (${resp.status}): ${text}`)
       }
     },
-    { folderName, organization, templateName, cueSource, token },
+    { folderName, templateName, cueSource, token },
   )
 }
 
@@ -172,8 +175,8 @@ test.describe('Folder-scoped templates', () => {
     await page.goto(`/orgs/${orgName}/folders/${folderName}/templates`)
     await page.waitForLoadState('networkidle')
 
-    // Empty state message
-    await expect(page.getByText(/no templates/i)).toBeVisible({ timeout: 10000 })
+    // Empty state message (actual text: "No platform templates found for this folder.")
+    await expect(page.getByText(/no platform templates/i)).toBeVisible({ timeout: 10000 })
 
     await apiDeleteFolder(page, folderName, orgName)
     await apiDeleteOrg(page, orgName)
