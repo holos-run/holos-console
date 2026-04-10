@@ -12,8 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
-	"github.com/holos-run/holos-console/console/resolver"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -85,9 +84,9 @@ func testProjectNS() *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-test-namespace",
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
-				resolver.ProjectLabel:      "test-namespace",
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "test-namespace",
 			},
 		},
 	}
@@ -101,7 +100,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -186,7 +185,7 @@ func TestHandler_GetSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -303,7 +302,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
+					v1alpha2.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -379,7 +378,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -454,7 +453,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
+					v1alpha2.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -498,7 +497,7 @@ func TestHandler_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -541,10 +540,10 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -597,10 +596,10 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 		}
@@ -637,10 +636,10 @@ func TestHandler_DeleteSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -735,10 +734,10 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -781,10 +780,10 @@ func TestHandler_DeleteSecret_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"other@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"other@example.com","role":"editor"}]`,
 				},
 			},
 		}
@@ -1159,10 +1158,10 @@ func TestHandler_UpdateSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1233,10 +1232,10 @@ func TestHandler_UpdateSecret(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1388,10 +1387,10 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1442,10 +1441,10 @@ func TestHandler_UpdateSecret_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -1498,7 +1497,7 @@ func TestHandler_GetSecret_MultipleKeys(t *testing.T) {
 				Name:      "multi-key-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
+					v1alpha2.AnnotationShareRoles: `[{"principal":"owner","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -1553,10 +1552,10 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "labeled-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1565,7 +1564,7 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "unlabeled-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1610,10 +1609,10 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "accessible-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 		}
@@ -1622,10 +1621,10 @@ func TestHandler_ListSecrets(t *testing.T) {
 				Name:      "inaccessible-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -1746,10 +1745,10 @@ func TestHandler_UpdateSharing(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -1830,10 +1829,10 @@ func TestHandler_UpdateSharing(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"bob@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -1968,7 +1967,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{
@@ -2021,7 +2020,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 				ResourceVersion:   rv,
 				CreationTimestamp: metav1.Now(),
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -2069,7 +2068,7 @@ func TestHandler_GetSecretRaw(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"other@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -2267,10 +2266,10 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{"old-key": []byte("old-value")},
@@ -2316,10 +2315,10 @@ func TestHandler_UpdateSecret_StringData(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"editor"}]`,
 				},
 			},
 			Data: map[string][]byte{"k": []byte("v")},
@@ -2364,10 +2363,10 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -2417,10 +2416,10 @@ func TestHandler_UpdateSharing_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"bob@example.com","role":"viewer"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"bob@example.com","role":"viewer"}]`,
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -2472,10 +2471,10 @@ func TestHandler_ListSecrets_AuditLogging(t *testing.T) {
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
 				Labels: map[string]string{
-					v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue,
+					v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 				},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -2519,11 +2518,11 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
-					v1alpha1.AnnotationDescription: "Database credentials",
-					v1alpha1.AnnotationURL:         "https://db.example.com",
+					v1alpha2.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationDescription: "Database credentials",
+					v1alpha2.AnnotationURL:         "https://db.example.com",
 				},
 			},
 		}
@@ -2555,9 +2554,9 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
 				},
 			},
 		}
@@ -2625,10 +2624,10 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
-					v1alpha1.AnnotationDescription: "Old description",
+					v1alpha2.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationDescription: "Old description",
 				},
 			},
 			Data: map[string][]byte{"key": []byte("value")},
@@ -2672,11 +2671,11 @@ func TestHandler_DescriptionAndURL(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-secret",
 				Namespace: "prj-test-namespace",
-				Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
-					v1alpha1.AnnotationDescription: "Important secret",
-					v1alpha1.AnnotationURL:         "https://important.example.com",
+					v1alpha2.AnnotationShareUsers:  `[{"principal":"user@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationDescription: "Important secret",
+					v1alpha2.AnnotationURL:         "https://important.example.com",
 				},
 			},
 		}
@@ -2727,7 +2726,7 @@ func TestGetSecret_ProjectViewerCannotReadData(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
 	}
@@ -2764,7 +2763,7 @@ func TestGetSecret_ProjectEditorCannotReadData(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
 	}
@@ -2801,7 +2800,7 @@ func TestListSecrets_ProjectViewerCanListMetadata(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
 	}
@@ -2859,7 +2858,7 @@ func TestDeleteSecret_ProjectOwnerCanDelete(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 	}
 	fakeClient := fake.NewClientset(testProjectNS(), secret)
@@ -2888,7 +2887,7 @@ func TestUpdateSharing_ProjectOwnerCanAdmin(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 			UID:       types.UID("test-uid"),
 		},
 	}
@@ -2925,7 +2924,7 @@ func TestListSecrets_NoGrantsDeniesAccess(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
 	}
@@ -2957,7 +2956,7 @@ func TestGetSecret_NoGrantsDeniesAccess(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-secret",
 			Namespace: "prj-test-namespace",
-			Labels:    map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+			Labels:    map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 		},
 		Data: map[string][]byte{"key": []byte("value")},
 	}
