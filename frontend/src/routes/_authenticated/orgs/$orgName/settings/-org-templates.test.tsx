@@ -17,13 +17,14 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
-vi.mock('@/queries/org-templates', () => ({
-  useListOrgTemplates: vi.fn(),
-  useGetOrgTemplate: vi.fn(),
-  useCreateOrgTemplate: vi.fn(),
-  useUpdateOrgTemplate: vi.fn(),
-  useCloneOrgTemplate: vi.fn(),
-  useRenderOrgTemplate: vi.fn(),
+vi.mock('@/queries/templates', () => ({
+  useListTemplates: vi.fn(),
+  useGetTemplate: vi.fn(),
+  useCreateTemplate: vi.fn(),
+  useUpdateTemplate: vi.fn(),
+  useCloneTemplate: vi.fn(),
+  useRenderTemplate: vi.fn(),
+  makeOrgScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-org' }),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -37,13 +38,13 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import {
-  useListOrgTemplates,
-  useGetOrgTemplate,
-  useCreateOrgTemplate,
-  useUpdateOrgTemplate,
-  useCloneOrgTemplate,
-  useRenderOrgTemplate,
-} from '@/queries/org-templates'
+  useListTemplates,
+  useGetTemplate,
+  useCreateTemplate,
+  useUpdateTemplate,
+  useCloneTemplate,
+  useRenderTemplate,
+} from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatesListPage } from './org-templates/index'
@@ -71,7 +72,7 @@ const mockTemplates = [
 ]
 
 function setupListMocks(userRole = Role.OWNER) {
-  ;(useListOrgTemplates as Mock).mockReturnValue({
+  ;(useListTemplates as Mock).mockReturnValue({
     data: mockTemplates,
     isPending: false,
     error: null,
@@ -81,7 +82,7 @@ function setupListMocks(userRole = Role.OWNER) {
     isPending: false,
     error: null,
   })
-  ;(useCreateOrgTemplate as Mock).mockReturnValue({
+  ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
@@ -89,20 +90,20 @@ function setupListMocks(userRole = Role.OWNER) {
 
 function setupDetailMocks(userRole = Role.OWNER, templateOverride?: Partial<typeof mockTemplates[0]>) {
   const template = { ...mockTemplates[0], ...templateOverride }
-  ;(useGetOrgTemplate as Mock).mockReturnValue({
+  ;(useGetTemplate as Mock).mockReturnValue({
     data: template,
     isPending: false,
     error: null,
   })
-  ;(useUpdateOrgTemplate as Mock).mockReturnValue({
+  ;(useUpdateTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
-  ;(useCloneOrgTemplate as Mock).mockReturnValue({
+  ;(useCloneTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }),
     isPending: false,
   })
-  ;(useRenderOrgTemplate as Mock).mockReturnValue({
+  ;(useRenderTemplate as Mock).mockReturnValue({
     data: { renderedYaml: '', renderedJson: '' },
     error: null,
     isFetching: false,
@@ -139,13 +140,13 @@ describe('OrgTemplatesListPage', () => {
   })
 
   it('does not show mandatory badge for non-mandatory templates', () => {
-    ;(useListOrgTemplates as Mock).mockReturnValue({
+    ;(useListTemplates as Mock).mockReturnValue({
       data: [mockTemplates[1]], // only non-mandatory
       isPending: false,
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateOrgTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
@@ -163,26 +164,26 @@ describe('OrgTemplatesListPage', () => {
   })
 
   it('shows skeleton while loading', () => {
-    ;(useListOrgTemplates as Mock).mockReturnValue({
+    ;(useListTemplates as Mock).mockReturnValue({
       data: undefined,
       isPending: true,
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateOrgTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     // Should not crash; skeleton elements rendered
     expect(screen.queryByText('reference-grant')).not.toBeInTheDocument()
   })
 
   it('shows error message when fetch fails', () => {
-    ;(useListOrgTemplates as Mock).mockReturnValue({
+    ;(useListTemplates as Mock).mockReturnValue({
       data: undefined,
       isPending: false,
       error: new Error('Failed to load templates'),
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateOrgTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.getByText('Failed to load templates')).toBeInTheDocument()
   })
@@ -228,7 +229,7 @@ describe('OrgTemplatesListPage', () => {
       // Toggle enabled on
       await user.click(screen.getByRole('switch', { name: /enabled/i }))
       await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
           name: 'my-template',
@@ -245,7 +246,7 @@ describe('OrgTemplatesListPage', () => {
       const nameInput = screen.getByRole('textbox', { name: /^name$/i })
       await user.type(nameInput, 'my-template')
       await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
           name: 'my-template',
@@ -261,7 +262,7 @@ describe('OrgTemplatesListPage', () => {
       await user.click(screen.getByRole('button', { name: /create template/i }))
       await user.click(screen.getByRole('button', { name: /cancel/i }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      const mutateAsync = (useCreateOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
       expect(mutateAsync).not.toHaveBeenCalled()
     })
   })
@@ -304,14 +305,14 @@ describe('OrgTemplateDetailPage', () => {
   })
 
   it('does not show mandatory badge for non-mandatory template', () => {
-    ;(useGetOrgTemplate as Mock).mockReturnValue({
+    ;(useGetTemplate as Mock).mockReturnValue({
       data: mockTemplates[1], // non-mandatory
       isPending: false,
       error: null,
     })
-    ;(useUpdateOrgTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
-    ;(useCloneOrgTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new' }), isPending: false })
-    ;(useRenderOrgTemplate as Mock).mockReturnValue({ data: undefined, error: null, isFetching: false })
+    ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new' }), isPending: false })
+    ;(useRenderTemplate as Mock).mockReturnValue({ data: undefined, error: null, isFetching: false })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
     render(<OrgTemplateDetailPage orgName="test-org" templateName="optional-template" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
@@ -344,7 +345,7 @@ describe('OrgTemplateDetailPage', () => {
       render(<OrgTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
       const toggle = screen.getByRole('switch', { name: /enabled/i })
       await user.click(toggle)
-      const mutateAsync = (useUpdateOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useUpdateTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
       })
@@ -400,7 +401,7 @@ describe('OrgTemplateDetailPage', () => {
       await user.clear(displayNameInput)
       await user.type(displayNameInput, 'New Template')
       await user.click(screen.getByRole('button', { name: /^clone$/i }))
-      const mutateAsync = (useCloneOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useCloneTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
           sourceName: 'reference-grant',
@@ -417,7 +418,7 @@ describe('OrgTemplateDetailPage', () => {
       await user.click(screen.getByRole('button', { name: /clone/i }))
       await user.click(screen.getByRole('button', { name: /cancel/i }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      const mutateAsync = (useCloneOrgTemplate as Mock).mock.results[0].value.mutateAsync
+      const mutateAsync = (useCloneTemplate as Mock).mock.results[0].value.mutateAsync
       expect(mutateAsync).not.toHaveBeenCalled()
     })
   })

@@ -1,46 +1,37 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
+import type { Mock } from 'vitest'
 import React from 'react'
 
 vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
 
-import { CueTemplateEditor, type RenderFn } from './cue-template-editor'
+vi.mock('@/queries/templates', () => ({
+  useRenderTemplate: vi.fn(),
+}))
 
-// A mock render function that returns no data (no error, no render)
-const noOpRenderFn: RenderFn = () => ({
-  data: undefined,
-  error: null,
-  isFetching: false,
-})
+import { CueTemplateEditor } from './cue-template-editor'
+import { useRenderTemplate } from '@/queries/templates'
+import { TemplateScope } from '@/gen/holos/console/v1/templates_pb.js'
+import { create } from '@bufbuild/protobuf'
 
-// A mock render function that returns YAML
-function makeRenderFn(yaml: string): RenderFn {
-  return () => ({
-    data: { renderedYaml: yaml, renderedJson: '' },
-    error: null,
-    isFetching: false,
-  })
-}
-
-// A mock render function that returns an error
-function makeErrorRenderFn(message: string): RenderFn {
-  return () => ({
-    data: undefined,
-    error: new Error(message),
-    isFetching: false,
-  })
-}
+// testScope is a placeholder scope used in tests.
+const testScope = { scope: TemplateScope.PROJECT, scopeName: 'test-project' } as unknown as ReturnType<typeof create>
 
 describe('CueTemplateEditor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(useRenderTemplate as Mock).mockReturnValue({ data: undefined, error: null, isFetching: false })
+  })
+
   it('renders editor tab with textarea', () => {
     render(
       <CueTemplateEditor
         cueTemplate="// template content"
         onChange={vi.fn()}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -54,7 +45,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="initial"
         onChange={onChange}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -68,7 +59,7 @@ describe('CueTemplateEditor', () => {
         cueTemplate="content"
         onChange={vi.fn()}
         readOnly={true}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -82,7 +73,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={true}
         onSave={vi.fn()}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument()
@@ -95,7 +86,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={false}
         onSave={vi.fn()}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
@@ -109,7 +100,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={false}
         onSave={onSave}
-        useRenderFn={noOpRenderFn}
+        scope={testScope}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
@@ -118,13 +109,18 @@ describe('CueTemplateEditor', () => {
 
   it('renders preview tab with platform input, project input, and rendered YAML sections', async () => {
     const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: { renderedYaml: 'apiVersion: v1\nkind: ReferenceGrant', renderedJson: '' },
+      error: null,
+      isFetching: false,
+    })
     render(
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
         defaultPlatformInput="platform: {}"
         defaultProjectInput="input: {}"
-        useRenderFn={makeRenderFn('apiVersion: v1\nkind: ReferenceGrant')}
+        scope={testScope}
       />
     )
 
@@ -139,11 +135,16 @@ describe('CueTemplateEditor', () => {
 
   it('shows render error in preview tab', async () => {
     const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: undefined,
+      error: new Error('CUE evaluation failed'),
+      isFetching: false,
+    })
     render(
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        useRenderFn={makeErrorRenderFn('CUE evaluation failed')}
+        scope={testScope}
       />
     )
 
@@ -154,7 +155,7 @@ describe('CueTemplateEditor', () => {
 
   it('shows render status indicator: rendering state', async () => {
     const user = userEvent.setup()
-    const renderingFn: RenderFn = () => ({
+    ;(useRenderTemplate as Mock).mockReturnValue({
       data: undefined,
       error: null,
       isFetching: true,
@@ -163,7 +164,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        useRenderFn={renderingFn}
+        scope={testScope}
       />
     )
     await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -172,11 +173,16 @@ describe('CueTemplateEditor', () => {
 
   it('shows render status indicator: fresh state', async () => {
     const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: { renderedYaml: '', renderedJson: '' },
+      error: null,
+      isFetching: false,
+    })
     render(
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        useRenderFn={makeRenderFn('')}
+        scope={testScope}
       />
     )
     await user.click(screen.getByRole('tab', { name: /preview/i }))

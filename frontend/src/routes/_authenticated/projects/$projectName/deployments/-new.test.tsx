@@ -25,8 +25,9 @@ vi.mock('@/queries/deployments', () => ({
   useListNamespaceConfigMaps: vi.fn().mockReturnValue({ data: [], isLoading: false }),
 }))
 
-vi.mock('@/queries/deployment-templates', () => ({
-  useListDeploymentTemplates: vi.fn(),
+vi.mock('@/queries/templates', () => ({
+  useListTemplates: vi.fn(),
+  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
 vi.mock('@/components/ui/combobox', () => ({
@@ -52,7 +53,7 @@ vi.mock('@/components/ui/combobox', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useCreateDeployment } from '@/queries/deployments'
-import { useListDeploymentTemplates } from '@/queries/deployment-templates'
+import { useListTemplates } from '@/queries/templates'
 import { CreateDeploymentPage } from './new'
 
 function makeTemplate(name: string, defaults?: { name?: string; image?: string; tag?: string; command?: string[]; args?: string[]; env?: unknown[]; port?: number; description?: string }) {
@@ -68,7 +69,7 @@ function setupMocks(
     isPending: false,
     reset: vi.fn(),
   })
-  ;(useListDeploymentTemplates as Mock).mockReturnValue({
+  ;(useListTemplates as Mock).mockReturnValue({
     data: templates,
     isLoading: false,
   })

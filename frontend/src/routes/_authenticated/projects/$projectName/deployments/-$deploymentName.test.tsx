@@ -38,15 +38,16 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
-vi.mock('@/queries/deployment-templates', () => ({
-  useRenderDeploymentTemplate: vi.fn(),
+vi.mock('@/queries/templates', () => ({
+  useRenderTemplate: vi.fn(),
+  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentRenderPreview } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
-import { useRenderDeploymentTemplate } from '@/queries/deployment-templates'
+import { useRenderTemplate } from '@/queries/templates'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
 import { DeploymentDetailPage } from './$deploymentName'
@@ -100,7 +101,7 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-  ;(useRenderDeploymentTemplate as Mock).mockReturnValue({ data: { renderedYaml: mockPreview.renderedYaml, renderedJson: '' }, error: null, isFetching: false })
+  ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: mockPreview.renderedYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
 describe('DeploymentDetailPage', () => {
