@@ -701,7 +701,7 @@ input: #ProjectInput & {
 ```
 
 The `*value | _` syntax makes `value` the CUE default while `_` (top) allows any override. At
-render time, the backend calls `FillPath("input", userInput)` to unify the form values with
+render time, the backend calls `FillPath("input", projectInput)` to unify the form values with
 `input`. If a field is left at its zero value in the form, the CUE default wins. If the user
 fills in a value, that concrete value wins.
 

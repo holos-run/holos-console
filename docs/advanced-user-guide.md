@@ -78,7 +78,7 @@ reference secrets as container environment variables via `SecretKeyRef`.
 | `UpdateSharing` | `ROLE_OWNER` on secret | Replaces the per-user and per-role sharing grants on the secret without touching its data. |
 | `GetSecretRaw` | `PERMISSION_SECRETS_READ` | Returns the verbatim JSON of the backing Kubernetes Secret. |
 
-### DeploymentTemplateService
+### TemplateService (deployment templates — project scope)
 
 _Deployment templates_ are project-scoped CUE programs that define what
 Kubernetes resources a deployment creates. A template declares what
@@ -279,7 +279,7 @@ Navigate to **Organizations > my-org > Platform Templates** and click
 
 Paste the following CUE into the **Template** editor. This is the canonical
 go-httpbin org-level example — an identical version is embedded in the server
-at `console/org_templates/example_httpbin_platform.cue`.
+at `console/templates/example_httpbin_platform.cue`.
 
 ```cue
 // Org-level template — evaluated at organization scope.
@@ -639,10 +639,10 @@ contacted.
 | Who | What | RPC |
 |-----|------|-----|
 | Platform engineer | Enable deployments on the project | `ProjectSettingsService.UpdateProjectSettings` |
-| Platform engineer | Author and enable the org-level template | `OrgTemplateService.CreateOrgTemplate` + `UpdateOrgTemplate` |
-| Platform engineer | Preview the org-level template | `OrgTemplateService.RenderOrgTemplate` |
-| Project engineer | Create the deployment template | `DeploymentTemplateService.CreateDeploymentTemplate` |
-| Project engineer | Preview the deployment template | `DeploymentTemplateService.RenderDeploymentTemplate` |
+| Platform engineer | Author and enable the org-level template | `TemplateService.CreateTemplate` + `UpdateTemplate` |
+| Platform engineer | Preview the org-level template | `TemplateService.RenderDeploymentTemplate` |
+| Project engineer | Create the deployment template | `TemplateService.CreateTemplate` |
+| Project engineer | Preview the deployment template | `TemplateService.RenderDeploymentTemplate` |
 | Project owner | Deploy an instance | `DeploymentService.CreateDeployment` |
 | Project owner | Check deployment health | `DeploymentService.GetDeploymentStatus` |
 | Project owner | Tail logs | `DeploymentService.GetDeploymentLogs` |
