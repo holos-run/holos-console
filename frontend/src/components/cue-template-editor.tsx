@@ -83,8 +83,8 @@ export interface CueTemplateEditorProps {
   isSaving?: boolean
   /** Default platform input for the preview tab */
   defaultPlatformInput?: string
-  /** Default user input for the preview tab */
-  defaultUserInput?: string
+  /** Default project input for the preview tab */
+  defaultProjectInput?: string
   /** Hook to use for rendering (injectable for testability) */
   useRenderFn: RenderFn
 }
@@ -101,12 +101,12 @@ export function CueTemplateEditor({
   onSave,
   isSaving = false,
   defaultPlatformInput = '',
-  defaultUserInput = '',
+  defaultProjectInput = '',
   useRenderFn,
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
   const [cuePlatformInput, setCuePlatformInput] = useState(defaultPlatformInput)
-  const [cueInput, setCueInput] = useState(defaultUserInput)
+  const [cueInput, setCueInput] = useState(defaultProjectInput)
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
   const debouncedCuePlatformInput = useDebouncedValue(cuePlatformInput, 500)
@@ -169,10 +169,10 @@ export function CueTemplateEditor({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cue-input-editor">User Input (deployment parameters)</Label>
+          <Label htmlFor="cue-input-editor">Project Input (deployment parameters)</Label>
           <Textarea
             id="cue-input-editor"
-            aria-label="User Input"
+            aria-label="Project Input"
             value={cueInput}
             onChange={(e) => setCueInput(e.target.value)}
             rows={6}
