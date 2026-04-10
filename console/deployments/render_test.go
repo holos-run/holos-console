@@ -10,7 +10,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
 // structuredTemplate uses the projectResources.namespacedResources/projectResources.clusterResources structured output format.
@@ -328,16 +328,16 @@ projectResources: {
 }
 `
 
-func defaultPlatform(namespace string) v1alpha1.PlatformInput {
-	return v1alpha1.PlatformInput{
+func defaultPlatform(namespace string) v1alpha2.PlatformInput {
+	return v1alpha2.PlatformInput{
 		Project:          "my-project",
 		Namespace:        namespace,
 		GatewayNamespace: DefaultGatewayNamespace,
 	}
 }
 
-func defaultProject() v1alpha1.ProjectInput {
-	return v1alpha1.ProjectInput{
+func defaultProject() v1alpha2.ProjectInput {
+	return v1alpha2.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
@@ -412,8 +412,8 @@ func TestCueRenderer_Render(t *testing.T) {
 
 	t.Run("input values are available in template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), validTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v2.0.0", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v2.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -546,8 +546,8 @@ func TestCueRenderer_Env(t *testing.T) {
 
 	t.Run("literal env var is passed to template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), envTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Env: []v1alpha1.EnvVar{{Name: "FOO", Value: "bar"}}},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Env: []v1alpha2.EnvVar{{Name: "FOO", Value: "bar"}}},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -581,8 +581,8 @@ func TestCueRenderer_Env(t *testing.T) {
 
 	t.Run("empty env is omitted from template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), envTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -610,8 +610,8 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 
 	t.Run("command and args are passed to template", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Command: []string{"/bin/sh", "-c"}, Args: []string{"echo hello"}},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Command: []string{"/bin/sh", "-c"}, Args: []string{"echo hello"}},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -639,8 +639,8 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 
 	t.Run("empty command and args are omitted", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -732,8 +732,8 @@ func TestCueRenderer_Port(t *testing.T) {
 
 	t.Run("explicit port is used in containerPort", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), portTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 9090},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 9090},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -775,8 +775,8 @@ func TestCueRenderer_Port(t *testing.T) {
 		// The Go handler defaults Port to 8080 before calling the renderer.
 		// This test verifies that Port: 8080 (the default) renders correctly.
 		resources, err := renderer.Render(context.Background(), portTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -862,8 +862,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("structured template produces expected resources", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), structuredTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -892,8 +892,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("structured template rejects cross-namespace resources", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredCrossNamespaceTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for cross-namespace resource")
@@ -902,8 +902,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("structured template rejects missing managed-by label", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredMissingManagedByTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for missing managed-by label")
@@ -912,8 +912,8 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 
 	t.Run("duplicate Kind/name with incompatible values causes CUE conflict", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredDuplicateTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
 			t.Fatal("expected error for duplicate Kind/name with conflicting values")
@@ -929,10 +929,10 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 	namespace := "prj-my-project"
 	const deployerEmail = "alice@example.com"
 
-	system := v1alpha1.PlatformInput{
+	system := v1alpha2.PlatformInput{
 		Project:   "my-project",
 		Namespace: namespace,
-		Claims: v1alpha1.Claims{
+		Claims: v1alpha2.Claims{
 			Iss:           "https://dex.example.com",
 			Sub:           "alice-sub",
 			Exp:           9999999999,
@@ -941,7 +941,7 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	user := v1alpha1.ProjectInput{
+	user := v1alpha2.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
@@ -1092,11 +1092,11 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("explicit gatewayNamespace is propagated to template", func(t *testing.T) {
-		system := v1alpha1.PlatformInput{
+		system := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
 			GatewayNamespace: "custom-gateway-ns",
-			Claims: v1alpha1.Claims{
+			Claims: v1alpha2.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -1105,7 +1105,7 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha1.ProjectInput{
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -1127,11 +1127,11 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 	t.Run("default gatewayNamespace istio-ingress is applied by Go", func(t *testing.T) {
 		// The Go handler defaults GatewayNamespace to "istio-ingress" before
 		// calling the renderer. This test verifies the default renders correctly.
-		system := v1alpha1.PlatformInput{
+		system := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
 			GatewayNamespace: DefaultGatewayNamespace,
-			Claims: v1alpha1.Claims{
+			Claims: v1alpha2.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -1140,7 +1140,7 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha1.ProjectInput{
+		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -1269,7 +1269,7 @@ platform: #Platform
 	namespace:        string
 	gatewayNamespace: string
 	organization:     string
-	folders?: [...string]
+	folders?: [...{name: string, namespace?: string}]
 	claims: {
 		iss:            string
 		sub:            string
@@ -1316,11 +1316,11 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
-	system := v1alpha1.PlatformInput{
+	system := v1alpha2.PlatformInput{
 		Project:          "my-project",
 		Namespace:        namespace,
 		GatewayNamespace: "istio-ingress",
-		Claims: v1alpha1.Claims{
+		Claims: v1alpha2.Claims{
 			Iss:           "https://example.com",
 			Sub:           "u1",
 			Exp:           9999999999,
@@ -1329,7 +1329,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	user := v1alpha1.ProjectInput{
+	user := v1alpha2.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
@@ -1466,8 +1466,8 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	// NOT read platformResources even if the template defines them.
 	t.Run("Render does not read platformResources (project-level boundary)", func(t *testing.T) {
 		resources, err := renderer.Render(context.Background(), systemOutputTemplate,
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -1489,8 +1489,8 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
 			systemOutputTemplate,
 			nil, // no additional platform templates; the deployment template itself defines platformResources
-			v1alpha1.PlatformInput{Project: "my-project", Namespace: namespace},
-			v1alpha1.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -1742,12 +1742,12 @@ projectResources: {
 func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	renderer := &CueRenderer{}
 
-	platform := v1alpha1.PlatformInput{
+	platform := v1alpha2.PlatformInput{
 		Project:          "my-project",
 		Namespace:        "prj-my-project",
 		GatewayNamespace: "istio-ingress",
 		Organization:     "my-org",
-		Claims: v1alpha1.Claims{
+		Claims: v1alpha2.Claims{
 			Iss:           "https://example.com",
 			Sub:           "u1",
 			Exp:           9999999999,
@@ -1756,7 +1756,7 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	project := v1alpha1.ProjectInput{
+	project := v1alpha2.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",
@@ -1861,12 +1861,12 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 
 	renderer := &CueRenderer{}
 
-	platform := v1alpha1.PlatformInput{
+	platform := v1alpha2.PlatformInput{
 		Project:          "my-project",
 		Namespace:        "prj-my-project",
 		GatewayNamespace: "istio-ingress",
 		Organization:     "my-org",
-		Claims: v1alpha1.Claims{
+		Claims: v1alpha2.Claims{
 			Iss:           "https://example.com",
 			Sub:           "u1",
 			Exp:           9999999999,
@@ -1875,7 +1875,7 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	project := v1alpha1.ProjectInput{
+	project := v1alpha2.ProjectInput{
 		Name:  "go-httpbin",
 		Image: "ghcr.io/mccutchen/go-httpbin",
 		Tag:   "2.21.0",
@@ -2005,7 +2005,7 @@ platform: {
 	namespace:        string
 	gatewayNamespace: string
 	organization:     string
-	folders?: [...string]
+	folders?: [...{name: string, namespace?: string}]
 	claims: {
 		iss:            string
 		sub:            string
@@ -2020,7 +2020,7 @@ platform: {
 _firstFolder: *"none" | string
 if platform.folders != _|_ {
 	if len(platform.folders) > 0 {
-		_firstFolder: platform.folders[0]
+		_firstFolder: platform.folders[0].name
 	}
 }
 
@@ -2053,13 +2053,13 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("folders list is available in template when populated", func(t *testing.T) {
-		platform := v1alpha1.PlatformInput{
+		platform := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
 			GatewayNamespace: "istio-ingress",
 			Organization:     "my-org",
-			Folders:          []string{"platform", "payments"},
-			Claims: v1alpha1.Claims{
+			Folders:          []v1alpha2.FolderInfo{{Name: "platform"}, {Name: "payments"}},
+			Claims: v1alpha2.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -2068,7 +2068,7 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		project := v1alpha1.ProjectInput{
+		project := v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -2089,13 +2089,13 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 	})
 
 	t.Run("nil folders renders without error and uses default value", func(t *testing.T) {
-		platform := v1alpha1.PlatformInput{
+		platform := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
 			GatewayNamespace: "istio-ingress",
 			Organization:     "my-org",
 			Folders:          nil, // no folders — omitted from JSON
-			Claims: v1alpha1.Claims{
+			Claims: v1alpha2.Claims{
 				Iss:           "https://example.com",
 				Sub:           "u1",
 				Exp:           9999999999,
@@ -2104,7 +2104,7 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		project := v1alpha1.ProjectInput{
+		project := v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -2155,13 +2155,13 @@ func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
-	platform := v1alpha1.PlatformInput{
+	platform := v1alpha2.PlatformInput{
 		Project:          "my-project",
 		Namespace:        namespace,
 		GatewayNamespace: "istio-ingress",
 		Organization:     "my-org",
-		Folders:          []string{"payments"},
-		Claims: v1alpha1.Claims{
+		Folders:          []v1alpha2.FolderInfo{{Name: "payments"}},
+		Claims: v1alpha2.Claims{
 			Iss:           "https://example.com",
 			Sub:           "u1",
 			Exp:           9999999999,
@@ -2170,7 +2170,7 @@ func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
 			EmailVerified: true,
 		},
 	}
-	project := v1alpha1.ProjectInput{
+	project := v1alpha2.ProjectInput{
 		Name:  "web-app",
 		Image: "nginx",
 		Tag:   "1.25",

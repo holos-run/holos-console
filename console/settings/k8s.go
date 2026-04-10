@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +46,7 @@ func (k *K8sClient) GetSettings(ctx context.Context, project string) (*consolev1
 		return nil, fmt.Errorf("getting project namespace: %w", err)
 	}
 
-	raw, ok := nsObj.Annotations[v1alpha1.AnnotationSettings]
+	raw, ok := nsObj.Annotations[v1alpha2.AnnotationSettings]
 	if !ok || raw == "" {
 		return DefaultSettings(project), nil
 	}
@@ -81,7 +81,7 @@ func (k *K8sClient) UpdateSettings(ctx context.Context, settings *consolev1.Proj
 	if nsObj.Annotations == nil {
 		nsObj.Annotations = make(map[string]string)
 	}
-	nsObj.Annotations[v1alpha1.AnnotationSettings] = string(data)
+	nsObj.Annotations[v1alpha2.AnnotationSettings] = string(data)
 
 	if _, err := k.client.CoreV1().Namespaces().Update(ctx, nsObj, metav1.UpdateOptions{}); err != nil {
 		return nil, fmt.Errorf("updating project namespace: %w", err)

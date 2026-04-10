@@ -5,7 +5,7 @@
 // Pair with console/system_templates/example_httpbin_platform.cue to add an
 // HTTPRoute that routes gateway traffic to the Service.
 
-// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
 input: #ProjectInput & {
 	name:  =~"^[a-z][a-z0-9-]*$" // DNS label

@@ -12,7 +12,7 @@ import (
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	testing2 "k8s.io/client-go/testing"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
 // allTestGVRs lists every GVR that the fake scheme must know about,
@@ -142,14 +142,14 @@ func TestApplier_Apply(t *testing.T) {
 		for _, a := range fakeClient.Actions() {
 			if pa, ok := a.(testing2.PatchAction); ok {
 				patch := string(pa.GetPatch())
-				if containsStr(patch, v1alpha1.AnnotationDeployment) {
+				if containsStr(patch, v1alpha2.AnnotationDeployment) {
 					found = true
 					break
 				}
 			}
 		}
 		if !found {
-			t.Errorf("expected ownership label %q in patch payload", v1alpha1.AnnotationDeployment)
+			t.Errorf("expected ownership label %q in patch payload", v1alpha2.AnnotationDeployment)
 		}
 	})
 
@@ -188,7 +188,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("web-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			v1alpha1.AnnotationDeployment:                 deploymentName,
+			v1alpha2.AnnotationDeployment:                 deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})
@@ -228,7 +228,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("other-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			v1alpha1.AnnotationDeployment:                 "other-app",
+			v1alpha2.AnnotationDeployment:                 "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})
@@ -263,7 +263,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// old desired set but is no longer in the new one).
 		orphan := makeServiceResource("old-svc", namespace)
 		orphan.SetLabels(map[string]string{
-			v1alpha1.AnnotationDeployment: deploymentName,
+			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(svcGVR).Namespace(namespace).Create(
 			context.Background(), &orphan, metav1.CreateOptions{})
@@ -299,7 +299,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// Pre-create a Deployment that IS in the desired set.
 		existing := makeDeploymentResource("web-app", namespace)
 		existing.SetLabels(map[string]string{
-			v1alpha1.AnnotationDeployment: deploymentName,
+			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &existing, metav1.CreateOptions{})
@@ -330,7 +330,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// Pre-create a resource owned by "other-app" (a different deployment).
 		other := makeDeploymentResource("other-app", namespace)
 		other.SetLabels(map[string]string{
-			v1alpha1.AnnotationDeployment: "other-app",
+			v1alpha2.AnnotationDeployment: "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &other, metav1.CreateOptions{})
@@ -361,7 +361,7 @@ func TestApplier_Reconcile(t *testing.T) {
 
 		orphan := makeServiceResource("old-svc", namespace)
 		orphan.SetLabels(map[string]string{
-			v1alpha1.AnnotationDeployment: deploymentName,
+			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := failClient.Resource(svcGVR).Namespace(namespace).Create(
 			context.Background(), &orphan, metav1.CreateOptions{})

@@ -8,7 +8,7 @@ import (
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -18,13 +18,13 @@ import (
 // block. Returns an error only for CUE compilation failures — a missing
 // `defaults` field is not an error.
 //
-// This function prepends the generated v1alpha1 schema (same as the renderer
+// This function prepends the generated v1alpha2 schema (same as the renderer
 // does) so that templates can reference #ProjectInput and related types.
 func ExtractDefaults(cueSource string) (*consolev1.TemplateDefaults, error) {
 	cueCtx := cuecontext.New()
 
 	// Prepend generated schema so templates can use #ProjectInput, etc.
-	fullSource := v1alpha1.GeneratedSchema + "\n" + cueSource
+	fullSource := v1alpha2.GeneratedSchema + "\n" + cueSource
 	val := cueCtx.CompileString(fullSource)
 	if err := val.Err(); err != nil {
 		return nil, fmt.Errorf("compiling CUE template for defaults extraction: %w", err)
@@ -48,7 +48,7 @@ func ExtractDefaults(cueSource string) (*consolev1.TemplateDefaults, error) {
 		return nil, nil
 	}
 
-	var pi v1alpha1.ProjectInput
+	var pi v1alpha2.ProjectInput
 	if err := json.Unmarshal(b, &pi); err != nil {
 		return nil, fmt.Errorf("unmarshalling defaults into ProjectInput: %w", err)
 	}

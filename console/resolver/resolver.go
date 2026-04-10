@@ -7,18 +7,16 @@ import (
 	"fmt"
 	"strings"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
-// Re-export constants from v1alpha1 so existing importers continue to compile.
-// New code should import v1alpha1 directly.
+// Re-export constants from v1alpha2 so existing importers continue to compile.
 var (
-	ResourceTypeLabel        = v1alpha1.LabelResourceType
-	ResourceTypeOrganization = v1alpha1.ResourceTypeOrganization
-	ResourceTypeProject      = v1alpha1.ResourceTypeProject
-	OrganizationLabel        = v1alpha1.LabelOrganization
-	ProjectLabel             = v1alpha1.LabelProject
+	ResourceTypeLabel        = v1alpha2.LabelResourceType
+	ResourceTypeOrganization = v1alpha2.ResourceTypeOrganization
+	ResourceTypeProject      = v1alpha2.ResourceTypeProject
+	OrganizationLabel        = v1alpha2.LabelOrganization
+	ProjectLabel             = v1alpha2.LabelProject
 )
 
 // Resolver translates between user-facing resource names and Kubernetes namespace names.

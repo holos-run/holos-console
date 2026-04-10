@@ -1,4 +1,4 @@
-// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
 
 // defaults declares the template's default values as concrete CUE data.

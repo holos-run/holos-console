@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -53,11 +52,11 @@ const DefaultGatewayNamespace = "istio-ingress"
 
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
+	Render(ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error)
 	// RenderWithAncestorTemplates unifies one or more ancestor (organization- and
 	// folder-level) template CUE sources with the deployment template before
 	// filling in platform and project inputs.
-	RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error)
+	RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error)
 }
 
 // OrgProvider resolves the organization for a project.
@@ -152,7 +151,7 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 //
 // If neither OrgProvider nor OrgTemplateProvider is configured, falls back to
 // Render (deployment template only, no platform template unification).
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha1.PlatformInput, projectInput v1alpha1.ProjectInput, linkedNames []string) ([]unstructured.Unstructured, error) {
+func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedNames []string) ([]unstructured.Unstructured, error) {
 	if h.orgProvider == nil || h.orgTemplateProvider == nil {
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
@@ -351,7 +350,7 @@ func (h *Handler) CreateDeployment(
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
 		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
-		projectIn := v1alpha1.ProjectInput{
+		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   req.Msg.Image,
 			Tag:     req.Msg.Tag,
@@ -476,13 +475,13 @@ func (h *Handler) UpdateDeployment(
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
 		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
-		projectIn := v1alpha1.ProjectInput{
+		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   image,
 			Tag:     tag,
 			Command: commandFromConfigMap(updated),
 			Args:    argsFromConfigMap(updated),
-			Env:     envFromConfigMapAsV1alpha1(updated),
+			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
 		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
@@ -709,13 +708,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 	platformIn := h.buildPlatformInput(ctx, project, ns, claims)
 
 	// Build project input from the deployment's stored fields.
-	projectIn := v1alpha1.ProjectInput{
+	projectIn := v1alpha2.ProjectInput{
 		Name:    name,
 		Image:   cm.Data[ImageKey],
 		Tag:     cm.Data[TagKey],
 		Command: commandFromConfigMap(cm),
 		Args:    argsFromConfigMap(cm),
-		Env:     envFromConfigMapAsV1alpha1(cm),
+		Env:     envFromConfigMapAsV1alpha2(cm),
 		Port:    defaultPort(portFromConfigMap(cm)),
 	}
 
@@ -828,8 +827,8 @@ func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Depl
 		Image:       cm.Data[ImageKey],
 		Tag:         cm.Data[TagKey],
 		Template:    cm.Data[TemplateKey],
-		DisplayName: cm.Annotations[v1alpha1.AnnotationDisplayName],
-		Description: cm.Annotations[v1alpha1.AnnotationDescription],
+		DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
+		Description: cm.Annotations[v1alpha2.AnnotationDescription],
 		Command:     commandFromConfigMap(cm),
 		Args:        argsFromConfigMap(cm),
 		Env:         envFromConfigMap(cm),
@@ -852,13 +851,13 @@ func argsFromConfigMap(cm *corev1.ConfigMap) []string {
 	return stringSliceFromConfigMap(cm, ArgsKey)
 }
 
-// envFromConfigMapAsV1alpha1 reads the JSON-encoded env vars from a ConfigMap as v1alpha1.EnvVar slice.
-func envFromConfigMapAsV1alpha1(cm *corev1.ConfigMap) []v1alpha1.EnvVar {
+// envFromConfigMapAsV1alpha2 reads the JSON-encoded env vars from a ConfigMap as v1alpha2.EnvVar slice.
+func envFromConfigMapAsV1alpha2(cm *corev1.ConfigMap) []v1alpha2.EnvVar {
 	raw, ok := cm.Data[EnvKey]
 	if !ok || raw == "" {
 		return nil
 	}
-	var inputs []v1alpha1.EnvVar
+	var inputs []v1alpha2.EnvVar
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
 		return nil
 	}
@@ -871,7 +870,7 @@ func envFromConfigMap(cm *corev1.ConfigMap) []*consolev1.EnvVar {
 	if !ok || raw == "" {
 		return nil
 	}
-	var inputs []v1alpha1.EnvVar
+	var inputs []v1alpha2.EnvVar
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
 		return nil
 	}
@@ -882,8 +881,8 @@ func envFromConfigMap(cm *corev1.ConfigMap) []*consolev1.EnvVar {
 	return result
 }
 
-// envVarToProto converts a v1alpha1.EnvVar to a proto EnvVar message.
-func envVarToProto(e v1alpha1.EnvVar) *consolev1.EnvVar {
+// envVarToProto converts a v1alpha2.EnvVar to a proto EnvVar message.
+func envVarToProto(e v1alpha2.EnvVar) *consolev1.EnvVar {
 	ev := &consolev1.EnvVar{Name: e.Name}
 	switch {
 	case e.SecretKeyRef != nil:
@@ -900,17 +899,17 @@ func envVarToProto(e v1alpha1.EnvVar) *consolev1.EnvVar {
 	return ev
 }
 
-// protoToEnvVar converts a proto EnvVar message to a v1alpha1.EnvVar.
-func protoToEnvVar(e *consolev1.EnvVar) v1alpha1.EnvVar {
-	input := v1alpha1.EnvVar{Name: e.GetName()}
+// protoToEnvVar converts a proto EnvVar message to a v1alpha2.EnvVar.
+func protoToEnvVar(e *consolev1.EnvVar) v1alpha2.EnvVar {
+	input := v1alpha2.EnvVar{Name: e.GetName()}
 	switch src := e.GetSource().(type) {
 	case *consolev1.EnvVar_SecretKeyRef:
 		if src.SecretKeyRef != nil {
-			input.SecretKeyRef = &v1alpha1.KeyRef{Name: src.SecretKeyRef.GetName(), Key: src.SecretKeyRef.GetKey()}
+			input.SecretKeyRef = &v1alpha2.KeyRef{Name: src.SecretKeyRef.GetName(), Key: src.SecretKeyRef.GetKey()}
 		}
 	case *consolev1.EnvVar_ConfigMapKeyRef:
 		if src.ConfigMapKeyRef != nil {
-			input.ConfigMapKeyRef = &v1alpha1.KeyRef{Name: src.ConfigMapKeyRef.GetName(), Key: src.ConfigMapKeyRef.GetKey()}
+			input.ConfigMapKeyRef = &v1alpha2.KeyRef{Name: src.ConfigMapKeyRef.GetName(), Key: src.ConfigMapKeyRef.GetKey()}
 		}
 	case *consolev1.EnvVar_Value:
 		input.Value = src.Value
@@ -918,13 +917,13 @@ func protoToEnvVar(e *consolev1.EnvVar) v1alpha1.EnvVar {
 	return input
 }
 
-// validateEnvVars validates a list of proto EnvVar messages and converts them to v1alpha1.EnvVar.
+// validateEnvVars validates a list of proto EnvVar messages and converts them to v1alpha2.EnvVar.
 // Returns an error if any env var has an empty name.
-func validateEnvVars(envVars []*consolev1.EnvVar) ([]v1alpha1.EnvVar, error) {
+func validateEnvVars(envVars []*consolev1.EnvVar) ([]v1alpha2.EnvVar, error) {
 	if len(envVars) == 0 {
 		return nil, nil
 	}
-	result := make([]v1alpha1.EnvVar, 0, len(envVars))
+	result := make([]v1alpha2.EnvVar, 0, len(envVars))
 	for _, e := range envVars {
 		if e.GetName() == "" {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("env var name must not be empty"))
@@ -955,18 +954,18 @@ func defaultPort(port int) int {
 	return port
 }
 
-// buildPlatformInput constructs a v1alpha1.PlatformInput from handler context.
+// buildPlatformInput constructs a v1alpha2.PlatformInput from handler context.
 // When an AncestorWalker is configured, Folders is populated with the ordered
 // list of folder names in the ancestor chain (org → folders → project) so CUE
 // templates can reference platform.folders.
-func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha1.PlatformInput {
-	pi := v1alpha1.PlatformInput{
+func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha2.PlatformInput {
+	pi := v1alpha2.PlatformInput{
 		Project:          project,
 		Namespace:        namespace,
 		GatewayNamespace: DefaultGatewayNamespace,
 	}
 	if claims != nil {
-		pi.Claims = v1alpha1.Claims{
+		pi.Claims = v1alpha2.Claims{
 			Iss:           claims.Iss,
 			Sub:           claims.Sub,
 			Exp:           claims.Exp,
@@ -985,7 +984,11 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 				slog.Any("error", err),
 			)
 		} else {
-			pi.Folders = folders
+			folderInfos := make([]v1alpha2.FolderInfo, 0, len(folders))
+			for _, name := range folders {
+				folderInfos = append(folderInfos, v1alpha2.FolderInfo{Name: name})
+			}
+			pi.Folders = folderInfos
 		}
 	}
 	return pi
@@ -1028,8 +1031,8 @@ func linkedTemplateNamesFromAnnotation(cm *corev1.ConfigMap) []string {
 		}
 	}
 
-	// Legacy v1alpha1: console.holos.run/linked-org-templates — JSON array of strings.
-	if raw, ok := cm.Annotations[v1alpha1.AnnotationLinkedOrgTemplates]; ok && raw != "" {
+	// Legacy v1alpha2: console.holos.run/linked-org-templates — JSON array of strings.
+	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedOrgTemplates]; ok && raw != "" {
 		var names []string
 		if err := json.Unmarshal([]byte(raw), &names); err != nil {
 			slog.Warn("failed to parse linked-org-templates annotation",

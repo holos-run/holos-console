@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +39,7 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // ListDeployments returns all deployment ConfigMaps in the project namespace.
 func (k *K8sClient) ListDeployments(ctx context.Context, project string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
-	labelSelector := v1alpha1.LabelResourceType + "=" + v1alpha1.ResourceTypeDeployment
+	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeDeployment
 	slog.DebugContext(ctx, "listing deployments from kubernetes",
 		slog.String("project", project),
 		slog.String("namespace", ns),
@@ -66,7 +66,7 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 }
 
 // CreateDeployment creates a new deployment ConfigMap.
-func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []v1alpha1.EnvVar, port int32) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []v1alpha2.EnvVar, port int32) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
 		slog.String("project", project),
@@ -78,12 +78,12 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeployment,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeDeployment,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDisplayName: displayName,
-				v1alpha1.AnnotationDescription: description,
+				v1alpha2.AnnotationDisplayName: displayName,
+				v1alpha2.AnnotationDescription: description,
 			},
 		},
 		Data: map[string]string{
@@ -114,7 +114,7 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 // Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.
 // A non-nil env slice (even if empty) replaces the stored env vars.
 // A non-nil port pointer updates the stored port value.
-func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []v1alpha1.EnvVar, port *int32) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []v1alpha2.EnvVar, port *int32) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment in kubernetes",
 		slog.String("project", project),
@@ -138,10 +138,10 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 		cm.Data[TagKey] = *tag
 	}
 	if displayName != nil {
-		cm.Annotations[v1alpha1.AnnotationDisplayName] = *displayName
+		cm.Annotations[v1alpha2.AnnotationDisplayName] = *displayName
 	}
 	if description != nil {
-		cm.Annotations[v1alpha1.AnnotationDescription] = *description
+		cm.Annotations[v1alpha2.AnnotationDescription] = *description
 	}
 	if len(command) > 0 {
 		b, _ := json.Marshal(command)
@@ -222,7 +222,7 @@ func (k *K8sClient) ListNamespaceConfigMaps(ctx context.Context, project string)
 	}
 	result := make([]NamespaceResourceItem, 0, len(list.Items))
 	for _, cm := range list.Items {
-		if _, isConsoleManagedResource := cm.Labels[v1alpha1.LabelResourceType]; isConsoleManagedResource {
+		if _, isConsoleManagedResource := cm.Labels[v1alpha2.LabelResourceType]; isConsoleManagedResource {
 			continue
 		}
 		keys := make([]string, 0, len(cm.Data))
