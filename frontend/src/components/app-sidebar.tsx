@@ -4,6 +4,7 @@ import { Link, useRouter } from '@tanstack/react-router'
 import {
   Info,
   KeyRound,
+  Folder,
   FolderKanban,
   LayoutTemplate,
   Layers,
@@ -75,6 +76,12 @@ export function AppSidebar() {
           to: '/orgs/$orgName/projects' as const,
           params: { orgName: selectedOrg },
           icon: FolderKanban,
+        },
+        {
+          label: 'Folders',
+          to: '/orgs/$orgName/folders' as const,
+          params: { orgName: selectedOrg },
+          icon: Folder,
         },
         {
           label: 'Org Settings',

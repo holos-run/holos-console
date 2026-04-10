@@ -111,6 +111,13 @@
 	// Organization is the parent organization name.
 	organization: string  @go(Organization)
 
+	// Folders is the ordered list of folder names in the ancestor chain from
+	// the organization down to (but not including) the project. The first
+	// element is the immediate child of the organization; the last element is
+	// the immediate parent of the project. Empty when the project has no folder
+	// ancestors. Available in CUE templates as platform.folders.
+	folders?: [...string]  @go(Folders,[]string)
+
 	// Claims carries the OIDC ID token claims of the authenticated user.
 	claims: #Claims  @go(Claims)
 }
