@@ -1,8 +1,12 @@
 # ADR 015: Configuration Management RBAC Levels
 
+> **REVOKED** — This ADR has been superseded by
+> [ADR 017](../017-config-management-rbac-levels.md). Do not use this document
+> for implementation decisions. It is preserved for historical context only.
+
 ## Status
 
-Revoked by [ADR 017](017-config-management-rbac-levels.md)
+Revoked by [ADR 017](../017-config-management-rbac-levels.md)
 
 ## Context
 
@@ -45,7 +49,7 @@ they are explained in terms of what they mean for the template author.
 
 For a visual overview of how the hierarchy, templates, inputs, and resource
 collections fit together, see the
-[Resource Model diagram in ADR 014](014-resource-model.svg).
+[Resource Model diagram in ADR 014](../014-resource-model.svg).
 
 ## Decisions
 
@@ -358,8 +362,8 @@ Viewer and above.
 
 ## References
 
-- [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
-- [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
-- [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
-- [ADR 014: Configuration Management Resource Schema](014-config-management-resource-schema.md)
-- [Permissions Guide](../permissions-guide.md) — cascade table pattern and naming conventions
+- [ADR 007: Organization Grants Do Not Cascade](../007-org-grants-no-cascade.md)
+- [ADR 012: Structured Resource Output for CUE Templates](../012-structured-resource-output.md)
+- [ADR 013: Separate System and User Input Trust Boundary](../013-separate-system-user-template-input.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
+- [Permissions Guide](../../permissions-guide.md) — cascade table pattern and naming conventions

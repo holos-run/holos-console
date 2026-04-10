@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — revokes [ADR 014](014-config-management-resource-schema.md)
+Accepted — revokes [ADR 014](revoked/014-config-management-resource-schema.md)
 
 ## CUE Unification: No Distinction Between "Write" and "Constrain"
 
@@ -625,7 +625,7 @@ collapsed permission set, scope discriminator, and cross-level linking model.
 - [ADR 012: Structured Resource Output for CUE Templates](012-structured-resource-output.md)
 - [ADR 013: Separate System and User Input Trust Boundary](013-separate-system-user-template-input.md)
 - [ADR 007: Organization Grants Do Not Cascade](007-org-grants-no-cascade.md)
-- [ADR 014: Configuration Management Resource Schema (revoked)](014-config-management-resource-schema.md)
+- [ADR 014: Configuration Management Resource Schema (revoked)](revoked/014-config-management-resource-schema.md)
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
 - [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md)
 - [ADR 021: Unified Template Service and Collapsed Template Permissions](021-unified-template-service.md)
