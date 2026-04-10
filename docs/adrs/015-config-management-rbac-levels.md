@@ -193,30 +193,9 @@ Cascade tables define what each role grants for template operations at child
 levels:
 
 ```go
-// OrgCascadeTemplatePerms defines template permissions granted by org roles
-// to all folders and projects beneath the organization.
-var OrgCascadeTemplatePerms = CascadeTable{
-    RoleViewer: {
-        PermissionTemplatesList: true,
-        PermissionTemplatesRead: true,
-    },
-    RoleEditor: {
-        PermissionTemplatesList:  true,
-        PermissionTemplatesRead:  true,
-        PermissionTemplatesWrite: true,
-    },
-    RoleOwner: {
-        PermissionTemplatesList:   true,
-        PermissionTemplatesRead:   true,
-        PermissionTemplatesWrite:  true,
-        PermissionTemplatesDelete: true,
-        PermissionTemplatesAdmin:  true,
-    },
-}
-
-// FolderCascadeTemplatePerms defines template permissions granted by folder
-// roles to sub-folders and projects beneath the folder.
-var FolderCascadeTemplatePerms = CascadeTable{
+// TemplateCascadePerms defines template permissions uniformly at every scope
+// level (organization, folder, project) per ADR 021 Decision 2.
+var TemplateCascadePerms = CascadeTable{
     RoleViewer: {
         PermissionTemplatesList: true,
         PermissionTemplatesRead: true,
@@ -236,10 +215,10 @@ var FolderCascadeTemplatePerms = CascadeTable{
 }
 ```
 
-These tables are structurally identical today. They are defined separately so
-that they can diverge independently — for example, a future policy might restrict
-folder-level Editor from deleting templates while allowing org-level Editor to
-do so.
+A single table applies uniformly at every scope level (ADR 021 Decision 2).
+The three formerly-separate tables (`OrgCascadeTemplatePerms`,
+`FolderCascadeTemplatePerms`, `ProjectCascadeTemplatePerms`) were collapsed into
+`TemplateCascadePerms`.
 
 ### 6. Resource collection scope is enforced by the renderer, not by RBAC.
 
@@ -279,18 +258,15 @@ project = 5 levels maximum). Each level requires one Kubernetes API call to
 read the Namespace object. The walk is cached per-request to avoid redundant
 API calls when multiple permission checks are needed in a single RPC handler.
 
-### 8. The existing `PermissionSystemDeploymentsEdit` maps to org-level template authoring.
+### 8. Template permission naming history.
 
-The current `PermissionSystemDeploymentsEdit` permission (used for system
-templates) is the predecessor of org-level `PermissionTemplatesWrite` for
-`platformResources`. During migration:
+Naming evolved through several phases:
 
-- `SystemTemplate` objects become organization-level templates that write to
-  `platformResources`.
-- `PermissionSystemDeploymentsEdit` is replaced by
-  `PermissionTemplatesWrite` checked at the organization level.
-- The `OrgCascadeSystemTemplatePerms` table is superseded by
-  `OrgCascadeTemplatePerms`.
+- `PermissionSystemDeploymentsEdit` (v1alpha1 prototype)
+- `PermissionOrgTemplatesWrite` (`PERMISSION_ORG_TEMPLATES_WRITE`) at org scope only
+- Separate `PERMISSION_DEPLOYMENT_TEMPLATES_*` at project scope
+- Collapsed to `PERMISSION_TEMPLATES_*` with a single `TemplateCascadePerms` table
+  applied uniformly at every scope level (ADR 021 Decision 2).
 
 ### 9. Alignment between RPC authorization and configuration RBAC.
 

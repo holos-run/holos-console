@@ -34,17 +34,33 @@ var OrgCascadeProjectSettingsPerms = rbac.CascadeTable{
 }
 ```
 
-A second cascade table controls platform template write access:
+A second cascade table controls template access at all scope levels (org, folder, project):
 
 ```go
-var OrgCascadeTemplatePerms = rbac.CascadeTable{
+var TemplateCascadePerms = rbac.CascadeTable{
+    rbac.RoleViewer: {
+        rbac.PermissionTemplatesList: true,
+        rbac.PermissionTemplatesRead: true,
+    },
+    rbac.RoleEditor: {
+        rbac.PermissionTemplatesList:  true,
+        rbac.PermissionTemplatesRead:  true,
+        rbac.PermissionTemplatesWrite: true,
+    },
     rbac.RoleOwner: {
-        rbac.PermissionOrgTemplatesWrite: true,
+        rbac.PermissionTemplatesList:   true,
+        rbac.PermissionTemplatesRead:   true,
+        rbac.PermissionTemplatesWrite:  true,
+        rbac.PermissionTemplatesDelete: true,
+        rbac.PermissionTemplatesAdmin:  true,
     },
 }
 ```
 
-`PermissionOrgTemplatesWrite` (`PERMISSION_ORG_TEMPLATES_WRITE`) grants the ability to create, update, and delete org-scoped platform templates (code: `OrgTemplate`). It is intentionally restricted to org-level OWNERs because platform templates are applied automatically to every new project namespace — a misconfigured template can affect all projects in the org. Narrowing the grant to OWNERs prevents editors from inadvertently breaking project creation.
+`PERMISSION_TEMPLATES_WRITE` grants the ability to create, update, and delete templates. The
+same table (`TemplateCascadePerms`) applies uniformly at every scope level (ADR 021 Decision 2)
+— a VIEWER can read, an EDITOR can write, and an OWNER has full control regardless of whether
+the template is org-scoped, folder-scoped, or project-scoped.
 
 To check access: resolve the user's best role from grants at the parent scope, then look up permissions in the cascade table.
 
