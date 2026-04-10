@@ -25,7 +25,7 @@ Three roles interact with the deployment feature:
 | Role | What they do |
 |------|-------------|
 | **Product engineer** | Writes deployment templates in their project. Defines image, ports, env vars, and other application config. |
-| **Site reliability engineer (SRE)** | Writes templates at a folder level (planned `v1alpha2`) to enforce operational standards — resource limits, health checks, monitoring sidecars — across a group of projects. |
+| **Site reliability engineer (SRE)** | Writes templates at a folder level to enforce operational standards — resource limits, health checks, monitoring sidecars — across a group of projects. |
 | **Platform engineer** | Writes platform templates at the organization level to enforce platform-wide policy — network routing, security standards, namespace quotas. |
 
 These roles are not mutually exclusive. A single person may operate at multiple
@@ -42,7 +42,7 @@ value using CUE unification.
 ```
 Organization  (platform engineer writes platform templates here)
     │
-    ├── Folder  (SRE writes templates here — planned v1alpha2)
+    ├── Folder  (SRE writes templates here)
     │     │
     │     └── Folder  (up to 3 folder levels supported)
     │           │
@@ -54,10 +54,10 @@ together:
 
 ![Resource Model](adrs/014-resource-model.svg)
 
-In `v1alpha1`, the hierarchy is Organization → Project (two levels). Folder
-support is planned for `v1alpha2`. The schema is designed to accommodate folders
-from the start so that adding them in `v1alpha2` does not require breaking
-changes.
+In `v1alpha2`, the hierarchy is Organization → Folder* → Project where folders
+are optional and up to three levels deep. Organization templates (platform
+templates) and folder templates are collected at render time and unified with the
+project deployment template.
 
 ### Who writes templates at each level
 
