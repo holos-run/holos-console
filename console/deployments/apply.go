@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -54,7 +54,7 @@ func (a *Applier) Apply(ctx context.Context, namespace, deploymentName string, r
 		if labels == nil {
 			labels = make(map[string]string)
 		}
-		labels[v1alpha1.AnnotationDeployment] = deploymentName
+		labels[v1alpha2.AnnotationDeployment] = deploymentName
 		r.SetLabels(labels)
 
 		kind := r.GetKind()
@@ -116,7 +116,7 @@ func (a *Applier) Reconcile(ctx context.Context, namespace, deploymentName strin
 
 	// Step 2: Delete orphaned resources — those with the ownership label that
 	// are no longer in the desired set.
-	labelSelector := fmt.Sprintf("%s=%s", v1alpha1.AnnotationDeployment, deploymentName)
+	labelSelector := fmt.Sprintf("%s=%s", v1alpha2.AnnotationDeployment, deploymentName)
 
 	for kind, gvr := range allowedKinds {
 		list, err := a.client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{
@@ -153,7 +153,7 @@ func (a *Applier) Reconcile(ctx context.Context, namespace, deploymentName strin
 
 // Cleanup deletes all K8s resources that carry the deployment ownership label.
 func (a *Applier) Cleanup(ctx context.Context, namespace, deploymentName string) error {
-	labelSelector := fmt.Sprintf("%s=%s", v1alpha1.AnnotationDeployment, deploymentName)
+	labelSelector := fmt.Sprintf("%s=%s", v1alpha2.AnnotationDeployment, deploymentName)
 
 	for kind, gvr := range allowedKinds {
 		list, err := a.client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{

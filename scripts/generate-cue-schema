@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# generate-cue-schema generates CUE definitions from Go types in api/v1alpha1
-# and api/v1alpha2, writing them to the respective schema_gen.cue files for
-# embedding into the binary.
+# generate-cue-schema generates CUE definitions from Go types in api/v1alpha2,
+# writing them to the schema_gen.cue file for embedding into the binary.
 #
 # The output files are committed to the repository so that go build works without
 # requiring the cue CLI. Regenerate with: make generate
@@ -65,5 +64,4 @@ generate_schema() {
 }
 
 BASE="github.com/holos-run/holos-console/api"
-generate_schema "${BASE}/v1alpha1" "api/v1alpha1/schema_gen.cue"
 generate_schema "${BASE}/v1alpha2" "api/v1alpha2/schema_gen.cue"

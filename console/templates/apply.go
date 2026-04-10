@@ -9,7 +9,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -128,13 +127,13 @@ func (a *MandatoryTemplateApplier) applyMandatoryFromNamespace(ctx context.Conte
 		)
 
 		// Build PlatformInput for the render.
-		platformInput := v1alpha1.PlatformInput{
+		platformInput := v1alpha2.PlatformInput{
 			Project:          project,
 			Namespace:        projectNamespace,
 			GatewayNamespace: deployments.DefaultGatewayNamespace,
 		}
 		if claims != nil {
-			platformInput.Claims = v1alpha1.Claims{
+			platformInput.Claims = v1alpha2.Claims{
 				Iss:           claims.Iss,
 				Sub:           claims.Sub,
 				Exp:           claims.Exp,

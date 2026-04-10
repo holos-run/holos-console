@@ -12,7 +12,7 @@ When a user creates or updates a deployment, the console:
 1. Loads the CUE template source from a `DeploymentTemplate` ConfigMap.
 2. Loads the set of platform templates that participate in this render: mandatory AND enabled templates always participate; additionally, enabled templates that are explicitly linked to the deployment template are included (see [Linking Platform Templates](#linking-platform-templates)).
 3. Builds a `PlatformInput` (project, namespace, gatewayNamespace, claims) from authenticated server context and a `ProjectInput` (name, image, tag, etc.) from the API request fields.
-4. Prepends the generated CUE schema (produced from `api/v1alpha1` Go types via `cue get go`) before compiling templates. The renderer concatenates all template sources into a single compilation unit.
+4. Prepends the generated CUE schema (produced from `api/v1alpha2` Go types via `cue get go`) before compiling templates. The renderer concatenates all template sources into a single compilation unit.
 5. Fills `ProjectInput` at the `input` path and `PlatformInput` at the `platform` path.
 6. Reads structured output fields based on the render level (ADR 016 Decision 8):
    - Always reads `projectResources.namespacedResources` and `projectResources.clusterResources`.
@@ -42,11 +42,11 @@ gateway namespace to reference the Service.
 Templates do **not** declare a `package` clause — the renderer prepends the
 generated schema and controls the CUE package. CUE type definitions (`#ProjectInput`,
 `#PlatformInput`, `#Claims`, `#EnvVar`, `#KeyRef`) are generated from Go types in
-`api/v1alpha1` via `cue get go` and are available automatically; do not redefine
+`api/v1alpha2` via `cue get go` and are available automatically; do not redefine
 them in your template.
 
 ```cue
-// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
 input: #ProjectInput & {
 	name: =~"^[a-z][a-z0-9-]*$" // DNS label
@@ -291,7 +291,7 @@ port defined above — do not use `input.port` here.
 ### Guidelines
 
 1. **Never declare a `package` clause** — the renderer prepends the generated schema and controls the CUE package. Templates with a `package` declaration will cause a compilation error.
-2. **Do not redefine `#ProjectInput`, `#PlatformInput`, `#Claims`, `#EnvVar`, or `#KeyRef`** — these types are generated from `api/v1alpha1` Go types via `cue get go` and are prepended by the renderer automatically.
+2. **Do not redefine `#ProjectInput`, `#PlatformInput`, `#Claims`, `#EnvVar`, or `#KeyRef`** — these types are generated from `api/v1alpha2` Go types via `cue get go` and are prepended by the renderer automatically.
 3. **Always declare `input: #ProjectInput` and `platform: #PlatformInput`** — these are the unification points where the console injects project and platform parameters respectively.
 4. **Always declare `projectResources.namespacedResources` and `projectResources.clusterResources` output fields** — the console requires the structured output format.
 5. **Always include the managed-by label** on every resource or validation will reject the render.
@@ -750,12 +750,12 @@ This separation enforces a trust boundary: templates can reference `platform.nam
 
 ### `#ProjectInput` Schema
 
-The `#ProjectInput` type is **generated** from the `ProjectInput` Go struct in `api/v1alpha1/input.go` via `cue get go`. The renderer prepends this generated schema before compiling any template — do not redefine it in your template.
+The `#ProjectInput` type is **generated** from the `ProjectInput` Go struct in `api/v1alpha2/input.go` via `cue get go`. The renderer prepends this generated schema before compiling any template — do not redefine it in your template.
 
 The effective schema is:
 
 ```cue
-// Generated from api/v1alpha1.ProjectInput — do not redefine in templates.
+// Generated from api/v1alpha2.ProjectInput — do not redefine in templates.
 #ProjectInput: {
     name:         string             // deployment name
     image:        string             // container image repository (no tag)
@@ -770,12 +770,12 @@ The effective schema is:
 
 ### `#PlatformInput` Schema
 
-The `#PlatformInput` type is **generated** from the `PlatformInput` Go struct in `api/v1alpha1/input.go` via `cue get go`. The `#Claims` type is similarly generated from `Claims`. The renderer prepends these generated schemas automatically.
+The `#PlatformInput` type is **generated** from the `PlatformInput` Go struct in `api/v1alpha2/input.go` via `cue get go`. The `#Claims` type is similarly generated from `Claims`. The renderer prepends these generated schemas automatically.
 
 The effective schema is:
 
 ```cue
-// Generated from api/v1alpha1.PlatformInput — do not redefine in templates.
+// Generated from api/v1alpha2.PlatformInput — do not redefine in templates.
 #PlatformInput: {
     project:          string             // parent project name
     namespace:        string             // resolved K8s namespace (from Resolver.ProjectNamespace())
@@ -784,7 +784,7 @@ The effective schema is:
     claims:           #Claims            // OIDC ID token claims of the authenticated user
 }
 
-// Generated from api/v1alpha1.Claims — do not redefine in templates.
+// Generated from api/v1alpha2.Claims — do not redefine in templates.
 #Claims: {
     iss:            string      // issuer URL
     sub:            string      // subject (unique user ID)
@@ -857,12 +857,12 @@ constraint errors as long as the field is present in the token.
 
 ### `#EnvVar` Schema
 
-The `#EnvVar` and `#KeyRef` types are **generated** from Go structs in `api/v1alpha1/input.go` via `cue get go`. Do not redefine them in your template.
+The `#EnvVar` and `#KeyRef` types are **generated** from Go structs in `api/v1alpha2/input.go` via `cue get go`. Do not redefine them in your template.
 
 Each environment variable has exactly one value source:
 
 ```cue
-// Generated from api/v1alpha1.EnvVar — do not redefine in templates.
+// Generated from api/v1alpha2.EnvVar — do not redefine in templates.
 #EnvVar: {
     name:               string
     value?:             string       // literal value
@@ -870,7 +870,7 @@ Each environment variable has exactly one value source:
     configMapKeyRef?:   #KeyRef      // reference to a K8s ConfigMap key
 }
 
-// Generated from api/v1alpha1.KeyRef — do not redefine in templates.
+// Generated from api/v1alpha2.KeyRef — do not redefine in templates.
 #KeyRef: {
     name: string   // Secret or ConfigMap name
     key:  string   // key within the resource
@@ -1157,7 +1157,7 @@ codebase. Use it for advanced troubleshooting or when developing new features.
 | `console/templates/default_template.cue` | Default CUE template. Narrows generated `#ProjectInput` and `#PlatformInput` types with additional CUE constraints, defines `_envSpec` env var transformation, `_annotations` helper (stamps `platform.claims.email`), `#Namespaced`/`#Cluster` structural constraints, and resource definitions nested under `projectResources.namespacedResources`/`projectResources.clusterResources`. Embedded into the Go binary via `console/templates/embed.go`. No `package` declaration — the renderer prepends the generated schema. |
 | `console/templates/embed.go` | `//go:embed` directive that loads `default_template.cue` as the fallback template. |
 | `console/templates/default_referencegrant.cue` | Built-in example HTTPRoute platform template. References `input.name` and `platform.gatewayNamespace` — designed to be unified with the deployment template at deploy time. Contributes resources to `platformResources.namespacedResources`. Seeded as disabled (not mandatory) on first `ListTemplates` access. Embedded via `console/templates/embed.go`. No `package` declaration. |
-| `api/v1alpha1/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. `PlatformInput.Folders` (v1alpha2, `folders?`) carries the ordered folder ancestor names from the organization down to the project. |
+| `api/v1alpha2/` | Go type definitions for `PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`, `KeyRef`, `PlatformResources`, `ProjectResources`. CUE schemas (`#PlatformInput`, `#ProjectInput`, etc.) are generated from these types via `cue get go` and embedded into the binary. The renderer prepends the generated schema before compiling any template. `PlatformInput.Folders` (v1alpha2, `folders?`) carries the ordered folder ancestor names from the organization down to the project. |
 
 ### Go Rendering Pipeline
 
@@ -1168,7 +1168,7 @@ Two render paths exist — one for the deployment service and one for the templa
 | `console/deployments/render.go` | `CueRenderer.Render()` — project-level render path: prepends generated schema, compiles CUE source, fills `"input"` and `"platform"`, then calls `evaluateStructured(..., false)` which reads only `projectResources` (ADR 016 Decision 8 hard boundary — `platformResources` is intentionally skipped). |
 | `console/deployments/render.go` | `CueRenderer.RenderWithAncestorTemplates()` — organization/folder-level render path: unifies ancestor (org + folder) template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
 | `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in platform templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
-| `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha1` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, folders, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
+| `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha2` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, folders, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
 | `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
 | `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
 | `console/deployments/apply.go` | `Applier.Reconcile()` — calls `Apply()` then deletes owned resources whose (kind, name) is not in the desired set (orphan cleanup). Used by `UpdateDeployment`. Orphan cleanup is skipped if apply fails so the previously working state is preserved. |
@@ -1203,7 +1203,7 @@ Two render paths exist — one for the deployment service and one for the templa
 |-----------|---------|
 | `gen/holos/console/v1/` | Go protobuf structs (`*_pb.go`) and ConnectRPC bindings (`consolev1connect/`). |
 | `frontend/src/gen/` | TypeScript protobuf types for the UI. |
-| `api/v1alpha1/cue.mod/` | Generated CUE schema files produced by `cue get go ./api/v1alpha1/...`. The renderer embeds and prepends these before compiling any template. |
+| `api/v1alpha2/cue.mod/` | Generated CUE schema files produced by `cue get go ./api/v1alpha2/...`. The renderer embeds and prepends these before compiling any template. |
 
 ### Kind-to-GVR Mapping
 

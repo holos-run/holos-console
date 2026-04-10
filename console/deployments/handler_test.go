@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -93,18 +93,18 @@ type stubRenderer struct {
 	resources    []unstructured.Unstructured
 	err          error
 	called       bool
-	lastPlatform v1alpha1.PlatformInput
-	lastProject  v1alpha1.ProjectInput
+	lastPlatform v1alpha2.PlatformInput
+	lastProject  v1alpha2.ProjectInput
 }
 
-func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	s.called = true
 	s.lastPlatform = platform
 	s.lastProject = project
 	return s.resources, s.err
 }
 
-func (s *stubRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func (s *stubRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	s.called = true
 	s.lastPlatform = platform
 	s.lastProject = project

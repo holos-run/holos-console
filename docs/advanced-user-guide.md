@@ -199,7 +199,7 @@ In detail:
 1. The console loads the deployment template (project-level CUE).
 2. It loads all **enabled** org-level templates for the organization.
 3. It prepends the generated CUE schema (`#ProjectInput`, `#PlatformInput`,
-   `#Claims`, `#EnvVar`, `#KeyRef`) from `api/v1alpha1`.
+   `#Claims`, `#EnvVar`, `#KeyRef`) from `api/v1alpha2`.
 4. It concatenates all sources into one CUE compilation unit.
 5. It fills `input` from the deployment parameters and `platform` from
    authenticated server context.
@@ -411,7 +411,7 @@ Paste the following CUE into the **Template** editor:
 // This is the canonical go-httpbin example — an identical version is
 // embedded in the server at console/templates/example_httpbin.cue.
 
-// Use generated type definitions from api/v1alpha1 (prepended by renderer).
+// Use generated type definitions from api/v1alpha2 (prepended by renderer).
 input: #ProjectInput & {
     name:  =~"^[a-z][a-z0-9-]*$" // DNS label
     image: string | *"ghcr.io/mccutchen/go-httpbin"

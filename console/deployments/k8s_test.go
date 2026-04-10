@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -22,7 +22,7 @@ func projectNS(project string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-" + project,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeProject,
 				resolver.ProjectLabel:      project,
 			},
@@ -36,12 +36,12 @@ func deploymentConfigMap(project, name, image, tag, tmpl, displayName, descripti
 			Name:      name,
 			Namespace: "prj-" + project,
 			Labels: map[string]string{
-				v1alpha1.LabelManagedBy:    v1alpha1.ManagedByValue,
-				v1alpha1.LabelResourceType: v1alpha1.ResourceTypeDeployment,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeDeployment,
 			},
 			Annotations: map[string]string{
-				v1alpha1.AnnotationDisplayName: displayName,
-				v1alpha1.AnnotationDescription: description,
+				v1alpha2.AnnotationDisplayName: displayName,
+				v1alpha2.AnnotationDescription: description,
 			},
 		},
 		Data: map[string]string{
@@ -153,11 +153,11 @@ func TestCreateDeployment(t *testing.T) {
 		if cm.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", cm.Name)
 		}
-		if cm.Labels[v1alpha1.LabelResourceType] != v1alpha1.ResourceTypeDeployment {
-			t.Errorf("expected label %q=%q, got %q", v1alpha1.LabelResourceType, v1alpha1.ResourceTypeDeployment, cm.Labels[v1alpha1.LabelResourceType])
+		if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeDeployment {
+			t.Errorf("expected label %q=%q, got %q", v1alpha2.LabelResourceType, v1alpha2.ResourceTypeDeployment, cm.Labels[v1alpha2.LabelResourceType])
 		}
-		if cm.Labels[v1alpha1.LabelManagedBy] != v1alpha1.ManagedByValue {
-			t.Errorf("expected label %q=%q, got %q", v1alpha1.LabelManagedBy, v1alpha1.ManagedByValue, cm.Labels[v1alpha1.LabelManagedBy])
+		if cm.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+			t.Errorf("expected label %q=%q, got %q", v1alpha2.LabelManagedBy, v1alpha2.ManagedByValue, cm.Labels[v1alpha2.LabelManagedBy])
 		}
 		if cm.Data[ImageKey] != "nginx" {
 			t.Errorf("expected image 'nginx', got %q", cm.Data[ImageKey])
@@ -168,11 +168,11 @@ func TestCreateDeployment(t *testing.T) {
 		if cm.Data[TemplateKey] != "default" {
 			t.Errorf("expected template 'default', got %q", cm.Data[TemplateKey])
 		}
-		if cm.Annotations[v1alpha1.AnnotationDisplayName] != "Web App" {
-			t.Errorf("expected displayName 'Web App', got %q", cm.Annotations[v1alpha1.AnnotationDisplayName])
+		if cm.Annotations[v1alpha2.AnnotationDisplayName] != "Web App" {
+			t.Errorf("expected displayName 'Web App', got %q", cm.Annotations[v1alpha2.AnnotationDisplayName])
 		}
-		if cm.Annotations[v1alpha1.AnnotationDescription] != "A web app" {
-			t.Errorf("expected description 'A web app', got %q", cm.Annotations[v1alpha1.AnnotationDescription])
+		if cm.Annotations[v1alpha2.AnnotationDescription] != "A web app" {
+			t.Errorf("expected description 'A web app', got %q", cm.Annotations[v1alpha2.AnnotationDescription])
 		}
 	})
 
@@ -232,11 +232,11 @@ func TestUpdateDeployment(t *testing.T) {
 		if updated.Data[TagKey] != "1.26" {
 			t.Errorf("expected tag '1.26', got %q", updated.Data[TagKey])
 		}
-		if updated.Annotations[v1alpha1.AnnotationDisplayName] != "Web App" {
-			t.Errorf("expected displayName unchanged 'Web App', got %q", updated.Annotations[v1alpha1.AnnotationDisplayName])
+		if updated.Annotations[v1alpha2.AnnotationDisplayName] != "Web App" {
+			t.Errorf("expected displayName unchanged 'Web App', got %q", updated.Annotations[v1alpha2.AnnotationDisplayName])
 		}
-		if updated.Annotations[v1alpha1.AnnotationDescription] != "updated desc" {
-			t.Errorf("expected description 'updated desc', got %q", updated.Annotations[v1alpha1.AnnotationDescription])
+		if updated.Annotations[v1alpha2.AnnotationDescription] != "updated desc" {
+			t.Errorf("expected description 'updated desc', got %q", updated.Annotations[v1alpha2.AnnotationDescription])
 		}
 	})
 
@@ -259,10 +259,10 @@ func TestCreateDeployment_Env(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		env := []v1alpha1.EnvVar{
+		env := []v1alpha2.EnvVar{
 			{Name: "FOO", Value: "bar"},
-			{Name: "FROM_SECRET", SecretKeyRef: &v1alpha1.KeyRef{Name: "mysecret", Key: "mykey"}},
-			{Name: "FROM_CM", ConfigMapKeyRef: &v1alpha1.KeyRef{Name: "mycm", Key: "mykey"}},
+			{Name: "FROM_SECRET", SecretKeyRef: &v1alpha2.KeyRef{Name: "mysecret", Key: "mykey"}},
+			{Name: "FROM_CM", ConfigMapKeyRef: &v1alpha2.KeyRef{Name: "mycm", Key: "mykey"}},
 		}
 		cm, err := k8s.CreateDeployment(context.Background(), "my-project", "web-app", "nginx", "1.25", "default", "", "", nil, nil, env, 0)
 		if err != nil {
@@ -272,7 +272,7 @@ func TestCreateDeployment_Env(t *testing.T) {
 		if !ok {
 			t.Fatal("expected env key to be present")
 		}
-		var got []v1alpha1.EnvVar
+		var got []v1alpha2.EnvVar
 		if err := json.Unmarshal([]byte(raw), &got); err != nil {
 			t.Fatalf("expected valid JSON in env key, got error: %v", err)
 		}
@@ -312,7 +312,7 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		env := []v1alpha1.EnvVar{
+		env := []v1alpha2.EnvVar{
 			{Name: "PORT", Value: "8080"},
 		}
 		updated, err := k8s.UpdateDeployment(context.Background(), "my-project", "web-app", nil, nil, nil, nil, nil, nil, env, nil)
@@ -323,7 +323,7 @@ func TestUpdateDeployment_Env(t *testing.T) {
 		if !ok {
 			t.Fatal("expected env key to be present after update")
 		}
-		var got []v1alpha1.EnvVar
+		var got []v1alpha2.EnvVar
 		if err := json.Unmarshal([]byte(raw), &got); err != nil {
 			t.Fatalf("unexpected JSON error: %v", err)
 		}
@@ -564,7 +564,7 @@ func TestListNamespaceConfigMaps(t *testing.T) {
 				Name:      "console-deployment",
 				Namespace: "prj-my-project",
 				Labels: map[string]string{
-					v1alpha1.LabelResourceType: "deployment",
+					v1alpha2.LabelResourceType: "deployment",
 				},
 			},
 			Data: map[string]string{"image": "nginx"},

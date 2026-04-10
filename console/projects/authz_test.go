@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
 func TestCheckProjectReadAccess_UserGrantAllows(t *testing.T) {
@@ -130,9 +130,9 @@ func TestCheckProjectCreateAccess_OwnerOnExistingProjectAllows(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "existing-project",
-				Labels: map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels: map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
 				},
 			},
 		},
@@ -148,9 +148,9 @@ func TestCheckProjectCreateAccess_EditorOnExistingProjectDenies(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "existing-project",
-				Labels: map[string]string{v1alpha1.LabelManagedBy: v1alpha1.ManagedByValue},
+				Labels: map[string]string{v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue},
 				Annotations: map[string]string{
-					v1alpha1.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"editor"}]`,
+					v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"editor"}]`,
 				},
 			},
 		},

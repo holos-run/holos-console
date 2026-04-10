@@ -10,7 +10,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	v1alpha1 "github.com/holos-run/holos-console/api/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
 // allowedKindSet is the set of resource kinds that CUE templates may produce.
@@ -34,7 +34,7 @@ type CueRenderer struct{}
 
 // Render evaluates the CUE template with the given platform and project inputs and
 // returns a list of K8s resource manifests as unstructured objects.
-func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	// Enforce evaluation timeout.
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
@@ -64,7 +64,7 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, platform v1a
 // the platform and project inputs. All templates can define values for both
 // projectResources and platformResources. The renderer reads both collections when
 // ancestor templates are present (organization/folder level).
-func (r *CueRenderer) RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func (r *CueRenderer) RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
 
@@ -119,7 +119,7 @@ func (r *CueRenderer) RenderWithCueInput(ctx context.Context, cueSource, cueInpu
 // by the deployment template.
 // All templates can define values for both projectResources and platformResources.
 // The renderer reads both collections at the organization/folder level (ADR 016).
-func evaluateWithOrgTemplates(deploymentCUE string, orgTemplateCUESources []string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func evaluateWithOrgTemplates(deploymentCUE string, orgTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
 	// Prepend generated schema definitions and concatenate all CUE sources.
@@ -127,7 +127,7 @@ func evaluateWithOrgTemplates(deploymentCUE string, orgTemplateCUESources []stri
 	// template (input, platform, _labels, etc.) as well as generated type
 	// definitions (#PlatformInput, #ProjectInput, etc.). Combining them into
 	// a single compilation unit allows those cross-references to resolve.
-	combined := v1alpha1.GeneratedSchema + "\n" + deploymentCUE
+	combined := v1alpha2.GeneratedSchema + "\n" + deploymentCUE
 	for _, orgTemplateSrc := range orgTemplateCUESources {
 		combined = combined + "\n" + orgTemplateSrc
 	}
@@ -182,12 +182,12 @@ func evaluateWithOrgTemplates(deploymentCUE string, orgTemplateCUESources []stri
 // tag, etc.) are encoded separately and unified with the template.
 // This is the project-level render path. Per ADR 016, the renderer does not read
 // platformResources from project-level templates.
-func evaluate(cueSource string, platform v1alpha1.PlatformInput, project v1alpha1.ProjectInput) ([]unstructured.Unstructured, error) {
+func evaluate(cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
 	// Prepend generated schema definitions so templates can reference
 	// #PlatformInput, #ProjectInput, #Claims, etc.
-	fullSource := v1alpha1.GeneratedSchema + "\n" + cueSource
+	fullSource := v1alpha2.GeneratedSchema + "\n" + cueSource
 
 	// Compile the template source.
 	tmpl := cueCtx.CompileString(fullSource)
@@ -250,7 +250,7 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 	// compilation unit allows the template to reference top-level identifiers
 	// (input.name, platform.namespace, etc.) and generated type definitions
 	// (#PlatformInput, #ProjectInput, etc.).
-	combined := v1alpha1.GeneratedSchema + "\n" + cueSource + "\n" + cueInput
+	combined := v1alpha2.GeneratedSchema + "\n" + cueSource + "\n" + cueInput
 	unified := cueCtx.CompileString(combined)
 	if err := unified.Err(); err != nil {
 		return nil, fmt.Errorf("invalid CUE template: %w", err)

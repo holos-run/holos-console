@@ -136,7 +136,7 @@ This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC se
 
 ### Package Structure
 
-- `api/v1alpha1/` - Centralized API types, constants (labels, annotations, resource types), and CUE schema generation. Go types (`PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`) are the source of truth for CUE schema generated via `cue get go`. Embeds the generated CUE schema as `GeneratedSchema` for the renderer to prepend.
+- `api/v1alpha2/` - Centralized API types, constants (labels, annotations, resource types), and CUE schema generation. Go types (`PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`) are the source of truth for CUE schema generated via `cue get go`. Embeds the generated CUE schema as `GeneratedSchema` for the renderer to prepend.
 - `cmd/` - Main entrypoint, calls into cli package
 - `cli/` - Cobra CLI setup with Cobra flags for listen addr, TLS, OIDC, RBAC, logging config
 - `console/` - Core server package
@@ -315,7 +315,7 @@ Examples of correct usage:
 
 **When adding new fields to `CreateDeploymentRequest`, `DeploymentDefaults`, or related template proto messages**, the field must also be:
 
-1. Added to the `ProjectInput` (user-provided fields) or `PlatformInput` (platform fields) Go struct in `api/v1alpha1/types.go` — CUE schema is generated from these types via `cue get go`
+1. Added to the `ProjectInput` (user-provided fields) or `PlatformInput` (platform fields) Go struct in `api/v1alpha2/types.go` — CUE schema is generated from these types via `cue get go`
 2. Included in the rendering pipeline in `console/deployments/render.go`
 3. Reflected in the template editor preview's Project Input or Platform Input default values in the frontend (see `frontend/src/routes/`)
 4. Added to the `ExtractDefaults` mapping in `console/templates/defaults.go` if it should be extractable from the CUE `defaults` block (ADR 018)
@@ -408,7 +408,7 @@ gh workflow run container.yaml --ref main -f git_ref=refs/tags/v1.2.3
 
 Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
 
-CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`. See `docs/cue-template-guide.md` for the full template interface, including the structured `projectResources`/`platformResources` output format (ADR 016). CUE schema definitions for template types (`#ProjectInput`, `#PlatformInput`, etc.) are generated from `api/v1alpha1` Go types via `cue get go` and prepended by the renderer.
+CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`. See `docs/cue-template-guide.md` for the full template interface, including the structured `projectResources`/`platformResources` output format (ADR 016). CUE schema definitions for template types (`#ProjectInput`, `#PlatformInput`, etc.) are generated from `api/v1alpha2` Go types via `cue get go` and prepended by the renderer.
 
 ## Planning and Execution
 
