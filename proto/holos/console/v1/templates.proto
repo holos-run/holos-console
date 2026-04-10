@@ -205,7 +205,7 @@ message RenderTemplateRequest {
   string cue_platform_input = 3;
   // cue_project_input contains valid CUE source that is unified with
   // cue_template at the "input" path to supply concrete values for template
-  // parameters. Replaces cue_input / cue_user_input from v1alpha1.
+  // parameters matching the ProjectInput schema.
   string cue_project_input = 4;
   // linked_templates lists scope-qualified template references to include in
   // preview unification. Allows draft templates to preview their effective

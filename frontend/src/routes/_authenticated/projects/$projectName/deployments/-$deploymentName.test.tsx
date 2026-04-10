@@ -85,7 +85,7 @@ const mockLogs = '2024-01-15T10:30:01Z Starting server...\n2024-01-15T10:30:02Z 
 const mockPreview = {
   cueTemplate: 'input: #ProjectInput\nplatform: #PlatformInput\n',
   cuePlatformInput: 'platform: {\n  project: "test-project"\n  namespace: "holos-prj-test-project"\n}',
-  cueUserInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
+  cueProjectInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
   renderedYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n',
   renderedJson: '[]',
 }

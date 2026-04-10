@@ -728,7 +728,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encoding project input: %w", err))
 	}
 	cuePlatformInput := fmt.Sprintf("platform: %s", string(platformJSON))
-	cueUserInput := fmt.Sprintf("input: %s", string(projectJSON))
+	cueProjectInput := fmt.Sprintf("input: %s", string(projectJSON))
 
 	// Render the template to produce YAML and JSON output, including linked
 	// platform templates (ADR 019). Uses renderResources so the same linking
@@ -746,7 +746,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 			return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 				CueTemplate:    cueTemplate,
 				CuePlatformInput: cuePlatformInput,
-				CueProjectInput:   cueUserInput,
+				CueProjectInput:   cueProjectInput,
 			}), nil
 		}
 
@@ -783,7 +783,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
 		CueTemplate:    cueTemplate,
 		CuePlatformInput: cuePlatformInput,
-		CueProjectInput:   cueUserInput,
+		CueProjectInput:   cueProjectInput,
 		RenderedYaml:   renderedYAML,
 		RenderedJson:   renderedJSON,
 	}), nil

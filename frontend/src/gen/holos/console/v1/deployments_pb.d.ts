@@ -827,8 +827,7 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
 
   /**
    * cue_project_input is the user-provided CUE input (name, image, tag, etc.)
-   * in CUE format. Replaces cue_user_input from v1alpha1 to align with the
-   * platform/project input terminology used in api/v1alpha2.
+   * matching the ProjectInput schema.
    *
    * @generated from field: string cue_project_input = 3;
    */

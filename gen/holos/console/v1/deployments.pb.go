@@ -1782,8 +1782,7 @@ type GetDeploymentRenderPreviewResponse struct {
 	// authenticated context; template authors can trust these values.
 	CuePlatformInput string `protobuf:"bytes,2,opt,name=cue_platform_input,json=cuePlatformInput,proto3" json:"cue_platform_input,omitempty"`
 	// cue_project_input is the user-provided CUE input (name, image, tag, etc.)
-	// in CUE format. Replaces cue_user_input from v1alpha1 to align with the
-	// platform/project input terminology used in api/v1alpha2.
+	// matching the ProjectInput schema.
 	CueProjectInput string `protobuf:"bytes,3,opt,name=cue_project_input,json=cueProjectInput,proto3" json:"cue_project_input,omitempty"`
 	// rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
 	RenderedYaml string `protobuf:"bytes,4,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
