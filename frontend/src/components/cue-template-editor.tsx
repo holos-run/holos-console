@@ -5,6 +5,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useRenderTemplate } from '@/queries/templates'
+import type { TemplateScopeRef } from '@/queries/templates'
 
 interface RenderStatusIndicatorProps {
   isStale: boolean
@@ -64,12 +66,6 @@ function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusI
   )
 }
 
-export type RenderFn = (cueTemplate: string, cueInput: string, enabled: boolean, cuePlatformInput: string) => {
-  data?: { renderedYaml: string; renderedJson: string }
-  error?: Error | null
-  isFetching: boolean
-}
-
 export interface CueTemplateEditorProps {
   /** Current CUE template source */
   cueTemplate: string
@@ -85,8 +81,8 @@ export interface CueTemplateEditorProps {
   defaultPlatformInput?: string
   /** Default project input for the preview tab */
   defaultProjectInput?: string
-  /** Hook to use for rendering (injectable for testability) */
-  useRenderFn: RenderFn
+  /** Scope used to resolve ancestor platform templates when rendering the preview */
+  scope: TemplateScopeRef
 }
 
 /**
@@ -102,7 +98,7 @@ export function CueTemplateEditor({
   isSaving = false,
   defaultPlatformInput = '',
   defaultProjectInput = '',
-  useRenderFn,
+  scope,
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
   const [cuePlatformInput, setCuePlatformInput] = useState(defaultPlatformInput)
@@ -117,7 +113,8 @@ export function CueTemplateEditor({
     cuePlatformInput !== debouncedCuePlatformInput ||
     cueTemplate !== debouncedCueTemplate
 
-  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderFn(
+  const { data: renderData, error: renderError, isFetching: isRendering } = useRenderTemplate(
+    scope,
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',

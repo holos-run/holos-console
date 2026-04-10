@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetOrgTemplate, useUpdateOrgTemplate, useCloneOrgTemplate, useRenderOrgTemplate } from '@/queries/org-templates'
+import { useGetTemplate, useUpdateTemplate, useCloneTemplate, makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 
@@ -52,10 +52,11 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     navigate = undefined
   }
 
-  const { data: template, isPending, error } = useGetOrgTemplate(orgName, templateName)
+  const scope = makeOrgScope(orgName)
+  const { data: template, isPending, error } = useGetTemplate(scope, templateName)
   const { data: org } = useGetOrganization(orgName)
-  const updateMutation = useUpdateOrgTemplate(orgName, templateName)
-  const cloneMutation = useCloneOrgTemplate(orgName)
+  const updateMutation = useUpdateTemplate(scope, templateName)
+  const cloneMutation = useCloneTemplate(scope)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [cloneOpen, setCloneOpen] = useState(false)
@@ -222,7 +223,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
-              useRenderFn={useRenderOrgTemplate}
+              scope={scope}
             />
           </div>
         </CardContent>
