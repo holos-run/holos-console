@@ -744,9 +744,9 @@ func (h *Handler) GetDeploymentRenderPreview(
 			)
 			// Return the inputs even if render fails — the frontend can display the error.
 			return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
-				CueTemplate:    cueTemplate,
+				CueTemplate:      cueTemplate,
 				CuePlatformInput: cuePlatformInput,
-				CueProjectInput:   cueProjectInput,
+				CueProjectInput:  cueProjectInput,
 			}), nil
 		}
 
@@ -781,11 +781,11 @@ func (h *Handler) GetDeploymentRenderPreview(
 	)
 
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
-		CueTemplate:    cueTemplate,
+		CueTemplate:      cueTemplate,
 		CuePlatformInput: cuePlatformInput,
-		CueProjectInput:   cueProjectInput,
-		RenderedYaml:   renderedYAML,
-		RenderedJson:   renderedJSON,
+		CueProjectInput:  cueProjectInput,
+		RenderedYaml:     renderedYAML,
+		RenderedJson:     renderedJSON,
 	}), nil
 }
 

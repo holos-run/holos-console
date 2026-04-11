@@ -142,8 +142,8 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.Template
 			Name:      name,
 			Namespace: ns,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
 			},
 			Annotations: annotations,

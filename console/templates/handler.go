@@ -70,13 +70,13 @@ type Renderer interface {
 // Handler implements the unified TemplateService (ADR 021).
 type Handler struct {
 	consolev1connect.UnimplementedTemplateServiceHandler
-	k8s                 *K8sClient
-	orgGrantResolver    OrgGrantResolver
-	folderGrantResolver FolderGrantResolver
+	k8s                  *K8sClient
+	orgGrantResolver     OrgGrantResolver
+	folderGrantResolver  FolderGrantResolver
 	projectGrantResolver ProjectGrantResolver
-	walker              AncestorWalker
-	resolver            *resolver.Resolver
-	renderer            Renderer
+	walker               AncestorWalker
+	resolver             *resolver.Resolver
+	renderer             Renderer
 }
 
 // NewHandler creates a TemplateService handler.

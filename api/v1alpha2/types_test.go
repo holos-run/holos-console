@@ -333,9 +333,9 @@ func TestOrganizationJSONRoundTrip(t *testing.T) {
 // TestConstantsV1alpha2 verifies that key constants have expected values.
 func TestConstantsV1alpha2(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   string
-		want  string
+		name string
+		got  string
+		want string
 	}{
 		{"APIVersion", APIVersion, "console.holos.run/v1alpha2"},
 		{"KindFolder", KindFolder, "Folder"},

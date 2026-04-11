@@ -87,7 +87,7 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-" + name,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      name,
 			},
@@ -608,7 +608,7 @@ func TestBuildProject_FallbackProducesWrongNameWithPrefix(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos", // namespace-prefix "holos-" + project-prefix "p-" + name "holos"
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				// No ProjectLabel — forces fallback
 			},
@@ -640,7 +640,7 @@ func TestBuildProject_LabelPreferredOverFallback(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "holos",
 			},
@@ -669,7 +669,7 @@ func TestCreateProject_NamespacePrefixIncluded(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prod-prj-existing",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "existing",
 			},
@@ -938,7 +938,7 @@ func TestBuildProject_PopulatesDefaultGrants(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "my-project",
 			},

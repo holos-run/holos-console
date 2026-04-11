@@ -43,7 +43,7 @@ func orgNS(name string, shareUsersJSON string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-org-" + name,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: name,
 			},
@@ -671,7 +671,7 @@ func TestBuildOrganization_UsesLabelNotNamespaceParsing(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-o-holos", // namespace-prefix "holos-" + org-prefix "o-" + name "holos"
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "holos",
 			},
@@ -694,7 +694,7 @@ func TestBuildOrganization_LabelTakesPrecedenceOverParsing(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "org-legacy-name",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "correct-name",
 			},
@@ -714,7 +714,7 @@ func TestListOrganizations_UsesLabelWithNamespacePrefix(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-o-holos",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
 				resolver.OrganizationLabel: "holos",
 			},

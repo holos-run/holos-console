@@ -95,11 +95,11 @@ func (a *Applier) Apply(ctx context.Context, namespace, deploymentName string, r
 // Reconcile applies the desired resources via SSA and then deletes any owned
 // resources that are no longer in the desired set (orphan cleanup). This
 // implements a K8s controller-style reconciliation loop:
-//   1. Apply all desired resources.
-//   2. If apply fails, return the error immediately — orphan cleanup is skipped
-//      to preserve the previously working state.
-//   3. After a successful apply, list every owned resource by kind and delete
-//      any whose (kind, name) pair is not in the desired set.
+//  1. Apply all desired resources.
+//  2. If apply fails, return the error immediately — orphan cleanup is skipped
+//     to preserve the previously working state.
+//  3. After a successful apply, list every owned resource by kind and delete
+//     any whose (kind, name) pair is not in the desired set.
 func (a *Applier) Reconcile(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error {
 	// Step 1: Apply all desired resources via SSA.
 	if err := a.Apply(ctx, namespace, deploymentName, resources); err != nil {

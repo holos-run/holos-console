@@ -43,9 +43,9 @@ type MandatoryTemplateApplier interface {
 // Handler implements the ProjectService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
-	k8s                       *K8sClient
-	orgResolver               OrgResolver
-	mandatoryTemplateApplier  MandatoryTemplateApplier
+	k8s                      *K8sClient
+	orgResolver              OrgResolver
+	mandatoryTemplateApplier MandatoryTemplateApplier
 }
 
 // NewHandler creates a new ProjectService handler.
