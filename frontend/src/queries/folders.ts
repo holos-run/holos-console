@@ -45,6 +45,20 @@ export function useGetFolder(organization: string, name: string) {
   })
 }
 
+export function useGetFolderRaw(organization: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  return useQuery({
+    queryKey: ['folders', 'raw', organization, name] as const,
+    queryFn: async () => {
+      const response = await client.getFolderRaw({ organization, name })
+      return response.raw
+    },
+    enabled: isAuthenticated && !!organization && !!name,
+  })
+}
+
 export function useCreateFolder(organization: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
