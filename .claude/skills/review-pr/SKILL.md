@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Review a pull request using a cross-model code review. Use this skill to review a PR before merge. Triggers on phrases like "review PR", "review this PR", "review PR #N", "code review", "review-pr", or "/review-pr". Accepts an optional PR number argument; if omitted, detects the PR for the current branch.
-version: 2.0.0
+version: 3.0.0
 ---
 
 # Review PR
@@ -291,44 +291,45 @@ Then provide guidance based on the classification:
 
 ## Fix-Review Loop
 
-When used during implementation (integrated into the implement-plan workflow):
+When used during implementation (integrated into the implement-plan workflow), the review follows a **fix-first** model: round 1 findings are fixed in the PR directly. Follow-up issues are only created for findings that persist after round 2.
 
 ```
 1. Implementation complete, PR open, CI green
-2. Run /review-pr <PR_NUMBER>
+2. Run /review-pr <PR_NUMBER> (round 1)
 3. If APPROVE -> merge
-4. If non-critical findings only -> merge, create follow-up issue
-5. If critical findings:
-   a. Read tmp/review-pr/pr-<N>/round-<R>.md
-   b. Fix each critical finding
-   c. Commit: "fix: address codex review round <R> critical findings"
+4. If findings exist (any severity):
+   a. Read tmp/review-pr/pr-<N>/round-1.md
+   b. Fix ALL findings (critical, important, and style) in the PR
+   c. Commit: "fix: address codex review round 1 findings"
    d. Push fixes
-   e. Re-run /review-pr <PR_NUMBER> (round R+1)
-   f. Maximum 2 rounds on critical findings
-6. After 2 rounds with unresolved critical findings:
-   - Post summary comment listing unresolved findings
-   - Add label: needs-human-review
-   - Do NOT merge
-   - Move to next sub-issue if applicable
+   e. Re-run /review-pr <PR_NUMBER> (round 2)
+5. After round 2:
+   a. If APPROVE -> merge
+   b. If non-critical findings only -> merge, create follow-up issue attached to parent
+   c. If critical findings remain -> escalate (needs-human-review), do NOT merge
+6. Follow-up issues created in step 5b are attached to the parent issue
+   so implement-plan can pick them up at the end.
 ```
+
+**Key principle**: Do not create follow-up issues after round 1. Always attempt to fix all findings in-PR first. Only create follow-up issues for findings that remain after round 2.
 
 ### Merge Authority Under Fix-Forward
 
 | Situation | Action |
 |-----------|--------|
 | Clean review (no findings) | Merge immediately |
-| Findings resolved within 2 cycles | Merge after clean re-review |
-| Non-critical findings unresolved | Merge, create follow-up issue linking findings |
-| Critical findings unresolved after 2 cycles | Do NOT merge. Add `needs-human-review` label |
+| All findings fixed in round 1, clean re-review | Merge after clean re-review |
+| Non-critical findings remain after round 2 | Merge, create follow-up issue attached to parent |
+| Critical findings unresolved after round 2 | Do NOT merge. Add `needs-human-review` label |
 
 ### Handling Disagreements
 
 When Claude disagrees with a critical Codex finding:
 1. Reply to the specific review comment on GitHub with a rationale
 2. If the same finding persists after re-review, it counts toward the cycle limit
-3. After 2 cycles, disagreement escalates to human review
+3. After 2 rounds, disagreement escalates to human review
 
-For non-critical disagreements, merge and create the follow-up issue. The human decides at their own pace.
+For non-critical disagreements after round 2, merge and create the follow-up issue attached to the parent. The human decides at their own pace.
 
 ### Resetting Review Rounds
 
