@@ -106,13 +106,87 @@ If still not found, comment on the sub-issue that implementation failed and cont
 
 ### 6. Wait for CI
 
-After the PR is open, wait for CI checks to complete:
+After the PR is open, assess whether E2E tests are relevant to this change, then wait for the appropriate CI checks.
+
+#### 6a. Assess E2E Relevance
+
+Examine the PR's changed files to determine whether E2E tests are relevant:
+
+```bash
+CHANGED_FILES=$(gh pr diff $PR_NUMBER --name-only)
+```
+
+Apply the following decision table to classify the change:
+
+| Changed files match | E2E relevant? | Reason |
+|---------------------|---------------|--------|
+| `frontend/src/routes/**` | YES | Changes to existing UI routes affect user-facing behavior |
+| `frontend/src/components/**` | YES | Changes to shared UI components may affect rendered pages |
+| `frontend/src/lib/**` | YES | Changes to auth, transport, or query logic affect runtime behavior |
+| `console/oidc/**` | YES | Changes to OIDC provider affect the login flow tested by E2E |
+| Existing files in `console/rpc/**` | YES | Changes to existing RPC handlers may affect UI data flow |
+| `console/console.go` | YES | Changes to server setup or route registration affect E2E |
+| `frontend/e2e/**` | YES | Changes to E2E tests themselves should run E2E |
+| `proto/**` (new messages only, no field changes to existing messages) | NO | New proto definitions do not affect existing UI behavior |
+| `gen/**`, `frontend/src/gen/**` | NO | Generated code from proto changes; not hand-edited |
+| New Go files (new packages, new handlers) | NO | New backend code has no existing UI integration to break |
+| `docs/**` | NO | Documentation does not affect runtime behavior |
+| `*_test.go`, `*.test.ts`, `*.test.tsx` | NO | Test-only changes do not affect runtime behavior |
+| `.claude/**`, `.github/**` | NO | Tooling and CI config do not affect runtime behavior |
+| `Makefile`, `*.md`, `*.json` (config files) | NO | Build and config files do not affect E2E behavior |
+
+**Tie-breaking rule**: If any changed file matches a YES row, E2E is relevant. The heuristic errs on the side of waiting -- when uncertain, treat E2E as relevant. A false positive (waiting when not needed) costs 15 minutes; a false negative (skipping when needed) risks merging broken code.
+
+Log the assessment reasoning so operators can audit the decision:
+
+```bash
+echo "E2E relevance assessment for PR #$PR_NUMBER:"
+echo "Changed files:"
+echo "$CHANGED_FILES"
+echo ""
+echo "Decision: E2E_RELEVANT=<yes|no>"
+echo "Reason: <one-line explanation>"
+```
+
+#### 6b. Wait for CI Checks (Conditional)
+
+**If E2E is relevant**, wait for all checks (existing behavior):
 
 ```bash
 gh pr checks $PR_NUMBER --watch --fail-level all
 ```
 
-If CI fails, launch an Opus sub-agent to fix the failures:
+**If E2E is NOT relevant**, wait only for `test` and `lint` checks, ignoring the `e2e` check:
+
+```bash
+# Poll until test and lint checks have completed (pass or fail)
+while true; do
+  CHECKS=$(gh pr checks $PR_NUMBER --json name,state,conclusion 2>/dev/null || echo "[]")
+
+  TEST_STATE=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .state' 2>/dev/null)
+  LINT_STATE=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .state' 2>/dev/null)
+
+  # Both must have completed (state is no longer empty or "pending"/"queued")
+  if [ "$TEST_STATE" = "COMPLETED" ] && [ "$LINT_STATE" = "COMPLETED" ]; then
+    TEST_CONCLUSION=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .conclusion' 2>/dev/null)
+    LINT_CONCLUSION=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .conclusion' 2>/dev/null)
+
+    if [ "$TEST_CONCLUSION" = "SUCCESS" ] && [ "$LINT_CONCLUSION" = "SUCCESS" ]; then
+      echo "test and lint passed -- proceeding without waiting for e2e"
+      break
+    else
+      echo "CI failed: test=$TEST_CONCLUSION lint=$LINT_CONCLUSION"
+      break
+    fi
+  fi
+
+  sleep 30
+done
+```
+
+#### 6c. Fix CI Failures
+
+If CI fails (either all-check mode or test/lint-only mode), launch an Opus sub-agent to fix the failures:
 
 ```
 Agent(
@@ -123,6 +197,8 @@ Agent(
 ```
 
 Re-check CI after the fix. If CI still fails after one fix attempt, add the `needs-human-review` label and continue to the review step anyway (the review may catch the root cause).
+
+**Note on skipped E2E**: If E2E was assessed as not relevant and later the `e2e` check fails independently, the CI Fix sub-agent should still attempt to fix it if encountered, but E2E failure alone does not block the review cycle when E2E was assessed as not relevant.
 
 ### 7. Review the PR (Round 1)
 
