@@ -339,8 +339,8 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                   <div className="flex items-center gap-2">
                     <span className="w-32 text-sm text-muted-foreground shrink-0">Current</span>
                     <Link
-                      to="/orgs/$orgName/folders/$folderName"
-                      params={{ orgName, folderName: defaultFolder }}
+                      to="/folders/$folderName"
+                      params={{ folderName: defaultFolder }}
                       className="text-sm text-primary underline"
                     >
                       {folderItems.find((f) => f.value === defaultFolder)?.label ?? defaultFolder}

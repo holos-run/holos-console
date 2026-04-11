@@ -108,8 +108,8 @@ export function FoldersIndexPage({ orgName }: { orgName?: string } = {}) {
 
   const handleRowClick = (folder: Folder) => {
     navigate({
-      to: '/orgs/$orgName/folders/$folderName',
-      params: { orgName: org, folderName: folder.name },
+      to: '/folders/$folderName',
+      params: { folderName: folder.name },
     })
   }
 
@@ -231,8 +231,8 @@ export function FoldersIndexPage({ orgName }: { orgName?: string } = {}) {
         parentName={org}
         onCreated={(name) => {
           navigate({
-            to: '/orgs/$orgName/folders/$folderName',
-            params: { orgName: org, folderName: name },
+            to: '/folders/$folderName',
+            params: { folderName: name },
           })
         }}
       />
