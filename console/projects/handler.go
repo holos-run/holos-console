@@ -425,7 +425,9 @@ func (h *Handler) reparentProject(
 	}
 
 	// Check PERMISSION_REPARENT on the new (destination) parent.
-	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, org, "destination"); err != nil {
+	// Use the destination parent's org for cascade, not the source org.
+	destOrg := newParentNamespace.Labels[v1alpha2.LabelOrganization]
+	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, destOrg, "destination"); err != nil {
 		slog.WarnContext(ctx, "project reparent denied on destination",
 			slog.String("action", "project_reparent_denied_destination"),
 			slog.String("resource_type", auditResourceType),
