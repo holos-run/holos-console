@@ -216,6 +216,30 @@ OIDC PKCE flow: Requires `--enable-insecure-dex` flag for embedded Dex at `/dex/
 
 Backend auth: `LazyAuthInterceptor` in `console/rpc/auth.go` verifies JWTs from the `Authorization: Bearer` header and stores `rpc.Claims` in context. Lazy initialization avoids startup race with embedded Dex.
 
+#### Test Personas
+
+When running with `--enable-insecure-dex`, embedded Dex registers four test identities (defined in `console/oidc/config.go`):
+
+| Persona | Email | Groups | RBAC Role | Password |
+|---------|-------|--------|-----------|----------|
+| Admin (default) | `admin@localhost` | `["owner"]` | OWNER | (auto-login) |
+| Platform Engineer | `platform@localhost` | `["owner"]` | OWNER | `verysecret` |
+| Product Engineer | `product@localhost` | `["editor"]` | EDITOR | `verysecret` |
+| SRE | `sre@localhost` | `["viewer"]` | VIEWER | `verysecret` |
+
+The admin user is authenticated automatically via the auto-login connector. The other three personas are available via the dev token endpoint and the Dev Tools UI.
+
+**Dev token endpoint** (`POST /api/dev/token`): Obtain a signed OIDC ID token for any test persona. Requires `--enable-insecure-dex`. See `docs/dev-token-endpoint.md` for full API reference.
+
+```bash
+curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
+  -X POST https://localhost:8443/api/dev/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"sre@localhost"}'
+```
+
+**Dev Tools UI** (`/dev-tools`): Enable with `--enable-dev-tools` (passed automatically by `make run`). Provides an interactive persona switcher that injects tokens into sessionStorage without a Dex redirect. See ADR 023 for design rationale.
+
 ### RBAC
 
 Three-tier access control model evaluated in order (highest role wins):
@@ -394,6 +418,8 @@ See `docs/testing.md` for the complete decision rule, the ConnectRPC mock patter
 **UI unit tests**: Vitest + React Testing Library + jsdom. Mock query hooks (`@/queries/*`) with `vi.mock()` and `vi.fn()`. Route-directory test files must be prefixed with `-` (e.g. `-about.test.tsx`) so TanStack Router's generator ignores them. Run with `make test-ui`.
 
 **E2E tests**: Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For tight iteration, start servers once and run targeted tests — see `docs/e2e-testing.md` for the full workflow including K8s-backed tests.
+
+**Multi-persona E2E helpers**: `frontend/e2e/helpers.ts` exports `getPersonaToken()`, `switchPersona()`, `loginAsPersona()`, and `apiGrantOrgAccess()` for tests that verify RBAC behavior across different roles. These helpers use the dev token endpoint (`POST /api/dev/token`) to obtain tokens and inject them into sessionStorage. See `docs/e2e-testing.md` for usage patterns.
 
 See `docs/frontend-patterns.md` for common UI patterns (copy-to-clipboard, toast notifications).
 
