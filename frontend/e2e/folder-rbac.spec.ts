@@ -15,13 +15,12 @@ import {
  * cascade table itself; these specs cover the end-to-end wiring between the
  * HTTP layer, the handler, and the Kubernetes namespace annotations.
  *
- * Note: Multi-user RBAC tests (a user granted Editor on folder X can create
- * projects but cannot read secrets) require a second OIDC principal. The
- * embedded Dex OIDC provider in test environments only exposes a single
- * admin user, so these tests validate the single-user (admin/owner) path
- * and confirm that the RBAC metadata is persisted correctly in Kubernetes.
- * Full multi-user matrix tests belong in a dedicated test environment with
- * multiple configured OIDC identities.
+ * Note: The embedded Dex provider registers multiple test personas (admin,
+ * platform, product, sre) with distinct RBAC roles. Multi-user RBAC tests
+ * can use the switchPersona() and loginAsPersona() helpers from helpers.ts
+ * to test cross-persona permission boundaries. These tests currently validate
+ * the admin/owner path and confirm that RBAC metadata is persisted correctly
+ * in Kubernetes.
  *
  * Requires a real Kubernetes cluster (k3d or equivalent).
  * Run with: make test-e2e

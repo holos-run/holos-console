@@ -79,7 +79,7 @@ When running with `--enable-insecure-dex`, embedded Dex registers four test iden
 | Product Engineer | `product@localhost` | `["editor"]` | EDITOR | `test-product-001` |
 | SRE | `sre@localhost` | `["viewer"]` | VIEWER | `test-sre-001` |
 
-All non-admin users share the password `verysecret`. The admin user authenticates automatically via the auto-login connector (no credentials required).
+The admin user authenticates automatically via the auto-login connector (no credentials required). Non-admin personas are accessed via the dev token exchange endpoint or the Dev Tools UI -- no password entry is needed.
 
 The persona definitions live in `console/oidc/config.go` as the `TestUsers` variable.
 

@@ -39,12 +39,6 @@ type Config struct {
 }
 
 func init() {
-	// Register our custom password connector with Dex.
-	// This connector supports groups, unlike the built-in mockPassword connector.
-	server.ConnectorsConfig["holosPassword"] = func() server.ConnectorConfig {
-		return new(PasswordConnectorConfig)
-	}
-
 	// Register the auto-login connector for development.
 	// This connector bypasses the login form entirely.
 	server.ConnectorsConfig["holosAuto"] = func() server.ConnectorConfig {
