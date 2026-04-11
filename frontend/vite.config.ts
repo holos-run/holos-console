@@ -70,6 +70,12 @@ export default defineConfig({
         secure: false,
         changeOrigin: true,
       },
+      // Proxy dev API endpoints (e.g. token exchange) to the Go backend.
+      '/api/dev': {
+        target: backendUrl,
+        secure: false,
+        changeOrigin: true,
+      },
     },
   },
 })

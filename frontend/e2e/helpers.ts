@@ -4,6 +4,20 @@ import type { Page } from '@playwright/test'
 export const DEFAULT_USERNAME = 'admin'
 export const DEFAULT_PASSWORD = 'verysecret'
 
+// Persona email constants matching TestUsers in console/oidc/config.go.
+export const ADMIN_EMAIL = 'admin@localhost'
+export const PLATFORM_ENGINEER_EMAIL = 'platform@localhost'
+export const PRODUCT_ENGINEER_EMAIL = 'product@localhost'
+export const SRE_EMAIL = 'sre@localhost'
+
+/** Response from the POST /api/dev/token endpoint. */
+export interface TokenExchangeResponse {
+  id_token: string
+  email: string
+  groups: string[]
+  expires_in: number
+}
+
 /**
  * Build a Dex OIDC authorize URL with PKCE parameters.
  */
@@ -300,4 +314,191 @@ export async function selectOrg(page: Page, orgName: string): Promise<void> {
   await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
   await page.getByTestId('org-picker').click()
   await page.getByRole('menuitem', { name: orgName }).click()
+}
+
+/**
+ * Get a valid ID token for a test persona via the dev token endpoint.
+ * The backend must be running with --enable-insecure-dex for this endpoint
+ * to be available.
+ */
+export async function getPersonaToken(
+  page: Page,
+  email: string,
+): Promise<TokenExchangeResponse> {
+  return page.evaluate(async (email) => {
+    const resp = await fetch('/api/dev/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Token exchange failed (${resp.status}): ${text}`)
+    }
+    return resp.json()
+  }, email)
+}
+
+/**
+ * Inject a persona's OIDC token into sessionStorage so the app treats the
+ * browser as authenticated for that user. This constructs an oidc-client-ts
+ * compatible User object keyed by `oidc.user:{authority}:{client_id}`.
+ *
+ * Call page.reload() after this to pick up the new token.
+ */
+async function injectPersonaSession(
+  page: Page,
+  tokenData: TokenExchangeResponse,
+): Promise<void> {
+  await page.evaluate((data) => {
+    // Discover the OIDC storage key pattern from existing session (if any),
+    // or construct from the well-known defaults.
+    const existingKey = Object.keys(sessionStorage).find((k) =>
+      k.startsWith('oidc.user:'),
+    )
+
+    // Parse authority and client_id from the existing key, or use defaults.
+    let authority: string
+    let clientId: string
+    if (existingKey) {
+      const parts = existingKey.replace('oidc.user:', '').split(':')
+      // Key format: oidc.user:<authority>:<client_id>
+      // authority may contain colons (https://...), client_id is the last segment.
+      clientId = parts.pop()!
+      authority = parts.join(':')
+    } else {
+      authority = `${window.location.origin}/dex`
+      clientId = 'holos-console'
+    }
+
+    // Clear all existing OIDC sessions
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith('oidc.user:'))
+      .forEach((k) => sessionStorage.removeItem(k))
+
+    // Build an oidc-client-ts User-compatible object.
+    // The token is an ID token from Dex; we use it as both id_token and
+    // access_token since the backend verifies JWTs on the access_token header.
+    const now = Math.floor(Date.now() / 1000)
+    const user = {
+      id_token: data.id_token,
+      access_token: data.id_token,
+      token_type: 'Bearer',
+      scope: 'openid profile email groups',
+      expires_at: now + data.expires_in,
+      profile: {
+        sub: '', // Will be filled by the token itself
+        email: data.email,
+        email_verified: true,
+        groups: data.groups,
+        iss: authority,
+        aud: clientId,
+        iat: now,
+        exp: now + data.expires_in,
+      },
+    }
+
+    const key = `oidc.user:${authority}:${clientId}`
+    sessionStorage.setItem(key, JSON.stringify(user))
+  }, tokenData)
+}
+
+/**
+ * Switch the current browser session to a different persona.
+ * Clears the existing OIDC session, fetches a new token via the dev endpoint,
+ * injects it into sessionStorage, and reloads the page.
+ *
+ * The page must have already loaded the app (any route) so that
+ * fetch('/api/dev/token') can reach the backend.
+ */
+export async function switchPersona(page: Page, email: string): Promise<void> {
+  const tokenData = await getPersonaToken(page, email)
+  await injectPersonaSession(page, tokenData)
+  await page.reload()
+  await page.waitForLoadState('networkidle')
+}
+
+/**
+ * Perform initial login as a specific persona. Navigates to /profile to
+ * trigger the auto-login OIDC flow (which authenticates as admin by default),
+ * then immediately switches to the requested persona via token exchange.
+ *
+ * Use this at the start of a test to begin authenticated as a specific persona.
+ */
+export async function loginAsPersona(page: Page, email: string): Promise<void> {
+  // First, establish a session via the normal OIDC flow (logs in as admin).
+  await loginViaProfilePage(page)
+  // If the requested persona is admin, we are already done.
+  if (email === ADMIN_EMAIL) return
+  // Switch to the desired persona.
+  await switchPersona(page, email)
+}
+
+/**
+ * Grant a user a specific role on an organization via the RPC API.
+ * Role values: 1 = VIEWER, 2 = EDITOR, 3 = OWNER.
+ * Preserves existing grants by fetching the current sharing state first.
+ */
+export async function apiGrantOrgAccess(
+  page: Page,
+  orgName: string,
+  principal: string,
+  role: number,
+): Promise<void> {
+  const { token } = await getRpcAuth(page)
+  await page.evaluate(
+    async ({ orgName, principal, role, token }) => {
+      // Fetch current org to get existing grants
+      const getResp = await fetch(
+        '/holos.console.v1.OrganizationService/GetOrganization',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ name: orgName }),
+        },
+      )
+      if (!getResp.ok) {
+        const text = await getResp.text()
+        throw new Error(`GetOrganization failed (${getResp.status}): ${text}`)
+      }
+      const orgData = await getResp.json()
+      const org = orgData.organization
+
+      // Build updated user grants list: replace or add the target principal.
+      const existingUserGrants: Array<{ principal: string; role: number }> =
+        org?.userGrants ?? []
+      const filtered = existingUserGrants.filter(
+        (g: { principal: string }) => g.principal !== principal,
+      )
+      filtered.push({ principal, role })
+
+      const resp = await fetch(
+        '/holos.console.v1.OrganizationService/UpdateOrganizationSharing',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: orgName,
+            userGrants: filtered,
+            roleGrants: org?.roleGrants ?? [],
+          }),
+        },
+      )
+      if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(
+          `UpdateOrganizationSharing failed (${resp.status}): ${text}`,
+        )
+      }
+    },
+    { orgName, principal, role, token },
+  )
 }
