@@ -350,7 +350,7 @@ Review output: \`tmp/review-pr/pr-${PR_NUMBER}/round-2.md\`
 
 Parent plan: #<parent-issue-number>
 EOF
-)" | grep -oP '\d+$')
+)" | sed -E 's#.*/([0-9]+)$#\1#')
 
 # Add as a sub-issue on the parent by editing the parent issue body
 # Append the follow-up issue reference to the parent's task list
