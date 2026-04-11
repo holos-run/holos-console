@@ -14,9 +14,9 @@ import {
  * These tests verify the full login flow using the embedded Dex OIDC provider.
  * Run with: make test-e2e (automatically starts servers)
  *
- * Default credentials (configurable via env vars on the Go backend):
- *   Username: admin (HOLOS_DEX_INITIAL_ADMIN_USERNAME)
- *   Password: verysecret (HOLOS_DEX_INITIAL_ADMIN_PASSWORD)
+ * The embedded Dex auto-login connector authenticates as the admin user
+ * (configurable via HOLOS_DEX_INITIAL_ADMIN_USERNAME env var, default: admin).
+ * No password is required — the auto-connector bypasses the login form.
  */
 
 test.describe('Authentication', () => {

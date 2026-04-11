@@ -35,7 +35,7 @@ type TestUser struct {
 }
 
 // TestUsers lists all static test users registered with the embedded Dex provider.
-// These users authenticate via the password connector on the Dex login form.
+// These users authenticate via the dev token exchange endpoint (POST /api/dev/token).
 var TestUsers = []TestUser{
 	{
 		ID:          "admin",
