@@ -37,7 +37,7 @@ export function useCreateProject() {
   const client = useMemo(() => createClient(ProjectService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName?: string; description?: string; organization: string }) =>
+    mutationFn: (params: { name: string; displayName?: string; description?: string; organization: string; parentType?: number; parentName?: string }) =>
       client.createProject(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connect-query'] })

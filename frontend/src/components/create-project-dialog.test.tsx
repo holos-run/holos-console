@@ -5,12 +5,21 @@ import React from 'react'
 
 vi.mock('@/queries/organizations', () => ({
   useListOrganizations: vi.fn(),
+  useGetOrganization: vi.fn(),
   useCreateOrganization: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
   useListProjects: vi.fn(),
   useCreateProject: vi.fn(),
+}))
+
+vi.mock('@/queries/folders', () => ({
+  useListFolders: vi.fn(),
+}))
+
+vi.mock('@/gen/holos/console/v1/folders_pb', () => ({
+  ParentType: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2 },
 }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -82,8 +91,9 @@ vi.mock('@/components/ui/combobox', () => ({
   ),
 }))
 
-import { useListOrganizations } from '@/queries/organizations'
+import { useListOrganizations, useGetOrganization } from '@/queries/organizations'
 import { useCreateProject } from '@/queries/projects'
+import { useListFolders } from '@/queries/folders'
 import { CreateProjectDialog } from './create-project-dialog'
 
 describe('CreateProjectDialog', () => {
@@ -96,18 +106,29 @@ describe('CreateProjectDialog', () => {
       data: { organizations: [{ name: 'my-org', displayName: 'My Org' }] },
       isLoading: false,
     })
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { defaultFolder: '' },
+      isPending: false,
+      error: null,
+    })
+    ;(useListFolders as Mock).mockReturnValue({
+      data: [],
+      isPending: false,
+      error: null,
+    })
     ;(useCreateProject as Mock).mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,
     })
   })
 
-  it('renders org select, displayName, name, and description when open', () => {
+  it('renders org select, folder select, displayName, name, and description when open', () => {
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
     expect(screen.getByPlaceholderText(/my-project/i)).toBeDefined()
     expect(screen.getByPlaceholderText(/my project/i)).toBeDefined()
     expect(screen.getByPlaceholderText(/optional description/i)).toBeDefined()
-    expect(screen.getByTestId('select')).toBeDefined()
+    expect(screen.getByLabelText('Organization')).toBeDefined()
+    expect(screen.getByLabelText('Folder')).toBeDefined()
   })
 
   it('does not render when closed', () => {
@@ -117,7 +138,7 @@ describe('CreateProjectDialog', () => {
 
   it('pre-selects defaultOrganization in the org select', () => {
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
-    const select = screen.getByTestId('select') as HTMLSelectElement
+    const select = screen.getByLabelText('Organization') as HTMLSelectElement
     expect(select.value).toBe('my-org')
   })
 
