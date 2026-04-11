@@ -564,7 +564,8 @@ Current skills:
 | Skill | Purpose |
 |-------|---------|
 | `agent-browser` | Browser automation for visual verification and E2E workflows |
-| `implement-issue` | Implement a GitHub issue end-to-end (branch, code, PR) |
+| `implement-issue` | Implement a single GitHub issue end-to-end (branch, code, PR) |
+| `implement-plan` | Execute a full plan: iterate sub-issues, implement (Opus), review (Codex), fix, merge or escalate |
 | `plan-issue` | Create implementation plans as GitHub issue hierarchies |
 | `review-pr` | Cross-model PR review (currently Codex CLI backend) |
 
