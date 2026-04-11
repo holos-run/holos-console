@@ -188,8 +188,9 @@ func (h *Handler) CreateOrganization(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	// Determine default folder name: use request value or fall back to "default".
-	defaultFolderName := "default"
+	// Determine default folder name: use request value or fall back to
+	// "{orgname}-default" so the underlying namespace is unique across orgs.
+	defaultFolderName := req.Msg.Name + "-default"
 	if req.Msg.DefaultFolder != nil && *req.Msg.DefaultFolder != "" {
 		defaultFolderName = *req.Msg.DefaultFolder
 	}

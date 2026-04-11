@@ -845,8 +845,8 @@ func TestCreateOrganization_CreatesDefaultFolder(t *testing.T) {
 		t.Fatalf("expected 1 folder created, got %d", len(fc.createdFolders))
 	}
 	folder := fc.createdFolders[0]
-	if folder.Labels[v1alpha2.LabelFolder] != "default" {
-		t.Errorf("expected folder name 'default', got %q", folder.Labels[v1alpha2.LabelFolder])
+	if folder.Labels[v1alpha2.LabelFolder] != "acme-default" {
+		t.Errorf("expected folder name 'acme-default', got %q", folder.Labels[v1alpha2.LabelFolder])
 	}
 	if folder.Labels[v1alpha2.LabelOrganization] != "acme" {
 		t.Errorf("expected folder org 'acme', got %q", folder.Labels[v1alpha2.LabelOrganization])
@@ -860,8 +860,8 @@ func TestCreateOrganization_CreatesDefaultFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected org namespace to exist, got %v", err)
 	}
-	if orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] != "default" {
-		t.Errorf("expected default-folder annotation 'default', got %q", orgNs.Annotations[v1alpha2.AnnotationDefaultFolder])
+	if orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] != "acme-default" {
+		t.Errorf("expected default-folder annotation 'acme-default', got %q", orgNs.Annotations[v1alpha2.AnnotationDefaultFolder])
 	}
 }
 
