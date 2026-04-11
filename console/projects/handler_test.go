@@ -1549,3 +1549,156 @@ func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
 		t.Error("expected project namespace to be deleted after applier failure")
 	}
 }
+
+// ---- Default Folder Resolution Tests ----
+
+func TestCreateProject_DefaultsToOrgDefaultFolder(t *testing.T) {
+	// Org has a default-folder annotation pointing to a valid folder.
+	orgNs := orgNSWithGrants("df-org-a", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] = "df-folder-a"
+
+	folderNs := folderNSWithGrants("df-folder-a", "df-org-a", "holos-org-df-org-a", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, folderNs,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "df-prj-a",
+		Organization: "df-org-a",
+		// No ParentType or ParentName — should default to the org's default folder.
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "df-prj-a" {
+		t.Errorf("expected name 'df-prj-a', got %q", resp.Msg.Name)
+	}
+
+	// Verify the project's parent label points to the folder namespace.
+	ns, err := handler.k8s.GetProject(ctx, "df-prj-a")
+	if err != nil {
+		t.Fatalf("expected project to exist, got %v", err)
+	}
+	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
+	if parentLabel != "holos-fld-df-folder-a" {
+		t.Errorf("expected parent label 'holos-fld-df-folder-a', got %q", parentLabel)
+	}
+}
+
+func TestCreateProject_FallsBackToOrgWhenNoDefaultFolderAnnotation(t *testing.T) {
+	// Org has no default-folder annotation (legacy org).
+	orgNs := orgNSWithGrants("df-org-b", `[{"principal":"bob@example.com","role":"owner"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"bob@example.com": "owner"}},
+		orgNs,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("bob@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "df-prj-b",
+		Organization: "df-org-b",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "df-prj-b" {
+		t.Errorf("expected name 'df-prj-b', got %q", resp.Msg.Name)
+	}
+
+	// Verify the project's parent label points to the org namespace.
+	ns, err := handler.k8s.GetProject(ctx, "df-prj-b")
+	if err != nil {
+		t.Fatalf("expected project to exist, got %v", err)
+	}
+	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
+	if parentLabel != "holos-org-df-org-b" {
+		t.Errorf("expected parent label 'holos-org-df-org-b', got %q", parentLabel)
+	}
+}
+
+func TestCreateProject_FallsBackToOrgWhenDefaultFolderDeleted(t *testing.T) {
+	// Org has a default-folder annotation, but the referenced folder does not exist.
+	orgNs := orgNSWithGrants("df-org-c", `[{"principal":"carol@example.com","role":"owner"}]`)
+	orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] = "df-folder-gone"
+
+	// No folder namespace created — simulates a deleted folder.
+	logHandler := &testLogHandler{}
+	slog.SetDefault(slog.New(logHandler))
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"carol@example.com": "owner"}},
+		orgNs,
+	)
+	ctx := contextWithClaims("carol@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "df-prj-c",
+		Organization: "df-org-c",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "df-prj-c" {
+		t.Errorf("expected name 'df-prj-c', got %q", resp.Msg.Name)
+	}
+
+	// Verify the project's parent label falls back to the org namespace.
+	ns, err := handler.k8s.GetProject(ctx, "df-prj-c")
+	if err != nil {
+		t.Fatalf("expected project to exist, got %v", err)
+	}
+	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
+	if parentLabel != "holos-org-df-org-c" {
+		t.Errorf("expected parent label 'holos-org-df-org-c', got %q", parentLabel)
+	}
+
+	// Verify a warning was logged about the missing default folder.
+	if r := logHandler.findRecord("default_folder_not_found"); r == nil {
+		t.Error("expected warning log with action 'default_folder_not_found'")
+	}
+}
+
+func TestCreateProject_ExplicitParentOverridesDefaultFolder(t *testing.T) {
+	// Org has a default-folder annotation, but the request specifies an explicit parent.
+	orgNs := orgNSWithGrants("df-org-d", `[{"principal":"dave@example.com","role":"owner"}]`)
+	orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] = "df-folder-d"
+
+	folderNs := folderNSWithGrants("df-folder-d", "df-org-d", "holos-org-df-org-d", `[{"principal":"dave@example.com","role":"editor"}]`)
+	explicitFolder := folderNSWithGrants("df-explicit-d", "df-org-d", "holos-org-df-org-d", `[{"principal":"dave@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"dave@example.com": "owner"}},
+		orgNs, folderNs, explicitFolder,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("dave@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "df-prj-d",
+		Organization: "df-org-d",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_FOLDER,
+		ParentName:   "df-explicit-d",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "df-prj-d" {
+		t.Errorf("expected name 'df-prj-d', got %q", resp.Msg.Name)
+	}
+
+	// Verify the project's parent label points to the explicitly specified folder.
+	ns, err := handler.k8s.GetProject(ctx, "df-prj-d")
+	if err != nil {
+		t.Fatalf("expected project to exist, got %v", err)
+	}
+	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
+	if parentLabel != "holos-fld-df-explicit-d" {
+		t.Errorf("expected parent label 'holos-fld-df-explicit-d', got %q", parentLabel)
+	}
+}
