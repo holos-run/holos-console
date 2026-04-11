@@ -133,7 +133,9 @@ Apply the following decision table to classify the change:
 | `docs/**` | NO | Documentation does not affect runtime behavior |
 | `*_test.go`, `*.test.ts`, `*.test.tsx` | NO | Test-only changes do not affect runtime behavior |
 | `.claude/**`, `.github/**` | NO | Tooling and CI config do not affect runtime behavior |
-| `Makefile`, `*.md`, `*.json` (config files) | NO | Build and config files do not affect E2E behavior |
+| `Makefile`, `*.md` | NO | Build and config files do not affect E2E behavior |
+| `*.json` outside `frontend/` (e.g., `.claude/*.json`, root config) | NO | Non-frontend JSON config does not affect E2E behavior |
+| `frontend/package.json`, `frontend/tsconfig*.json` | YES | Package deps and TypeScript config can affect runtime behavior |
 
 **Tie-breaking rule**: If any changed file matches a YES row, E2E is relevant. The heuristic errs on the side of waiting -- when uncertain, treat E2E as relevant. A false positive (waiting when not needed) costs 15 minutes; a false negative (skipping when needed) risks merging broken code.
 
@@ -159,23 +161,24 @@ gh pr checks $PR_NUMBER --watch --fail-level all
 **If E2E is NOT relevant**, wait only for `test` and `lint` checks, ignoring the `e2e` check:
 
 ```bash
-# Poll until test and lint checks have completed (pass or fail)
+# Poll until test and lint checks reach a terminal bucket (pass, fail, cancel, skipping)
+# Supported gh pr checks --json fields: bucket, completedAt, description, event, link, name, startedAt, state, workflow
 while true; do
-  CHECKS=$(gh pr checks $PR_NUMBER --json name,state,conclusion 2>/dev/null || echo "[]")
+  CHECKS=$(gh pr checks $PR_NUMBER --json name,bucket 2>/dev/null || echo "[]")
 
-  TEST_STATE=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .state' 2>/dev/null)
-  LINT_STATE=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .state' 2>/dev/null)
+  TEST_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .bucket' 2>/dev/null)
+  LINT_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .bucket' 2>/dev/null)
 
-  # Both must have completed (state is no longer empty or "pending"/"queued")
-  if [ "$TEST_STATE" = "COMPLETED" ] && [ "$LINT_STATE" = "COMPLETED" ]; then
-    TEST_CONCLUSION=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .conclusion' 2>/dev/null)
-    LINT_CONCLUSION=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .conclusion' 2>/dev/null)
+  # Terminal buckets: pass, fail, cancel, skipping
+  # Non-terminal: pending, queued, "" (not yet reported)
+  is_terminal() { [ "$1" = "pass" ] || [ "$1" = "fail" ] || [ "$1" = "cancel" ] || [ "$1" = "skipping" ]; }
 
-    if [ "$TEST_CONCLUSION" = "SUCCESS" ] && [ "$LINT_CONCLUSION" = "SUCCESS" ]; then
+  if is_terminal "$TEST_BUCKET" && is_terminal "$LINT_BUCKET"; then
+    if [ "$TEST_BUCKET" = "pass" ] && [ "$LINT_BUCKET" = "pass" ]; then
       echo "test and lint passed -- proceeding without waiting for e2e"
       break
     else
-      echo "CI failed: test=$TEST_CONCLUSION lint=$LINT_CONCLUSION"
+      echo "CI failed: test=$TEST_BUCKET lint=$LINT_BUCKET"
       break
     fi
   fi
