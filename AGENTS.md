@@ -18,7 +18,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 ## Authentication & Authorization
 
 - [Authentication](docs/agents/authentication.md) — OIDC PKCE flow, embedded Dex, test personas, and dev token endpoint.
-- [RBAC](docs/agents/rbac.md) — Three-tier grant model (org/project/secret) on K8s annotations with namespace prefixes.
+- [RBAC](docs/agents/rbac.md) — Four-tier grant model (org/folder/project/secret) on K8s annotations with namespace prefixes.
 
 ## Development Workflow
 

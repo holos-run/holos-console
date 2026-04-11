@@ -8,6 +8,8 @@ Each permission should control a single capability. Avoid bundling unrelated act
 
 **Good**: `PERMISSION_PROJECT_DEPLOYMENTS_ENABLE` controls only the ability to toggle the deployments feature flag on a project.
 
+**Good**: `PERMISSION_REPARENT` controls only the ability to move a folder or project to a different parent. It is separate from WRITE because reparenting changes RBAC inheritance chains — an EDITOR who can modify folder metadata should not be able to move a subtree into a scope where they gain elevated permissions (ADR 022 Decision 6).
+
 **Bad**: `PERMISSION_PROJECT_SETTINGS_WRITE` covering both deployments toggle and future settings (too broad to delegate independently).
 
 When a new action could reasonably be granted independently of existing permissions, create a dedicated permission rather than reusing an existing one.
@@ -61,6 +63,20 @@ var TemplateCascadePerms = rbac.CascadeTable{
 same table (`TemplateCascadePerms`) applies uniformly at every scope level (ADR 021 Decision 2)
 — a VIEWER can read, an EDITOR can write, and an OWNER has full control regardless of whether
 the template is org-scoped, folder-scoped, or project-scoped.
+
+A third cascade table controls reparenting access at organization and folder scope:
+
+```go
+var ReparentCascadePerms = rbac.CascadeTable{
+    rbac.RoleOwner: {
+        rbac.PermissionReparent: true,
+    },
+}
+```
+
+`PERMISSION_REPARENT` is granted only to OWNERs. The caller must hold this permission on both the
+source parent and the destination parent to move a folder or project. This is deliberately more
+restrictive than WRITE because reparenting changes RBAC inheritance chains (ADR 022 Decision 6).
 
 To check access: resolve the user's best role from grants at the parent scope, then look up permissions in the cascade table.
 
