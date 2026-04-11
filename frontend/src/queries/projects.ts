@@ -7,6 +7,7 @@ import {
   ListProjectsRequestSchema,
   ProjectService,
 } from '@/gen/holos/console/v1/projects_pb.js'
+import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { useAuth } from '@/lib/auth'
 
 export function useListProjects(organization: string) {
@@ -50,7 +51,7 @@ export function useUpdateProject() {
   const client = useMemo(() => createClient(ProjectService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName?: string; description?: string }) =>
+    mutationFn: (params: { name: string; displayName?: string; description?: string; parentType?: ParentType; parentName?: string }) =>
       client.updateProject(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connect-query'] })
