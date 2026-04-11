@@ -720,6 +720,26 @@ func TestCheckFolderIdentifier_Unauthenticated(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
+func TestCheckFolderIdentifier_NonSlugReturnsUnavailable(t *testing.T) {
+	// No folder namespace exists, but the input is not a valid slug.
+	// Should return available=false with the slugified form as suggestion.
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "My Folder",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false for non-slug input")
+	}
+	if resp.Msg.SuggestedIdentifier != "my-folder" {
+		t.Errorf("expected suggested_identifier='my-folder', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
 // ---- UpdateFolder reparent tests ----
 
 func TestUpdateFolder_Reparent_SuccessOrgOwner(t *testing.T) {

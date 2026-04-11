@@ -1350,6 +1350,26 @@ func TestCheckProjectIdentifier_Unauthenticated(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
+func TestCheckProjectIdentifier_NonSlugReturnsUnavailable(t *testing.T) {
+	// No project namespace exists, but the input is not a valid slug.
+	// Should return available=false with the slugified form as suggestion.
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "My Project",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false for non-slug input")
+	}
+	if resp.Msg.SuggestedIdentifier != "my-project" {
+		t.Errorf("expected suggested_identifier='my-project', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
 // ---- UpdateProject reparent tests ----
 
 // projectNSWithParent creates a project namespace with org, parent, and grants.

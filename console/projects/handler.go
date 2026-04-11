@@ -749,26 +749,24 @@ func (h *Handler) CheckProjectIdentifier(
 		return h.k8s.NamespaceExists(ctx, nsName)
 	}
 
-	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	result, err := v1alpha2.CheckIdentifier(ctx, req.Msg.Identifier, prefix, exists)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("checking identifier: %w", err))
 	}
-
-	available := suggested == req.Msg.Identifier
 
 	slog.InfoContext(ctx, "project identifier checked",
 		slog.String("action", "project_check_identifier"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("identifier", req.Msg.Identifier),
-		slog.Bool("available", available),
-		slog.String("suggested", suggested),
+		slog.Bool("available", result.Available),
+		slog.String("suggested", result.SuggestedIdentifier),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
 
 	return connect.NewResponse(&consolev1.CheckProjectIdentifierResponse{
-		Available:           available,
-		SuggestedIdentifier: suggested,
+		Available:           result.Available,
+		SuggestedIdentifier: result.SuggestedIdentifier,
 	}), nil
 }
 

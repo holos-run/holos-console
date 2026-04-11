@@ -782,29 +782,24 @@ func (h *Handler) CheckFolderIdentifier(
 		return h.k8s.NamespaceExists(ctx, nsName)
 	}
 
-	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	result, err := v1alpha2.CheckIdentifier(ctx, req.Msg.Identifier, prefix, exists)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("checking identifier: %w", err))
 	}
-
-	// Note: GenerateIdentifier takes a display name and slugifies it, but here
-	// the caller passes a pre-slugified identifier. Since Slugify is idempotent
-	// on valid slugs, this works correctly.
-	available := suggested == req.Msg.Identifier
 
 	slog.InfoContext(ctx, "folder identifier checked",
 		slog.String("action", "folder_check_identifier"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("identifier", req.Msg.Identifier),
-		slog.Bool("available", available),
-		slog.String("suggested", suggested),
+		slog.Bool("available", result.Available),
+		slog.String("suggested", result.SuggestedIdentifier),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
 
 	return connect.NewResponse(&consolev1.CheckFolderIdentifierResponse{
-		Available:           available,
-		SuggestedIdentifier: suggested,
+		Available:           result.Available,
+		SuggestedIdentifier: result.SuggestedIdentifier,
 	}), nil
 }
 
