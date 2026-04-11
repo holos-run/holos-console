@@ -1,9 +1,10 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/folders/$folderName')({
-  component: FolderLayout,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: '/folders/$folderName',
+      params: { folderName: params.folderName },
+    })
+  },
 })
-
-function FolderLayout() {
-  return <Outlet />
-}

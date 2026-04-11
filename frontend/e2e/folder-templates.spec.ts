@@ -150,7 +150,7 @@ test.describe('Folder-scoped templates', () => {
     await apiCreateFolderTemplate(page, folderName, orgName, templateName, minimalFolderTemplate)
 
     // Navigate to the folder's templates page
-    await page.goto(`/orgs/${orgName}/folders/${folderName}/templates`)
+    await page.goto(`/folders/${folderName}/templates`)
     await page.waitForLoadState('networkidle')
 
     // The template should appear in the list
@@ -172,7 +172,7 @@ test.describe('Folder-scoped templates', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    await page.goto(`/orgs/${orgName}/folders/${folderName}/templates`)
+    await page.goto(`/folders/${folderName}/templates`)
     await page.waitForLoadState('networkidle')
 
     // Empty state message (actual text: "No platform templates found for this folder.")

@@ -68,7 +68,7 @@ test.describe('Folder detail page', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    await page.goto(`/orgs/${orgName}/folders/${folderName}`)
+    await page.goto(`/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
     // Folder name should appear in the page heading (use role to avoid strict mode violations
@@ -104,7 +104,7 @@ test.describe('Nested folder workflow', () => {
     await expect(page.locator('span.font-medium', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
 
     // Navigate to parent folder detail page — heading should show the folder name
-    await page.goto(`/orgs/${orgName}/folders/${parentFolder}`)
+    await page.goto(`/folders/${parentFolder}`)
     await page.waitForLoadState('networkidle')
     await expect(page.getByRole('heading', { name: parentFolder })).toBeVisible({ timeout: 10000 })
 
@@ -127,7 +127,7 @@ test.describe('Nested folder workflow', () => {
     await apiCreateProject(page, projectName, orgName)
 
     // Navigate to the folder detail page
-    await page.goto(`/orgs/${orgName}/folders/${folderName}`)
+    await page.goto(`/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
     // Folder name should be visible in the page heading

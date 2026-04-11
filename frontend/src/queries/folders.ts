@@ -13,8 +13,8 @@ function folderListKey(organization: string, parentType?: number, parentName?: s
   return ['folders', 'list', organization, parentType, parentName] as const
 }
 
-function folderGetKey(organization: string, name: string) {
-  return ['folders', 'get', organization, name] as const
+function folderGetKey(name: string, organization?: string) {
+  return ['folders', 'get', organization ?? '', name] as const
 }
 
 export function useListFolders(organization: string, parentType?: ParentType, parentName?: string) {
@@ -31,31 +31,31 @@ export function useListFolders(organization: string, parentType?: ParentType, pa
   })
 }
 
-export function useGetFolder(organization: string, name: string) {
+export function useGetFolder(name: string, organization?: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   return useQuery({
-    queryKey: folderGetKey(organization, name),
+    queryKey: folderGetKey(name, organization),
     queryFn: async () => {
-      const response = await client.getFolder({ organization, name })
+      const response = await client.getFolder({ organization: organization ?? '', name })
       return response.folder
     },
-    enabled: isAuthenticated && !!organization && !!name,
+    enabled: isAuthenticated && !!name,
   })
 }
 
-export function useGetFolderRaw(organization: string, name: string) {
+export function useGetFolderRaw(name: string, organization?: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   return useQuery({
-    queryKey: ['folders', 'raw', organization, name] as const,
+    queryKey: ['folders', 'raw', organization ?? '', name] as const,
     queryFn: async () => {
-      const response = await client.getFolderRaw({ organization, name })
+      const response = await client.getFolderRaw({ organization: organization ?? '', name })
       return response.raw
     },
-    enabled: isAuthenticated && !!organization && !!name,
+    enabled: isAuthenticated && !!name,
   })
 }
 
@@ -89,7 +89,7 @@ export function useUpdateFolder(organization: string, name: string) {
       client.updateFolder({ organization, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: folderGetKey(organization, name) })
+      queryClient.invalidateQueries({ queryKey: folderGetKey(name, organization) })
     },
   })
 }

@@ -9,7 +9,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return {
     ...actual,
     createFileRoute: () => () => ({
-      useParams: () => ({ orgName: 'test-org', folderName: 'payments' }),
+      useParams: () => ({ folderName: 'payments' }),
     }),
     Link: ({
       children,
@@ -46,7 +46,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { FolderDetailPage } from './$folderName/index'
+import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/index'
 
 const mockFolder = {
   name: 'payments',
