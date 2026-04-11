@@ -142,6 +142,59 @@ func TestServeIndex_ConsoleConfigDevToolsDisabled(t *testing.T) {
 	}
 }
 
+func TestAPIDevToken_ReturnsJSON404WhenDexDisabled(t *testing.T) {
+	// When Dex is disabled, /api/dev/token should return a JSON 404 error
+	// response, not fall through to the SPA catch-all (which would serve
+	// index.html as HTML 200). This verifies the fix for the routing gap
+	// described in https://github.com/holos-run/holos-console/issues/716.
+	mux := http.NewServeMux()
+
+	// Register the dev token handler with nil state (Dex disabled).
+	mux.HandleFunc("/api/dev/token", apiNotAvailable("/api/dev/token", "Dex"))
+
+	// Register an SPA catch-all, same as the real server.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<html></html>"))
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/dev/token", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+}
+
+func TestAPIDebugOIDC_ReturnsJSON404WhenDexDisabled(t *testing.T) {
+	// Same routing gap as /api/dev/token: /api/debug/oidc should return a
+	// proper 404 when Dex is disabled instead of falling through to the SPA.
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/debug/oidc", apiNotAvailable("/api/debug/oidc", "Dex"))
+
+	// SPA catch-all
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<html></html>"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/debug/oidc", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
 func TestLogRequests_NonHealthPath_AlwaysLogged(t *testing.T) {
 	// Non-health paths should always be logged regardless of LogHealthChecks.
 	var buf bytes.Buffer
