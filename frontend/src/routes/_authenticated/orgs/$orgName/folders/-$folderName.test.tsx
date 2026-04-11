@@ -32,6 +32,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
+  useGetFolderRaw: vi.fn(),
   useUpdateFolder: vi.fn(),
 }))
 
@@ -41,7 +42,7 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetFolder, useUpdateFolder } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { FolderDetailPage } from './$folderName/index'
@@ -62,6 +63,11 @@ function setupMocks(userRole = Role.OWNER, folderOverride?: object) {
   const folder = { ...mockFolder, ...folderOverride }
   ;(useGetFolder as Mock).mockReturnValue({
     data: folder,
+    isPending: false,
+    error: null,
+  })
+  ;(useGetFolderRaw as Mock).mockReturnValue({
+    data: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"fld-payments"}}',
     isPending: false,
     error: null,
   })

@@ -16,8 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Check, Pencil, X } from 'lucide-react'
-import { useGetFolder, useUpdateFolder } from '@/queries/folders'
+import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
+import { ViewModeToggle } from '@/components/view-mode-toggle'
+import { RawView } from '@/components/raw-view'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
@@ -57,6 +59,11 @@ export function FolderDetailPage({
   const { data: folder, isPending, error } = useGetFolder(orgName, folderName)
   const { data: org } = useGetOrganization(orgName)
   const updateMutation = useUpdateFolder(orgName, folderName)
+
+  // View mode: data or raw
+  const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
+  const { data: rawJson } = useGetFolderRaw(orgName, folderName)
+  const [includeAllFields, setIncludeAllFields] = useState(false)
 
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -124,20 +131,40 @@ export function FolderDetailPage({
     <>
       <Card>
         <CardContent className="pt-6 space-y-6">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
-                {orgName}
-              </Link>
-              {' / '}
-              <Link to="/orgs/$orgName/folders" params={{ orgName }} className="hover:underline">
-                Folders
-              </Link>
-              {` / ${folderName}`}
-            </p>
-            <h2 className="text-xl font-semibold mt-1">{displayName || folderName}</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+                  {orgName}
+                </Link>
+                {' / '}
+                <Link to="/orgs/$orgName/folders" params={{ orgName }} className="hover:underline">
+                  Folders
+                </Link>
+                {` / ${folderName}`}
+              </p>
+              <h2 className="text-xl font-semibold mt-1">{displayName || folderName}</h2>
+            </div>
+            <ViewModeToggle
+              value={viewMode}
+              onValueChange={(v) => setViewMode(v as 'data' | 'raw')}
+              options={[
+                { value: 'data', label: 'Data', icon: <Table2 className="h-3.5 w-3.5" /> },
+                { value: 'raw', label: 'Resource', icon: <Braces className="h-3.5 w-3.5" /> },
+              ]}
+            />
           </div>
 
+          {viewMode === 'raw' && rawJson && (
+            <RawView
+              raw={rawJson}
+              includeAllFields={includeAllFields}
+              onToggleIncludeAllFields={() => setIncludeAllFields(!includeAllFields)}
+            />
+          )}
+
+          {viewMode === 'data' && (
+          <>
           <div className="space-y-4">
             <h3 className="text-sm font-medium">General</h3>
             <Separator />
@@ -298,6 +325,8 @@ export function FolderDetailPage({
                 Delete Folder
               </Button>
             </div>
+          )}
+          </>
           )}
         </CardContent>
       </Card>
