@@ -690,3 +690,30 @@ func TestBuildProject_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
 		t.Errorf("expected empty CreatorEmail for namespace without annotation, got %q", project.CreatorEmail)
 	}
 }
+
+func TestNamespaceExists_ReturnsTrueForExisting(t *testing.T) {
+	ns := managedNS("frontend", "")
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	exists, err := k8s.NamespaceExists(context.Background(), "holos-prj-frontend")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !exists {
+		t.Error("expected exists=true for existing namespace")
+	}
+}
+
+func TestNamespaceExists_ReturnsFalseForMissing(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	exists, err := k8s.NamespaceExists(context.Background(), "holos-prj-missing")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if exists {
+		t.Error("expected exists=false for missing namespace")
+	}
+}
