@@ -240,7 +240,51 @@ func TestCreateFolder_Depth4Rejected(t *testing.T) {
 	assertInvalidArgument(t, err)
 }
 
-func TestCreateFolder_MissingName(t *testing.T) {
+func TestCreateFolder_DeriveNameFromDisplayName(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		DisplayName:  "Engineering Team",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "engineering-team" {
+		t.Errorf("expected name 'engineering-team', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_DeriveNameWithCollision(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	// Pre-create the folder that will collide with the slug
+	existing := folderNSWithGrants("engineering", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		DisplayName:  "Engineering",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Name should have a suffix since "engineering" was taken.
+	if resp.Msg.Name == "engineering" {
+		t.Error("expected name with suffix due to collision, got 'engineering'")
+	}
+	if len(resp.Msg.Name) < len("engineering-000000") {
+		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_MissingNameAndDisplayName(t *testing.T) {
 	handler := newTestHandler()
 	ctx := contextWithClaims("alice@example.com")
 

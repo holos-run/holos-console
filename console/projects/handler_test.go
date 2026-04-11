@@ -409,12 +409,49 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 	}
 }
 
-func TestCreateProject_RequiresProjectName(t *testing.T) {
+func TestCreateProject_RequiresNameOrDisplayName(t *testing.T) {
 	handler, _ := newHandler()
 	ctx := contextWithClaims("alice@example.com")
 
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{Name: ""}))
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{Name: "", DisplayName: ""}))
 	assertInvalidArgument(t, err)
+}
+
+func TestCreateProject_DeriveNameFromDisplayName(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		DisplayName: "My Frontend App",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "my-frontend-app" {
+		t.Errorf("expected name 'my-frontend-app', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateProject_DeriveNameWithCollision(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	colliding := managedNS("frontend", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing, colliding)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		DisplayName: "Frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Name should have a suffix since "frontend" was taken.
+	if resp.Msg.Name == "frontend" {
+		t.Error("expected name with suffix due to collision, got 'frontend'")
+	}
+	if len(resp.Msg.Name) < len("frontend-000000") {
+		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
 }
 
 func TestCreateProject_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
