@@ -21,16 +21,13 @@ Currently uses the OpenAI Codex CLI as the review backend. The backend is swappa
 
 ### 1. Preflight
 
-Verify codex is available:
+Verify codex is available using the helper script:
 
 ```bash
-CODEX="/Users/u6136576/.nvm/versions/node/v24.12.0/bin/codex"
-if ! [ -x "$CODEX" ]; then
-  echo "ERROR: codex CLI not found at $CODEX"
-  echo "Install with: npm install -g @openai/codex"
-  # Stop here -- abort the skill
-fi
+eval "$(scripts/check-codex)"
 ```
+
+If the script exits non-zero, **abort the skill** -- codex is not installed.
 
 Log the codex version for debugging:
 
@@ -112,7 +109,7 @@ The prompt must contain:
 Use `codex exec review` with the prompted mode. The `--base` flag and `[PROMPT]` are mutually exclusive in the codex CLI, so embed scope instructions in the prompt.
 
 ```bash
-CODEX="/Users/u6136576/.nvm/versions/node/v24.12.0/bin/codex"
+# $CODEX was set by scripts/check-codex in step 1
 
 # Build ACCEPTANCE_CRITERIA section
 ACCEPTANCE_CRITERIA=""

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# check-codex — Locate the codex CLI and verify it is executable.
+#
+# Usage:
+#   eval "$(scripts/check-codex)"   # sets CODEX to the resolved path
+#
+# Exits non-zero with a diagnostic message if codex is not found.
+
+set -euo pipefail
+
+CODEX="$(command -v codex 2>/dev/null || true)"
+
+if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
+  echo "ERROR: codex CLI not found on PATH" >&2
+  echo "Install with: npm install -g @openai/codex" >&2
+  exit 1
+fi
+
+echo "CODEX=\"${CODEX}\""
