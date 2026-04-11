@@ -492,12 +492,13 @@ The Go backend serves the embedded frontend — no Vite dev server is needed for
 
 ### Visual Verification for Frontend PRs
 
-**REQUIRED**: Every PR that changes the web UI MUST include:
-1. A PR-specific capture script at `scripts/pr-<N>/capture` that takes screenshots of the affected pages.
-2. Playwright E2E tests in `frontend/e2e/` that assert the new or changed behavior is visible.
-3. Screenshots committed to `docs/screenshots/pr-<N>/` and referenced in the PR.
+Visual verification (screenshots, capture scripts) is **not required by default**. Include it only when:
+1. The implementation plan (GitHub issue) explicitly calls for visual verification.
+2. A human reviewer requests it via a comment on the pull request.
 
-This is not optional. A frontend PR is not complete until screenshots are captured, committed, and posted to the PR.
+When visual verification is requested, the PR should include:
+1. A PR-specific capture script at `scripts/pr-<N>/capture` that takes screenshots of the affected pages.
+2. Screenshots committed to `docs/screenshots/pr-<N>/` and referenced in the PR.
 
 The generic launcher `scripts/browser-capture-pr <N>` handles the full agent-dev lifecycle (build, start backend, login, SIGPIPE cleanup) and calls the PR-specific capture script with these environment variables:
 - `HOLOS_BACKEND_PORT` — the backend port
