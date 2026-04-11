@@ -6,15 +6,46 @@
 # (no Dex cookies). For fresh sessions, navigates to /profile and clicks
 # "Sign In" to trigger the full OIDC flow through the Dex auto-connector.
 #
-# Usage: scripts/browser-login [--session-name NAME]
+# Usage: scripts/browser-login [--session-name NAME] [--persona EMAIL]
 #   Default session name: holos-dev
+#   Default persona: (none — uses the admin auto-connector login)
+#
+# Persona emails (from console/oidc/config.go):
+#   platform@localhost  — Platform Engineer (Owner)
+#   product@localhost   — Product Engineer (Editor)
+#   sre@localhost       — SRE (Viewer)
+#
+# When --persona is given, the script first performs the normal OIDC login
+# (as admin via the auto-connector), then exchanges the persona email for a
+# signed token via /api/dev/token and injects it into sessionStorage.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=browser-env
 source "$SCRIPT_DIR/browser-env"
 
-SESSION_NAME="${1:-holos-dev}"
+SESSION_NAME="holos-dev"
+PERSONA_EMAIL=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --session-name)
+      SESSION_NAME="$2"
+      shift 2
+      ;;
+    --persona)
+      PERSONA_EMAIL="$2"
+      shift 2
+      ;;
+    *)
+      # Legacy positional argument: session name
+      SESSION_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
 AB="agent-browser --session-name $SESSION_NAME"
 
 SCREENSHOTS_DIR="tmp/screenshots"
@@ -71,6 +102,68 @@ if [[ -z "$TOKEN_KEY" || "$TOKEN_KEY" == "undefined" || "$TOKEN_KEY" == "null" ]
 fi
 
 echo "OK: OIDC token present (key: $TOKEN_KEY)"
+
+# If a persona was requested, switch to it via the dev token endpoint.
+if [[ -n "$PERSONA_EMAIL" ]]; then
+  echo "Switching to persona: $PERSONA_EMAIL..."
+
+  # Fetch a signed token for the persona via the dev token endpoint.
+  TOKEN_JSON=$($AB eval "
+    fetch('/api/dev/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: '$PERSONA_EMAIL' }),
+    }).then(r => {
+      if (!r.ok) throw new Error('Token exchange failed: ' + r.status);
+      return r.json();
+    }).then(d => JSON.stringify(d))
+  " 2>/dev/null)
+
+  if [[ -z "$TOKEN_JSON" || "$TOKEN_JSON" == "undefined" ]]; then
+    echo "FAIL: Token exchange failed for persona $PERSONA_EMAIL"
+    exit 1
+  fi
+
+  # Inject the persona token into sessionStorage, replacing the admin session.
+  $AB eval "
+    (function() {
+      var data = $TOKEN_JSON;
+      // Find and parse the existing OIDC key to get authority and client_id
+      var key = Object.keys(sessionStorage).find(function(k) { return k.startsWith('oidc.user:'); });
+      if (!key) throw new Error('No OIDC session key found');
+      // Clear all OIDC sessions
+      Object.keys(sessionStorage).filter(function(k) { return k.startsWith('oidc.user:'); }).forEach(function(k) { sessionStorage.removeItem(k); });
+      // Build oidc-client-ts User object
+      var now = Math.floor(Date.now() / 1000);
+      var user = {
+        id_token: data.id_token,
+        access_token: data.id_token,
+        token_type: 'Bearer',
+        scope: 'openid profile email groups',
+        expires_at: now + data.expires_in,
+        profile: {
+          sub: '',
+          email: data.email,
+          email_verified: true,
+          groups: data.groups,
+          iss: key.split(':').slice(1, -1).join(':'),
+          aud: key.split(':').pop(),
+          iat: now,
+          exp: now + data.expires_in,
+        },
+      };
+      sessionStorage.setItem(key, JSON.stringify(user));
+      return 'ok';
+    })()
+  " 2>/dev/null
+
+  # Reload to pick up the new token
+  $AB open "$HOLOS_LOGIN_URL/profile"
+  $AB wait --load networkidle
+  $AB wait 1000
+
+  echo "OK: Switched to persona $PERSONA_EMAIL"
+fi
 
 # Save success screenshot
 $AB screenshot "$SCREENSHOTS_DIR/login-success.png"
