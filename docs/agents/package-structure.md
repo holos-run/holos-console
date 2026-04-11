@@ -10,9 +10,10 @@ The Go backend is organized into these packages:
   - `version.go` — Version info with embedded version files and ldflags
   - `rpc/` — ConnectRPC handler implementations and auth interceptor
   - `oidc/` — Embedded Dex OIDC provider
-  - `organizations/` — OrganizationService with K8s Namespace backend and annotation-based grants
-  - `projects/` — ProjectService with K8s Namespace backend and annotation-based grants
-  - `resolver/` — Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{project-prefix}{name}` for projects)
+  - `folders/` — FolderService with K8s Namespace backend, slug-based identifiers, reparenting, and depth enforcement (ADR 020, ADR 022)
+  - `organizations/` — OrganizationService with K8s Namespace backend, annotation-based grants, and default folder auto-creation
+  - `projects/` — ProjectService with K8s Namespace backend, annotation-based grants, and default-folder resolution for new projects
+  - `resolver/` — Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{folder-prefix}{name}` for folders, `{namespace-prefix}{project-prefix}{name}` for projects)
   - `secrets/` — SecretsService with K8s backend and annotation-based RBAC
   - `settings/` — ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as annotations on the project Namespace; deployments toggle requires org-level OWNER via `PERMISSION_PROJECT_DEPLOYMENTS_ENABLE`
   - `templates/` — Unified TemplateService; see [Template Service](template-service.md)
@@ -20,6 +21,7 @@ The Go backend is organized into these packages:
   - `dist/` — Embedded static files served at `/` (build output from frontend, not source)
 - `proto/` — Protobuf source files
   - `holos/console/v1/organizations.proto` — OrganizationService
+  - `holos/console/v1/folders.proto` — FolderService (CRUD, hierarchy, reparenting, identifier check)
   - `holos/console/v1/projects.proto` — ProjectService
   - `holos/console/v1/secrets.proto` — SecretsService
   - `holos/console/v1/project_settings.proto` — ProjectSettingsService

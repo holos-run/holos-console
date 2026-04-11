@@ -30,7 +30,7 @@ curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
 
 ## Related
 
-- [RBAC](rbac.md) — Three-tier access control model that uses these identities
+- [RBAC](rbac.md) — Four-tier access control model that uses these identities
 - [Embedded Services](embedded-services.md) — How Dex is embedded in the binary
 - [Testing Patterns](testing-patterns.md) — Multi-persona E2E helpers using the dev token endpoint
 - [TLS Command Guardrail](guardrail-tls-commands.md) — Correct `--cacert` usage in examples

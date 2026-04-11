@@ -1,6 +1,6 @@
 # Role-Based Access Control (RBAC)
 
-holos-console uses a three-tier access control model combining **organization-level grants**, **project-level grants**, and **per-secret sharing grants**.
+holos-console uses a four-tier access control model combining **organization-level grants**, **folder-level grants**, **project-level grants**, and **per-secret sharing grants**.
 
 ## Organizations
 
@@ -18,9 +18,15 @@ Organization creation is controlled by CLI flags rather than grant-based authori
 
 The creator is automatically added as owner on the new organization.
 
+## Folders
+
+A **folder** is a Kubernetes Namespace with the name `{namespace-prefix}{folder-prefix}{name}` (defaults: empty namespace prefix, `fld-` folder prefix) and the label `console.holos.run/resource-type=folder`. Folders are optional intermediate grouping levels between an Organization and a Project (ADR 020). The `console.holos.run/organization` label scopes the folder to an organization. The `console.holos.run/parent` label stores the parent namespace name (organization or another folder). Maximum folder depth is 3 levels between an organization and a project (ADR 020 Decision 5).
+
+A **default folder** is auto-created when an organization is created. Its identifier is derived from the display name (default: "Default") using slug-based naming (ADR 022 Decision 3). The organization stores the default folder's identifier in the `console.holos.run/default-folder` annotation. New projects without an explicit parent are placed in the default folder.
+
 ## Projects
 
-A **project** is a Kubernetes Namespace with the name `{namespace-prefix}{project-prefix}{name}` (defaults: empty namespace prefix, `prj-` project prefix) and the label `console.holos.run/resource-type=project`. Projects are global resources — the `console.holos.run/organization` label is optional and represents an IAM association, not a containment relationship. The project name is stored in the `console.holos.run/project` label. Permission grants are stored as annotations on the Namespace resource.
+A **project** is a Kubernetes Namespace with the name `{namespace-prefix}{project-prefix}{name}` (defaults: empty namespace prefix, `prj-` project prefix) and the label `console.holos.run/resource-type=project`. Projects are global resources — the `console.holos.run/organization` label is optional and represents an IAM association, not a containment relationship. The project name is stored in the `console.holos.run/project` label. The `console.holos.run/parent` label stores the parent namespace name (organization or folder). Permission grants are stored as annotations on the Namespace resource.
 
 Project grants cascade to all secrets within the project. Users see only projects where they have at least viewer-level access (directly or via an associated organization).
 
@@ -31,13 +37,15 @@ User-facing names are translated to Kubernetes namespace names using a three-par
 | Resource | Pattern | CLI Flags | Default | Example (`--namespace-prefix=prod-`) |
 |---|---|---|---|---|
 | Organization | `{namespace-prefix}{org-prefix}{name}` | `--namespace-prefix`, `--organization-prefix` | `""`, `org-` | `acme` → `prod-org-acme` |
+| Folder | `{namespace-prefix}{fld-prefix}{name}` | `--namespace-prefix`, `--folder-prefix` | `""`, `fld-` | `default` → `prod-fld-default` |
 | Project | `{namespace-prefix}{prj-prefix}{name}` | `--namespace-prefix`, `--project-prefix` | `""`, `prj-` | `api` → `prod-prj-api` |
 
 When `--namespace-prefix` is empty (the default), the naming scheme is unchanged from the two-part `{type-prefix}{name}` form (e.g., `org-acme`, `prj-api`).
 
 Namespaces are distinguished by labels:
-- `console.holos.run/resource-type`: `organization` or `project`
-- `console.holos.run/organization`: the organization name (optional, on project namespaces)
+- `console.holos.run/resource-type`: `organization`, `folder`, or `project`
+- `console.holos.run/organization`: the organization name (on folder and project namespaces)
+- `console.holos.run/parent`: the parent namespace name (on folder and project namespaces)
 - `console.holos.run/project`: the project name (on project namespaces)
 
 ## Access Evaluation
@@ -83,8 +91,9 @@ Metadata annotations are stored on organization and project Namespace resources:
 
 | Annotation | Resource | Description |
 |---|---|---|
-| `console.holos.run/display-name` | Organization, Project | Human-readable display name |
-| `console.holos.run/creator-email` | Organization, Project | Email address of the user who created the resource |
+| `console.holos.run/display-name` | Organization, Folder, Project | Human-readable display name |
+| `console.holos.run/creator-email` | Organization, Folder, Project | Email address of the user who created the resource |
+| `console.holos.run/default-folder` | Organization | Identifier of the default folder for new projects |
 
 The `creator-email` annotation is written at creation time from the authenticated user's OIDC email claim. It is read-only after creation and surfaced in the settings UI.
 
@@ -134,6 +143,8 @@ Parent grants do **not** implicitly grant full access to child resources:
 
 `PERMISSION_PROJECTS_CREATE` requires owner on **at least one existing project** or owner on the target organization (checked via a separate authorization path, not cascade).
 
+`PERMISSION_REPARENT` is required to move a folder or project to a different parent. The caller must hold this permission on **both** the source parent and the destination parent. It is granted only to OWNERs via the `ReparentCascadePerms` cascade table (ADR 022 Decision 6).
+
 Organization creation is controlled by CLI flags (`--disable-org-creation`, `--org-creator-users`, `--org-creator-roles`), not by grant-based authorization.
 
 ## Organization Default Sharing
@@ -156,6 +167,22 @@ metadata:
     console.holos.run/creator-email: "alice@example.com"
     console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
     console.holos.run/share-roles: '[{"principal":"dev-team","role":"editor"}]'
+    console.holos.run/default-folder: "default"
+---
+# Default folder namespace (auto-created with the organization)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fld-default
+  labels:
+    app.kubernetes.io/managed-by: console.holos.run
+    console.holos.run/resource-type: folder
+    console.holos.run/organization: my-org
+    console.holos.run/parent: org-my-org
+  annotations:
+    console.holos.run/display-name: "Default"
+    console.holos.run/creator-email: "alice@example.com"
+    console.holos.run/share-users: '[{"principal":"alice@example.com","role":"owner"}]'
 ---
 # Project namespace (optionally associated with the organization)
 apiVersion: v1
@@ -204,6 +231,17 @@ In this example:
 | Delete secrets | - | - | Yes |
 | Update sharing grants | - | - | Yes |
 
+### Folder Permissions
+
+| Permission | Viewer | Editor | Owner |
+|---|---|---|---|
+| List folders | Yes | Yes | Yes |
+| Read folder metadata | Yes | Yes | Yes |
+| Update folder metadata | - | Yes | Yes |
+| Delete folder | - | - | Yes |
+| Update folder sharing | - | - | Yes |
+| Reparent folder | - | - | Yes (on both source and destination parents) |
+
 ### Project Permissions
 
 | Permission | Viewer | Editor | Owner |
@@ -214,6 +252,7 @@ In this example:
 | Delete project | - | - | Yes |
 | Update project sharing | - | - | Yes |
 | Create new projects | - | - | Yes (on any project or org) |
+| Reparent project | - | - | Yes (on both source and destination parents) |
 
 ### Organization Permissions
 

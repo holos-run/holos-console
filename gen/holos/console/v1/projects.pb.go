@@ -400,7 +400,8 @@ type CreateProjectRequest struct {
 	// Defaults to PARENT_TYPE_ORGANIZATION when unset.
 	ParentType ParentType `protobuf:"varint,7,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType" json:"parent_type,omitempty"`
 	// parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
-	// When unset, defaults to organization.
+	// When unset, defaults to the organization's default folder (ADR 022 Decision 5).
+	// Falls back to the organization if no default folder is configured.
 	ParentName    string `protobuf:"bytes,8,opt,name=parent_name,json=parentName,proto3" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
