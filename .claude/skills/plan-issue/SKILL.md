@@ -53,7 +53,6 @@ Create the master (parent) issue that describes the overall feature and links to
 
 ```bash
 gh issue create \
-  --label plan \
   --title "<conventional-commit-prefix>: <short description>" \
   --body "$(cat <<'EOF'
 ## Problem

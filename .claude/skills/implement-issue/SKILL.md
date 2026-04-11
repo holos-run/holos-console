@@ -19,14 +19,14 @@ gh issue view <issue-number> --repo <owner/repo> --json number,title,body,labels
 ```
 
 Parse the issue URL to extract the repo and issue number. URL formats:
-- `https://github.com/owner/repo/issues/123` → repo=`owner/repo`, number=`123`
+- `https://github.com/owner/repo/issues/123` -> repo=`owner/repo`, number=`123`
 
 ### 1b. Check for Sub-Issues
 
 After fetching the issue, check its body for sub-issues. Sub-issues are indicated by task-list lines referencing other issues in the same repo, matching patterns like:
 
-- `- [ ] #123 — description`
-- `- [x] #123 — description`
+- `- [ ] #123 -- description`
+- `- [x] #123 -- description`
 - `- [ ] #123`
 
 Extract all referenced issue numbers from these patterns using a regex like `#(\d+)`.
@@ -37,7 +37,7 @@ Extract all referenced issue numbers from these patterns using a regex like `#(\
 2. Launch an Agent tool call with `subagent_type: "general-purpose"` and `model: "opus"`.
    - The agent prompt must instruct it to invoke the `/implement-issue` skill with that sub-issue number as the argument. Include the repo context (owner/repo) and working directory so the agent has full context.
 3. **Wait for the agent to complete.**
-4. **Stop here** — do not proceed to the next sub-issue or continue to step 2. Only one sub-issue is implemented per invocation. This prevents stacked PRs while code review is being integrated into the workflow.
+4. **Stop here** -- do not proceed to the next sub-issue or continue to step 2. Only one sub-issue is implemented per invocation. This prevents stacked PRs while code review is being integrated into the workflow.
 
 If all sub-issues are already checked off, comment on the parent issue that all work is complete and stop.
 
@@ -53,9 +53,9 @@ git checkout -b <branch-name>
 ```
 
 **Branch naming**: `feat/<number>-<slug>` where `<slug>` is the issue title converted to lowercase with spaces replaced by hyphens, truncated to ~40 chars. Examples:
-- Issue #42 "Add Playwright E2E test infrastructure" → `feat/42-add-playwright-e2e-test-infrastructure`
-- Issue #7 "Fix token expiry handling" → `feat/7-fix-token-expiry-handling`
-- Issue #173 "Add role-based access control for secrets" → `feat/173-add-role-based-access-control-for-secrets`
+- Issue #42 "Add Playwright E2E test infrastructure" -> `feat/42-add-playwright-e2e-test-infrastructure`
+- Issue #7 "Fix token expiry handling" -> `feat/7-fix-token-expiry-handling`
+- Issue #173 "Add role-based access control for secrets" -> `feat/173-add-role-based-access-control-for-secrets`
 
 Strip special characters from the slug (keep only alphanumeric and hyphens).
 
@@ -92,9 +92,9 @@ Before implementing:
 
 Follow the RED GREEN pattern from the repository's conventions:
 
-1. **RED** — Write failing tests first that define the expected behavior
-2. **GREEN** — Write the minimum implementation to make the tests pass
-3. Make regular commits as you work — each commit should be a logical unit
+1. **RED** -- Write failing tests first that define the expected behavior
+2. **GREEN** -- Write the minimum implementation to make the tests pass
+3. Make regular commits as you work -- each commit should be a logical unit
 
 Commit message format (check CONTRIBUTING.md for the specific format):
 ```
@@ -104,10 +104,10 @@ Commit message format (check CONTRIBUTING.md for the specific format):
 ```
 
 Run the relevant test commands to verify your implementation:
-- `make test` — all tests
-- `make test-go` — Go tests
-- `make test-ui` — UI unit tests
-- `make generate` — regenerate code if proto/schema files changed
+- `make test` -- all tests
+- `make test-go` -- Go tests
+- `make test-ui` -- UI unit tests
+- `make generate` -- regenerate code if proto/schema files changed
 
 **Always run `make generate` before committing** if any generated files might be affected.
 
@@ -123,24 +123,26 @@ Commit cleanup separately with a message explaining what was removed and why.
 
 ### 7. Open the PR
 
+The PR must close the **specific issue being implemented**. When implementing a sub-issue dispatched from a parent issue, close the sub-issue number -- not the parent.
+
 ```bash
 gh pr create --title "<concise title under 70 chars>" --body "$(cat <<'EOF'
 ## Summary
 - <bullet points describing changes>
 
-Closes: #<issue-number>
+Closes #<issue-number>
 
 ## Test plan
 - [ ] <specific things to verify>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```
 
-The `Closes: #<number>` line automatically closes the issue when the PR is merged.
+The `Closes #<number>` line automatically closes the issue when the PR is merged. Use the issue number you are implementing (the sub-issue number when dispatched from a parent).
 
-**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for a human or another agent to review, fix CI, and merge. This boundary exists because code review (e.g., `/review-pr`) is being integrated into the workflow — until that integration is complete, each PR should be reviewed before further work proceeds.
+**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for a human or another agent to review, fix CI, and merge. This boundary exists because code review (e.g., `/review-pr`) is being integrated into the workflow -- until that integration is complete, each PR should be reviewed before further work proceeds.
 
 ## Key Conventions
 
@@ -149,6 +151,6 @@ The `Closes: #<number>` line automatically closes the issue when the PR is merge
 - **Regular commits**: Commit logical units as you go, not one giant commit at the end
 - **make generate**: Always run before committing if proto or generated files are involved
 - **Cleanup phase**: Every implementation ends with a cleanup commit
-- **Stop at PR**: Do not loop on CI, capture screenshots, or merge — stop after opening the PR
+- **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR
 - **One sub-issue at a time**: When a parent issue has sub-issues, implement only the first unchecked one per invocation
 - **Close the right issue**: PRs close the specific issue being worked on (`Closes #<sub-issue>` for sub-issues, not the parent)
