@@ -53,6 +53,7 @@ Create the master (parent) issue that describes the overall feature and links to
 
 ```bash
 gh issue create \
+  --label plan \
   --title "<conventional-commit-prefix>: <short description>" \
   --body "$(cat <<'EOF'
 ## Problem
@@ -75,6 +76,8 @@ gh issue create \
 EOF
 )"
 ```
+
+The `plan` label marks the parent issue as ready for agent dispatch via `/implement-plan`.
 
 Note the master issue number returned by `gh issue create`.
 
