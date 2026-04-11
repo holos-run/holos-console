@@ -68,6 +68,31 @@ export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
 ./holos-console --enable-insecure-dex --cert certs/tls.crt --key certs/tls.key
 ```
 
+## Test Personas
+
+When running with `--enable-insecure-dex`, embedded Dex registers four test identities with distinct RBAC roles. These personas enable testing permission boundaries without an external identity provider.
+
+| Persona | Email | Groups | RBAC Role | UserID |
+|---------|-------|--------|-----------|--------|
+| Admin (default) | `admin@localhost` | `["owner"]` | OWNER | `test-admin-001` |
+| Platform Engineer | `platform@localhost` | `["owner"]` | OWNER | `test-platform-001` |
+| Product Engineer | `product@localhost` | `["editor"]` | EDITOR | `test-product-001` |
+| SRE | `sre@localhost` | `["viewer"]` | VIEWER | `test-sre-001` |
+
+All non-admin users share the password `verysecret`. The admin user authenticates automatically via the auto-login connector (no credentials required).
+
+The persona definitions live in `console/oidc/config.go` as the `TestUsers` variable.
+
+### Dev Token Endpoint
+
+The `POST /api/dev/token` endpoint provides programmatic token acquisition for any registered test user. This is used by E2E test helpers and the Dev Tools persona switcher. See [docs/dev-token-endpoint.md](dev-token-endpoint.md) for the full API reference.
+
+### Dev Tools UI
+
+When `--enable-dev-tools` is also set (included in `make run`), a Dev Tools page at `/dev-tools` provides an interactive persona switcher. Clicking a persona card injects a signed token into sessionStorage and reloads the page, instantly switching the authenticated identity without a Dex redirect.
+
+See [ADR 023](adrs/023-multi-persona-test-identities.md) for the design rationale.
+
 ## Authentication Flow
 
 1. **User clicks Login** - React SPA calls `login()` from `useAuth()` hook
@@ -83,6 +108,7 @@ export HOLOS_DEX_INITIAL_ADMIN_USERNAME=myuser
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--enable-insecure-dex` | `false` | Enable the built-in Dex OIDC provider with auto-login |
+| `--enable-dev-tools` | `false` | Enable Dev Tools UI (persona switcher at `/dev-tools`) |
 | `--issuer` | (none) | OIDC issuer URL for token validation |
 | `--client-id` | `holos-console` | Expected audience for tokens |
 | `--listen` | `:8443` | Address to listen on |
