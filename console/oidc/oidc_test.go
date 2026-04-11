@@ -15,7 +15,7 @@ func TestNewHandler_Success(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Create OIDC handler with valid configuration
-	handler, err := oidc.NewHandler(ctx, oidc.Config{
+	handler, state, err := oidc.NewHandler(ctx, oidc.Config{
 		Issuer:       "https://test.example.com/dex",
 		ClientID:     "test-client",
 		RedirectURIs: []string{"https://test.example.com/callback"},
@@ -30,6 +30,11 @@ func TestNewHandler_Success(t *testing.T) {
 		t.Error("NewHandler() returned nil handler")
 	}
 
+	// Verify state is not nil
+	if state == nil {
+		t.Error("NewHandler() returned nil state")
+	}
+
 	// Verify handler implements http.Handler
 	var _ http.Handler = handler
 }
@@ -41,7 +46,7 @@ func TestNewHandler_RegistersSingleAutoConnector(t *testing.T) {
 	// NewHandler should succeed with only the auto-login connector.
 	// A single connector ensures Dex auto-redirects without showing
 	// a connector selection page, which E2E tests depend on.
-	handler, err := oidc.NewHandler(ctx, oidc.Config{
+	handler, _, err := oidc.NewHandler(ctx, oidc.Config{
 		Issuer:       "https://test.example.com/dex",
 		ClientID:     "test-client",
 		RedirectURIs: []string{"https://test.example.com/callback"},
@@ -94,7 +99,7 @@ func TestNewHandler_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := oidc.NewHandler(ctx, tt.config)
+			_, _, err := oidc.NewHandler(ctx, tt.config)
 			if err == nil {
 				t.Error("NewHandler() expected error, got nil")
 			}

@@ -52,18 +52,35 @@ func init() {
 	}
 }
 
+// DexState holds references to the Dex server internals that other handlers
+// need (e.g., the dev token-exchange endpoint reads signing keys from storage).
+type DexState struct {
+	// Storage is the Dex storage backend. The token exchange handler uses it
+	// to retrieve signing keys so it can mint OIDC ID tokens directly.
+	Storage storage.Storage
+
+	// Issuer is the OIDC issuer URL (e.g., "https://localhost:8443/dex").
+	Issuer string
+
+	// ClientID is the OAuth2 client ID for the SPA.
+	ClientID string
+}
+
 // NewHandler creates an http.Handler for the embedded OIDC identity provider.
 // The issuer must include the full URL with the mount path (e.g., "https://localhost:8443/dex").
 // The handler should be mounted at the path suffix of the issuer URL.
-func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
+//
+// It also returns a DexState that other handlers (e.g., the dev token-exchange
+// endpoint) can use to access Dex internals such as signing keys.
+func NewHandler(ctx context.Context, cfg Config) (http.Handler, *DexState, error) {
 	if cfg.Issuer == "" {
-		return nil, fmt.Errorf("issuer is required")
+		return nil, nil, fmt.Errorf("issuer is required")
 	}
 	if cfg.ClientID == "" {
-		return nil, fmt.Errorf("clientID is required")
+		return nil, nil, fmt.Errorf("clientID is required")
 	}
 	if len(cfg.RedirectURIs) == 0 {
-		return nil, fmt.Errorf("at least one redirectURI is required")
+		return nil, nil, fmt.Errorf("at least one redirectURI is required")
 	}
 
 	logger := cfg.Logger
@@ -92,7 +109,7 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		Groups:   []string{"owner"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal auto connector config: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal auto connector config: %w", err)
 	}
 
 	// Single auto-login connector for development. Dex auto-redirects when
@@ -131,7 +148,7 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 			"3s",                         // reuseInterval (handle network retries)
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create refresh token policy: %w", err)
+			return nil, nil, fmt.Errorf("failed to create refresh token policy: %w", err)
 		}
 		serverConfig.RefreshTokenPolicy = refreshPolicy
 	}
@@ -139,7 +156,7 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 	// Create Dex server
 	dexServer, err := server.NewServer(ctx, serverConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create dex server: %w", err)
+		return nil, nil, fmt.Errorf("failed to create dex server: %w", err)
 	}
 
 	logger.Info("embedded OIDC provider initialized",
@@ -148,5 +165,11 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		"username", GetUsername(),
 	)
 
-	return dexServer, nil
+	state := &DexState{
+		Storage:  store,
+		Issuer:   cfg.Issuer,
+		ClientID: cfg.ClientID,
+	}
+
+	return dexServer, state, nil
 }
