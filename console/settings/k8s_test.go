@@ -22,9 +22,9 @@ func projectNS(project string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prj-" + project,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":     "console.holos.run",
-				resolver.ResourceTypeLabel:         resolver.ResourceTypeProject,
-				resolver.ProjectLabel:              project,
+				"app.kubernetes.io/managed-by": "console.holos.run",
+				resolver.ResourceTypeLabel:     resolver.ResourceTypeProject,
+				resolver.ProjectLabel:          project,
 			},
 		},
 	}

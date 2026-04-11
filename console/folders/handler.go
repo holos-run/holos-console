@@ -142,13 +142,12 @@ func (h *Handler) GetFolder(
 }
 
 // CreateFolder creates a new folder.
+// When name is empty, it is derived from display_name using slug generation.
+// Uses bounded retry with random suffix on namespace collision.
 func (h *Handler) CreateFolder(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateFolderRequest],
 ) (*connect.Response[consolev1.CreateFolderResponse], error) {
-	if req.Msg.Name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("folder name is required"))
-	}
 	if req.Msg.Organization == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("organization is required"))
 	}
@@ -157,6 +156,23 @@ func (h *Handler) CreateFolder(
 	}
 	if req.Msg.ParentType == consolev1.ParentType_PARENT_TYPE_UNSPECIFIED {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("parent_type is required"))
+	}
+
+	// Derive name from display_name when not explicitly provided.
+	name := req.Msg.Name
+	if name == "" {
+		if req.Msg.DisplayName == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("folder name or display_name is required"))
+		}
+		prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.FolderPrefix
+		exists := func(ctx context.Context, nsName string) (bool, error) {
+			return h.k8s.NamespaceExists(ctx, nsName)
+		}
+		generated, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.DisplayName, prefix, exists)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating folder identifier: %w", err))
+		}
+		name = generated
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -187,7 +203,7 @@ func (h *Handler) CreateFolder(
 		slog.WarnContext(ctx, "folder create denied",
 			slog.String("action", "folder_create_denied"),
 			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
+			slog.String("folder", name),
 			slog.String("parent", parentNs),
 			slog.String("sub", claims.Sub),
 			slog.String("email", claims.Email),
@@ -218,7 +234,7 @@ func (h *Handler) CreateFolder(
 	shareUsers = mergeGrants(ancestorDefaults.users, shareUsers)
 	shareRoles = mergeGrants(ancestorDefaults.roles, shareRoles)
 
-	if _, err := h.k8s.CreateFolder(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description,
+	if _, err := h.k8s.CreateFolder(ctx, name, req.Msg.DisplayName, req.Msg.Description,
 		req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles); err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -226,14 +242,14 @@ func (h *Handler) CreateFolder(
 	slog.InfoContext(ctx, "folder created",
 		slog.String("action", "folder_create"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("folder", req.Msg.Name),
+		slog.String("folder", name),
 		slog.String("parent", parentNs),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
 
 	return connect.NewResponse(&consolev1.CreateFolderResponse{
-		Name: req.Msg.Name,
+		Name: name,
 	}), nil
 }
 
@@ -540,6 +556,51 @@ func (h *Handler) GetFolderRaw(
 
 	return connect.NewResponse(&consolev1.GetFolderRawResponse{
 		Raw: string(raw),
+	}), nil
+}
+
+// CheckFolderIdentifier checks whether a proposed folder identifier is available.
+func (h *Handler) CheckFolderIdentifier(
+	ctx context.Context,
+	req *connect.Request[consolev1.CheckFolderIdentifierRequest],
+) (*connect.Response[consolev1.CheckFolderIdentifierResponse], error) {
+	if req.Msg.Identifier == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("identifier is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.FolderPrefix
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.k8s.NamespaceExists(ctx, nsName)
+	}
+
+	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+	}
+
+	// Note: GenerateIdentifier takes a display name and slugifies it, but here
+	// the caller passes a pre-slugified identifier. Since Slugify is idempotent
+	// on valid slugs, this works correctly.
+	available := suggested == req.Msg.Identifier
+
+	slog.InfoContext(ctx, "folder identifier checked",
+		slog.String("action", "folder_check_identifier"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("identifier", req.Msg.Identifier),
+		slog.Bool("available", available),
+		slog.String("suggested", suggested),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CheckFolderIdentifierResponse{
+		Available:           available,
+		SuggestedIdentifier: suggested,
 	}), nil
 }
 

@@ -240,7 +240,51 @@ func TestCreateFolder_Depth4Rejected(t *testing.T) {
 	assertInvalidArgument(t, err)
 }
 
-func TestCreateFolder_MissingName(t *testing.T) {
+func TestCreateFolder_DeriveNameFromDisplayName(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		DisplayName:  "Engineering Team",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "engineering-team" {
+		t.Errorf("expected name 'engineering-team', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_DeriveNameWithCollision(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	// Pre-create the folder that will collide with the slug
+	existing := folderNSWithGrants("engineering", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		DisplayName:  "Engineering",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Name should have a suffix since "engineering" was taken.
+	if resp.Msg.Name == "engineering" {
+		t.Error("expected name with suffix due to collision, got 'engineering'")
+	}
+	if len(resp.Msg.Name) < len("engineering-000000") {
+		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_MissingNameAndDisplayName(t *testing.T) {
 	handler := newTestHandler()
 	ctx := contextWithClaims("alice@example.com")
 
@@ -611,6 +655,69 @@ func TestMergeGrants_PreservesBaseWhenOverrideIsLower(t *testing.T) {
 	if result[0].Role != "owner" {
 		t.Errorf("expected owner (base wins when higher), got %q", result[0].Role)
 	}
+}
+
+// ---- CheckFolderIdentifier tests ----
+
+func TestCheckFolderIdentifier_Available(t *testing.T) {
+	// No folder namespace exists, so identifier should be available.
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "engineering",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !resp.Msg.Available {
+		t.Error("expected available=true")
+	}
+	if resp.Msg.SuggestedIdentifier != "engineering" {
+		t.Errorf("expected suggested_identifier='engineering', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckFolderIdentifier_Taken(t *testing.T) {
+	// Create an existing folder namespace that will collide.
+	f := folderNSWithGrants("engineering", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(f)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "engineering",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false")
+	}
+	if resp.Msg.SuggestedIdentifier == "engineering" {
+		t.Error("expected suggested_identifier to differ from input")
+	}
+	// Should start with "engineering-"
+	if len(resp.Msg.SuggestedIdentifier) < len("engineering-000000") {
+		t.Errorf("expected suffixed identifier, got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckFolderIdentifier_EmptyRejects(t *testing.T) {
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "",
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestCheckFolderIdentifier_Unauthenticated(t *testing.T) {
+	handler := newTestHandler()
+	_, err := handler.CheckFolderIdentifier(context.Background(), connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "eng",
+	}))
+	assertUnauthenticated(t, err)
 }
 
 // ---- helpers ----

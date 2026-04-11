@@ -43,9 +43,9 @@ type MandatoryTemplateApplier interface {
 // Handler implements the ProjectService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
-	k8s                       *K8sClient
-	orgResolver               OrgResolver
-	mandatoryTemplateApplier  MandatoryTemplateApplier
+	k8s                      *K8sClient
+	orgResolver              OrgResolver
+	mandatoryTemplateApplier MandatoryTemplateApplier
 }
 
 // NewHandler creates a new ProjectService handler.
@@ -173,12 +173,27 @@ func (h *Handler) GetProject(
 }
 
 // CreateProject creates a new project.
+// When name is empty, it is derived from display_name using slug generation.
+// Uses bounded retry with random suffix on namespace collision.
 func (h *Handler) CreateProject(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateProjectRequest],
 ) (*connect.Response[consolev1.CreateProjectResponse], error) {
-	if req.Msg.Name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project name is required"))
+	// Derive name from display_name when not explicitly provided.
+	name := req.Msg.Name
+	if name == "" {
+		if req.Msg.DisplayName == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project name or display_name is required"))
+		}
+		prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.ProjectPrefix
+		exists := func(ctx context.Context, nsName string) (bool, error) {
+			return h.k8s.NamespaceExists(ctx, nsName)
+		}
+		generated, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.DisplayName, prefix, exists)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating project identifier: %w", err))
+		}
+		name = generated
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -215,7 +230,7 @@ func (h *Handler) CreateProject(
 			slog.WarnContext(ctx, "project create denied",
 				slog.String("action", "project_create_denied"),
 				slog.String("resource_type", auditResourceType),
-				slog.String("project", req.Msg.Name),
+				slog.String("project", name),
 				slog.String("organization", req.Msg.Organization),
 				slog.String("sub", claims.Sub),
 				slog.String("email", claims.Email),
@@ -255,7 +270,7 @@ func (h *Handler) CreateProject(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	_, err = h.k8s.CreateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	_, err = h.k8s.CreateProject(ctx, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -264,34 +279,34 @@ func (h *Handler) CreateProject(
 	// On failure, attempt a best-effort cleanup of the project namespace to
 	// avoid leaving orphaned resources, then return the error.
 	if h.mandatoryTemplateApplier != nil && req.Msg.Organization != "" {
-		projectNamespace := h.k8s.Resolver.ProjectNamespace(req.Msg.Name)
-		if err := h.mandatoryTemplateApplier.ApplyMandatoryOrgTemplates(ctx, req.Msg.Organization, req.Msg.Name, projectNamespace, claims); err != nil {
+		projectNamespace := h.k8s.Resolver.ProjectNamespace(name)
+		if err := h.mandatoryTemplateApplier.ApplyMandatoryOrgTemplates(ctx, req.Msg.Organization, name, projectNamespace, claims); err != nil {
 			slog.ErrorContext(ctx, "mandatory platform template apply failed, cleaning up project",
-				slog.String("project", req.Msg.Name),
+				slog.String("project", name),
 				slog.String("organization", req.Msg.Organization),
 				slog.Any("error", err),
 			)
-			if cleanupErr := h.k8s.DeleteProject(ctx, req.Msg.Name); cleanupErr != nil {
+			if cleanupErr := h.k8s.DeleteProject(ctx, name); cleanupErr != nil {
 				slog.WarnContext(ctx, "failed to clean up project after mandatory template apply failure",
-					slog.String("project", req.Msg.Name),
+					slog.String("project", name),
 					slog.Any("cleanup_error", cleanupErr),
 				)
 			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying mandatory platform templates to project %q: %w", req.Msg.Name, err))
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying mandatory platform templates to project %q: %w", name, err))
 		}
 	}
 
 	slog.InfoContext(ctx, "project created",
 		slog.String("action", "project_create"),
 		slog.String("resource_type", auditResourceType),
-		slog.String("project", req.Msg.Name),
+		slog.String("project", name),
 		slog.String("organization", req.Msg.Organization),
 		slog.String("sub", claims.Sub),
 		slog.String("email", claims.Email),
 	)
 
 	return connect.NewResponse(&consolev1.CreateProjectResponse{
-		Name: req.Msg.Name,
+		Name: name,
 	}), nil
 }
 
@@ -593,6 +608,48 @@ func (h *Handler) GetProjectRaw(
 
 	return connect.NewResponse(&consolev1.GetProjectRawResponse{
 		Raw: string(raw),
+	}), nil
+}
+
+// CheckProjectIdentifier checks whether a proposed project identifier is available.
+func (h *Handler) CheckProjectIdentifier(
+	ctx context.Context,
+	req *connect.Request[consolev1.CheckProjectIdentifierRequest],
+) (*connect.Response[consolev1.CheckProjectIdentifierResponse], error) {
+	if req.Msg.Identifier == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("identifier is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.ProjectPrefix
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.k8s.NamespaceExists(ctx, nsName)
+	}
+
+	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+	}
+
+	available := suggested == req.Msg.Identifier
+
+	slog.InfoContext(ctx, "project identifier checked",
+		slog.String("action", "project_check_identifier"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("identifier", req.Msg.Identifier),
+		slog.Bool("available", available),
+		slog.String("suggested", suggested),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CheckProjectIdentifierResponse{
+		Available:           available,
+		SuggestedIdentifier: suggested,
 	}), nil
 }
 

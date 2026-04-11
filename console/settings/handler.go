@@ -34,9 +34,9 @@ type ProjectOrgResolver interface {
 // Handler implements the ProjectSettingsService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectSettingsServiceHandler
-	k8s              *K8sClient
-	projectResolver  ProjectResolver
-	orgResolver      OrgResolver
+	k8s                *K8sClient
+	projectResolver    ProjectResolver
+	orgResolver        OrgResolver
 	projectOrgResolver ProjectOrgResolver
 }
 

@@ -188,7 +188,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("web-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			v1alpha2.AnnotationDeployment:                 deploymentName,
+			v1alpha2.AnnotationDeployment:  deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})
@@ -228,7 +228,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		dep := makeDeploymentResource("other-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
-			v1alpha2.AnnotationDeployment:                 "other-app",
+			v1alpha2.AnnotationDeployment:  "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
 			context.Background(), &dep, metav1.CreateOptions{})

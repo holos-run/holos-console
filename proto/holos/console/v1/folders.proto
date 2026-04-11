@@ -48,6 +48,12 @@ service FolderService {
   // GetFolderRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
   // Requires authentication and PERMISSION_FOLDERS_READ.
   rpc GetFolderRaw(GetFolderRawRequest) returns (GetFolderRawResponse);
+
+  // CheckFolderIdentifier checks whether a proposed folder identifier (slug) is
+  // available. If the identifier is taken, the response includes a server-suggested
+  // alternative with a random 6-digit suffix appended. The suggestion is NOT
+  // reserved -- the Create RPC handles the race with retry logic.
+  rpc CheckFolderIdentifier(CheckFolderIdentifierRequest) returns (CheckFolderIdentifierResponse);
 }
 
 // ParentType identifies the resource type of a parent in the hierarchy.
@@ -222,4 +228,19 @@ message GetFolderRawRequest {
 message GetFolderRawResponse {
   // raw is the verbatim JSON-serialized Namespace object from the K8s API.
   string raw = 1;
+}
+
+// CheckFolderIdentifierRequest contains the proposed folder identifier to check.
+message CheckFolderIdentifierRequest {
+  // identifier is the proposed slug (e.g., "default", "engineering").
+  string identifier = 1;
+}
+
+// CheckFolderIdentifierResponse indicates whether the identifier is available.
+message CheckFolderIdentifierResponse {
+  // available is true when the identifier is not taken.
+  bool available = 1;
+  // suggested_identifier equals the input when available, or the input with
+  // a random 6-digit suffix appended when the identifier is taken.
+  string suggested_identifier = 2;
 }

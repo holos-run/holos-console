@@ -11,6 +11,7 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -222,6 +223,18 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
+// NamespaceExists returns true if a namespace with the given name exists.
+func (c *K8sClient) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	_, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // GetOrganization returns the organization label value from a namespace.

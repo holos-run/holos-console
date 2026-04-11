@@ -87,7 +87,7 @@ func managedNS(name string, shareUsersJSON string) *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-" + name,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      name,
 			},
@@ -409,12 +409,49 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 	}
 }
 
-func TestCreateProject_RequiresProjectName(t *testing.T) {
+func TestCreateProject_RequiresNameOrDisplayName(t *testing.T) {
 	handler, _ := newHandler()
 	ctx := contextWithClaims("alice@example.com")
 
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{Name: ""}))
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{Name: "", DisplayName: ""}))
 	assertInvalidArgument(t, err)
+}
+
+func TestCreateProject_DeriveNameFromDisplayName(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		DisplayName: "My Frontend App",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Name != "my-frontend-app" {
+		t.Errorf("expected name 'my-frontend-app', got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateProject_DeriveNameWithCollision(t *testing.T) {
+	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
+	colliding := managedNS("frontend", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing, colliding)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		DisplayName: "Frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Name should have a suffix since "frontend" was taken.
+	if resp.Msg.Name == "frontend" {
+		t.Error("expected name with suffix due to collision, got 'frontend'")
+	}
+	if len(resp.Msg.Name) < len("frontend-000000") {
+		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
 }
 
 func TestCreateProject_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
@@ -571,7 +608,7 @@ func TestBuildProject_FallbackProducesWrongNameWithPrefix(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos", // namespace-prefix "holos-" + project-prefix "p-" + name "holos"
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				// No ProjectLabel — forces fallback
 			},
@@ -603,7 +640,7 @@ func TestBuildProject_LabelPreferredOverFallback(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-p-holos",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "holos",
 			},
@@ -632,7 +669,7 @@ func TestCreateProject_NamespacePrefixIncluded(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "prod-prj-existing",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "existing",
 			},
@@ -901,7 +938,7 @@ func TestBuildProject_PopulatesDefaultGrants(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-my-project",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 				v1alpha2.LabelProject:      "my-project",
 			},
@@ -1250,6 +1287,67 @@ func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
 	if applier.called {
 		t.Error("expected mandatory template applier NOT to be called when org is empty")
 	}
+}
+
+// ---- CheckProjectIdentifier tests ----
+
+func TestCheckProjectIdentifier_Available(t *testing.T) {
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !resp.Msg.Available {
+		t.Error("expected available=true")
+	}
+	if resp.Msg.SuggestedIdentifier != "frontend" {
+		t.Errorf("expected suggested_identifier='frontend', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckProjectIdentifier_Taken(t *testing.T) {
+	existing := managedNS("frontend", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false")
+	}
+	if resp.Msg.SuggestedIdentifier == "frontend" {
+		t.Error("expected suggested_identifier to differ from input")
+	}
+	// Should start with "frontend-"
+	if len(resp.Msg.SuggestedIdentifier) < len("frontend-000000") {
+		t.Errorf("expected suffixed identifier, got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckProjectIdentifier_EmptyRejects(t *testing.T) {
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "",
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestCheckProjectIdentifier_Unauthenticated(t *testing.T) {
+	handler, _ := newHandler()
+	_, err := handler.CheckProjectIdentifier(context.Background(), connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	assertUnauthenticated(t, err)
 }
 
 func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {

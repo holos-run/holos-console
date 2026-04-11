@@ -15,16 +15,16 @@ import (
 )
 
 var (
-	listenAddr      string
-	certFile        string
-	keyFile         string
-	caCertFile      string
-	plainHTTP       bool
-	origin          string
-	issuer          string
-	clientID        string
-	idTokenTTL      string
-	refreshTokenTTL string
+	listenAddr         string
+	certFile           string
+	keyFile            string
+	caCertFile         string
+	plainHTTP          bool
+	origin             string
+	issuer             string
+	clientID           string
+	idTokenTTL         string
+	refreshTokenTTL    string
 	namespacePrefix    string
 	organizationPrefix string
 	folderPrefix       string
@@ -33,9 +33,9 @@ var (
 	orgCreatorUsers    string
 	orgCreatorRoles    string
 	rolesClaim         string
-	enableInsecureDex bool
-	logHealthChecks   bool
-	logLevel          string
+	enableInsecureDex  bool
+	logHealthChecks    bool
+	logLevel           string
 )
 
 // Command returns the root cobra command for the CLI.
@@ -229,26 +229,26 @@ func Run(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := console.Config{
-		ListenAddr:       listenAddr,
-		CertFile:         certFile,
-		KeyFile:          keyFile,
-		CACertFile:       caCertFile,
-		PlainHTTP:        plainHTTP,
-		Origin:           derivedOrigin,
-		Issuer:           derivedIssuer,
-		ClientID:         clientID,
-		EnableInsecureDex: enableInsecureDex,
-		IDTokenTTL:       idTTL,
-		RefreshTokenTTL:  refreshTTL,
-		NamespacePrefix:     namespacePrefix,
-		OrganizationPrefix:  organizationPrefix,
-		FolderPrefix:        folderPrefix,
-		ProjectPrefix:       projectPrefix,
-		DisableOrgCreation:  disableOrgCreation,
-		OrgCreatorUsers:     splitCSV(orgCreatorUsers),
-		OrgCreatorRoles:     splitCSV(orgCreatorRoles),
-		RolesClaim:          rolesClaim,
-		LogHealthChecks:     logHealthChecks,
+		ListenAddr:         listenAddr,
+		CertFile:           certFile,
+		KeyFile:            keyFile,
+		CACertFile:         caCertFile,
+		PlainHTTP:          plainHTTP,
+		Origin:             derivedOrigin,
+		Issuer:             derivedIssuer,
+		ClientID:           clientID,
+		EnableInsecureDex:  enableInsecureDex,
+		IDTokenTTL:         idTTL,
+		RefreshTokenTTL:    refreshTTL,
+		NamespacePrefix:    namespacePrefix,
+		OrganizationPrefix: organizationPrefix,
+		FolderPrefix:       folderPrefix,
+		ProjectPrefix:      projectPrefix,
+		DisableOrgCreation: disableOrgCreation,
+		OrgCreatorUsers:    splitCSV(orgCreatorUsers),
+		OrgCreatorRoles:    splitCSV(orgCreatorRoles),
+		RolesClaim:         rolesClaim,
+		LogHealthChecks:    logHealthChecks,
 	}
 
 	server := console.New(cfg)

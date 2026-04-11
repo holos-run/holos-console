@@ -42,6 +42,12 @@ service ProjectService {
   // These grants are applied by default to new secrets created in this project.
   // Requires PERMISSION_PROJECTS_ADMIN on the project.
   rpc UpdateProjectDefaultSharing(UpdateProjectDefaultSharingRequest) returns (UpdateProjectDefaultSharingResponse);
+
+  // CheckProjectIdentifier checks whether a proposed project identifier (slug) is
+  // available. If the identifier is taken, the response includes a server-suggested
+  // alternative with a random 6-digit suffix appended. The suggestion is NOT
+  // reserved -- the Create RPC handles the race with retry logic.
+  rpc CheckProjectIdentifier(CheckProjectIdentifierRequest) returns (CheckProjectIdentifierResponse);
 }
 
 // Project represents a project with its metadata and grants.
@@ -204,4 +210,19 @@ message UpdateProjectDefaultSharingRequest {
 message UpdateProjectDefaultSharingResponse {
   // project is the updated project with new default sharing grants.
   Project project = 1;
+}
+
+// CheckProjectIdentifierRequest contains the proposed project identifier to check.
+message CheckProjectIdentifierRequest {
+  // identifier is the proposed slug (e.g., "frontend", "api-service").
+  string identifier = 1;
+}
+
+// CheckProjectIdentifierResponse indicates whether the identifier is available.
+message CheckProjectIdentifierResponse {
+  // available is true when the identifier is not taken.
+  bool available = 1;
+  // suggested_identifier equals the input when available, or the input with
+  // a random 6-digit suffix appended when the identifier is taken.
+  string suggested_identifier = 2;
 }

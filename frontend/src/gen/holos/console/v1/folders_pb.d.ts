@@ -580,6 +580,54 @@ export declare type GetFolderRawResponse = Message<"holos.console.v1.GetFolderRa
 export declare const GetFolderRawResponseSchema: GenMessage<GetFolderRawResponse>;
 
 /**
+ * CheckFolderIdentifierRequest contains the proposed folder identifier to check.
+ *
+ * @generated from message holos.console.v1.CheckFolderIdentifierRequest
+ */
+export declare type CheckFolderIdentifierRequest = Message<"holos.console.v1.CheckFolderIdentifierRequest"> & {
+  /**
+   * identifier is the proposed slug (e.g., "default", "engineering").
+   *
+   * @generated from field: string identifier = 1;
+   */
+  identifier: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CheckFolderIdentifierRequest.
+ * Use `create(CheckFolderIdentifierRequestSchema)` to create a new message.
+ */
+export declare const CheckFolderIdentifierRequestSchema: GenMessage<CheckFolderIdentifierRequest>;
+
+/**
+ * CheckFolderIdentifierResponse indicates whether the identifier is available.
+ *
+ * @generated from message holos.console.v1.CheckFolderIdentifierResponse
+ */
+export declare type CheckFolderIdentifierResponse = Message<"holos.console.v1.CheckFolderIdentifierResponse"> & {
+  /**
+   * available is true when the identifier is not taken.
+   *
+   * @generated from field: bool available = 1;
+   */
+  available: boolean;
+
+  /**
+   * suggested_identifier equals the input when available, or the input with
+   * a random 6-digit suffix appended when the identifier is taken.
+   *
+   * @generated from field: string suggested_identifier = 2;
+   */
+  suggestedIdentifier: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CheckFolderIdentifierResponse.
+ * Use `create(CheckFolderIdentifierResponseSchema)` to create a new message.
+ */
+export declare const CheckFolderIdentifierResponseSchema: GenMessage<CheckFolderIdentifierResponse>;
+
+/**
  * ParentType identifies the resource type of a parent in the hierarchy.
  *
  * @generated from enum holos.console.v1.ParentType
@@ -711,6 +759,19 @@ export declare const FolderService: GenService<{
     methodKind: "unary";
     input: typeof GetFolderRawRequestSchema;
     output: typeof GetFolderRawResponseSchema;
+  },
+  /**
+   * CheckFolderIdentifier checks whether a proposed folder identifier (slug) is
+   * available. If the identifier is taken, the response includes a server-suggested
+   * alternative with a random 6-digit suffix appended. The suggestion is NOT
+   * reserved -- the Create RPC handles the race with retry logic.
+   *
+   * @generated from rpc holos.console.v1.FolderService.CheckFolderIdentifier
+   */
+  checkFolderIdentifier: {
+    methodKind: "unary";
+    input: typeof CheckFolderIdentifierRequestSchema;
+    output: typeof CheckFolderIdentifierResponseSchema;
   },
 }>;
 
