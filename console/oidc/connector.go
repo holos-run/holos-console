@@ -15,6 +15,7 @@ type PasswordConnectorConfig struct {
 	Username string   `json:"username"`
 	Password string   `json:"password"`
 	Groups   []string `json:"groups"`
+	UserID   string   `json:"userID"`
 }
 
 // Open returns a password connector that includes the configured groups.
@@ -25,10 +26,15 @@ func (c *PasswordConnectorConfig) Open(id string, logger *slog.Logger) (connecto
 	if c.Password == "" {
 		return nil, errors.New("no password supplied")
 	}
+	userID := c.UserID
+	if userID == "" {
+		userID = "0-385-28089-0"
+	}
 	return &passwordConnector{
 		username: c.Username,
 		password: c.Password,
 		groups:   c.Groups,
+		userID:   userID,
 		logger:   logger,
 	}, nil
 }
@@ -38,6 +44,7 @@ type passwordConnector struct {
 	username string
 	password string
 	groups   []string
+	userID   string
 	logger   *slog.Logger
 }
 
@@ -54,7 +61,7 @@ func (p *passwordConnector) Login(ctx context.Context, s connector.Scopes, usern
 
 	if username == p.username && password == p.password {
 		identity := connector.Identity{
-			UserID:        "0-385-28089-0",
+			UserID:        p.userID,
 			Username:      p.username,
 			Email:         p.username,
 			EmailVerified: true,

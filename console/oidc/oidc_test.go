@@ -34,6 +34,27 @@ func TestNewHandler_Success(t *testing.T) {
 	var _ http.Handler = handler
 }
 
+func TestNewHandler_RegistersSingleAutoConnector(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// NewHandler should succeed with only the auto-login connector.
+	// A single connector ensures Dex auto-redirects without showing
+	// a connector selection page, which E2E tests depend on.
+	handler, err := oidc.NewHandler(ctx, oidc.Config{
+		Issuer:       "https://test.example.com/dex",
+		ClientID:     "test-client",
+		RedirectURIs: []string{"https://test.example.com/callback"},
+		Logger:       logger,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	if handler == nil {
+		t.Error("NewHandler() returned nil handler")
+	}
+}
+
 func TestNewHandler_ValidationErrors(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))

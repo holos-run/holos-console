@@ -87,21 +87,22 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 	// Configure auto-login connector for development.
 	// This connector bypasses the login form entirely and immediately authenticates
 	// users as the configured username with the configured groups.
-	connectorConfig, err := json.Marshal(AutoConnectorConfig{
+	autoConfig, err := json.Marshal(AutoConnectorConfig{
 		Username: GetUsername(),
 		Groups:   []string{"owner"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal connector config: %w", err)
+		return nil, fmt.Errorf("failed to marshal auto connector config: %w", err)
 	}
 
-	// Add auto-login connector that skips the password form
+	// Single auto-login connector for development. Dex auto-redirects when
+	// there is exactly one connector, which is required for E2E tests.
 	store = storage.WithStaticConnectors(store, []storage.Connector{
 		{
 			ID:     "holos",
 			Type:   "holosAuto",
 			Name:   "Development Auto-Login",
-			Config: connectorConfig,
+			Config: autoConfig,
 		},
 	})
 
