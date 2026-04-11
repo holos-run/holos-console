@@ -26,61 +26,97 @@ resource moves.
 
 ## Decisions
 
-### 1. Organizations, folders, and projects share a global namespace.
+### 1. Organizations, folders, and projects share a global namespace with slug-based identifiers.
 
 All three resource types are stored as Kubernetes Namespaces. Each type is
 distinguished by an independently configurable prefix on the namespace name:
 
-| Resource     | Prefix       | Example               |
-|--------------|--------------|-----------------------|
-| Organization | `holos-org-` | `holos-org-acme`      |
-| Folder       | `holos-fld-` | `holos-fld-482917`    |
-| Project      | `holos-prj-` | `holos-prj-frontend`  |
+| Resource     | Prefix       | Identifier source     | Example (no collision)   | Example (collision)            |
+|--------------|--------------|-----------------------|--------------------------|--------------------------------|
+| Organization | `holos-org-` | user-chosen slug      | `holos-org-acme`         | n/a (org slugs must be unique) |
+| Folder       | `holos-fld-` | slug from display name | `holos-fld-default`      | `holos-fld-default-482917`     |
+| Project      | `holos-prj-` | slug from display name | `holos-prj-frontend`     | `holos-prj-frontend-731204`    |
 
 The `holos-` portion is the namespace prefix (`--namespace-prefix`), and `org-`,
 `fld-`, `prj-` are the type prefixes (`--organization-prefix`, `--folder-prefix`,
 `--project-prefix`).
 
-Folder identifiers use a **six-digit numeric suffix** (e.g., `482917`) rather
-than a user-chosen slug. This ensures global uniqueness without embedding the
-organization name into the folder namespace. The human-readable name is stored
-in the `console.holos.run/display-name` annotation. Organization and project
-identifiers remain user-chosen slugs.
+**Slug-based naming with collision suffix.** Folder and project identifiers are
+derived from the display name by slugifying it (lowercase, hyphens for spaces,
+strip non-alphanumeric). If the resulting namespace name is already taken
+(globally across all organizations), the server appends a hyphen and a
+**six-digit random number** (e.g., `-482917`) to produce a unique identifier.
+The first caller to claim a slug gets the clean name; subsequent collisions
+receive the suffixed variant. This follows the Google Cloud project naming
+model where identifiers are globally unique and human-readable.
+
+The human-readable display name is stored separately in the
+`console.holos.run/display-name` annotation and is not required to be unique.
+
+Organization identifiers remain user-chosen slugs that must be globally unique
+(no auto-suffix — creation fails if the slug is taken).
 
 RPC listing endpoints (ListOrganizations, ListFolders, ListProjects) filter
 using **Kubernetes label selectors** (`console.holos.run/resource-type`,
 `console.holos.run/organization`, etc.), never namespace name prefix matching.
 
-Tests must use **random numeric suffixes** for folder identifiers to avoid
-collisions in shared test clusters.
+Tests should use unique slugs (e.g., include a random suffix or test-specific
+prefix) for folder and project identifiers to avoid collisions in shared test
+clusters.
 
-### 2. Default folder created at organization creation.
+### 2. Identifier availability check RPC.
+
+Each service that creates resources with slug-based identifiers exposes a
+**`CheckIdentifier`** RPC (e.g., `FolderService.CheckFolderIdentifier`,
+`ProjectService.CheckProjectIdentifier`). The RPC:
+
+1. Takes a proposed `identifier` (the slug, without the type prefix).
+2. Checks whether the resulting namespace name is available.
+3. Returns `available = true` if the identifier is free, or `available = false`
+   with a `suggested_identifier` that appends a six-digit random suffix.
+
+The server generates the suggestion so that all callers (web UI, CLI, API
+scripts) get consistent behavior. The UI calls this RPC as the user types or
+after blur to show availability feedback and auto-fill the suggested
+alternative — similar to the Google Cloud Console project creation flow.
+
+The `suggested_identifier` is not reserved — another caller could claim it
+between the check and the actual create. The `Create` RPC handles this race
+by retrying with a new suffix if the namespace already exists (up to a
+bounded number of retries).
+
+### 3. Default folder created at organization creation.
 
 `CreateOrganization` creates a default folder as an immediate child of the
-organization. The folder receives a randomly generated six-digit numeric
-identifier (per Decision 1) and a display name of `"Default"` (or the value
-of `CreateOrganizationRequest.default_folder_display_name` if set). The
-folder's identifier is stored as a `console.holos.run/default-folder`
+organization. The folder's display name is `"Default"` (or the value of
+`CreateOrganizationRequest.default_folder_display_name` if set). The
+identifier is derived from the display name by slugifying it (per Decision 1):
+for the default display name `"Default"`, the slug is `default`, producing
+namespace `holos-fld-default`. If that namespace is already taken (another
+org already claimed `holos-fld-default`), the server appends a six-digit
+random suffix (e.g., `holos-fld-default-482917`).
+
+The folder's identifier (the slug portion, e.g., `default` or
+`default-482917`) is stored as a `console.holos.run/default-folder`
 annotation on the organization namespace.
 
 If `CreateOrganizationRequest.default_folder_display_name` is unset, the
-server uses `"Default"` as the display name. The identifier is always
-server-generated — callers do not choose it.
+server uses `"Default"` as the display name.
 
-### 3. Default folder is configurable.
+### 4. Default folder is configurable.
 
 `UpdateOrganization` can change the default folder reference via
 `UpdateOrganizationRequest.default_folder`. The annotation on the organization
-namespace is updated to point to the new folder's identifier (the six-digit
-numeric suffix, not the K8s namespace name). The referenced folder must exist
-and be an immediate child of the organization. The server validates this
-constraint and returns `codes.InvalidArgument` if the folder does not exist
-or is not an immediate child.
+namespace is updated to point to the new folder's identifier (the slug, e.g.,
+`default` or `engineering-482917`). The referenced folder must exist and be an
+immediate child of the organization. The server validates this constraint and
+returns `codes.InvalidArgument` if the folder does not exist or is not an
+immediate child.
 
 Changing the default folder does not move existing projects. It only affects
 where new projects are created when no explicit parent is specified.
 
-### 4. Projects default to the default folder.
+### 5. Projects default to the default folder.
 
 When `CreateProjectRequest.parent_type` is unset and `parent_name` is unset,
 the handler resolves the organization's default folder and uses it as the
@@ -98,7 +134,7 @@ The resolution order is:
    back to the organization as the direct parent (backwards-compatible
    behavior).
 
-### 5. PERMISSION_REPARENT — a new fine-grained permission.
+### 6. PERMISSION_REPARENT — a new fine-grained permission.
 
 A new `PERMISSION_REPARENT = 44` is added to the `Permission` enum in
 `rbac.proto`. This permission is granted only to OWNERs. It is required on
@@ -111,7 +147,7 @@ be able to move a subtree into a scope where they gain elevated permissions.
 The cascade table grants `PERMISSION_REPARENT` to OWNERs at every scope level
 (organization, folder). It is never granted to VIEWERs or EDITORs.
 
-### 6. Reparent via Update RPCs.
+### 7. Reparent via Update RPCs.
 
 `UpdateFolderRequest` and `UpdateProjectRequest` gain optional parent fields
 (`parent_type` and `parent_name`). When these fields are set, the handler
@@ -139,7 +175,7 @@ retain their existing parent labels — only the moved folder's label changes.
 When the optional parent fields are unset, `UpdateFolder` and `UpdateProject`
 behave exactly as before (update metadata only, no reparenting).
 
-### 7. Depth enforcement on reparent.
+### 8. Depth enforcement on reparent.
 
 Moving a folder subtree must not exceed the 3-level depth limit (ADR 020
 Decision 5). The handler computes the maximum depth of the subtree being moved
@@ -168,6 +204,15 @@ within limits). The same folder cannot be moved under a parent at depth 3
   continue to work — projects created without an explicit parent fall back to
   the organization root.
 
+- **Human-readable namespace names.** Slug-based identifiers (e.g.,
+  `holos-fld-engineering`) are meaningful when inspecting Kubernetes resources
+  directly, unlike opaque numeric IDs. The collision suffix is only added when
+  needed, keeping the common case clean.
+
+- **Consistent identifier generation.** Server-side `CheckIdentifier` RPCs
+  normalize slug generation and collision handling across all callers (web UI,
+  CLI, API scripts), preventing client-side divergence.
+
 - **Standard Update RPC pattern.** Reparenting reuses the existing Update RPCs
   with optional fields rather than introducing separate Move RPCs, keeping the
   API surface minimal.
@@ -187,13 +232,18 @@ within limits). The same folder cannot be moved under a parent at depth 3
 
 - **Annotation integrity.** The `console.holos.run/default-folder` annotation
   on the organization namespace can reference a folder that has been deleted.
-  The resolution logic (Decision 4, step 4) handles this gracefully by falling
+  The resolution logic (Decision 5, step 4) handles this gracefully by falling
   back to the organization root, but the stale annotation should be cleaned up
   when a folder is deleted.
 
 - **Concurrent reparent operations.** Two concurrent reparent operations could
   in theory create a cycle or exceed depth limits if they race. Mitigated by
   Kubernetes optimistic concurrency (resource version checks on label updates).
+
+- **Slug collision race.** `CheckIdentifier` returns availability at a point in
+  time; another caller could claim the slug before `Create` executes. Mitigated
+  by retry logic in the `Create` RPC — if the namespace already exists, the
+  server regenerates with a new random suffix (bounded retries).
 
 ## References
 
