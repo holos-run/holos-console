@@ -1,246 +1,360 @@
 ---
 name: codex-review
-description: Run a cross-model code review using the OpenAI Codex CLI. Use this skill after implementing changes to get a second opinion before opening a PR. Triggers on phrases like "codex review", "cross-model review", "review my changes", "get a codex review", or "/codex-review". Designed for implement-review-fix loops where Claude implements and Codex reviews.
-version: 1.0.0
+description: Run a cross-model code review using the OpenAI Codex CLI. Use this skill to review a pull request before merge. Triggers on phrases like "codex review", "cross-model review", "review PR", "review this PR", "get a codex review", "review-pr", or "/codex-review". Accepts an optional PR number argument; if omitted, detects the PR for the current branch.
+version: 2.0.0
 ---
 
 # Codex Review
 
-Cross-model code review using the OpenAI Codex CLI. Reviews your branch changes against project conventions, writes findings to a file, and reports a structured verdict. Designed for fix-review loops: invoke repeatedly until clean.
+Cross-model code review using the OpenAI Codex CLI. Reviews a pull request diff against project conventions and acceptance criteria, posts findings as a GitHub review, and reports a structured verdict. Designed for the plan-implement-review cycle where Claude implements and Codex reviews independently.
 
 ## Arguments
 
-`{{ARGUMENTS}}` is optional and controls the review scope:
+`{{ARGUMENTS}}` is an optional PR number:
 
-- **No argument or `branch`** -- Review the current branch diff against `main` (default)
-- **`uncommitted`** -- Review only uncommitted changes
-- **`quick`** -- Quick review using scope flag only (no custom prompt, faster but less targeted)
+- **`<number>`** -- Review PR #`<number>` (e.g., `/codex-review 42`)
+- **No argument** -- Detect the PR for the current branch. If the current branch has no open PR, abort with a clear message.
 
 ## Workflow
 
 ### 1. Preflight
 
-Verify codex is available and determine review scope:
+Verify codex is available:
 
 ```bash
 CODEX="/Users/u6136576/.nvm/versions/node/v24.12.0/bin/codex"
 if ! [ -x "$CODEX" ]; then
   echo "ERROR: codex CLI not found at $CODEX"
   echo "Install with: npm install -g @openai/codex"
-  # Stop here
+  # Stop here -- abort the skill
 fi
 ```
 
-Check the current branch:
+Log the codex version for debugging:
+
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
+$CODEX --version 2>&1 || true
 ```
 
-### 2. Determine Review Round
+### 2. Resolve the PR
+
+Determine the PR number from `{{ARGUMENTS}}` or the current branch.
+
+**If `{{ARGUMENTS}}` is a number**, use it directly as the PR number.
+
+**If `{{ARGUMENTS}}` is empty or not a number**, detect the PR for the current branch:
 
 ```bash
-mkdir -p tmp/codex-review
-ROUND=$(ls tmp/codex-review/round-*.md 2>/dev/null | wc -l | tr -d ' ')
+PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null || echo "")
+```
+
+If `PR_NUMBER` is empty, **abort the skill** with this message:
+
+```
+No open PR found for the current branch. Either:
+  1. Provide a PR number: /codex-review 42
+  2. Push the current branch and open a PR first
+```
+
+### 3. Fetch PR Context
+
+Fetch PR metadata, the diff, and linked issue context in parallel:
+
+```bash
+# PR metadata
+gh pr view $PR_NUMBER --json number,title,body,headRefName,baseRefName,additions,deletions,files
+
+# PR diff
+gh pr diff $PR_NUMBER > /tmp/pr-${PR_NUMBER}.diff
+
+# Extract linked issue number from "Closes #N" or "Closes: #N" in PR body
+ISSUE_NUMBER=$(gh pr view $PR_NUMBER --json body -q .body | grep -oP '(?i)closes:?\s*#\K\d+' | head -1)
+```
+
+If a linked issue is found, fetch it for acceptance criteria context:
+
+```bash
+if [ -n "$ISSUE_NUMBER" ]; then
+  gh issue view $ISSUE_NUMBER --json number,title,body
+fi
+```
+
+Record the PR base branch for the diff scope:
+
+```bash
+BASE_BRANCH=$(gh pr view $PR_NUMBER --json baseRefName -q .baseRefName)
+```
+
+### 4. Determine Review Round
+
+```bash
+mkdir -p tmp/codex-review/pr-${PR_NUMBER}
+ROUND=$(ls tmp/codex-review/pr-${PR_NUMBER}/round-*.md 2>/dev/null | wc -l | tr -d ' ')
 ROUND=$((ROUND + 1))
-OUTPUT_FILE="tmp/codex-review/round-${ROUND}.md"
+OUTPUT_FILE="tmp/codex-review/pr-${PR_NUMBER}/round-${ROUND}.md"
 ```
 
-### 3. Determine Invocation Mode
+### 5. Build the Review Prompt
 
-The `codex exec review` CLI has a constraint: `--base <BRANCH>` and `[PROMPT]` are mutually exclusive. This means you cannot provide both a custom review prompt and a branch scope flag in the same invocation.
+Assemble the review prompt. Include acceptance criteria from the linked issue when available.
 
-**Two invocation modes** depending on the argument:
+The prompt must contain:
+- Scope instruction: review the PR diff (the branch diff against the base branch)
+- Project context: holos-console is a Go HTTPS server with React frontend and ConnectRPC
+- Acceptance criteria from the linked issue (if found)
+- The review checklist (critical, important, style categories)
+- The structured output format for findings
 
-| Argument | Mode | Command |
-|----------|------|---------|
-| *(empty)* or `branch` | **Prompted** | `codex exec review --ephemeral -o $OUTPUT_FILE "prompt with scope instructions"` |
-| `uncommitted` | **Prompted** | `codex exec review --ephemeral -o $OUTPUT_FILE "prompt about uncommitted changes"` |
-| `quick` | **Scoped** | `codex exec review --base main --ephemeral -o $OUTPUT_FILE` |
+### 6. Run the Review
 
-**Prompted mode** (default) embeds project conventions in the prompt and tells codex to review the branch diff. This is more thorough because codex knows exactly what to look for.
-
-**Scoped mode** (`quick`) uses the `--base main` flag for automatic diff scoping but relies on codex's default review criteria. Faster but less targeted.
-
-### 4. Run the Review
-
-**Prompted mode** (default — includes project conventions):
+Use `codex exec review` with the prompted mode. The `--base` flag and `[PROMPT]` are mutually exclusive in the codex CLI, so embed scope instructions in the prompt.
 
 ```bash
 CODEX="/Users/u6136576/.nvm/versions/node/v24.12.0/bin/codex"
 
-# Determine scope instruction based on argument
-# Default/branch: "Review the changes on this branch compared to the main branch"
-# Uncommitted: "Review the uncommitted changes in the working directory"
+# Build ACCEPTANCE_CRITERIA section
+ACCEPTANCE_CRITERIA=""
+if [ -n "$ISSUE_NUMBER" ]; then
+  ACCEPTANCE_CRITERIA="=== Acceptance Criteria (from issue #${ISSUE_NUMBER}) ===
+$(gh issue view $ISSUE_NUMBER --json body -q .body)
+
+"
+fi
 
 timeout 300 $CODEX exec review \
   --ephemeral \
   -o "${OUTPUT_FILE}" \
-  "$(cat <<'REVIEW_PROMPT'
-Review the changes on this branch compared to the main branch. Run `git diff main...HEAD` to see the diff.
+  "Review this pull request. Run \`git diff ${BASE_BRANCH}...HEAD\` to see the changes.
 
-You are reviewing changes to holos-console, a Go HTTPS server with a React frontend that serves a web console UI and exposes ConnectRPC services. The built UI is embedded into the Go binary via go:embed.
+You are reviewing PR #${PR_NUMBER} for holos-console, a Go HTTPS server with a React frontend that serves a web console UI and exposes ConnectRPC services. The built UI is embedded into the Go binary via go:embed.
 
-## Review Checklist
+${ACCEPTANCE_CRITERIA}=== Review Checklist ===
 
 Check each convention below. Report ONLY violations you actually find in the diff. Do not report passing checks.
 
-### Critical (must fix before merge)
+--- Critical (must fix before merge) ---
 
-1. **TLS example guardrail**: No `curl -k`, `curl --insecure`, or `grpcurl -insecure` anywhere in code, tests, docs, or comments. The server always uses valid TLS certs via mkcert.
-2. **Security**: No hardcoded credentials, secrets in code, command injection, XSS, SQL injection, or insecure defaults.
-3. **Generated code not edited**: Files under `gen/` and `frontend/src/gen/` must not be manually edited -- they are produced by `buf generate`.
-4. **Template field guardrail**: New fields on `CreateDeploymentRequest`, `DeploymentDefaults`, or template proto messages must also appear in `api/v1alpha2/types.go`, `console/deployments/render.go`, the frontend template editor preview, and `console/templates/defaults.go`.
+1. **Security**: No hardcoded credentials, secrets in code, command injection, XSS, SQL injection, or insecure defaults. Input validation at system boundaries.
+2. **Reliability**: No data loss paths, cascading failures, resource leaks, race conditions, nil/null dereferences, or off-by-one errors.
+3. **TLS example guardrail**: No \`curl -k\`, \`curl --insecure\`, or \`grpcurl -insecure\` in code, tests, docs, or comments.
+4. **Generated code not edited**: Files under \`gen/\` and \`frontend/src/gen/\` must not be manually edited.
+5. **Template field guardrail**: New fields on \`CreateDeploymentRequest\`, \`DeploymentDefaults\`, or template proto messages must also appear in \`api/v1alpha2/types.go\`, \`console/deployments/render.go\`, the frontend template editor preview, and \`console/templates/defaults.go\`.
 
-### Important (should fix)
+--- Important (should fix) ---
 
-5. **Terminology**: Use "platform template" not "system template" for org-level or folder-level CUE templates.
-6. **Code generation consistency**: If proto files or CUE schemas changed, `gen/` and `frontend/src/gen/` should have corresponding changes (i.e. `make generate` was run).
-7. **Test coverage**: New behavior should have tests. Prefer unit tests (Vitest + RTL for frontend, table-driven Go tests with fake K8s client) over E2E. E2E only for OIDC login and full-stack K8s CRUD.
-8. **RED GREEN pattern**: Tests should define expected behavior. Assertions should match the implementation. Look for tests that always pass (tautologies) or never exercise the new code path.
-9. **No backwards compatibility noise**: This code is unreleased. Do not flag breaking changes, removed exports, or renamed APIs as issues. They are expected.
+6. **Acceptance criteria**: Does the PR satisfy the linked issue's acceptance criteria? Are any requirements missed?
+7. **Test coverage**: New behavior should have tests. Prefer unit tests (Vitest + RTL for frontend, table-driven Go tests with fake K8s client) over E2E.
+8. **RED GREEN pattern**: Tests should define expected behavior. Look for tests that always pass (tautologies) or never exercise the new code path.
+9. **Terminology**: Use \"platform template\" not \"system template\" for org-level or folder-level CUE templates.
+10. **Code generation consistency**: If proto files or CUE schemas changed, generated code should have corresponding changes.
+11. **Error handling**: Errors propagated correctly, no swallowed errors.
 
-### Style (optional, nice to have)
+--- Style (optional, nice to have) ---
 
-10. **UI conventions**: Semantic CSS tokens (`bg-background`, `text-foreground`), not hardcoded colors. `Combobox` for dynamic collections, basic `Select` only for small static enumerations (2-4 fixed choices).
-11. **Dead code**: Unused imports, unreachable code paths, stale comments that reference removed behavior.
-12. **Error handling**: Validate at system boundaries (user input, external APIs). Do not add defensive checks for internal code that cannot produce the error.
+12. **UI conventions**: Semantic CSS tokens (\`bg-background\`, \`text-foreground\`), not hardcoded colors. \`Combobox\` for dynamic collections.
+13. **Dead code**: Unused imports, unreachable code paths, stale comments referencing removed behavior.
 
-## Output Format
+--- NOT in scope ---
+
+Do NOT comment on: style preferences beyond the list above, comment formatting, naming opinions, or suggestions that would constitute scope creep beyond the issue's acceptance criteria. This code is unreleased -- do not flag breaking changes, removed exports, or renamed APIs as issues.
+
+=== Output Format ===
 
 Structure your review as markdown:
 
 ## Review Summary
 
-**Round**: <round number if known, else 1>
-**Scope**: <what was reviewed -- branch diff, uncommitted changes, etc.>
-**Verdict**: CLEAN | HAS_ISSUES
+**PR**: #${PR_NUMBER}
+**Round**: ${ROUND}
+**Scope**: Branch diff against ${BASE_BRANCH}
+**Verdict**: APPROVE | REQUEST_CHANGES
 
 ## Findings
 
 ### [CRITICAL] <title>
 - **File**: <path>:<line>
+- **Category**: security | reliability | tls-guardrail | generated-code | template-field
 - **Issue**: <what is wrong>
 - **Fix**: <concrete suggestion>
 
 ### [IMPORTANT] <title>
-...
+- **File**: <path>:<line>
+- **Category**: acceptance-criteria | tests | red-green | terminology | codegen | error-handling
+- **Issue**: <what is wrong>
+- **Fix**: <concrete suggestion>
 
 ### [STYLE] <title>
-...
+- **File**: <path>:<line>
+- **Category**: ui-conventions | dead-code
+- **Issue**: <what is wrong>
+- **Fix**: <concrete suggestion>
 
-If no issues found at any severity, output:
+If no issues found, output:
 
 ## Review Summary
 
-**Round**: 1
-**Scope**: <what was reviewed>
-**Verdict**: CLEAN
+**PR**: #${PR_NUMBER}
+**Round**: ${ROUND}
+**Scope**: Branch diff against ${BASE_BRANCH}
+**Verdict**: APPROVE
 
 No issues found. The changes follow project conventions.
 
-IMPORTANT: Be specific and concise. Cite exact file paths and line numbers. Give concrete fix suggestions. Only report actual issues found in the diff, not hypothetical concerns.
-REVIEW_PROMPT
-)"
+IMPORTANT: Be specific and concise. Cite exact file paths and line numbers. Give concrete fix suggestions. Only report actual issues found in the diff, not hypothetical concerns."
 ```
 
-**Quick mode** (scope flag only, no custom prompt):
+The `--ephemeral` flag prevents codex from persisting session files. The `-o` flag writes only the final review message to the output file. The `timeout 300` caps execution at 5 minutes.
 
-```bash
-timeout 300 $CODEX exec review \
-  --base main \
-  --ephemeral \
-  -o "${OUTPUT_FILE}"
-```
-
-The `--ephemeral` flag prevents codex from persisting session files. The `-o` flag writes only the final review message to the output file (no progress noise). The `timeout 300` caps execution at 5 minutes.
-
-### 5. Read and Present Results
+### 7. Read and Parse Results
 
 After codex finishes, read the output file with the Read tool.
 
-If the output file is empty or missing, codex may have failed (API error, timeout, auth issue). Report the error and suggest the user check:
+If the output file is empty or missing, codex may have failed. Report the error and suggest checking:
 - `codex login status` -- authentication
 - Network connectivity to OpenAI API
-- The stderr output from the command for specific error messages
+- The stderr output from the command
 
-If the output file has content, look for the **Verdict** line:
-- `**Verdict**: CLEAN` -- No blocking issues found
-- `**Verdict**: HAS_ISSUES` -- Issues to address
+If the output file has content, extract the verdict and count findings by severity:
+- Search for `**Verdict**: APPROVE` or `**Verdict**: REQUEST_CHANGES`
+- Count `### [CRITICAL]`, `### [IMPORTANT]`, and `### [STYLE]` headings
 
-Count findings by severity by searching for `### [CRITICAL]`, `### [IMPORTANT]`, and `### [STYLE]` headings.
+### 8. Classify Findings
 
-### 6. Report Summary
+Classify each finding for the fix-forward decision:
 
-Print a concise summary for the calling agent or user:
+| Classification | Criteria | Action |
+|----------------|----------|--------|
+| **Critical (blocks merge)** | Security vulnerabilities, reliability issues (data loss, cascading failures, resource leaks), TLS guardrail violations | Must fix before merge |
+| **Non-critical (fix-forward)** | Test coverage gaps, terminology, code generation consistency, error handling improvements, style issues | Merge now, track in follow-up issue |
+
+Findings tagged `[CRITICAL]` by Codex are critical. Findings tagged `[IMPORTANT]` or `[STYLE]` are non-critical.
+
+### 9. Post GitHub Review
+
+Post the review findings to the PR using `gh api`. This creates a visible review on the PR that persists as an audit trail.
+
+**If verdict is APPROVE** (no findings):
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
+  --method POST \
+  --field body="Codex review round ${ROUND}: no findings. LGTM." \
+  --field event="APPROVE"
+```
+
+**If findings exist**, build an inline comments array and post a review:
+
+For each finding with a file and line number, create an inline comment. Post as `REQUEST_CHANGES` if any `[CRITICAL]` findings exist, otherwise as `COMMENT`.
+
+```bash
+# Example: posting a review with inline comments
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+# Build the comments JSON array from parsed findings
+# Each comment: {"path": "file.go", "line": 42, "body": "finding text"}
+COMMENTS='[{"path":"console/rpc/auth.go","line":42,"body":"[CRITICAL] ..."}]'
+
+# Determine event type
+EVENT="COMMENT"  # default for non-critical only
+# If any [CRITICAL] findings exist: EVENT="REQUEST_CHANGES"
+
+gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
+  --method POST \
+  --field body="Codex review round ${ROUND}: <N> findings (<breakdown>)" \
+  --field event="${EVENT}" \
+  --input <(echo "{\"comments\": ${COMMENTS}}")
+```
+
+If inline comment posting fails (e.g., line numbers don't map to the diff), fall back to posting the full review as a single body comment.
+
+### 10. Report Summary
+
+Print a concise summary:
 
 ```
-Codex review round N complete.
-- Output: tmp/codex-review/round-N.md
-- Verdict: CLEAN | HAS_ISSUES
+Codex review round <ROUND> for PR #<PR_NUMBER> complete.
+- Output: tmp/codex-review/pr-<PR_NUMBER>/round-<ROUND>.md
+- Verdict: APPROVE | REQUEST_CHANGES
 - Critical: <count>
 - Important: <count>
 - Style: <count>
+- GitHub review: posted as <APPROVE|REQUEST_CHANGES|COMMENT>
 ```
 
-Then based on the verdict:
+Then provide guidance based on the classification:
 
-| Verdict | Action |
-|---------|--------|
-| CLEAN | "Review is clean. Ready to open PR." |
-| HAS_ISSUES (CRITICAL or IMPORTANT) | "Review found issues. Fix and re-run /codex-review." |
-| HAS_ISSUES (STYLE only) | "Minor style suggestions only. Optionally fix, then proceed." |
+| Situation | Guidance |
+|-----------|----------|
+| APPROVE (no findings) | "Review is clean. Ready to merge." |
+| Non-critical findings only | "Non-critical findings only. Safe to merge and create a follow-up issue for the findings." |
+| Critical findings exist | "Critical findings must be addressed. Fix and re-run `/codex-review <PR_NUMBER>` (round <N+1>)." |
 
-## Fix-Review Loop Pattern
+## Fix-Review Loop
 
-When used during implementation (e.g., between step 5 and step 7 of `/implement-issue`):
-
-```
-1. Implement changes and commit
-2. Run /codex-review
-3. If CLEAN → proceed to PR
-4. If HAS_ISSUES:
-   a. Read tmp/codex-review/round-N.md
-   b. Fix each CRITICAL and IMPORTANT finding
-   c. Commit fixes with message: "fix: address codex review round N findings"
-   d. Run /codex-review again (round N+1)
-   e. Repeat until CLEAN or only STYLE findings remain
-5. Maximum 3 rounds -- after round 3, proceed to PR
-   and note any remaining issues in the PR description
-```
-
-### Integrating with implement-issue
-
-Insert codex review between implementation and PR creation:
+When used during implementation (integrated into the implement-issue workflow):
 
 ```
-/implement-issue steps 1-5: fetch, branch, comment, explore, implement
-  ↓
-/codex-review (loop until clean, max 3 rounds)
-  ↓
-/implement-issue steps 6-10: cleanup, PR, CI, screenshots, merge
+1. Implementation complete, PR open, CI green
+2. Run /codex-review <PR_NUMBER>
+3. If APPROVE -> merge
+4. If non-critical findings only -> merge, create follow-up issue
+5. If critical findings:
+   a. Read tmp/codex-review/pr-<N>/round-<R>.md
+   b. Fix each critical finding
+   c. Commit: "fix: address codex review round <R> critical findings"
+   d. Push fixes
+   e. Re-run /codex-review <PR_NUMBER> (round R+1)
+   f. Maximum 2 rounds on critical findings
+6. After 2 rounds with unresolved critical findings:
+   - Post summary comment listing unresolved findings
+   - Add label: needs-human-review
+   - Do NOT merge
+   - Move to next sub-issue if applicable
 ```
+
+### Merge Authority Under Fix-Forward
+
+| Situation | Action |
+|-----------|--------|
+| Clean review (no findings) | Merge immediately |
+| Findings resolved within 2 cycles | Merge after clean re-review |
+| Non-critical findings unresolved | Merge, create follow-up issue linking findings |
+| Critical findings unresolved after 2 cycles | Do NOT merge. Add `needs-human-review` label |
+
+### Handling Disagreements
+
+When Claude disagrees with a critical Codex finding:
+1. Reply to the specific review comment on GitHub with a rationale
+2. If the same finding persists after re-review, it counts toward the cycle limit
+3. After 2 cycles, disagreement escalates to human review
+
+For non-critical disagreements, merge and create the follow-up issue. The human decides at their own pace.
 
 ### Resetting Review Rounds
 
-To start fresh (e.g., new feature, different branch):
+To start fresh (e.g., after significant rework):
 
 ```bash
-rm -f tmp/codex-review/round-*.md
+rm -rf tmp/codex-review/pr-${PR_NUMBER}/
 ```
 
 ## Prerequisites
 
 - **Codex CLI**: Install with `npm install -g @openai/codex`
 - **Authentication**: Run `codex login` once to authenticate with OpenAI
-- **Git repository**: Must be inside a git repo
+- **GitHub CLI**: `gh` must be authenticated with repo access
+- **Git repository**: Must be inside a git repo with a remote
 
 ## Technical Notes
 
 - Uses `codex exec review` (not `codex review`) to access `-o` and `--ephemeral` flags
-- The `--base` flag and `[PROMPT]` are mutually exclusive in codex CLI — the default mode embeds scope instructions in the prompt instead
+- The `--base` flag and `[PROMPT]` are mutually exclusive in codex CLI -- the prompted mode embeds scope instructions in the prompt instead
 - Output captured via `-o` flag writes only the final agent message (no progress noise)
-- The `tmp/` directory is gitignored — review artifacts are not committed
+- The `tmp/` directory is gitignored -- review artifacts are not committed
 - Each round creates a separate file for cross-round comparison
-- The review runs in read-only sandbox mode — codex does not modify files
-- Cross-model review (GPT reviewing Claude's work) provides independent perspective
+- Review runs in read-only sandbox mode -- codex does not modify files
+- Cross-model review (GPT reviewing Claude's work) provides independent perspective -- Codex runs as a separate process with no influence from Claude
 - Override the model with `-c model="gpt-5.4"` if needed
+- Review findings are posted to GitHub as a proper review (not just comments), creating an audit trail
+- The review prompt is version-controlled in this skill file -- fully visible and customizable
