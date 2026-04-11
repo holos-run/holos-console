@@ -80,10 +80,64 @@ The CI e2e job installs k3s so the full service stack (orgs, projects, secrets) 
 
 Tests that require Kubernetes time out in CI without k3s because `OrganizationService` and `ProjectService` are not registered when no kubeconfig is available.
 
+## Multi-Persona Tests
+
+E2E tests can authenticate as different test personas to verify RBAC behavior. The helpers in `frontend/e2e/helpers.ts` use the dev token endpoint (`POST /api/dev/token`) to obtain signed OIDC tokens and inject them into `sessionStorage`.
+
+### Available Helpers
+
+| Helper | Purpose |
+|--------|---------|
+| `getPersonaToken(page, email)` | Fetch a signed ID token for a persona |
+| `switchPersona(page, email)` | Inject a persona's token and reload |
+| `loginAsPersona(page, email)` | Auto-login as admin, then switch to persona |
+| `apiGrantOrgAccess(page, org, email, role)` | Grant a persona a role on an org |
+
+### Email Constants
+
+```ts
+import {
+  ADMIN_EMAIL,              // admin@localhost
+  PLATFORM_ENGINEER_EMAIL,  // platform@localhost
+  PRODUCT_ENGINEER_EMAIL,   // product@localhost
+  SRE_EMAIL,                // sre@localhost
+} from './helpers'
+```
+
+### Example: Test RBAC across personas
+
+```ts
+test('editor cannot delete org', async ({ page }) => {
+  // Login as admin (owner) and create an org
+  await loginAsPersona(page, ADMIN_EMAIL)
+  await apiCreateOrg(page, 'test-org')
+  await apiGrantOrgAccess(page, 'test-org', PRODUCT_ENGINEER_EMAIL, 2) // EDITOR
+
+  // Switch to product engineer (editor role)
+  await switchPersona(page, PRODUCT_ENGINEER_EMAIL)
+
+  // Verify the editor cannot delete the org
+  // ... assertion logic ...
+
+  // Cleanup as admin
+  await switchPersona(page, ADMIN_EMAIL)
+  await apiDeleteOrg(page, 'test-org')
+})
+```
+
+### Notes
+
+- The dev token endpoint is available whenever `--enable-insecure-dex` is set (always in E2E).
+- `loginAsPersona()` first completes the auto-login flow (authenticating as admin), then switches to the requested persona if it is not admin.
+- `switchPersona()` can be called mid-test to change identities without restarting the browser.
+- The `multi-persona.spec.ts` test file demonstrates token acquisition, persona switching, and RBAC grant verification patterns.
+
 ## Which Tests Need Kubernetes
 
 | Test file | Tests | Needs K8s? |
 |-----------|-------|-----------|
 | `e2e/auth.spec.ts` | All | No |
+| `e2e/multi-persona.spec.ts` | Token endpoint tests (first 5) | No |
+| `e2e/multi-persona.spec.ts` | RBAC grant tests | Yes |
 | `e2e/secrets.spec.ts` | sidebar navigation (first 2) | No |
 | `e2e/secrets.spec.ts` | create/update/list secrets, add key | Yes |
