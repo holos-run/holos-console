@@ -48,6 +48,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [TLS Commands](docs/agents/guardrail-tls-commands.md) — Never use `-k`, `--insecure`, or `-plaintext` in any example command.
 - [Terminology](docs/agents/guardrail-terminology.md) — Use "platform template" not "system template" for org/folder-level templates.
 - [Resource Naming](docs/agents/guardrail-resource-naming.md) — Slug-based identifiers with six-digit collision suffix, never random-only.
+- [URL Scheme](docs/agents/guardrail-url-scheme.md) — Top-level resources get dedicated URL prefixes; never nest one top-level resource under another.
 
 ## Planning & Execution
 
