@@ -720,6 +720,170 @@ func TestCheckFolderIdentifier_Unauthenticated(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
+// ---- UpdateFolder reparent tests ----
+
+func TestUpdateFolder_Reparent_SuccessOrgOwner(t *testing.T) {
+	// Alice is org owner, so she can reparent any folder within the org.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	// Folder under org root.
+	f := folderNSWithGrants("rp-eng-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	// Second folder to move under.
+	f2 := folderNSWithGrants("rp-team-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler := newTestHandler(orgNs, f, f2)
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-team-1"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-eng-1",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the parent label was updated.
+	resp, err := handler.GetFolder(ctx, connect.NewRequest(&consolev1.GetFolderRequest{Name: "rp-eng-1"}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Folder.ParentType != consolev1.ParentType_PARENT_TYPE_FOLDER {
+		t.Errorf("expected PARENT_TYPE_FOLDER, got %v", resp.Msg.Folder.ParentType)
+	}
+	if resp.Msg.Folder.ParentName != "rp-team-1" {
+		t.Errorf("expected parent_name 'rp-team-1', got %q", resp.Msg.Folder.ParentName)
+	}
+}
+
+func TestUpdateFolder_Reparent_DeniedOnSource(t *testing.T) {
+	// Alice is only editor on the source parent, Bob is owner on org.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
+	// Folder under org with alice as editor.
+	srcFolder := folderNSWithGrants("rp-src-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	destFolder := folderNSWithGrants("rp-dest-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	// Folder to reparent - under srcFolder.
+	child := folderNSWithGrants("rp-child-1", "acme", "holos-fld-rp-src-1", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler := newTestHandler(orgNs, srcFolder, destFolder, child)
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-dest-1"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-child-1",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateFolder_Reparent_DeniedOnDestination(t *testing.T) {
+	// Alice is owner on the source parent but not on the destination.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
+	srcFolder := folderNSWithGrants("rp-src-2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	destFolder := folderNSWithGrants("rp-dest-2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	child := folderNSWithGrants("rp-child-2", "acme", "holos-fld-rp-src-2", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler := newTestHandler(orgNs, srcFolder, destFolder, child)
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-dest-2"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-child-2",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateFolder_Reparent_SameParentIsNoop(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	f := folderNSWithGrants("rp-noop-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler := newTestHandler(orgNs, f)
+	ctx := contextWithClaims("alice@example.com")
+
+	// Move to same parent (org).
+	newParentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	newParentName := "acme"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-noop-1",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error (no-op), got %v", err)
+	}
+}
+
+func TestUpdateFolder_Reparent_CycleDetection(t *testing.T) {
+	// Hierarchy: org -> folderA -> folderB
+	// Try to move folderA under folderB (cycle).
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	folderA := folderNSWithGrants("rp-cycle-a", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	folderB := folderNSWithGrants("rp-cycle-b", "acme", "holos-fld-rp-cycle-a", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, folderA, folderB)
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-cycle-b"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-cycle-a",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestUpdateFolder_Reparent_DepthViolation(t *testing.T) {
+	// Hierarchy: org -> f1 -> f2 -> f3 (all at depth 3)
+	// Try to move f1 (with subtree f2->f3) under f3.
+	// Actually, that would also be a cycle. Let's create a different scenario:
+	// org -> a1 -> a2 -> a3 (depth 3)
+	// org -> b1
+	// Try to move a1 (subtree depth 3) under b1 → would be depth 4, which exceeds maxFolderDepth.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	a1 := folderNSWithGrants("rp-depth-a1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	a2 := folderNSWithGrants("rp-depth-a2", "acme", "holos-fld-rp-depth-a1", `[{"principal":"alice@example.com","role":"owner"}]`)
+	a3 := folderNSWithGrants("rp-depth-a3", "acme", "holos-fld-rp-depth-a2", `[{"principal":"alice@example.com","role":"owner"}]`)
+	b1 := folderNSWithGrants("rp-depth-b1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, a1, a2, a3, b1)
+	ctx := contextWithClaims("alice@example.com")
+
+	// Move a1 (subtree depth=3: a1->a2->a3) under b1.
+	// b1 is at depth 1 from org. a1 subtree adds 3 more. Total = 1+3 = 4 > maxFolderDepth(3).
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-depth-b1"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-depth-a1",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestUpdateFolder_Reparent_DepthAllowed(t *testing.T) {
+	// org -> leaf (depth 1, subtree depth 1)
+	// org -> b1 -> b2 (b2 is at depth 2)
+	// Move leaf under b2 → total = 2 + 1 = 3 ≤ maxFolderDepth(3). Allowed.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	leaf := folderNSWithGrants("rp-depthok-leaf", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	b1 := folderNSWithGrants("rp-depthok-b1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	b2 := folderNSWithGrants("rp-depthok-b2", "acme", "holos-fld-rp-depthok-b1", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, leaf, b1, b2)
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-depthok-b2"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-depthok-leaf",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
 // ---- helpers ----
 
 func assertUnauthenticated(t *testing.T, err error) {

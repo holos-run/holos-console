@@ -1350,6 +1350,179 @@ func TestCheckProjectIdentifier_Unauthenticated(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
+// ---- UpdateProject reparent tests ----
+
+// projectNSWithParent creates a project namespace with org, parent, and grants.
+func projectNSWithParent(name, org, parentNs, shareUsersJSON string) *corev1.Namespace {
+	ns := managedNSWithOrg(name, org, shareUsersJSON)
+	ns.Labels[v1alpha2.AnnotationParent] = parentNs
+	return ns
+}
+
+// orgNSWithGrants creates an org namespace with share-users annotation.
+func orgNSWithGrants(name, shareUsersJSON string) *corev1.Namespace {
+	annotations := map[string]string{}
+	if shareUsersJSON != "" {
+		annotations[v1alpha2.AnnotationShareUsers] = shareUsersJSON
+	}
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-" + name,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
+				v1alpha2.LabelOrganization: name,
+			},
+			Annotations: annotations,
+		},
+	}
+}
+
+// folderNSWithGrants creates a folder namespace with share-users annotation.
+func folderNSWithGrants(name, org, parentNs, shareUsersJSON string) *corev1.Namespace {
+	annotations := map[string]string{}
+	if shareUsersJSON != "" {
+		annotations[v1alpha2.AnnotationShareUsers] = shareUsersJSON
+	}
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-fld-" + name,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+				v1alpha2.LabelOrganization: org,
+				v1alpha2.LabelFolder:       name,
+				v1alpha2.AnnotationParent:  parentNs,
+			},
+			Annotations: annotations,
+		},
+	}
+}
+
+func TestUpdateProject_Reparent_SuccessOrgOwner(t *testing.T) {
+	// Alice is org owner, so she can reparent projects within the org via cascade.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	srcFolder := folderNSWithGrants("rp-prj-src", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	destFolder := folderNSWithGrants("rp-prj-dest", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	prj := projectNSWithParent("rp-prj-test", "acme", "holos-fld-rp-prj-src", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, srcFolder, destFolder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-prj-dest"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-test",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestUpdateProject_Reparent_DeniedOnSource(t *testing.T) {
+	// Alice is editor on source parent but not org owner → denied.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
+	srcFolder := folderNSWithGrants("rp-prj-src2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	destFolder := folderNSWithGrants("rp-prj-dest2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	prj := projectNSWithParent("rp-prj-denied-src", "acme", "holos-fld-rp-prj-src2", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"bob@example.com": "owner"}},
+		orgNs, srcFolder, destFolder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-prj-dest2"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-denied-src",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateProject_Reparent_DeniedOnDestination(t *testing.T) {
+	// Alice is owner on source parent but editor on destination → denied.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
+	srcFolder := folderNSWithGrants("rp-prj-src3", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	destFolder := folderNSWithGrants("rp-prj-dest3", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	prj := projectNSWithParent("rp-prj-denied-dest", "acme", "holos-fld-rp-prj-src3", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"bob@example.com": "owner"}},
+		orgNs, srcFolder, destFolder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-prj-dest3"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-denied-dest",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	assertPermissionDenied(t, err)
+}
+
+func TestUpdateProject_Reparent_SameParentIsNoop(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	folder := folderNSWithGrants("rp-prj-noop", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	prj := projectNSWithParent("rp-prj-noop-test", "acme", "holos-fld-rp-prj-noop", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, folder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	// Move to same parent (folder rp-prj-noop).
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-prj-noop"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-noop-test",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error (no-op), got %v", err)
+	}
+}
+
+func TestUpdateProject_Reparent_MoveFromFolderToOrg(t *testing.T) {
+	// Move a project from a folder to the org root.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	folder := folderNSWithGrants("rp-prj-fld2org", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	prj := projectNSWithParent("rp-prj-fld2org-test", "acme", "holos-fld-rp-prj-fld2org", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, folder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	newParentName := "acme"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-fld2org-test",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
 func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
 	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	fakeClient := fake.NewClientset(existing)

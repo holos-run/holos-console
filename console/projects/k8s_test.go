@@ -691,6 +691,62 @@ func TestBuildProject_NoAnnotation_EmptyCreatorEmail(t *testing.T) {
 	}
 }
 
+func TestUpdateParentLabel_UpdatesLabel(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-rp-test",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelProject:      "rp-test",
+				v1alpha2.LabelOrganization: "acme",
+				v1alpha2.AnnotationParent:  "holos-fld-old-parent",
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.UpdateParentLabel(context.Background(), "rp-test", "holos-fld-new-parent")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Labels[v1alpha2.AnnotationParent] != "holos-fld-new-parent" {
+		t.Errorf("expected parent label 'holos-fld-new-parent', got %q", result.Labels[v1alpha2.AnnotationParent])
+	}
+
+	// Verify persisted.
+	fetched, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-rp-test", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if fetched.Labels[v1alpha2.AnnotationParent] != "holos-fld-new-parent" {
+		t.Errorf("expected persisted parent label 'holos-fld-new-parent', got %q", fetched.Labels[v1alpha2.AnnotationParent])
+	}
+}
+
+func TestGetNamespace_ReturnsNamespace(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.GetNamespace(context.Background(), "holos-org-acme")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Name != "holos-org-acme" {
+		t.Errorf("expected 'holos-org-acme', got %q", result.Name)
+	}
+}
+
 func TestNamespaceExists_ReturnsTrueForExisting(t *testing.T) {
 	ns := managedNS("frontend", "")
 	fakeClient := fake.NewClientset(ns)
