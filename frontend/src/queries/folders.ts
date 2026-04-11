@@ -89,7 +89,7 @@ export function useUpdateFolder(organization: string, name: string) {
       client.updateFolder({ organization, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: folderGetKey(organization, name) })
+      queryClient.invalidateQueries({ queryKey: folderGetKey(name, organization) })
     },
   })
 }
