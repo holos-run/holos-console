@@ -23,6 +23,13 @@ func Slugify(displayName string) string {
 	return s
 }
 
+// IsValidSlug reports whether s is already a valid slug — lowercase alphanumeric
+// with single hyphens as separators, no leading or trailing hyphens. An empty
+// string is not a valid slug.
+func IsValidSlug(s string) bool {
+	return s != "" && Slugify(s) == s
+}
+
 // GenerateIdentifier produces a globally unique identifier for a folder or project.
 // It slugifies the display name, then checks availability using the exists function.
 // If the plain slug is taken, it appends a random 6-digit suffix and retries up to
@@ -56,4 +63,50 @@ func GenerateIdentifier(ctx context.Context, displayName, prefix string, exists 
 		}
 	}
 	return "", fmt.Errorf("failed to generate unique identifier after 10 attempts")
+}
+
+// CheckIdentifierResult holds the outcome of a CheckIdentifier call.
+type CheckIdentifierResult struct {
+	Available           bool
+	SuggestedIdentifier string
+}
+
+// CheckIdentifier validates and checks availability of a user-supplied identifier.
+// Unlike GenerateIdentifier (which slugifies a display name), this function validates
+// that the input is already a valid slug. If not, it returns available=false with the
+// slugified form as the suggestion (and checks that slug's availability).
+func CheckIdentifier(ctx context.Context, identifier, prefix string, exists func(ctx context.Context, namespaceName string) (bool, error)) (*CheckIdentifierResult, error) {
+	if !IsValidSlug(identifier) {
+		// Input is not a valid slug — suggest the slugified form.
+		suggested, err := GenerateIdentifier(ctx, identifier, prefix, exists)
+		if err != nil {
+			return nil, err
+		}
+		return &CheckIdentifierResult{
+			Available:           false,
+			SuggestedIdentifier: suggested,
+		}, nil
+	}
+
+	// Input is a valid slug — check existence directly.
+	taken, err := exists(ctx, prefix+identifier)
+	if err != nil {
+		return nil, err
+	}
+	if !taken {
+		return &CheckIdentifierResult{
+			Available:           true,
+			SuggestedIdentifier: identifier,
+		}, nil
+	}
+
+	// Taken — generate a suffixed alternative.
+	suggested, err := GenerateIdentifier(ctx, identifier, prefix, exists)
+	if err != nil {
+		return nil, err
+	}
+	return &CheckIdentifierResult{
+		Available:           false,
+		SuggestedIdentifier: suggested,
+	}, nil
 }

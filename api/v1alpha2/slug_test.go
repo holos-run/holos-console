@@ -39,6 +39,36 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestIsValidSlug(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"frontend", true},
+		{"my-project", true},
+		{"project-42", true},
+		{"a", true},
+		{"", false},
+		{"My Folder", false},
+		{"UPPERCASE", false},
+		{"has spaces", false},
+		{"trailing-", false},
+		{"-leading", false},
+		{"double--hyphen", false},
+		{"special@chars", false},
+		{"under_score", false},
+		{"dot.name", false},
+	}
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%q", tc.input), func(t *testing.T) {
+			got := IsValidSlug(tc.input)
+			if got != tc.want {
+				t.Errorf("IsValidSlug(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestGenerateIdentifier(t *testing.T) {
 	ctx := context.Background()
 
@@ -127,6 +157,94 @@ func TestGenerateIdentifier(t *testing.T) {
 		}
 		if len(checkedNames[1]) < len("holos-prj-frontend-") {
 			t.Errorf("second check should be prefixed suffixed slug, got %q", checkedNames[1])
+		}
+	})
+}
+
+func TestCheckIdentifier(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("valid slug available", func(t *testing.T) {
+		exists := func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		}
+		result, err := CheckIdentifier(ctx, "frontend", "holos-prj-", exists)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Available {
+			t.Error("expected available=true")
+		}
+		if result.SuggestedIdentifier != "frontend" {
+			t.Errorf("expected suggested 'frontend', got %q", result.SuggestedIdentifier)
+		}
+	})
+
+	t.Run("valid slug taken returns suffixed suggestion", func(t *testing.T) {
+		callCount := 0
+		exists := func(_ context.Context, _ string) (bool, error) {
+			callCount++
+			if callCount <= 2 {
+				return true, nil // plain slug taken (once by CheckIdentifier, once by GenerateIdentifier)
+			}
+			return false, nil // suffixed slug available
+		}
+		result, err := CheckIdentifier(ctx, "frontend", "holos-prj-", exists)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Available {
+			t.Error("expected available=false")
+		}
+		if len(result.SuggestedIdentifier) < len("frontend-000000") {
+			t.Errorf("expected suffixed suggestion, got %q", result.SuggestedIdentifier)
+		}
+	})
+
+	t.Run("non-slug input returns available=false with slugified suggestion", func(t *testing.T) {
+		exists := func(_ context.Context, _ string) (bool, error) {
+			return false, nil // slugified form is available
+		}
+		result, err := CheckIdentifier(ctx, "My Project", "holos-prj-", exists)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Available {
+			t.Error("expected available=false for non-slug input")
+		}
+		if result.SuggestedIdentifier != "my-project" {
+			t.Errorf("expected suggested 'my-project', got %q", result.SuggestedIdentifier)
+		}
+	})
+
+	t.Run("non-slug input with taken suggestion returns suffixed", func(t *testing.T) {
+		callCount := 0
+		exists := func(_ context.Context, _ string) (bool, error) {
+			callCount++
+			if callCount == 1 {
+				return true, nil // "my-project" is taken
+			}
+			return false, nil // suffixed is available
+		}
+		result, err := CheckIdentifier(ctx, "My Project", "holos-prj-", exists)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Available {
+			t.Error("expected available=false for non-slug input")
+		}
+		if len(result.SuggestedIdentifier) < len("my-project-000000") {
+			t.Errorf("expected suffixed suggestion, got %q", result.SuggestedIdentifier)
+		}
+	})
+
+	t.Run("exists error propagates", func(t *testing.T) {
+		exists := func(_ context.Context, _ string) (bool, error) {
+			return false, fmt.Errorf("k8s unavailable")
+		}
+		_, err := CheckIdentifier(ctx, "frontend", "holos-prj-", exists)
+		if err == nil {
+			t.Fatal("expected error, got nil")
 		}
 	})
 }
