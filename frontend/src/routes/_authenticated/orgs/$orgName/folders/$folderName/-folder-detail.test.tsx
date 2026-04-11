@@ -26,12 +26,10 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetFolder, useGetFolderRaw, useUpdateFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
-import { useAuth } from '@/lib/auth'
 import { FolderDetailPage } from './index'
 
 const mockFolder = {
@@ -70,11 +68,6 @@ function setupMocks(overrides: { folder?: Partial<typeof mockFolder>; org?: Part
   ;(useUpdateFolder as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
-  })
-  ;(useAuth as Mock).mockReturnValue({
-    isAuthenticated: true,
-    isLoading: false,
-    user: { profile: { email: 'alice@example.com', groups: [] } },
   })
 }
 
