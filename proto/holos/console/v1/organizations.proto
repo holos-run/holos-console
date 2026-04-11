@@ -66,6 +66,9 @@ message Organization {
   string creator_email = 9;
   // created_at is the RFC3339-formatted timestamp when this organization was created.
   string created_at = 10;
+  // default_folder is the name of the default folder for this organization.
+  // New projects without an explicit parent are created in this folder (ADR 022 Decision 3).
+  string default_folder = 11;
 }
 
 // ListOrganizationsRequest contains optional filters for listing organizations.
@@ -101,6 +104,9 @@ message CreateOrganizationRequest {
   repeated ShareGrant user_grants = 4;
   // role_grants are the initial per-role sharing grants.
   repeated ShareGrant role_grants = 5;
+  // default_folder is the name for the default folder created with the organization.
+  // When unset, defaults to "default" (ADR 022 Decision 1).
+  optional string default_folder = 6;
 }
 
 // CreateOrganizationResponse contains the name of the created organization.
@@ -117,6 +123,9 @@ message UpdateOrganizationRequest {
   optional string display_name = 2;
   // description is the new description. When unset, preserves the existing value.
   optional string description = 3;
+  // default_folder is the new default folder name. When unset, preserves the existing value.
+  // The referenced folder must exist and be an immediate child of the organization (ADR 022 Decision 2).
+  optional string default_folder = 4;
 }
 
 // UpdateOrganizationResponse is empty on success.

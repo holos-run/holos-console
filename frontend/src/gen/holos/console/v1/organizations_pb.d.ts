@@ -87,6 +87,14 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
    * @generated from field: string created_at = 10;
    */
   createdAt: string;
+
+  /**
+   * default_folder is the name of the default folder for this organization.
+   * New projects without an explicit parent are created in this folder (ADR 022 Decision 3).
+   *
+   * @generated from field: string default_folder = 11;
+   */
+  defaultFolder: string;
 };
 
 /**
@@ -209,6 +217,14 @@ export declare type CreateOrganizationRequest = Message<"holos.console.v1.Create
    * @generated from field: repeated holos.console.v1.ShareGrant role_grants = 5;
    */
   roleGrants: ShareGrant[];
+
+  /**
+   * default_folder is the name for the default folder created with the organization.
+   * When unset, defaults to "default" (ADR 022 Decision 1).
+   *
+   * @generated from field: optional string default_folder = 6;
+   */
+  defaultFolder?: string;
 };
 
 /**
@@ -263,6 +279,14 @@ export declare type UpdateOrganizationRequest = Message<"holos.console.v1.Update
    * @generated from field: optional string description = 3;
    */
   description?: string;
+
+  /**
+   * default_folder is the new default folder name. When unset, preserves the existing value.
+   * The referenced folder must exist and be an immediate child of the organization (ADR 022 Decision 2).
+   *
+   * @generated from field: optional string default_folder = 4;
+   */
+  defaultFolder?: string;
 };
 
 /**

@@ -602,7 +602,13 @@ type UpdateFolderRequest struct {
 	// display_name is the new display name. When unset, preserves the existing value.
 	DisplayName *string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
 	// description is the new description. When unset, preserves the existing value.
-	Description   *string `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	Description *string `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+	// Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+	ParentType *ParentType `protobuf:"varint,5,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType,oneof" json:"parent_type,omitempty"`
+	// parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
+	// Must be set together with parent_type.
+	ParentName    *string `protobuf:"bytes,6,opt,name=parent_name,json=parentName,proto3,oneof" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -661,6 +667,20 @@ func (x *UpdateFolderRequest) GetDisplayName() string {
 func (x *UpdateFolderRequest) GetDescription() string {
 	if x != nil && x.Description != nil {
 		return *x.Description
+	}
+	return ""
+}
+
+func (x *UpdateFolderRequest) GetParentType() ParentType {
+	if x != nil && x.ParentType != nil {
+		return *x.ParentType
+	}
+	return ParentType_PARENT_TYPE_UNSPECIFIED
+}
+
+func (x *UpdateFolderRequest) GetParentName() string {
+	if x != nil && x.ParentName != nil {
+		return *x.ParentName
 	}
 	return ""
 }
@@ -1183,14 +1203,20 @@ const file_holos_console_v1_folders_proto_rawDesc = "" +
 	"\vrole_grants\x18\b \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"roleGrants\"*\n" +
 	"\x14CreateFolderResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xbd\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc7\x02\n" +
 	"\x13UpdateFolderRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\"\n" +
 	"\forganization\x18\x02 \x01(\tR\forganization\x12&\n" +
 	"\fdisplay_name\x18\x03 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x04 \x01(\tH\x01R\vdescription\x88\x01\x01B\x0f\n" +
+	"\vdescription\x18\x04 \x01(\tH\x01R\vdescription\x88\x01\x01\x12B\n" +
+	"\vparent_type\x18\x05 \x01(\x0e2\x1c.holos.console.v1.ParentTypeH\x02R\n" +
+	"parentType\x88\x01\x01\x12$\n" +
+	"\vparent_name\x18\x06 \x01(\tH\x03R\n" +
+	"parentName\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
-	"\f_description\"\x16\n" +
+	"\f_descriptionB\x0e\n" +
+	"\f_parent_typeB\x0e\n" +
+	"\f_parent_name\"\x16\n" +
 	"\x14UpdateFolderResponse\"M\n" +
 	"\x13DeleteFolderRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\"\n" +
@@ -1281,33 +1307,34 @@ var file_holos_console_v1_folders_proto_depIdxs = []int32{
 	0,  // 9: holos.console.v1.CreateFolderRequest.parent_type:type_name -> holos.console.v1.ParentType
 	18, // 10: holos.console.v1.CreateFolderRequest.user_grants:type_name -> holos.console.v1.ShareGrant
 	18, // 11: holos.console.v1.CreateFolderRequest.role_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 12: holos.console.v1.UpdateFolderSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 13: holos.console.v1.UpdateFolderSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
-	1,  // 14: holos.console.v1.UpdateFolderSharingResponse.folder:type_name -> holos.console.v1.Folder
-	18, // 15: holos.console.v1.UpdateFolderDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 16: holos.console.v1.UpdateFolderDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
-	1,  // 17: holos.console.v1.UpdateFolderDefaultSharingResponse.folder:type_name -> holos.console.v1.Folder
-	2,  // 18: holos.console.v1.FolderService.ListFolders:input_type -> holos.console.v1.ListFoldersRequest
-	4,  // 19: holos.console.v1.FolderService.GetFolder:input_type -> holos.console.v1.GetFolderRequest
-	6,  // 20: holos.console.v1.FolderService.CreateFolder:input_type -> holos.console.v1.CreateFolderRequest
-	8,  // 21: holos.console.v1.FolderService.UpdateFolder:input_type -> holos.console.v1.UpdateFolderRequest
-	10, // 22: holos.console.v1.FolderService.DeleteFolder:input_type -> holos.console.v1.DeleteFolderRequest
-	12, // 23: holos.console.v1.FolderService.UpdateFolderSharing:input_type -> holos.console.v1.UpdateFolderSharingRequest
-	14, // 24: holos.console.v1.FolderService.UpdateFolderDefaultSharing:input_type -> holos.console.v1.UpdateFolderDefaultSharingRequest
-	16, // 25: holos.console.v1.FolderService.GetFolderRaw:input_type -> holos.console.v1.GetFolderRawRequest
-	3,  // 26: holos.console.v1.FolderService.ListFolders:output_type -> holos.console.v1.ListFoldersResponse
-	5,  // 27: holos.console.v1.FolderService.GetFolder:output_type -> holos.console.v1.GetFolderResponse
-	7,  // 28: holos.console.v1.FolderService.CreateFolder:output_type -> holos.console.v1.CreateFolderResponse
-	9,  // 29: holos.console.v1.FolderService.UpdateFolder:output_type -> holos.console.v1.UpdateFolderResponse
-	11, // 30: holos.console.v1.FolderService.DeleteFolder:output_type -> holos.console.v1.DeleteFolderResponse
-	13, // 31: holos.console.v1.FolderService.UpdateFolderSharing:output_type -> holos.console.v1.UpdateFolderSharingResponse
-	15, // 32: holos.console.v1.FolderService.UpdateFolderDefaultSharing:output_type -> holos.console.v1.UpdateFolderDefaultSharingResponse
-	17, // 33: holos.console.v1.FolderService.GetFolderRaw:output_type -> holos.console.v1.GetFolderRawResponse
-	26, // [26:34] is the sub-list for method output_type
-	18, // [18:26] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	0,  // 12: holos.console.v1.UpdateFolderRequest.parent_type:type_name -> holos.console.v1.ParentType
+	18, // 13: holos.console.v1.UpdateFolderSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	18, // 14: holos.console.v1.UpdateFolderSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	1,  // 15: holos.console.v1.UpdateFolderSharingResponse.folder:type_name -> holos.console.v1.Folder
+	18, // 16: holos.console.v1.UpdateFolderDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	18, // 17: holos.console.v1.UpdateFolderDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	1,  // 18: holos.console.v1.UpdateFolderDefaultSharingResponse.folder:type_name -> holos.console.v1.Folder
+	2,  // 19: holos.console.v1.FolderService.ListFolders:input_type -> holos.console.v1.ListFoldersRequest
+	4,  // 20: holos.console.v1.FolderService.GetFolder:input_type -> holos.console.v1.GetFolderRequest
+	6,  // 21: holos.console.v1.FolderService.CreateFolder:input_type -> holos.console.v1.CreateFolderRequest
+	8,  // 22: holos.console.v1.FolderService.UpdateFolder:input_type -> holos.console.v1.UpdateFolderRequest
+	10, // 23: holos.console.v1.FolderService.DeleteFolder:input_type -> holos.console.v1.DeleteFolderRequest
+	12, // 24: holos.console.v1.FolderService.UpdateFolderSharing:input_type -> holos.console.v1.UpdateFolderSharingRequest
+	14, // 25: holos.console.v1.FolderService.UpdateFolderDefaultSharing:input_type -> holos.console.v1.UpdateFolderDefaultSharingRequest
+	16, // 26: holos.console.v1.FolderService.GetFolderRaw:input_type -> holos.console.v1.GetFolderRawRequest
+	3,  // 27: holos.console.v1.FolderService.ListFolders:output_type -> holos.console.v1.ListFoldersResponse
+	5,  // 28: holos.console.v1.FolderService.GetFolder:output_type -> holos.console.v1.GetFolderResponse
+	7,  // 29: holos.console.v1.FolderService.CreateFolder:output_type -> holos.console.v1.CreateFolderResponse
+	9,  // 30: holos.console.v1.FolderService.UpdateFolder:output_type -> holos.console.v1.UpdateFolderResponse
+	11, // 31: holos.console.v1.FolderService.DeleteFolder:output_type -> holos.console.v1.DeleteFolderResponse
+	13, // 32: holos.console.v1.FolderService.UpdateFolderSharing:output_type -> holos.console.v1.UpdateFolderSharingResponse
+	15, // 33: holos.console.v1.FolderService.UpdateFolderDefaultSharing:output_type -> holos.console.v1.UpdateFolderDefaultSharingResponse
+	17, // 34: holos.console.v1.FolderService.GetFolderRaw:output_type -> holos.console.v1.GetFolderRawResponse
+	27, // [27:35] is the sub-list for method output_type
+	19, // [19:27] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_folders_proto_init() }

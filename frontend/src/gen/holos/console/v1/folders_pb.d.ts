@@ -335,6 +335,22 @@ export declare type UpdateFolderRequest = Message<"holos.console.v1.UpdateFolder
    * @generated from field: optional string description = 4;
    */
   description?: string;
+
+  /**
+   * parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+   * Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+   *
+   * @generated from field: optional holos.console.v1.ParentType parent_type = 5;
+   */
+  parentType?: ParentType;
+
+  /**
+   * parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
+   * Must be set together with parent_type.
+   *
+   * @generated from field: optional string parent_name = 6;
+   */
+  parentName?: string;
 };
 
 /**
