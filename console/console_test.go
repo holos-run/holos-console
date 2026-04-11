@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestLogRequests_HealthCheck_Suppressed(t *testing.T) {
@@ -73,6 +75,70 @@ func TestHandleUserInfo_Removed(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected /api/userinfo to return 404 (removed), got %d", rec.Code)
+	}
+}
+
+func TestServeIndex_InjectsConsoleConfig(t *testing.T) {
+	// When ConsoleConfig is provided, serveIndex should inject
+	// window.__CONSOLE_CONFIG__ into the HTML <head>.
+	fakeFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{
+			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
+		},
+	}
+
+	consoleConfig := &ConsoleConfig{DevToolsEnabled: true}
+	h := newUIHandler(fakeFS, nil, consoleConfig)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `window.__CONSOLE_CONFIG__={"devToolsEnabled":true}`) {
+		t.Errorf("expected console config injection in HTML, got:\n%s", body)
+	}
+}
+
+func TestServeIndex_NoConsoleConfig(t *testing.T) {
+	// When ConsoleConfig is nil, serveIndex should NOT inject
+	// window.__CONSOLE_CONFIG__ into the HTML.
+	fakeFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{
+			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
+		},
+	}
+
+	h := newUIHandler(fakeFS, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, `__CONSOLE_CONFIG__`) {
+		t.Errorf("expected no console config injection when config is nil, got:\n%s", body)
+	}
+}
+
+func TestServeIndex_ConsoleConfigDevToolsDisabled(t *testing.T) {
+	// When DevToolsEnabled is false, the injection should reflect that.
+	fakeFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{
+			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
+		},
+	}
+
+	consoleConfig := &ConsoleConfig{DevToolsEnabled: false}
+	h := newUIHandler(fakeFS, nil, consoleConfig)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `window.__CONSOLE_CONFIG__={"devToolsEnabled":false}`) {
+		t.Errorf("expected devToolsEnabled:false in console config, got:\n%s", body)
 	}
 }
 

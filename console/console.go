@@ -128,6 +128,11 @@ type Config struct {
 	// LogHealthChecks enables logging of /healthz and /readyz requests.
 	// Default: false (suppresses health check logging to reduce noise from Kubernetes probes).
 	LogHealthChecks bool
+
+	// EnableDevTools enables development tools in the web UI
+	// (persona switcher, dev token panel).
+	// Default: false (disabled).
+	EnableDevTools bool
 }
 
 // OIDCConfig is the OIDC configuration injected into the frontend.
@@ -136,6 +141,12 @@ type OIDCConfig struct {
 	ClientID              string `json:"client_id"`
 	RedirectURI           string `json:"redirect_uri"`
 	PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
+}
+
+// ConsoleConfig is the console configuration injected into the frontend
+// via window.__CONSOLE_CONFIG__.
+type ConsoleConfig struct {
+	DevToolsEnabled bool `json:"devToolsEnabled"`
 }
 
 // deriveRedirectURI derives the OIDC redirect URI from the console origin.
@@ -411,7 +422,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 	}
 
-	uiHandler := newUIHandler(uiContent, oidcConfig)
+	// Create console config for frontend injection
+	var consoleConfig *ConsoleConfig
+	if s.cfg.EnableDevTools {
+		consoleConfig = &ConsoleConfig{DevToolsEnabled: true}
+	}
+
+	uiHandler := newUIHandler(uiContent, oidcConfig, consoleConfig)
 
 	// Redirect /ui to / for backwards compatibility
 	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
@@ -597,12 +614,13 @@ func logRequests(next http.Handler, logHealthChecks bool) http.Handler {
 }
 
 type uiHandler struct {
-	fs         fs.FS
-	oidcConfig *OIDCConfig
+	fs            fs.FS
+	oidcConfig    *OIDCConfig
+	consoleConfig *ConsoleConfig
 }
 
-func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig) *uiHandler {
-	return &uiHandler{fs: uiContent, oidcConfig: oidcConfig}
+func newUIHandler(uiContent fs.FS, oidcConfig *OIDCConfig, consoleConfig *ConsoleConfig) *uiHandler {
+	return &uiHandler{fs: uiContent, oidcConfig: oidcConfig, consoleConfig: consoleConfig}
 }
 
 func (h *uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -636,6 +654,15 @@ func (h *uiHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			script := fmt.Sprintf(`<script>window.__OIDC_CONFIG__=%s;</script>`, configJSON)
 			// Insert before </head>
+			data = bytes.Replace(data, []byte("</head>"), []byte(script+"</head>"), 1)
+		}
+	}
+
+	// Inject console config if available
+	if h.consoleConfig != nil {
+		configJSON, err := json.Marshal(h.consoleConfig)
+		if err == nil {
+			script := fmt.Sprintf(`<script>window.__CONSOLE_CONFIG__=%s;</script>`, configJSON)
 			data = bytes.Replace(data, []byte("</head>"), []byte(script+"</head>"), 1)
 		}
 	}

@@ -14,6 +14,7 @@ make build
 
 exec ./bin/holos-console \
     --enable-insecure-dex \
+    --enable-dev-tools \
     --cert certs/tls.crt \
     --key certs/tls.key \
     --ca-cert "$(mkcert -CAROOT)/rootCA.pem" \

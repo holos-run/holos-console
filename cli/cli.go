@@ -34,6 +34,7 @@ var (
 	orgCreatorRoles    string
 	rolesClaim         string
 	enableInsecureDex  bool
+	enableDevTools     bool
 	logHealthChecks    bool
 	logLevel           string
 )
@@ -80,6 +81,7 @@ func Command() *cobra.Command {
 
 	// OIDC flags
 	cmd.Flags().BoolVar(&enableInsecureDex, "enable-insecure-dex", false, "Enable the built-in Dex OIDC provider with auto-login (INSECURE: intended for local development only)")
+	cmd.Flags().BoolVar(&enableDevTools, "enable-dev-tools", false, "Enable development tools in the web UI (persona switcher, token panel)")
 	cmd.Flags().StringVar(&origin, "origin", "", "Public-facing base URL of the console for OIDC redirect URIs (e.g., https://holos-console.example.com)")
 	cmd.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL for token validation (e.g., https://idp.example.com/dex)")
 	cmd.Flags().StringVar(&clientID, "client-id", "holos-console", "Expected audience for tokens")
@@ -249,6 +251,7 @@ func Run(cmd *cobra.Command, args []string) error {
 		OrgCreatorRoles:    splitCSV(orgCreatorRoles),
 		RolesClaim:         rolesClaim,
 		LogHealthChecks:    logHealthChecks,
+		EnableDevTools:     enableDevTools,
 	}
 
 	server := console.New(cfg)
