@@ -227,12 +227,19 @@ func (h *Handler) CreateOrganization(
 
 		// Store the default folder identifier on the org namespace.
 		if err := h.k8s.SetDefaultFolder(ctx, req.Msg.Name, folderName); err != nil {
-			slog.ErrorContext(ctx, "failed to set default folder annotation",
+			slog.ErrorContext(ctx, "failed to set default folder annotation, rolling back",
 				slog.String("organization", req.Msg.Name),
 				slog.String("folder", folderName),
 				slog.Any("error", err),
 			)
-			// Non-fatal: the org and folder exist, the annotation is just missing.
+			// Roll back: the org contract requires default_folder to be set.
+			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
+				slog.ErrorContext(ctx, "org rollback after annotation failure failed",
+					slog.String("organization", req.Msg.Name),
+					slog.Any("error", delErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("setting default folder annotation: %w", err))
 		}
 	}
 
@@ -355,7 +362,10 @@ func (h *Handler) validateDefaultFolder(ctx context.Context, orgName, folderName
 	}
 	folderNs, err := h.folderLister.GetFolder(ctx, folderName)
 	if err != nil {
-		return connect.NewError(connect.CodeNotFound, fmt.Errorf("folder %q not found: %w", folderName, err))
+		if errors.IsNotFound(err) {
+			return connect.NewError(connect.CodeNotFound, fmt.Errorf("folder %q not found", folderName))
+		}
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("looking up folder %q: %w", folderName, err))
 	}
 	// Verify the folder is a direct child of the org.
 	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
