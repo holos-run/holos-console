@@ -44,8 +44,6 @@ Agents run in worktrees whose path encodes the agent slot. Identify your slot fr
 
 **PR description**: Include the slot in the footer so reviewers know which agent produced the work.
 
-**PR comment**: After creating the PR, post a comment explaining the rationale and motivation for the implementation approach, including alternatives considered and why they were rejected.
-
 Example workflow:
 ```bash
 git checkout -b feat/add-playwright-config
@@ -74,19 +72,6 @@ Closes: #42
 EOF
 )"
 
-# Add a comment explaining rationale and alternatives
-gh pr comment <N> --body "$(cat <<'EOF'
-## Rationale
-
-Explain why this approach was chosen over alternatives...
-
-## Alternatives considered
-
-| Option | Verdict |
-|--------|---------|
-| Alternative A | Rejected because... |
-EOF
-)"
 ```
 
 ## Build Commands
