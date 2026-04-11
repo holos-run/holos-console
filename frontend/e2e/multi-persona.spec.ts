@@ -196,26 +196,24 @@ test.describe('Multi-Persona RBAC', () => {
     // Login as SRE (who was granted VIEWER on the org in the previous test)
     await loginAsPersona(page, SRE_EMAIL)
 
-    // Verify SRE can see the org in the orgs list
-    await page.goto('/')
+    // Navigate to profile and verify the org is accessible via the sidebar.
+    // Use /profile so the sidebar is loaded with org data.
+    await page.goto('/profile')
     await page.waitForLoadState('networkidle')
 
-    // The org should appear in the sidebar org picker or in the org list.
-    // Check the sidebar org picker for the org name.
-    const orgPickerVisible = await page
-      .getByTestId('org-picker')
-      .isVisible({ timeout: 5000 })
-      .catch(() => false)
-
-    if (orgPickerVisible) {
-      await page.getByTestId('org-picker').click()
-      await expect(
-        page.getByRole('menuitem', { name: orgName }),
-      ).toBeVisible({ timeout: 5000 })
-    } else {
-      // If no org picker, the org should appear somewhere on the page
-      await expect(page.getByText(orgName)).toBeVisible({ timeout: 5000 })
+    // On mobile viewports, open the sidebar drawer first.
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+      await page.waitForTimeout(500) // Wait for drawer animation
     }
+
+    // The org should appear in the sidebar org picker.
+    await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
+    await page.getByTestId('org-picker').click()
+    await expect(
+      page.getByRole('menuitem', { name: orgName }),
+    ).toBeVisible({ timeout: 5000 })
   })
 
   test('product engineer can access the org with editor privileges', async ({
@@ -224,22 +222,22 @@ test.describe('Multi-Persona RBAC', () => {
     // Login as product engineer (who was granted EDITOR on the org)
     await loginAsPersona(page, PRODUCT_ENGINEER_EMAIL)
 
-    // Verify product engineer can see the org
-    await page.goto('/')
+    // Navigate to profile and verify the org is accessible via the sidebar.
+    await page.goto('/profile')
     await page.waitForLoadState('networkidle')
 
-    const orgPickerVisible = await page
-      .getByTestId('org-picker')
-      .isVisible({ timeout: 5000 })
-      .catch(() => false)
-
-    if (orgPickerVisible) {
-      await page.getByTestId('org-picker').click()
-      await expect(
-        page.getByRole('menuitem', { name: orgName }),
-      ).toBeVisible({ timeout: 5000 })
-    } else {
-      await expect(page.getByText(orgName)).toBeVisible({ timeout: 5000 })
+    // On mobile viewports, open the sidebar drawer first.
+    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
+    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await sidebarTrigger.click()
+      await page.waitForTimeout(500) // Wait for drawer animation
     }
+
+    // The org should appear in the sidebar org picker.
+    await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
+    await page.getByTestId('org-picker').click()
+    await expect(
+      page.getByRole('menuitem', { name: orgName }),
+    ).toBeVisible({ timeout: 5000 })
   })
 })
