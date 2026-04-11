@@ -62,6 +62,19 @@ set -o history
 `set +o history` disables recording for the current shell session.
 `set -o history` re-enables it after you paste.
 
+### Programmatic token acquisition (local development)
+
+When running with `--enable-insecure-dex`, the dev token endpoint provides
+tokens for any registered test persona without a browser flow. See
+[docs/dev-token-endpoint.md](dev-token-endpoint.md) for full details.
+
+```bash
+export HOLOS_ID_TOKEN=$(curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
+  -X POST https://localhost:8443/api/dev/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"platform@localhost"}' | jq -r .id_token)
+```
+
 ## Calling an RPC with curl (Connect protocol — recommended)
 
 All examples assume a valid TLS certificate. For local development, run
