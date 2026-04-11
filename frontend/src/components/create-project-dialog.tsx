@@ -49,12 +49,17 @@ export function CreateProjectDialog({
   // Fetch org data to get the default folder
   const { data: orgData } = useGetOrganization(organization)
 
+  // Reset folder when the selected organization changes to avoid stale
+  // cross-org folder references (the backend rejects them, but the UX
+  // should not allow submission in that state).
+  useEffect(() => {
+    setFolder('')
+  }, [organization])
+
   // When the org data loads (or changes), pre-select the org's default folder
   useEffect(() => {
     if (orgData?.defaultFolder) {
       setFolder(orgData.defaultFolder)
-    } else {
-      setFolder('')
     }
   }, [orgData?.defaultFolder])
 
