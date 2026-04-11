@@ -279,6 +279,29 @@ func TestNamespaceExists_ReturnsFalseForMissing(t *testing.T) {
 	}
 }
 
+func TestUpdateParentLabel_UpdatesLabel(t *testing.T) {
+	ns := folderNS("rp-upd", "acme", "holos-org-acme")
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.UpdateParentLabel(context.Background(), "rp-upd", "holos-fld-new-parent")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Labels[v1alpha2.AnnotationParent] != "holos-fld-new-parent" {
+		t.Errorf("expected parent label 'holos-fld-new-parent', got %q", result.Labels[v1alpha2.AnnotationParent])
+	}
+
+	// Verify persisted in the fake client.
+	fetched, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-fld-rp-upd", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if fetched.Labels[v1alpha2.AnnotationParent] != "holos-fld-new-parent" {
+		t.Errorf("expected persisted parent label 'holos-fld-new-parent', got %q", fetched.Labels[v1alpha2.AnnotationParent])
+	}
+}
+
 func TestListChildProjects_ReturnsChildren(t *testing.T) {
 	prj := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

@@ -297,6 +297,14 @@
 	clusterResources?: {[string]: [string]: #Resource}  @go(ClusterResources,map[string]map[string]Resource)
 }
 
+// --- slug_go_gen.cue ---
+
+// CheckIdentifierResult holds the outcome of a CheckIdentifier call.
+#CheckIdentifierResult: {
+	Available:           bool
+	SuggestedIdentifier: string
+}
+
 // --- types_go_gen.cue ---
 
 // TypeMeta identifies the API version and kind of a resource.

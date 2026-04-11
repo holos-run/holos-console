@@ -348,6 +348,13 @@ func (h *Handler) UpdateProject(
 		return nil, err
 	}
 
+	// Handle reparenting if parent_type and parent_name are set.
+	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
+		if err := h.reparentProject(ctx, ns, claims, *req.Msg.ParentType, *req.Msg.ParentName); err != nil {
+			return nil, err
+		}
+	}
+
 	if _, err := h.k8s.UpdateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -362,6 +369,118 @@ func (h *Handler) UpdateProject(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateProjectResponse{}), nil
+}
+
+// reparentProject validates and executes a project reparent operation.
+// Checks PERMISSION_REPARENT on both source and destination parents.
+// Projects have no children so no depth or cycle checks are needed.
+func (h *Handler) reparentProject(
+	ctx context.Context,
+	ns *corev1.Namespace,
+	claims *rpc.Claims,
+	newParentType consolev1.ParentType,
+	newParentName string,
+) error {
+	projectName := ns.Labels[v1alpha2.LabelProject]
+	org := GetOrganization(ns)
+
+	// Resolve new parent namespace.
+	newParentNs, err := h.resolveParentNS(newParentType, newParentName)
+	if err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	// Resolve current parent namespace from the project's label.
+	currentParentNs := ns.Labels[v1alpha2.AnnotationParent]
+	if currentParentNs == "" {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("project %q is missing parent label", projectName))
+	}
+
+	// No-op: same parent, return success without a K8s write.
+	if currentParentNs == newParentNs {
+		return nil
+	}
+
+	// Verify new parent namespace exists.
+	newParentNamespace, err := h.k8s.GetNamespace(ctx, newParentNs)
+	if err != nil {
+		return mapK8sError(err)
+	}
+
+	// Check PERMISSION_REPARENT on the current (source) parent.
+	sourceNs, err := h.k8s.GetNamespace(ctx, currentParentNs)
+	if err != nil {
+		return mapK8sError(err)
+	}
+	if err := h.checkReparentAccess(ctx, claims, sourceNs, org, "source"); err != nil {
+		slog.WarnContext(ctx, "project reparent denied on source",
+			slog.String("action", "project_reparent_denied_source"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("project", projectName),
+			slog.String("source_parent", currentParentNs),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return err
+	}
+
+	// Check PERMISSION_REPARENT on the new (destination) parent.
+	// Use the destination parent's org for cascade, not the source org.
+	destOrg := newParentNamespace.Labels[v1alpha2.LabelOrganization]
+	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, destOrg, "destination"); err != nil {
+		slog.WarnContext(ctx, "project reparent denied on destination",
+			slog.String("action", "project_reparent_denied_destination"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("project", projectName),
+			slog.String("dest_parent", newParentNs),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return err
+	}
+
+	// Execute the reparent: update the parent label.
+	if _, err := h.k8s.UpdateParentLabel(ctx, projectName, newParentNs); err != nil {
+		return mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "project reparented",
+		slog.String("action", "project_reparent"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("project", projectName),
+		slog.String("from_parent", currentParentNs),
+		slog.String("to_parent", newParentNs),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return nil
+}
+
+// checkReparentAccess verifies that the user has PERMISSION_REPARENT on the given
+// parent namespace. Uses direct grants on the parent plus org-level cascade via
+// ReparentCascadePerms.
+func (h *Handler) checkReparentAccess(ctx context.Context, claims *rpc.Claims, parentNs *corev1.Namespace, org, direction string) error {
+	shareUsers, _ := GetShareUsers(parentNs)
+	shareRoles, _ := GetShareRoles(parentNs)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+
+	// Check direct grants on the parent resource.
+	if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionReparent); err == nil {
+		return nil
+	}
+
+	// Check org-level cascade: org OWNERs get REPARENT on all children via ReparentCascadePerms.
+	if org != "" {
+		orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
+		if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, orgUsers, orgRoles, rbac.PermissionReparent, rbac.ReparentCascadePerms); err == nil {
+			return nil
+		}
+	}
+
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: reparent authorization denied on %s parent", direction))
 }
 
 // DeleteProject deletes a managed namespace.

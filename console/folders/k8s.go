@@ -192,6 +192,23 @@ func (c *K8sClient) UpdateFolder(ctx context.Context, name string, displayName, 
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
+// UpdateParentLabel updates the parent label on a folder namespace.
+func (c *K8sClient) UpdateParentLabel(ctx context.Context, name, newParentNs string) (*corev1.Namespace, error) {
+	slog.DebugContext(ctx, "updating folder parent label in kubernetes",
+		slog.String("name", name),
+		slog.String("newParent", newParentNs),
+	)
+	ns, err := c.GetFolder(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if ns.Labels == nil {
+		ns.Labels = make(map[string]string)
+	}
+	ns.Labels[v1alpha2.AnnotationParent] = newParentNs
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
 // DeleteFolder deletes a managed folder namespace.
 func (c *K8sClient) DeleteFolder(ctx context.Context, name string) error {
 	slog.DebugContext(ctx, "deleting folder from kubernetes",

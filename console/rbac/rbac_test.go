@@ -585,6 +585,74 @@ func TestTemplateCascadePerms(t *testing.T) {
 	})
 }
 
+func TestHasPermission_ReparentPermission(t *testing.T) {
+	t.Run("viewer cannot reparent", func(t *testing.T) {
+		if HasPermission(RoleViewer, PermissionReparent) {
+			t.Error("viewer should not have reparent")
+		}
+	})
+
+	t.Run("editor cannot reparent", func(t *testing.T) {
+		if HasPermission(RoleEditor, PermissionReparent) {
+			t.Error("editor should not have reparent")
+		}
+	})
+
+	t.Run("owner can reparent", func(t *testing.T) {
+		if !HasPermission(RoleOwner, PermissionReparent) {
+			t.Error("owner should have reparent")
+		}
+	})
+}
+
+func TestReparentCascadePerms(t *testing.T) {
+	t.Run("viewer cannot reparent via cascade", func(t *testing.T) {
+		if HasCascadePermission(RoleViewer, PermissionReparent, ReparentCascadePerms) {
+			t.Error("viewer should not have reparent via cascade")
+		}
+	})
+
+	t.Run("editor cannot reparent via cascade", func(t *testing.T) {
+		if HasCascadePermission(RoleEditor, PermissionReparent, ReparentCascadePerms) {
+			t.Error("editor should not have reparent via cascade")
+		}
+	})
+
+	t.Run("owner can reparent via cascade", func(t *testing.T) {
+		if !HasCascadePermission(RoleOwner, PermissionReparent, ReparentCascadePerms) {
+			t.Error("owner should have reparent via cascade")
+		}
+	})
+
+	t.Run("CheckCascadeAccess grants org OWNER reparent", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"owner@example.com",
+			nil,
+			map[string]string{"owner@example.com": "owner"},
+			nil,
+			PermissionReparent,
+			ReparentCascadePerms,
+		)
+		if err != nil {
+			t.Errorf("expected access granted for OWNER, got %v", err)
+		}
+	})
+
+	t.Run("CheckCascadeAccess denies org EDITOR reparent", func(t *testing.T) {
+		err := CheckCascadeAccess(
+			"editor@example.com",
+			nil,
+			map[string]string{"editor@example.com": "editor"},
+			nil,
+			PermissionReparent,
+			ReparentCascadePerms,
+		)
+		if err == nil {
+			t.Error("expected access denied for EDITOR reparent, got nil")
+		}
+	})
+}
+
 func TestCheckAccessGrants(t *testing.T) {
 	t.Run("user grant allows access", func(t *testing.T) {
 		err := CheckAccessGrants(
