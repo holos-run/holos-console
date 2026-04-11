@@ -16,11 +16,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
-import { useGetFolder, useGetFolderRaw, useUpdateFolder } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
+import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
 export const Route = createFileRoute(
@@ -61,6 +73,7 @@ export function FolderDetailPage({
 
   const { data: org } = useGetOrganization(orgName)
   const updateMutation = useUpdateFolder(orgName, folderName)
+  const { data: allFolders } = useListFolders(orgName)
 
   // View mode: data or raw
   const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
@@ -68,7 +81,9 @@ export function FolderDetailPage({
   const [includeAllFields, setIncludeAllFields] = useState(false)
 
   const userRole = org?.userRole ?? Role.VIEWER
+  const folderUserRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+  const isOwner = folderUserRole === Role.OWNER
 
   // Display Name inline edit
   const [editingDisplayName, setEditingDisplayName] = useState(false)
@@ -80,6 +95,84 @@ export function FolderDetailPage({
 
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
+
+  // Parent picker
+  const [parentPickerOpen, setParentPickerOpen] = useState(false)
+  const [pendingParent, setPendingParent] = useState<{ type: ParentType; name: string; displayLabel: string } | null>(null)
+  const [reparentDialogOpen, setReparentDialogOpen] = useState(false)
+
+  // Build the set of descendant folder names (to exclude from parent options)
+  const descendantNames = new Set<string>()
+  if (allFolders) {
+    // BFS: start from this folder, collect all children recursively
+    const queue = [folderName]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      for (const f of allFolders) {
+        if (f.parentType === ParentType.FOLDER && f.parentName === current && !descendantNames.has(f.name)) {
+          descendantNames.add(f.name)
+          queue.push(f.name)
+        }
+      }
+    }
+  }
+
+  // Build parent picker options: org root + all folders except self and descendants
+  const parentOptions: ComboboxItem[] = [
+    { value: `org:${orgName}`, label: `${org?.displayName || orgName} (organization root)` },
+    ...(allFolders ?? [])
+      .filter((f) => f.name !== folderName && !descendantNames.has(f.name))
+      .map((f) => ({ value: `folder:${f.name}`, label: f.displayName || f.name })),
+  ]
+
+  // Resolve the current parent display text
+  const currentParentDisplay = (() => {
+    if (!folder) return ''
+    if (folder.parentType === ParentType.ORGANIZATION) {
+      return `Organization: ${org?.displayName || folder.parentName}`
+    }
+    if (folder.parentType === ParentType.FOLDER) {
+      const parentFolder = allFolders?.find((f) => f.name === folder.parentName)
+      return `Folder: ${parentFolder?.displayName || folder.parentName}`
+    }
+    return folder.parentName
+  })()
+
+  const handleParentSelect = (comboValue: string) => {
+    let type: ParentType
+    let name: string
+    let displayLabel: string
+    if (comboValue.startsWith('org:')) {
+      type = ParentType.ORGANIZATION
+      name = comboValue.slice(4)
+      displayLabel = org?.displayName || name
+    } else {
+      type = ParentType.FOLDER
+      name = comboValue.slice(7)
+      const f = allFolders?.find((fld) => fld.name === name)
+      displayLabel = f?.displayName || name
+    }
+    // Only show confirmation if the parent is actually changing
+    if (type === folder?.parentType && name === folder?.parentName) {
+      setParentPickerOpen(false)
+      return
+    }
+    setPendingParent({ type, name, displayLabel })
+    setReparentDialogOpen(true)
+  }
+
+  const handleConfirmReparent = async () => {
+    if (!pendingParent) return
+    try {
+      await updateMutation.mutateAsync({ parentType: pendingParent.type, parentName: pendingParent.name })
+      setReparentDialogOpen(false)
+      setParentPickerOpen(false)
+      setPendingParent(null)
+      toast.success('Parent changed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const handleSaveDisplayName = async () => {
     try {
@@ -226,6 +319,50 @@ export function FolderDetailPage({
               )}
             </div>
 
+            {/* Parent */}
+            <div className="flex items-center gap-2">
+              <span className="w-32 text-sm text-muted-foreground shrink-0">Parent</span>
+              {parentPickerOpen ? (
+                <div className="flex-1 flex items-center gap-2">
+                  <Combobox
+                    items={parentOptions}
+                    value={
+                      folder?.parentType === ParentType.ORGANIZATION
+                        ? `org:${folder.parentName}`
+                        : `folder:${folder?.parentName ?? ''}`
+                    }
+                    onValueChange={handleParentSelect}
+                    placeholder="Select parent..."
+                    searchPlaceholder="Search folders..."
+                    aria-label="parent picker"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="cancel parent change"
+                    onClick={() => setParentPickerOpen(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm">{currentParentDisplay}</span>
+                  {isOwner && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="change parent"
+                      onClick={() => setParentPickerOpen(true)}
+                    >
+                      Change Parent
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+
             {/* Name (slug) - read-only */}
             <div className="flex items-center gap-2">
               <span className="w-32 text-sm text-muted-foreground shrink-0">Name (slug)</span>
@@ -364,6 +501,25 @@ export function FolderDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={reparentDialogOpen} onOpenChange={setReparentDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Moving this folder to {pendingParent?.displayLabel} will change permission inheritance for it and all its descendants. This cannot be undone automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setReparentDialogOpen(false); setPendingParent(null) }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmReparent} disabled={updateMutation.isPending}>
+              Move
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
