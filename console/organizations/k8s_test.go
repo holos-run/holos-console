@@ -533,6 +533,77 @@ func TestUpdateOrgDefaultSharing_RejectsNonOrg(t *testing.T) {
 	}
 }
 
+func TestGetDefaultFolder_ReturnsAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDefaultFolder: "my-default",
+			},
+		},
+	}
+	got := GetDefaultFolder(ns)
+	if got != "my-default" {
+		t.Errorf("expected 'my-default', got %q", got)
+	}
+}
+
+func TestGetDefaultFolder_ReturnsEmptyWhenAbsent(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+		},
+	}
+	got := GetDefaultFolder(ns)
+	if got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestSetDefaultFolder_SetsAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	updated, err := k8s.SetDefaultFolder(context.Background(), "acme", "staging")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if updated.Annotations[v1alpha2.AnnotationDefaultFolder] != "staging" {
+		t.Errorf("expected default-folder 'staging', got %q", updated.Annotations[v1alpha2.AnnotationDefaultFolder])
+	}
+	// Verify existing annotations preserved
+	if updated.Annotations[v1alpha2.AnnotationShareUsers] == "" {
+		t.Error("expected share-users annotation to be preserved")
+	}
+}
+
+func TestSetDefaultFolder_RejectsNonOrg(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-fake",
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	_, err := k8s.SetDefaultFolder(context.Background(), "fake", "default")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
