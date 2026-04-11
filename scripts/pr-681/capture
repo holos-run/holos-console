@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Capture screenshots for PR #681 — Data/Resource view toggle on folder detail page
+# Environment variables provided by scripts/browser-capture-pr:
+#   HOLOS_BACKEND_URL  - e.g. https://localhost:9001
+#   PR_SCREENSHOT_DIR  - docs/screenshots/pr-681/
+
+set -euo pipefail
+
+BACKEND_URL="${HOLOS_BACKEND_URL:-https://localhost:8443}"
+SCREENSHOT_DIR="${PR_SCREENSHOT_DIR:-docs/screenshots/pr-681}"
+AB="agent-browser --session-name holos-dev"
+CA_CERT="$(mkcert -CAROOT)/rootCA.pem"
+
+mkdir -p "$SCREENSHOT_DIR"
+
+ORG_NAME="pr681-test-org"
+FOLDER_NAME="pr681-test-folder"
+
+# Extract ID token from browser session — strip surrounding quotes from eval output
+RAW_TOKEN=$($AB eval "JSON.parse(sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:')))).id_token" 2>/dev/null)
+TOKEN=$(echo "$RAW_TOKEN" | tr -d '"')
+
+rpc() {
+  local service="$1" method="$2" body="$3"
+  curl -s --cacert "$CA_CERT" \
+    -H "Connect-Protocol-Version: 1" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    "$BACKEND_URL/holos.console.v1.${service}/${method}" \
+    -d "$body"
+}
+
+echo "=== Step 1: Create test organization via API ==="
+RESULT=$(rpc OrganizationService CreateOrganization \
+  "{\"name\":\"$ORG_NAME\",\"displayName\":\"PR 681 Test Org\"}")
+echo "Create org result: $RESULT"
+
+echo "=== Step 2: Create test folder via API ==="
+RESULT=$(rpc FolderService CreateFolder \
+  "{\"organization\":\"$ORG_NAME\",\"name\":\"$FOLDER_NAME\",\"displayName\":\"PR 681 Test Folder\",\"description\":\"Demonstrates the Data/Resource view toggle\",\"parentType\":1,\"parentName\":\"$ORG_NAME\"}")
+echo "Create folder result: $RESULT"
+
+echo "=== Step 3: Capture folder detail page — Data view ==="
+$AB open "$BACKEND_URL/orgs/$ORG_NAME/folders/$FOLDER_NAME"
+$AB wait --load networkidle
+$AB wait 3000
+$AB screenshot "$SCREENSHOT_DIR/01-folder-detail-data-view.png"
+echo "Screenshot: 01-folder-detail-data-view.png (Data view — default)"
+
+echo "=== Step 4: Switch to Resource view and capture ==="
+$AB eval "
+  for (const b of document.querySelectorAll('button')) {
+    if (b.textContent.trim() === 'Resource') { b.click(); break; }
+  }
+"
+$AB wait 2000
+$AB screenshot "$SCREENSHOT_DIR/02-folder-detail-resource-view.png"
+echo "Screenshot: 02-folder-detail-resource-view.png (Resource view — raw JSON)"
+
+echo "=== Cleanup: Delete test resources ==="
+rpc FolderService DeleteFolder \
+  "{\"organization\":\"$ORG_NAME\",\"name\":\"$FOLDER_NAME\"}" || true
+rpc OrganizationService DeleteOrganization \
+  "{\"name\":\"$ORG_NAME\"}" || true
+
+echo "Screenshots saved to $SCREENSHOT_DIR"
