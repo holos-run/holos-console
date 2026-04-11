@@ -1,18 +1,20 @@
 ---
-name: codex-review
-description: Run a cross-model code review using the OpenAI Codex CLI. Use this skill to review a pull request before merge. Triggers on phrases like "codex review", "cross-model review", "review PR", "review this PR", "get a codex review", "review-pr", or "/codex-review". Accepts an optional PR number argument; if omitted, detects the PR for the current branch.
+name: review-pr
+description: Review a pull request using a cross-model code review. Use this skill to review a PR before merge. Triggers on phrases like "review PR", "review this PR", "review PR #N", "code review", "review-pr", or "/review-pr". Accepts an optional PR number argument; if omitted, detects the PR for the current branch.
 version: 2.0.0
 ---
 
-# Codex Review
+# Review PR
 
-Cross-model code review using the OpenAI Codex CLI. Reviews a pull request diff against project conventions and acceptance criteria, posts findings as a GitHub review, and reports a structured verdict. Designed for the plan-implement-review cycle where Claude implements and Codex reviews independently.
+Cross-model code review of a pull request. Reviews the PR diff against project conventions and acceptance criteria, posts findings as a GitHub review, and reports a structured verdict. Designed for the plan-implement-review cycle where Claude implements and a separate model reviews independently.
+
+Currently uses the OpenAI Codex CLI as the review backend. The backend is swappable — the rest of the skill (PR context gathering, finding classification, GitHub review posting, fix-review loop) is backend-agnostic.
 
 ## Arguments
 
 `{{ARGUMENTS}}` is an optional PR number:
 
-- **`<number>`** -- Review PR #`<number>` (e.g., `/codex-review 42`)
+- **`<number>`** -- Review PR #`<number>` (e.g., `/review-pr 42`)
 - **No argument** -- Detect the PR for the current branch. If the current branch has no open PR, abort with a clear message.
 
 ## Workflow
@@ -52,7 +54,7 @@ If `PR_NUMBER` is empty, **abort the skill** with this message:
 
 ```
 No open PR found for the current branch. Either:
-  1. Provide a PR number: /codex-review 42
+  1. Provide a PR number: /review-pr 42
   2. Push the current branch and open a PR first
 ```
 
@@ -88,10 +90,10 @@ BASE_BRANCH=$(gh pr view $PR_NUMBER --json baseRefName -q .baseRefName)
 ### 4. Determine Review Round
 
 ```bash
-mkdir -p tmp/codex-review/pr-${PR_NUMBER}
-ROUND=$(ls tmp/codex-review/pr-${PR_NUMBER}/round-*.md 2>/dev/null | wc -l | tr -d ' ')
+mkdir -p tmp/review-pr/pr-${PR_NUMBER}
+ROUND=$(ls tmp/review-pr/pr-${PR_NUMBER}/round-*.md 2>/dev/null | wc -l | tr -d ' ')
 ROUND=$((ROUND + 1))
-OUTPUT_FILE="tmp/codex-review/pr-${PR_NUMBER}/round-${ROUND}.md"
+OUTPUT_FILE="tmp/review-pr/pr-${PR_NUMBER}/round-${ROUND}.md"
 ```
 
 ### 5. Build the Review Prompt
@@ -274,7 +276,7 @@ Print a concise summary:
 
 ```
 Codex review round <ROUND> for PR #<PR_NUMBER> complete.
-- Output: tmp/codex-review/pr-<PR_NUMBER>/round-<ROUND>.md
+- Output: tmp/review-pr/pr-<PR_NUMBER>/round-<ROUND>.md
 - Verdict: APPROVE | REQUEST_CHANGES
 - Critical: <count>
 - Important: <count>
@@ -288,7 +290,7 @@ Then provide guidance based on the classification:
 |-----------|----------|
 | APPROVE (no findings) | "Review is clean. Ready to merge." |
 | Non-critical findings only | "Non-critical findings only. Safe to merge and create a follow-up issue for the findings." |
-| Critical findings exist | "Critical findings must be addressed. Fix and re-run `/codex-review <PR_NUMBER>` (round <N+1>)." |
+| Critical findings exist | "Critical findings must be addressed. Fix and re-run `/review-pr <PR_NUMBER>` (round <N+1>)." |
 
 ## Fix-Review Loop
 
@@ -296,15 +298,15 @@ When used during implementation (integrated into the implement-issue workflow):
 
 ```
 1. Implementation complete, PR open, CI green
-2. Run /codex-review <PR_NUMBER>
+2. Run /review-pr <PR_NUMBER>
 3. If APPROVE -> merge
 4. If non-critical findings only -> merge, create follow-up issue
 5. If critical findings:
-   a. Read tmp/codex-review/pr-<N>/round-<R>.md
+   a. Read tmp/review-pr/pr-<N>/round-<R>.md
    b. Fix each critical finding
    c. Commit: "fix: address codex review round <R> critical findings"
    d. Push fixes
-   e. Re-run /codex-review <PR_NUMBER> (round R+1)
+   e. Re-run /review-pr <PR_NUMBER> (round R+1)
    f. Maximum 2 rounds on critical findings
 6. After 2 rounds with unresolved critical findings:
    - Post summary comment listing unresolved findings
@@ -336,7 +338,7 @@ For non-critical disagreements, merge and create the follow-up issue. The human 
 To start fresh (e.g., after significant rework):
 
 ```bash
-rm -rf tmp/codex-review/pr-${PR_NUMBER}/
+rm -rf tmp/review-pr/pr-${PR_NUMBER}/
 ```
 
 ## Prerequisites

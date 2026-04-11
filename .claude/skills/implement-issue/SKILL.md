@@ -140,9 +140,7 @@ EOF
 
 The `Closes: #<number>` line automatically closes the issue when the PR is merged.
 
-After creating the PR, post a comment explaining the rationale and motivation for the implementation approach, including alternatives considered and why they were rejected.
-
-**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for a human or another agent to review, fix CI, and merge. This boundary exists because code review (e.g., `/codex-review`) is being integrated into the workflow — until that integration is complete, each PR should be reviewed before further work proceeds.
+**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for a human or another agent to review, fix CI, and merge. This boundary exists because code review (e.g., `/review-pr`) is being integrated into the workflow — until that integration is complete, each PR should be reviewed before further work proceeds.
 
 ## Key Conventions
 
