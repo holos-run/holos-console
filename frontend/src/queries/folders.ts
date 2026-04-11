@@ -85,7 +85,7 @@ export function useUpdateFolder(organization: string, name: string) {
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { displayName?: string; description?: string }) =>
+    mutationFn: (params: { displayName?: string; description?: string; parentType?: ParentType; parentName?: string }) =>
       client.updateFolder({ organization, name, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderListKey(organization) })

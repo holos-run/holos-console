@@ -32,12 +32,17 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
+vi.mock('@/queries/folders', () => ({
+  useListFolders: vi.fn(),
+}))
+
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
 import { useGetOrganization } from '@/queries/organizations'
+import { useListFolders } from '@/queries/folders'
 import { useAuth } from '@/lib/auth'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ProjectSettingsPage } from './index'
@@ -88,6 +93,11 @@ function setupMocks(overrides: {
     isAuthenticated: true,
     isLoading: false,
     user: { profile: { email: 'alice@example.com', groups: [] } },
+  })
+  ;(useListFolders as Mock).mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
   })
 }
 

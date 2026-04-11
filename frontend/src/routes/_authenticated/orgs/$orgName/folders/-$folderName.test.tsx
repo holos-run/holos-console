@@ -34,6 +34,7 @@ vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
   useGetFolderRaw: vi.fn(),
   useUpdateFolder: vi.fn(),
+  useListFolders: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -42,7 +43,7 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetFolder, useGetFolderRaw, useUpdateFolder } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { FolderDetailPage } from './$folderName/index'
@@ -79,6 +80,11 @@ function setupMocks(userRole = Role.OWNER, folderOverride?: object) {
   ;(useUpdateFolder as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
+  })
+  ;(useListFolders as Mock).mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
   })
 }
 
@@ -125,6 +131,7 @@ describe('FolderDetailPage', () => {
     ;(useGetFolder as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: true, error: null })
     ;(useUpdateFolder as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
     render(<FolderDetailPage orgName="test-org" folderName="payments" />)
     expect(screen.queryByText('Payments Team')).not.toBeInTheDocument()
   })
@@ -133,6 +140,7 @@ describe('FolderDetailPage', () => {
     ;(useGetFolder as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('not found') })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
     ;(useUpdateFolder as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
     render(<FolderDetailPage orgName="test-org" folderName="payments" />)
     expect(screen.getByText('not found')).toBeInTheDocument()
   })
