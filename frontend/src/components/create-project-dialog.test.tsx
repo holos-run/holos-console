@@ -212,6 +212,58 @@ describe('CreateProjectDialog', () => {
     })
   })
 
+  it('resets folder state when organization changes so submit uses org as parent', async () => {
+    // Both orgs have no default folder. The user manually selects folder-a
+    // from org-a, then switches to org-b and submits. Without an explicit
+    // reset the folder state retains 'folder-a', causing handleSubmit to send
+    // parentType=FOLDER + parentName='folder-a' — an invalid cross-org link.
+    mockMutateAsync.mockResolvedValue({ name: 'new-project' })
+    ;(useListOrganizations as Mock).mockReturnValue({
+      data: {
+        organizations: [
+          { name: 'org-a', displayName: 'Org A' },
+          { name: 'org-b', displayName: 'Org B' },
+        ],
+      },
+      isLoading: false,
+    })
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { defaultFolder: '' },
+      isPending: false,
+      error: null,
+    })
+    ;(useListFolders as Mock).mockImplementation((org: string) => {
+      if (org === 'org-a') return { data: [{ name: 'folder-a', displayName: 'Folder A' }], isPending: false, error: null }
+      return { data: [], isPending: false, error: null }
+    })
+
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="org-a" />)
+
+    // Manually select folder-a from org-a's folder list.
+    const folderSelect = screen.getByLabelText('Folder') as HTMLSelectElement
+    fireEvent.change(folderSelect, { target: { value: 'folder-a' } })
+    expect(folderSelect.value).toBe('folder-a')
+
+    // Switch to org-b.
+    const orgSelect = screen.getByLabelText('Organization') as HTMLSelectElement
+    fireEvent.change(orgSelect, { target: { value: 'org-b' } })
+
+    // Fill in required fields and submit.
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), { target: { value: 'Test' } })
+    fireEvent.submit(screen.getByRole('form'))
+
+    // The submit must use organization as the parent (folder was cleared).
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization: 'org-b',
+          parentType: 1, // ParentType.ORGANIZATION
+          parentName: 'org-b',
+        })
+      )
+    })
+  })
+
   it('does not close dialog on error', async () => {
     mockMutateAsync.mockRejectedValue(new Error('server error'))
     render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
