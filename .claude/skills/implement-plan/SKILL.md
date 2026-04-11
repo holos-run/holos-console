@@ -67,15 +67,23 @@ Agent(
 
 **Wait for the sub-agent to complete before proceeding.**
 
-After the sub-agent finishes, detect the PR number:
+After the sub-agent finishes, detect the PR number by filtering on the current branch name to avoid selecting an unrelated PR:
 
 ```bash
 # The sub-agent created a branch and opened a PR
-# Find the PR for the most recent branch
-PR_NUMBER=$(gh pr list --state open --json number,headRefName --jq '.[0].number')
+# Detect the branch name, then find the PR for that specific branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+PR_NUMBER=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number')
 ```
 
-If no PR was found, the implementation sub-agent may have failed. Check `gh pr list` for recent PRs matching the issue number in the branch name. If still not found, comment on the sub-issue that implementation failed and continue to the next sub-issue.
+If no PR was found, the implementation sub-agent may have failed. Fall back to searching by sub-issue reference in PR bodies:
+
+```bash
+# Fallback: search for a PR that closes the sub-issue
+PR_NUMBER=$(gh pr list --state open --json number,body --jq '.[] | select(.body | test("Closes:?\\s*#<SUB_ISSUE_NUMBER>")) | .number' | head -1)
+```
+
+If still not found, comment on the sub-issue that implementation failed and continue to the next sub-issue.
 
 ### 5. Wait for CI
 
