@@ -370,7 +370,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			redirectURIs = append(redirectURIs, viteRedirectURI)
 		}
 
-		oidcHandler, err := oidc.NewHandler(ctx, oidc.Config{
+		oidcHandler, dexState, err := oidc.NewHandler(ctx, oidc.Config{
 			Issuer:          s.cfg.Issuer,
 			ClientID:        s.cfg.ClientID,
 			RedirectURIs:    redirectURIs,
@@ -384,6 +384,12 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Mount Dex at /dex/ - Dex handles the full path internally since issuer includes /dex
 		mux.Handle("/dex/", oidcHandler)
+
+		// Mount dev token-exchange endpoint for programmatic persona tokens.
+		// This endpoint mints real OIDC ID tokens signed by Dex's keys for any
+		// registered test user, enabling API testing without a browser flow.
+		mux.HandleFunc("/api/dev/token", oidc.HandleTokenExchange(dexState))
+		slog.Info("dev token-exchange endpoint mounted", "path", "/api/dev/token")
 
 		slog.Info("embedded OIDC provider mounted", "path", "/dex/", "issuer", s.cfg.Issuer)
 	}
