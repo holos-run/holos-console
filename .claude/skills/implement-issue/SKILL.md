@@ -1,7 +1,7 @@
 ---
 name: implement-issue
 description: Implement a single GitHub issue end-to-end. Use this skill when the user provides a GitHub issue URL and asks to implement it, work on it, fix it, or resolve it. Triggers on phrases like "implement issue", "work on this issue", "fix this issue", or when given a GitHub issue URL alone. Handles the full workflow: fetch, branch, comment, implement, and open a PR. For parent issues with sub-issues, use /implement-plan instead.
-version: 7.0.0
+version: 8.0.0
 ---
 
 # Implement Issue
@@ -106,6 +106,25 @@ Run the relevant test commands to verify your implementation:
 
 **Always run `make generate` before committing** if any generated files might be affected.
 
+#### When to run `make test-e2e` locally
+
+Before opening the PR, assess whether your changes warrant a local E2E test run. Use the E2E relevance decision table in the `implement-plan` skill (Step 6a) to decide. In short, E2E tests are relevant when your changes touch:
+
+- Existing frontend routes, components, or lib code (`frontend/src/routes/`, `frontend/src/components/`, `frontend/src/lib/`)
+- OIDC or auth code (`console/oidc/`)
+- Existing RPC handlers in `console/rpc/`
+- Server setup or route registration (`console/console.go`)
+- E2E test files themselves (`frontend/e2e/`)
+- Frontend package deps or TypeScript config (`frontend/package.json`, `frontend/tsconfig*.json`)
+
+E2E tests are NOT relevant for changes limited to: new proto definitions, generated code, new Go packages/handlers, docs, test-only files, `.claude/` or `.github/` config, or Makefile/markdown files.
+
+**Local E2E is optional and best-effort.** Running `make test-e2e` requires `make certs` and a k3d cluster. If the environment does not support E2E (e.g., no cluster available), skip the local run and note this in the PR description so the CI E2E check covers it. Example:
+
+```
+> Local E2E was not run (no k3d cluster available). Relying on CI E2E check.
+```
+
 ### 7. Final Cleanup Phase
 
 Before opening the PR, scan for:
@@ -145,6 +164,7 @@ The `Closes #<number>` line automatically closes the issue when the PR is merged
 - **RED GREEN**: Write tests before implementation
 - **Regular commits**: Commit logical units as you go, not one giant commit at the end
 - **make generate**: Always run before committing if proto or generated files are involved
+- **E2E decision-making**: Assess whether `make test-e2e` is warranted using the E2E relevance heuristic (see Step 6). Run it locally when relevant and the environment supports it; otherwise note the skip in the PR description
 - **Cleanup phase**: Every implementation ends with a cleanup commit
 - **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR
 - **Single issues only**: If the issue has sub-issues, stop and direct the user to `/implement-plan`
