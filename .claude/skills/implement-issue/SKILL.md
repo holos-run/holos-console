@@ -1,12 +1,14 @@
 ---
 name: implement-issue
-description: Implement a GitHub issue end-to-end. Use this skill when the user provides a GitHub issue URL and asks to implement it, work on it, fix it, or resolve it. Triggers on phrases like "implement issue", "work on this issue", "fix this issue", or when given a GitHub issue URL alone. Handles the full workflow: fetch, branch, comment, implement, open PR, fix CI, capture screenshots, and merge.
-version: 5.0.0
+description: Implement a single GitHub issue end-to-end. Use this skill when the user provides a GitHub issue URL and asks to implement it, work on it, fix it, or resolve it. Triggers on phrases like "implement issue", "work on this issue", "fix this issue", or when given a GitHub issue URL alone. Handles the full workflow: fetch, branch, comment, implement, and open a PR. For parent issues with sub-issues, use /implement-plan instead.
+version: 6.0.0
 ---
 
 # Implement Issue
 
-Full workflow for implementing a GitHub issue: fetch the issue, create a feature branch, announce on the issue, implement using repository conventions, open a PR, loop on CI until green, capture screenshots for frontend changes, and merge.
+Full workflow for implementing a single GitHub issue: fetch the issue, create a feature branch, announce on the issue, implement using repository conventions, and open a PR.
+
+For parent issues with sub-issues, use the `/implement-plan` skill instead -- it iterates over sub-issues, implements each one via this skill, runs code review/fix loops, and merges.
 
 ## Workflow
 
@@ -21,27 +23,7 @@ gh issue view <issue-number> --repo <owner/repo> --json number,title,body,labels
 Parse the issue URL to extract the repo and issue number. URL formats:
 - `https://github.com/owner/repo/issues/123` -> repo=`owner/repo`, number=`123`
 
-### 1b. Check for Sub-Issues
-
-After fetching the issue, check its body for sub-issues. Sub-issues are indicated by task-list lines referencing other issues in the same repo, matching patterns like:
-
-- `- [ ] #123 -- description`
-- `- [x] #123 -- description`
-- `- [ ] #123`
-
-Extract all referenced issue numbers from these patterns using a regex like `#(\d+)`.
-
-**If sub-issues are found**, implement only the **first unchecked sub-issue**, then stop:
-
-1. Find the first sub-issue that is not checked off (i.e., `- [ ] #NNN`, not `- [x] #NNN`).
-2. Launch an Agent tool call with `subagent_type: "general-purpose"` and `model: "opus"`.
-   - The agent prompt must instruct it to invoke the `/implement-issue` skill with that sub-issue number as the argument. Include the repo context (owner/repo) and working directory so the agent has full context.
-3. **Wait for the agent to complete.**
-4. **Stop here** -- do not proceed to the next sub-issue or continue to step 2. Only one sub-issue is implemented per invocation. This prevents stacked PRs while code review is being integrated into the workflow.
-
-If all sub-issues are already checked off, comment on the parent issue that all work is complete and stop.
-
-**If no sub-issues are found**, continue with step 2 below (normal single-issue workflow).
+If the issue body contains sub-issue references (task-list lines like `- [ ] #123`), this is a parent issue. **Stop and inform the user** to use `/implement-plan` instead. Do not attempt to implement a parent issue directly.
 
 ### 2. Fetch Origin and Create Branch
 
@@ -152,5 +134,5 @@ The `Closes #<number>` line automatically closes the issue when the PR is merged
 - **make generate**: Always run before committing if proto or generated files are involved
 - **Cleanup phase**: Every implementation ends with a cleanup commit
 - **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR
-- **One sub-issue at a time**: When a parent issue has sub-issues, implement only the first unchecked one per invocation
+- **Single issues only**: If the issue has sub-issues, stop and direct the user to `/implement-plan`
 - **Close the right issue**: PRs close the specific issue being worked on (`Closes #<sub-issue>` for sub-issues, not the parent)
