@@ -4,13 +4,17 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -281,6 +285,72 @@ func TestCreateFolder_DeriveNameWithCollision(t *testing.T) {
 	}
 	if len(resp.Msg.Name) < len("engineering-000000") {
 		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_RetriesOnAlreadyExistsRace(t *testing.T) {
+	// Simulate race: GenerateIdentifier finds "engineering" available, but by the
+	// time CreateFolder calls K8s Create, another request has taken it.
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	fakeClient := fake.NewClientset(orgNs)
+
+	var createCount atomic.Int32
+	fakeClient.PrependReactor("create", "namespaces", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		n := createCount.Add(1)
+		if n == 1 {
+			// First create: simulate race by adding the namespace then returning AlreadyExists
+			ca := action.(k8stesting.CreateAction)
+			ns := ca.GetObject().(*corev1.Namespace)
+			_ = fakeClient.Tracker().Add(ns)
+			return true, nil, k8serrors.NewAlreadyExists(
+				schema.GroupResource{Resource: "namespaces"}, ns.Name)
+		}
+		return false, nil, nil // fall through to default handler
+	})
+
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	ctx := contextWithClaims("alice@example.com")
+	resp, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		DisplayName:  "Engineering",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err != nil {
+		t.Fatalf("expected retry to succeed, got %v", err)
+	}
+	if resp.Msg.Name == "engineering" {
+		t.Error("expected name with suffix after retry, got 'engineering'")
+	}
+	if len(resp.Msg.Name) < len("engineering-000000") {
+		t.Errorf("expected suffixed name, got %q", resp.Msg.Name)
+	}
+}
+
+func TestCreateFolder_ExplicitNameDoesNotRetry(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	existing := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(orgNs, existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CreateFolder(ctx, connect.NewRequest(&consolev1.CreateFolderRequest{
+		Name:         "eng",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_ORGANIZATION,
+		ParentName:   "acme",
+	}))
+	if err == nil {
+		t.Fatal("expected AlreadyExists error for explicit name collision")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodeAlreadyExists {
+		t.Errorf("expected CodeAlreadyExists, got %v", connectErr.Code())
 	}
 }
 
@@ -718,6 +788,26 @@ func TestCheckFolderIdentifier_Unauthenticated(t *testing.T) {
 		Identifier: "eng",
 	}))
 	assertUnauthenticated(t, err)
+}
+
+func TestCheckFolderIdentifier_NonSlugReturnsUnavailable(t *testing.T) {
+	// No folder namespace exists, but the input is not a valid slug.
+	// Should return available=false with the slugified form as suggestion.
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "My Folder",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false for non-slug input")
+	}
+	if resp.Msg.SuggestedIdentifier != "my-folder" {
+		t.Errorf("expected suggested_identifier='my-folder', got %q", resp.Msg.SuggestedIdentifier)
+	}
 }
 
 // ---- UpdateFolder reparent tests ----
