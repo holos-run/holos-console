@@ -52,7 +52,11 @@ const (
 	AnnotationURL               = "console.holos.run/url"
 	AnnotationMandatory         = "console.holos.run/mandatory"
 	AnnotationEnabled           = "console.holos.run/enabled"
-	AnnotationSettings          = "console.holos.run/project-settings"
+	AnnotationSettings = "console.holos.run/project-settings"
+	// AnnotationDefaultFolder stores the name of the default folder for an
+	// organization. New projects without an explicit parent are created in this
+	// folder (ADR 022 Decision 3).
+	AnnotationDefaultFolder = "console.holos.run/default-folder"
 	// AnnotationParent is the Kubernetes namespace name of the immediate parent
 	// (organization namespace or folder namespace). Added in v1alpha2 and
 	// present on both Folder and Project namespaces. The hierarchy walk follows

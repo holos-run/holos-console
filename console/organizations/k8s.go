@@ -239,6 +239,29 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
+// GetDefaultFolder returns the default folder name stored as an annotation on
+// the organization namespace. Returns "" when the annotation is absent.
+func GetDefaultFolder(ns *corev1.Namespace) string {
+	if ns.Annotations == nil {
+		return ""
+	}
+	return ns.Annotations[v1alpha2.AnnotationDefaultFolder]
+}
+
+// SetDefaultFolder sets the default folder annotation on the organization
+// namespace and persists it to Kubernetes.
+func (c *K8sClient) SetDefaultFolder(ctx context.Context, name, folderName string) (*corev1.Namespace, error) {
+	ns, err := c.GetOrganization(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	ns.Annotations[v1alpha2.AnnotationDefaultFolder] = folderName
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
 	if ns.Annotations == nil {
 		return nil, nil

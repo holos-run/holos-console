@@ -244,16 +244,18 @@ func (s *Server) Serve(ctx context.Context) error {
 		nsResolver := &resolver.Resolver{NamespacePrefix: s.cfg.NamespacePrefix, OrganizationPrefix: s.cfg.OrganizationPrefix, FolderPrefix: s.cfg.FolderPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
 		slog.Info("kubernetes client initialized")
 
+		// Folder K8s client (created early — used by both org and folder services).
+		foldersK8s := folders.NewK8sClient(k8sClientset, nsResolver)
+
 		// Organization service (projectsK8s created first for linked-project precondition check)
 		orgsK8s := organizations.NewK8sClient(k8sClientset, nsResolver)
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
 		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
-		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorRoles)
+		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, foldersK8s, foldersK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorRoles)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 
 		// Folder service
-		foldersK8s := folders.NewK8sClient(k8sClientset, nsResolver)
 		foldersHandler := folders.NewHandler(foldersK8s)
 		foldersPath, foldersHTTPHandler := consolev1connect.NewFolderServiceHandler(foldersHandler, protectedInterceptors)
 		mux.Handle(foldersPath, foldersHTTPHandler)

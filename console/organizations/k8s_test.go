@@ -16,7 +16,7 @@ import (
 )
 
 func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", ProjectPrefix: "prj-"}
+	return &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 }
 
 func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {

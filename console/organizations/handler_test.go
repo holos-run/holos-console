@@ -57,6 +57,8 @@ type testHandlerOpts struct {
 	creatorUsers       []string
 	creatorRoles       []string
 	projectLister      ProjectLister
+	folderCreator      FolderCreator
+	folderLister       FolderLister
 }
 
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
@@ -70,7 +72,7 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, opts.projectLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorRoles)
+	handler := NewHandler(k8s, opts.projectLister, opts.folderCreator, opts.folderLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorRoles)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
 }
@@ -295,7 +297,7 @@ func TestCreateOrganization_DisabledDeniesWithoutExplicitGrant(t *testing.T) {
 func TestCreateOrganization_AutoOwner(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, nil, false, []string{"alice@example.com"}, nil)
+	handler := NewHandler(k8s, nil, nil, nil, false, []string{"alice@example.com"}, nil)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
@@ -725,7 +727,7 @@ func TestListOrganizations_UsesLabelWithNamespacePrefix(t *testing.T) {
 	}
 	fakeClient := fake.NewClientset(ns)
 	k8s := NewK8sClient(fakeClient, r)
-	handler := NewHandler(k8s, nil, false, nil, nil)
+	handler := NewHandler(k8s, nil, nil, nil, false, nil, nil)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	ctx := contextWithClaims("alice@example.com")
