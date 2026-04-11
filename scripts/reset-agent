@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# reset-agent — Reset the current agent worktree to a clean state on origin/main.
+#
+# Determines the agent slot from PWD (e.g. agent-3), fetches origin, resets
+# the local feature branch to origin/main, sets tracking, and ensures a clean
+# working directory. Exits 1 so callers know this was a deliberate reset, not
+# a continuation of normal work.
+set -euo pipefail
+
+# Determine agent slot from PWD
+SLOT=$(echo "$PWD" | grep -o 'agent-[0-9]*' | head -1)
+if [[ -z "$SLOT" ]]; then
+  echo "ERROR: Could not determine agent slot from PWD: $PWD" >&2
+  exit 1
+fi
+BRANCH="feat/${SLOT}"
+
+echo "Resetting ${SLOT} to origin/main..."
+
+# Fetch latest
+git fetch origin
+
+# Ensure we are on the agent feature branch
+CURRENT=$(git branch --show-current)
+if [[ "$CURRENT" != "$BRANCH" ]]; then
+  # If the branch exists locally, switch to it; otherwise create it
+  if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
+    git checkout "$BRANCH"
+  else
+    git checkout -b "$BRANCH" origin/main
+  fi
+fi
+
+# Reset the branch to origin/main
+git reset --hard origin/main
+
+# Set tracking to origin/main
+git branch --set-upstream-to=origin/main "$BRANCH"
+
+# Clean any untracked files and directories
+git clean -fd
+
+echo "Agent ${SLOT} reset to $(git rev-parse --short HEAD) on branch ${BRANCH} tracking origin/main."
+exit 1
