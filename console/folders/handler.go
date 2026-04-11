@@ -543,6 +543,51 @@ func (h *Handler) GetFolderRaw(
 	}), nil
 }
 
+// CheckFolderIdentifier checks whether a proposed folder identifier is available.
+func (h *Handler) CheckFolderIdentifier(
+	ctx context.Context,
+	req *connect.Request[consolev1.CheckFolderIdentifierRequest],
+) (*connect.Response[consolev1.CheckFolderIdentifierResponse], error) {
+	if req.Msg.Identifier == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("identifier is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.FolderPrefix
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.k8s.NamespaceExists(ctx, nsName)
+	}
+
+	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+	}
+
+	// Note: GenerateIdentifier takes a display name and slugifies it, but here
+	// the caller passes a pre-slugified identifier. Since Slugify is idempotent
+	// on valid slugs, this works correctly.
+	available := suggested == req.Msg.Identifier
+
+	slog.InfoContext(ctx, "folder identifier checked",
+		slog.String("action", "folder_check_identifier"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("identifier", req.Msg.Identifier),
+		slog.Bool("available", available),
+		slog.String("suggested", suggested),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CheckFolderIdentifierResponse{
+		Available:           available,
+		SuggestedIdentifier: suggested,
+	}), nil
+}
+
 // resolveParentNS converts a ParentType+ParentName pair to a Kubernetes namespace name.
 func (h *Handler) resolveParentNS(parentType consolev1.ParentType, parentName string) (string, error) {
 	switch parentType {

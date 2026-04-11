@@ -1252,6 +1252,67 @@ func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
 	}
 }
 
+// ---- CheckProjectIdentifier tests ----
+
+func TestCheckProjectIdentifier_Available(t *testing.T) {
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !resp.Msg.Available {
+		t.Error("expected available=true")
+	}
+	if resp.Msg.SuggestedIdentifier != "frontend" {
+		t.Errorf("expected suggested_identifier='frontend', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckProjectIdentifier_Taken(t *testing.T) {
+	existing := managedNS("frontend", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler, _ := newHandler(existing)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false")
+	}
+	if resp.Msg.SuggestedIdentifier == "frontend" {
+		t.Error("expected suggested_identifier to differ from input")
+	}
+	// Should start with "frontend-"
+	if len(resp.Msg.SuggestedIdentifier) < len("frontend-000000") {
+		t.Errorf("expected suffixed identifier, got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckProjectIdentifier_EmptyRejects(t *testing.T) {
+	handler, _ := newHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CheckProjectIdentifier(ctx, connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "",
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestCheckProjectIdentifier_Unauthenticated(t *testing.T) {
+	handler, _ := newHandler()
+	_, err := handler.CheckProjectIdentifier(context.Background(), connect.NewRequest(&consolev1.CheckProjectIdentifierRequest{
+		Identifier: "frontend",
+	}))
+	assertUnauthenticated(t, err)
+}
+
 func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
 	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	fakeClient := fake.NewClientset(existing)

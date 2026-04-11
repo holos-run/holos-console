@@ -613,6 +613,69 @@ func TestMergeGrants_PreservesBaseWhenOverrideIsLower(t *testing.T) {
 	}
 }
 
+// ---- CheckFolderIdentifier tests ----
+
+func TestCheckFolderIdentifier_Available(t *testing.T) {
+	// No folder namespace exists, so identifier should be available.
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "engineering",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !resp.Msg.Available {
+		t.Error("expected available=true")
+	}
+	if resp.Msg.SuggestedIdentifier != "engineering" {
+		t.Errorf("expected suggested_identifier='engineering', got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckFolderIdentifier_Taken(t *testing.T) {
+	// Create an existing folder namespace that will collide.
+	f := folderNSWithGrants("engineering", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	handler := newTestHandler(f)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "engineering",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Msg.Available {
+		t.Error("expected available=false")
+	}
+	if resp.Msg.SuggestedIdentifier == "engineering" {
+		t.Error("expected suggested_identifier to differ from input")
+	}
+	// Should start with "engineering-"
+	if len(resp.Msg.SuggestedIdentifier) < len("engineering-000000") {
+		t.Errorf("expected suffixed identifier, got %q", resp.Msg.SuggestedIdentifier)
+	}
+}
+
+func TestCheckFolderIdentifier_EmptyRejects(t *testing.T) {
+	handler := newTestHandler()
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.CheckFolderIdentifier(ctx, connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "",
+	}))
+	assertInvalidArgument(t, err)
+}
+
+func TestCheckFolderIdentifier_Unauthenticated(t *testing.T) {
+	handler := newTestHandler()
+	_, err := handler.CheckFolderIdentifier(context.Background(), connect.NewRequest(&consolev1.CheckFolderIdentifierRequest{
+		Identifier: "eng",
+	}))
+	assertUnauthenticated(t, err)
+}
+
 // ---- helpers ----
 
 func assertUnauthenticated(t *testing.T, err error) {

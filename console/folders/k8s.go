@@ -11,6 +11,7 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -96,6 +97,18 @@ func (c *K8sClient) GetFolder(ctx context.Context, name string) (*corev1.Namespa
 // Used for walking the parent chain during depth enforcement.
 func (c *K8sClient) GetNamespace(ctx context.Context, nsName string) (*corev1.Namespace, error) {
 	return c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+}
+
+// NamespaceExists returns true if a namespace with the given name exists.
+func (c *K8sClient) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	_, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // CreateFolder creates a new namespace with folder labels and annotations.

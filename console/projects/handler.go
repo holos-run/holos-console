@@ -596,6 +596,48 @@ func (h *Handler) GetProjectRaw(
 	}), nil
 }
 
+// CheckProjectIdentifier checks whether a proposed project identifier is available.
+func (h *Handler) CheckProjectIdentifier(
+	ctx context.Context,
+	req *connect.Request[consolev1.CheckProjectIdentifierRequest],
+) (*connect.Response[consolev1.CheckProjectIdentifierResponse], error) {
+	if req.Msg.Identifier == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("identifier is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	prefix := h.k8s.Resolver.NamespacePrefix + h.k8s.Resolver.ProjectPrefix
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.k8s.NamespaceExists(ctx, nsName)
+	}
+
+	suggested, err := v1alpha2.GenerateIdentifier(ctx, req.Msg.Identifier, prefix, exists)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("generating identifier: %w", err))
+	}
+
+	available := suggested == req.Msg.Identifier
+
+	slog.InfoContext(ctx, "project identifier checked",
+		slog.String("action", "project_check_identifier"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("identifier", req.Msg.Identifier),
+		slog.Bool("available", available),
+		slog.String("suggested", suggested),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CheckProjectIdentifierResponse{
+		Available:           available,
+		SuggestedIdentifier: suggested,
+	}), nil
+}
+
 // buildProject creates a Project proto message from a namespace.
 func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant, userRole rbac.Role) *consolev1.Project {
 	p := &consolev1.Project{
