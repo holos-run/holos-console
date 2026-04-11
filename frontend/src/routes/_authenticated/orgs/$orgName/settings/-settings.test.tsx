@@ -25,6 +25,13 @@ vi.mock('@/queries/organizations', () => ({
   useDeleteOrganization: vi.fn(),
 }))
 
+vi.mock('@/queries/folders', () => ({
+  useListFolders: vi.fn(),
+}))
+vi.mock('@/gen/holos/console/v1/folders_pb', () => ({
+  ParentType: { ORGANIZATION: 1, FOLDER: 2 },
+}))
+
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -36,8 +43,14 @@ import {
   useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from '@/queries/organizations'
+import { useListFolders } from '@/queries/folders'
 import { useAuth } from '@/lib/auth'
 import { OrgSettingsPage } from './index'
+
+const mockFolders = [
+  { name: 'default', displayName: 'Default', organization: 'test-org' },
+  { name: 'staging', displayName: 'Staging', organization: 'test-org' },
+]
 
 const mockOrg = {
   name: 'test-org',
@@ -49,6 +62,7 @@ const mockOrg = {
   roleGrants: [],
   defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
   defaultRoleGrants: [{ principal: 'engineering', role: 2 }],
+  defaultFolder: 'default',
   userRole: 3, // OWNER
 }
 
@@ -79,6 +93,11 @@ function setupMocks(overrides: Partial<typeof mockOrg> = {}) {
   })
   ;(useDeleteOrganization as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+    error: null,
+  })
+  ;(useListFolders as Mock).mockReturnValue({
+    data: mockFolders,
     isPending: false,
     error: null,
   })
@@ -338,6 +357,62 @@ describe('OrgSettingsPage', () => {
       const mutateAsync = (useDeleteOrganization as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith({ name: 'test-org' })
+      })
+    })
+  })
+
+  describe('Default Folder section', () => {
+    it('renders Default Folder section for owners', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('Default Folder')).toBeInTheDocument()
+    })
+
+    it('hides Default Folder section for non-owners', () => {
+      setupMocks({ userRole: 1 }) // VIEWER
+      render(<OrgSettingsPage />)
+      expect(screen.queryByText('Default Folder')).not.toBeInTheDocument()
+    })
+
+    it('renders Combobox with folder display names', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      // The combobox should show the current default folder's display name
+      const combobox = screen.getByRole('combobox', { name: /default folder/i })
+      expect(combobox).toBeInTheDocument()
+      // "Default" is the display name of the currently selected folder
+      expect(combobox).toHaveTextContent('Default')
+    })
+
+    it('displays link to current default folder', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      // The "Current" label and the display name link should appear
+      expect(screen.getByText('Current')).toBeInTheDocument()
+      // The folder display name is rendered as a link
+      const links = screen.getAllByText('Default')
+      // At least one should be a link (the one in the "Current" row)
+      const linkElements = links.filter((el) => el.tagName === 'A')
+      expect(linkElements.length).toBeGreaterThan(0)
+    })
+
+    it('does not display current folder link when no default folder is set', () => {
+      setupMocks({ defaultFolder: '' })
+      render(<OrgSettingsPage />)
+      expect(screen.queryByText('Current')).not.toBeInTheDocument()
+    })
+
+    it('calls updateOrganization with defaultFolder when folder is changed', async () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const combobox = screen.getByRole('combobox', { name: /default folder/i })
+      fireEvent.click(combobox)
+      // Select "Staging" folder
+      const stagingOption = screen.getByText('Staging')
+      fireEvent.click(stagingOption)
+      const mutateAsync = (useUpdateOrganization as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith({ name: 'test-org', defaultFolder: 'staging' })
       })
     })
   })

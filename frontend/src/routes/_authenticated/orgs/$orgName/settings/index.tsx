@@ -20,7 +20,9 @@ import { Check, Pencil, X, Table2, Braces, ChevronRight } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
+import { Combobox } from '@/components/ui/combobox'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import {
   useGetOrganization,
   useGetOrganizationRaw,
@@ -29,6 +31,7 @@ import {
   useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from '@/queries/organizations'
+import { useListFolders } from '@/queries/folders'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/')({
   component: OrgSettingsRoute,
@@ -72,6 +75,18 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
 
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
+
+  // Folders for default folder picker
+  const { data: folders } = useListFolders(orgName, ParentType.ORGANIZATION, orgName)
+
+  const handleSaveDefaultFolder = async (folderName: string) => {
+    try {
+      await updateOrganization.mutateAsync({ name: orgName, defaultFolder: folderName })
+      toast.success('Default folder updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const handleSaveDisplayName = async () => {
     try {
@@ -145,6 +160,11 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const roleGrants = (org?.roleGrants ?? []) as Grant[]
   const defaultUserGrants = (org?.defaultUserGrants ?? []) as Grant[]
   const defaultRoleGrants = (org?.defaultRoleGrants ?? []) as Grant[]
+  const defaultFolder = org?.defaultFolder ?? ''
+  const folderItems = (folders ?? []).map((f) => ({
+    value: f.name,
+    label: f.displayName || f.name,
+  }))
 
   return (
     <Card>
@@ -292,6 +312,43 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                 )}
               </div>
             </div>
+
+            {/* Default Folder section — visible only to owners */}
+            {isOwner && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium">Default Folder</h3>
+                <Separator />
+                <p className="text-sm text-muted-foreground">
+                  New projects will be created in this folder by default.
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="w-32 text-sm text-muted-foreground shrink-0">Folder</span>
+                  <div className="flex-1">
+                    <Combobox
+                      aria-label="Default Folder"
+                      items={folderItems}
+                      value={defaultFolder}
+                      onValueChange={handleSaveDefaultFolder}
+                      placeholder="Select default folder"
+                      searchPlaceholder="Search folders..."
+                      emptyMessage="No folders found."
+                    />
+                  </div>
+                </div>
+                {defaultFolder && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-32 text-sm text-muted-foreground shrink-0">Current</span>
+                    <Link
+                      to="/orgs/$orgName/folders/$folderName"
+                      params={{ orgName, folderName: defaultFolder }}
+                      className="text-sm text-primary underline"
+                    >
+                      {folderItems.find((f) => f.value === defaultFolder)?.label ?? defaultFolder}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Sharing section */}
             <SharingPanel

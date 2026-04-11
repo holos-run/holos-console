@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Dialog,
@@ -13,8 +13,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Combobox } from '@/components/ui/combobox'
-import { useListOrganizations } from '@/queries/organizations'
+import { useListOrganizations, useGetOrganization } from '@/queries/organizations'
 import { useCreateProject } from '@/queries/projects'
+import { useListFolders } from '@/queries/folders'
+import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { toSlug } from '@/lib/slug'
 
 export interface CreateProjectDialogProps {
@@ -35,10 +37,26 @@ export function CreateProjectDialog({
   const [nameEdited, setNameEdited] = useState(false)
   const [description, setDescription] = useState('')
   const [organization, setOrganization] = useState(defaultOrganization ?? '')
+  const [folder, setFolder] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: orgsData } = useListOrganizations()
   const organizations = orgsData?.organizations ?? []
+
+  // Fetch folders for the selected organization
+  const { data: folders } = useListFolders(organization, ParentType.ORGANIZATION, organization)
+
+  // Fetch org data to get the default folder
+  const { data: orgData } = useGetOrganization(organization)
+
+  // When the org data loads (or changes), pre-select the org's default folder
+  useEffect(() => {
+    if (orgData?.defaultFolder) {
+      setFolder(orgData.defaultFolder)
+    } else {
+      setFolder('')
+    }
+  }, [orgData?.defaultFolder])
 
   const { mutateAsync, isPending } = useCreateProject()
   const navigate = useNavigate()
@@ -65,10 +83,13 @@ export function CreateProjectDialog({
     e.preventDefault()
     setError(null)
     try {
-      const response = await mutateAsync({ name, displayName, description, organization })
+      const parentType = folder ? ParentType.FOLDER : ParentType.ORGANIZATION
+      const parentName = folder || organization
+      const response = await mutateAsync({ name, displayName, description, organization, parentType, parentName })
       setName('')
       setDisplayName('')
       setDescription('')
+      setFolder('')
       setNameEdited(false)
       onCreated?.(response.name)
       onOpenChange(false)
@@ -107,6 +128,24 @@ export function CreateProjectDialog({
                 placeholder="Select organization"
                 searchPlaceholder="Search organizations..."
                 emptyMessage="No organizations found."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="project-folder">Folder</Label>
+              <Combobox
+                aria-label="Folder"
+                items={[
+                  { value: '', label: 'None (organization root)' },
+                  ...(folders ?? []).map((f) => ({
+                    value: f.name,
+                    label: f.displayName || f.name,
+                  })),
+                ]}
+                value={folder}
+                onValueChange={setFolder}
+                placeholder="Select folder"
+                searchPlaceholder="Search folders..."
+                emptyMessage="No folders found."
               />
             </div>
             <div className="space-y-1">

@@ -80,16 +80,16 @@ export function AppSidebar() {
   }> = selectedOrg
     ? [
         {
-          label: 'Projects',
-          to: '/orgs/$orgName/projects' as const,
-          params: { orgName: selectedOrg },
-          icon: FolderKanban,
-        },
-        {
           label: 'Folders',
           to: '/orgs/$orgName/folders' as const,
           params: { orgName: selectedOrg },
           icon: Folder,
+        },
+        {
+          label: 'Projects',
+          to: '/orgs/$orgName/projects' as const,
+          params: { orgName: selectedOrg },
+          icon: FolderKanban,
         },
         {
           label: 'Org Settings',
