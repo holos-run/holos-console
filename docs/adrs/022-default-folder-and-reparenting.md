@@ -26,7 +26,35 @@ resource moves.
 
 ## Decisions
 
-### 1. Default folder created at organization creation.
+### 1. Organizations, folders, and projects share a global namespace.
+
+All three resource types are stored as Kubernetes Namespaces. Each type is
+distinguished by an independently configurable prefix on the namespace name:
+
+| Resource     | Prefix       | Example               |
+|--------------|--------------|-----------------------|
+| Organization | `holos-org-` | `holos-org-acme`      |
+| Folder       | `holos-fld-` | `holos-fld-482917`    |
+| Project      | `holos-prj-` | `holos-prj-frontend`  |
+
+The `holos-` portion is the namespace prefix (`--namespace-prefix`), and `org-`,
+`fld-`, `prj-` are the type prefixes (`--organization-prefix`, `--folder-prefix`,
+`--project-prefix`).
+
+Folder identifiers use a **six-digit numeric suffix** (e.g., `482917`) rather
+than a user-chosen slug. This ensures global uniqueness without embedding the
+organization name into the folder namespace. The human-readable name is stored
+in the `console.holos.run/display-name` annotation. Organization and project
+identifiers remain user-chosen slugs.
+
+RPC listing endpoints (ListOrganizations, ListFolders, ListProjects) filter
+using **Kubernetes label selectors** (`console.holos.run/resource-type`,
+`console.holos.run/organization`, etc.), never namespace name prefix matching.
+
+Tests must use **random numeric suffixes** for folder identifiers to avoid
+collisions in shared test clusters.
+
+### 2. Default folder created at organization creation.
 
 `CreateOrganization` creates a folder named `default` (or a user-specified name
 via `CreateOrganizationRequest.default_folder`) as an immediate child of the
@@ -37,7 +65,7 @@ If `CreateOrganizationRequest.default_folder` is unset, the server uses
 `"default"` as the folder name. The field is optional — omitting it produces
 the same result as explicitly passing `"default"`.
 
-### 2. Default folder is configurable.
+### 3. Default folder is configurable.
 
 `UpdateOrganization` can change the default folder reference via
 `UpdateOrganizationRequest.default_folder`. The annotation on the organization
@@ -50,7 +78,7 @@ child.
 Changing the default folder does not move existing projects. It only affects
 where new projects are created when no explicit parent is specified.
 
-### 3. Projects default to the default folder.
+### 4. Projects default to the default folder.
 
 When `CreateProjectRequest.parent_type` is unset and `parent_name` is unset,
 the handler resolves the organization's default folder and uses it as the
@@ -68,7 +96,7 @@ The resolution order is:
    back to the organization as the direct parent (backwards-compatible
    behavior).
 
-### 4. PERMISSION_REPARENT — a new fine-grained permission.
+### 5. PERMISSION_REPARENT — a new fine-grained permission.
 
 A new `PERMISSION_REPARENT = 44` is added to the `Permission` enum in
 `rbac.proto`. This permission is granted only to OWNERs. It is required on
@@ -81,7 +109,7 @@ be able to move a subtree into a scope where they gain elevated permissions.
 The cascade table grants `PERMISSION_REPARENT` to OWNERs at every scope level
 (organization, folder). It is never granted to VIEWERs or EDITORs.
 
-### 5. Reparent via Update RPCs.
+### 6. Reparent via Update RPCs.
 
 `UpdateFolderRequest` and `UpdateProjectRequest` gain optional parent fields
 (`parent_type` and `parent_name`). When these fields are set, the handler
@@ -109,7 +137,7 @@ retain their existing parent labels — only the moved folder's label changes.
 When the optional parent fields are unset, `UpdateFolder` and `UpdateProject`
 behave exactly as before (update metadata only, no reparenting).
 
-### 6. Depth enforcement on reparent.
+### 7. Depth enforcement on reparent.
 
 Moving a folder subtree must not exceed the 3-level depth limit (ADR 020
 Decision 5). The handler computes the maximum depth of the subtree being moved
@@ -157,7 +185,7 @@ within limits). The same folder cannot be moved under a parent at depth 3
 
 - **Annotation integrity.** The `console.holos.run/default-folder` annotation
   on the organization namespace can reference a folder that has been deleted.
-  The resolution logic (Decision 3, step 4) handles this gracefully by falling
+  The resolution logic (Decision 4, step 4) handles this gracefully by falling
   back to the organization root, but the stale annotation should be cleaned up
   when a folder is deleted.
 
