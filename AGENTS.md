@@ -38,9 +38,9 @@ When a behavior can be verified with a unit test, write a unit test. Do not add 
 
 Agents run in worktrees whose path encodes the agent slot. Identify your slot from your working directory — for example, if `pwd` is `/path/to/worktrees/holos-run/agent-2/holos-console`, your slot is `agent-2`.
 
-**Issue title**: Prepend the slot to issue titles created by the agent so they show up clearly in `gh issue list`, e.g. `[agent-2] feat: add Playwright E2E test infrastructure`.
+**Issue title**: Use a conventional commit prefix (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`). Do **not** include the agent slot.
 
-**PR title**: Use a conventional commit prefix (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`). Do **not** include the agent slot — strip it if working from an issue title that contains one.
+**PR title**: Use a conventional commit prefix (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`). Do **not** include the agent slot.
 
 **PR description**: Include the slot in the footer so reviewers know which agent produced the work.
 
