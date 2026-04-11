@@ -552,6 +552,54 @@ export declare type UpdateProjectDefaultSharingResponse = Message<"holos.console
 export declare const UpdateProjectDefaultSharingResponseSchema: GenMessage<UpdateProjectDefaultSharingResponse>;
 
 /**
+ * CheckProjectIdentifierRequest contains the proposed project identifier to check.
+ *
+ * @generated from message holos.console.v1.CheckProjectIdentifierRequest
+ */
+export declare type CheckProjectIdentifierRequest = Message<"holos.console.v1.CheckProjectIdentifierRequest"> & {
+  /**
+   * identifier is the proposed slug (e.g., "frontend", "api-service").
+   *
+   * @generated from field: string identifier = 1;
+   */
+  identifier: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CheckProjectIdentifierRequest.
+ * Use `create(CheckProjectIdentifierRequestSchema)` to create a new message.
+ */
+export declare const CheckProjectIdentifierRequestSchema: GenMessage<CheckProjectIdentifierRequest>;
+
+/**
+ * CheckProjectIdentifierResponse indicates whether the identifier is available.
+ *
+ * @generated from message holos.console.v1.CheckProjectIdentifierResponse
+ */
+export declare type CheckProjectIdentifierResponse = Message<"holos.console.v1.CheckProjectIdentifierResponse"> & {
+  /**
+   * available is true when the identifier is not taken.
+   *
+   * @generated from field: bool available = 1;
+   */
+  available: boolean;
+
+  /**
+   * suggested_identifier equals the input when available, or the input with
+   * a random 6-digit suffix appended when the identifier is taken.
+   *
+   * @generated from field: string suggested_identifier = 2;
+   */
+  suggestedIdentifier: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CheckProjectIdentifierResponse.
+ * Use `create(CheckProjectIdentifierResponseSchema)` to create a new message.
+ */
+export declare const CheckProjectIdentifierResponseSchema: GenMessage<CheckProjectIdentifierResponse>;
+
+/**
  * ProjectService provides CRUD operations for projects.
  * A project is a Kubernetes Namespace labeled app.kubernetes.io/managed-by=console.holos.run.
  *
@@ -645,6 +693,19 @@ export declare const ProjectService: GenService<{
     methodKind: "unary";
     input: typeof UpdateProjectDefaultSharingRequestSchema;
     output: typeof UpdateProjectDefaultSharingResponseSchema;
+  },
+  /**
+   * CheckProjectIdentifier checks whether a proposed project identifier (slug) is
+   * available. If the identifier is taken, the response includes a server-suggested
+   * alternative with a random 6-digit suffix appended. The suggestion is NOT
+   * reserved -- the Create RPC handles the race with retry logic.
+   *
+   * @generated from rpc holos.console.v1.ProjectService.CheckProjectIdentifier
+   */
+  checkProjectIdentifier: {
+    methodKind: "unary";
+    input: typeof CheckProjectIdentifierRequestSchema;
+    output: typeof CheckProjectIdentifierResponseSchema;
   },
 }>;
 

@@ -1151,6 +1151,108 @@ func (x *GetFolderRawResponse) GetRaw() string {
 	return ""
 }
 
+// CheckFolderIdentifierRequest contains the proposed folder identifier to check.
+type CheckFolderIdentifierRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// identifier is the proposed slug (e.g., "default", "engineering").
+	Identifier    string `protobuf:"bytes,1,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckFolderIdentifierRequest) Reset() {
+	*x = CheckFolderIdentifierRequest{}
+	mi := &file_holos_console_v1_folders_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckFolderIdentifierRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckFolderIdentifierRequest) ProtoMessage() {}
+
+func (x *CheckFolderIdentifierRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_folders_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckFolderIdentifierRequest.ProtoReflect.Descriptor instead.
+func (*CheckFolderIdentifierRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_folders_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CheckFolderIdentifierRequest) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
+	}
+	return ""
+}
+
+// CheckFolderIdentifierResponse indicates whether the identifier is available.
+type CheckFolderIdentifierResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// available is true when the identifier is not taken.
+	Available bool `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
+	// suggested_identifier equals the input when available, or the input with
+	// a random 6-digit suffix appended when the identifier is taken.
+	SuggestedIdentifier string `protobuf:"bytes,2,opt,name=suggested_identifier,json=suggestedIdentifier,proto3" json:"suggested_identifier,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CheckFolderIdentifierResponse) Reset() {
+	*x = CheckFolderIdentifierResponse{}
+	mi := &file_holos_console_v1_folders_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckFolderIdentifierResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckFolderIdentifierResponse) ProtoMessage() {}
+
+func (x *CheckFolderIdentifierResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_folders_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckFolderIdentifierResponse.ProtoReflect.Descriptor instead.
+func (*CheckFolderIdentifierResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_folders_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CheckFolderIdentifierResponse) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *CheckFolderIdentifierResponse) GetSuggestedIdentifier() string {
+	if x != nil {
+		return x.SuggestedIdentifier
+	}
+	return ""
+}
+
 var File_holos_console_v1_folders_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_folders_proto_rawDesc = "" +
@@ -1242,12 +1344,19 @@ const file_holos_console_v1_folders_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\"\n" +
 	"\forganization\x18\x02 \x01(\tR\forganization\"(\n" +
 	"\x14GetFolderRawResponse\x12\x10\n" +
-	"\x03raw\x18\x01 \x01(\tR\x03raw*_\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw\">\n" +
+	"\x1cCheckFolderIdentifierRequest\x12\x1e\n" +
+	"\n" +
+	"identifier\x18\x01 \x01(\tR\n" +
+	"identifier\"p\n" +
+	"\x1dCheckFolderIdentifierResponse\x12\x1c\n" +
+	"\tavailable\x18\x01 \x01(\bR\tavailable\x121\n" +
+	"\x14suggested_identifier\x18\x02 \x01(\tR\x13suggestedIdentifier*_\n" +
 	"\n" +
 	"ParentType\x12\x1b\n" +
 	"\x17PARENT_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18PARENT_TYPE_ORGANIZATION\x10\x01\x12\x16\n" +
-	"\x12PARENT_TYPE_FOLDER\x10\x022\xbb\x06\n" +
+	"\x12PARENT_TYPE_FOLDER\x10\x022\xb5\a\n" +
 	"\rFolderService\x12Z\n" +
 	"\vListFolders\x12$.holos.console.v1.ListFoldersRequest\x1a%.holos.console.v1.ListFoldersResponse\x12T\n" +
 	"\tGetFolder\x12\".holos.console.v1.GetFolderRequest\x1a#.holos.console.v1.GetFolderResponse\x12]\n" +
@@ -1256,7 +1365,8 @@ const file_holos_console_v1_folders_proto_rawDesc = "" +
 	"\fDeleteFolder\x12%.holos.console.v1.DeleteFolderRequest\x1a&.holos.console.v1.DeleteFolderResponse\x12r\n" +
 	"\x13UpdateFolderSharing\x12,.holos.console.v1.UpdateFolderSharingRequest\x1a-.holos.console.v1.UpdateFolderSharingResponse\x12\x87\x01\n" +
 	"\x1aUpdateFolderDefaultSharing\x123.holos.console.v1.UpdateFolderDefaultSharingRequest\x1a4.holos.console.v1.UpdateFolderDefaultSharingResponse\x12]\n" +
-	"\fGetFolderRaw\x12%.holos.console.v1.GetFolderRawRequest\x1a&.holos.console.v1.GetFolderRawResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\fGetFolderRaw\x12%.holos.console.v1.GetFolderRawRequest\x1a&.holos.console.v1.GetFolderRawResponse\x12x\n" +
+	"\x15CheckFolderIdentifier\x12..holos.console.v1.CheckFolderIdentifierRequest\x1a/.holos.console.v1.CheckFolderIdentifierResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_folders_proto_rawDescOnce sync.Once
@@ -1271,7 +1381,7 @@ func file_holos_console_v1_folders_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_folders_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_folders_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_holos_console_v1_folders_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_holos_console_v1_folders_proto_goTypes = []any{
 	(ParentType)(0),                            // 0: holos.console.v1.ParentType
 	(*Folder)(nil),                             // 1: holos.console.v1.Folder
@@ -1291,28 +1401,30 @@ var file_holos_console_v1_folders_proto_goTypes = []any{
 	(*UpdateFolderDefaultSharingResponse)(nil), // 15: holos.console.v1.UpdateFolderDefaultSharingResponse
 	(*GetFolderRawRequest)(nil),                // 16: holos.console.v1.GetFolderRawRequest
 	(*GetFolderRawResponse)(nil),               // 17: holos.console.v1.GetFolderRawResponse
-	(*ShareGrant)(nil),                         // 18: holos.console.v1.ShareGrant
-	(Role)(0),                                  // 19: holos.console.v1.Role
+	(*CheckFolderIdentifierRequest)(nil),       // 18: holos.console.v1.CheckFolderIdentifierRequest
+	(*CheckFolderIdentifierResponse)(nil),      // 19: holos.console.v1.CheckFolderIdentifierResponse
+	(*ShareGrant)(nil),                         // 20: holos.console.v1.ShareGrant
+	(Role)(0),                                  // 21: holos.console.v1.Role
 }
 var file_holos_console_v1_folders_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.Folder.parent_type:type_name -> holos.console.v1.ParentType
-	18, // 1: holos.console.v1.Folder.user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 2: holos.console.v1.Folder.role_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 3: holos.console.v1.Folder.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 4: holos.console.v1.Folder.default_role_grants:type_name -> holos.console.v1.ShareGrant
-	19, // 5: holos.console.v1.Folder.user_role:type_name -> holos.console.v1.Role
+	20, // 1: holos.console.v1.Folder.user_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 2: holos.console.v1.Folder.role_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 3: holos.console.v1.Folder.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 4: holos.console.v1.Folder.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	21, // 5: holos.console.v1.Folder.user_role:type_name -> holos.console.v1.Role
 	0,  // 6: holos.console.v1.ListFoldersRequest.parent_type:type_name -> holos.console.v1.ParentType
 	1,  // 7: holos.console.v1.ListFoldersResponse.folders:type_name -> holos.console.v1.Folder
 	1,  // 8: holos.console.v1.GetFolderResponse.folder:type_name -> holos.console.v1.Folder
 	0,  // 9: holos.console.v1.CreateFolderRequest.parent_type:type_name -> holos.console.v1.ParentType
-	18, // 10: holos.console.v1.CreateFolderRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 11: holos.console.v1.CreateFolderRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 10: holos.console.v1.CreateFolderRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 11: holos.console.v1.CreateFolderRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 12: holos.console.v1.UpdateFolderRequest.parent_type:type_name -> holos.console.v1.ParentType
-	18, // 13: holos.console.v1.UpdateFolderSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 14: holos.console.v1.UpdateFolderSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 13: holos.console.v1.UpdateFolderSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 14: holos.console.v1.UpdateFolderSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	1,  // 15: holos.console.v1.UpdateFolderSharingResponse.folder:type_name -> holos.console.v1.Folder
-	18, // 16: holos.console.v1.UpdateFolderDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 17: holos.console.v1.UpdateFolderDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 16: holos.console.v1.UpdateFolderDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 17: holos.console.v1.UpdateFolderDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
 	1,  // 18: holos.console.v1.UpdateFolderDefaultSharingResponse.folder:type_name -> holos.console.v1.Folder
 	2,  // 19: holos.console.v1.FolderService.ListFolders:input_type -> holos.console.v1.ListFoldersRequest
 	4,  // 20: holos.console.v1.FolderService.GetFolder:input_type -> holos.console.v1.GetFolderRequest
@@ -1322,16 +1434,18 @@ var file_holos_console_v1_folders_proto_depIdxs = []int32{
 	12, // 24: holos.console.v1.FolderService.UpdateFolderSharing:input_type -> holos.console.v1.UpdateFolderSharingRequest
 	14, // 25: holos.console.v1.FolderService.UpdateFolderDefaultSharing:input_type -> holos.console.v1.UpdateFolderDefaultSharingRequest
 	16, // 26: holos.console.v1.FolderService.GetFolderRaw:input_type -> holos.console.v1.GetFolderRawRequest
-	3,  // 27: holos.console.v1.FolderService.ListFolders:output_type -> holos.console.v1.ListFoldersResponse
-	5,  // 28: holos.console.v1.FolderService.GetFolder:output_type -> holos.console.v1.GetFolderResponse
-	7,  // 29: holos.console.v1.FolderService.CreateFolder:output_type -> holos.console.v1.CreateFolderResponse
-	9,  // 30: holos.console.v1.FolderService.UpdateFolder:output_type -> holos.console.v1.UpdateFolderResponse
-	11, // 31: holos.console.v1.FolderService.DeleteFolder:output_type -> holos.console.v1.DeleteFolderResponse
-	13, // 32: holos.console.v1.FolderService.UpdateFolderSharing:output_type -> holos.console.v1.UpdateFolderSharingResponse
-	15, // 33: holos.console.v1.FolderService.UpdateFolderDefaultSharing:output_type -> holos.console.v1.UpdateFolderDefaultSharingResponse
-	17, // 34: holos.console.v1.FolderService.GetFolderRaw:output_type -> holos.console.v1.GetFolderRawResponse
-	27, // [27:35] is the sub-list for method output_type
-	19, // [19:27] is the sub-list for method input_type
+	18, // 27: holos.console.v1.FolderService.CheckFolderIdentifier:input_type -> holos.console.v1.CheckFolderIdentifierRequest
+	3,  // 28: holos.console.v1.FolderService.ListFolders:output_type -> holos.console.v1.ListFoldersResponse
+	5,  // 29: holos.console.v1.FolderService.GetFolder:output_type -> holos.console.v1.GetFolderResponse
+	7,  // 30: holos.console.v1.FolderService.CreateFolder:output_type -> holos.console.v1.CreateFolderResponse
+	9,  // 31: holos.console.v1.FolderService.UpdateFolder:output_type -> holos.console.v1.UpdateFolderResponse
+	11, // 32: holos.console.v1.FolderService.DeleteFolder:output_type -> holos.console.v1.DeleteFolderResponse
+	13, // 33: holos.console.v1.FolderService.UpdateFolderSharing:output_type -> holos.console.v1.UpdateFolderSharingResponse
+	15, // 34: holos.console.v1.FolderService.UpdateFolderDefaultSharing:output_type -> holos.console.v1.UpdateFolderDefaultSharingResponse
+	17, // 35: holos.console.v1.FolderService.GetFolderRaw:output_type -> holos.console.v1.GetFolderRawResponse
+	19, // 36: holos.console.v1.FolderService.CheckFolderIdentifier:output_type -> holos.console.v1.CheckFolderIdentifierResponse
+	28, // [28:37] is the sub-list for method output_type
+	19, // [19:28] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -1351,7 +1465,7 @@ func file_holos_console_v1_folders_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_folders_proto_rawDesc), len(file_holos_console_v1_folders_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

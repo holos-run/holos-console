@@ -56,6 +56,9 @@ const (
 	// FolderServiceGetFolderRawProcedure is the fully-qualified name of the FolderService's
 	// GetFolderRaw RPC.
 	FolderServiceGetFolderRawProcedure = "/holos.console.v1.FolderService/GetFolderRaw"
+	// FolderServiceCheckFolderIdentifierProcedure is the fully-qualified name of the FolderService's
+	// CheckFolderIdentifier RPC.
+	FolderServiceCheckFolderIdentifierProcedure = "/holos.console.v1.FolderService/CheckFolderIdentifier"
 )
 
 // FolderServiceClient is a client for the holos.console.v1.FolderService service.
@@ -86,6 +89,11 @@ type FolderServiceClient interface {
 	// GetFolderRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
 	// Requires authentication and PERMISSION_FOLDERS_READ.
 	GetFolderRaw(context.Context, *connect.Request[v1.GetFolderRawRequest]) (*connect.Response[v1.GetFolderRawResponse], error)
+	// CheckFolderIdentifier checks whether a proposed folder identifier (slug) is
+	// available. If the identifier is taken, the response includes a server-suggested
+	// alternative with a random 6-digit suffix appended. The suggestion is NOT
+	// reserved -- the Create RPC handles the race with retry logic.
+	CheckFolderIdentifier(context.Context, *connect.Request[v1.CheckFolderIdentifierRequest]) (*connect.Response[v1.CheckFolderIdentifierResponse], error)
 }
 
 // NewFolderServiceClient constructs a client for the holos.console.v1.FolderService service. By
@@ -147,6 +155,12 @@ func NewFolderServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(folderServiceMethods.ByName("GetFolderRaw")),
 			connect.WithClientOptions(opts...),
 		),
+		checkFolderIdentifier: connect.NewClient[v1.CheckFolderIdentifierRequest, v1.CheckFolderIdentifierResponse](
+			httpClient,
+			baseURL+FolderServiceCheckFolderIdentifierProcedure,
+			connect.WithSchema(folderServiceMethods.ByName("CheckFolderIdentifier")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -160,6 +174,7 @@ type folderServiceClient struct {
 	updateFolderSharing        *connect.Client[v1.UpdateFolderSharingRequest, v1.UpdateFolderSharingResponse]
 	updateFolderDefaultSharing *connect.Client[v1.UpdateFolderDefaultSharingRequest, v1.UpdateFolderDefaultSharingResponse]
 	getFolderRaw               *connect.Client[v1.GetFolderRawRequest, v1.GetFolderRawResponse]
+	checkFolderIdentifier      *connect.Client[v1.CheckFolderIdentifierRequest, v1.CheckFolderIdentifierResponse]
 }
 
 // ListFolders calls holos.console.v1.FolderService.ListFolders.
@@ -202,6 +217,11 @@ func (c *folderServiceClient) GetFolderRaw(ctx context.Context, req *connect.Req
 	return c.getFolderRaw.CallUnary(ctx, req)
 }
 
+// CheckFolderIdentifier calls holos.console.v1.FolderService.CheckFolderIdentifier.
+func (c *folderServiceClient) CheckFolderIdentifier(ctx context.Context, req *connect.Request[v1.CheckFolderIdentifierRequest]) (*connect.Response[v1.CheckFolderIdentifierResponse], error) {
+	return c.checkFolderIdentifier.CallUnary(ctx, req)
+}
+
 // FolderServiceHandler is an implementation of the holos.console.v1.FolderService service.
 type FolderServiceHandler interface {
 	// ListFolders returns all folders the user has access to.
@@ -230,6 +250,11 @@ type FolderServiceHandler interface {
 	// GetFolderRaw retrieves the full Kubernetes Namespace object as verbatim JSON.
 	// Requires authentication and PERMISSION_FOLDERS_READ.
 	GetFolderRaw(context.Context, *connect.Request[v1.GetFolderRawRequest]) (*connect.Response[v1.GetFolderRawResponse], error)
+	// CheckFolderIdentifier checks whether a proposed folder identifier (slug) is
+	// available. If the identifier is taken, the response includes a server-suggested
+	// alternative with a random 6-digit suffix appended. The suggestion is NOT
+	// reserved -- the Create RPC handles the race with retry logic.
+	CheckFolderIdentifier(context.Context, *connect.Request[v1.CheckFolderIdentifierRequest]) (*connect.Response[v1.CheckFolderIdentifierResponse], error)
 }
 
 // NewFolderServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -287,6 +312,12 @@ func NewFolderServiceHandler(svc FolderServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(folderServiceMethods.ByName("GetFolderRaw")),
 		connect.WithHandlerOptions(opts...),
 	)
+	folderServiceCheckFolderIdentifierHandler := connect.NewUnaryHandler(
+		FolderServiceCheckFolderIdentifierProcedure,
+		svc.CheckFolderIdentifier,
+		connect.WithSchema(folderServiceMethods.ByName("CheckFolderIdentifier")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.FolderService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FolderServiceListFoldersProcedure:
@@ -305,6 +336,8 @@ func NewFolderServiceHandler(svc FolderServiceHandler, opts ...connect.HandlerOp
 			folderServiceUpdateFolderDefaultSharingHandler.ServeHTTP(w, r)
 		case FolderServiceGetFolderRawProcedure:
 			folderServiceGetFolderRawHandler.ServeHTTP(w, r)
+		case FolderServiceCheckFolderIdentifierProcedure:
+			folderServiceCheckFolderIdentifierHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -344,4 +377,8 @@ func (UnimplementedFolderServiceHandler) UpdateFolderDefaultSharing(context.Cont
 
 func (UnimplementedFolderServiceHandler) GetFolderRaw(context.Context, *connect.Request[v1.GetFolderRawRequest]) (*connect.Response[v1.GetFolderRawResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.FolderService.GetFolderRaw is not implemented"))
+}
+
+func (UnimplementedFolderServiceHandler) CheckFolderIdentifier(context.Context, *connect.Request[v1.CheckFolderIdentifierRequest]) (*connect.Response[v1.CheckFolderIdentifierResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.FolderService.CheckFolderIdentifier is not implemented"))
 }

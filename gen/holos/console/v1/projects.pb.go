@@ -1054,6 +1054,108 @@ func (x *UpdateProjectDefaultSharingResponse) GetProject() *Project {
 	return nil
 }
 
+// CheckProjectIdentifierRequest contains the proposed project identifier to check.
+type CheckProjectIdentifierRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// identifier is the proposed slug (e.g., "frontend", "api-service").
+	Identifier    string `protobuf:"bytes,1,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckProjectIdentifierRequest) Reset() {
+	*x = CheckProjectIdentifierRequest{}
+	mi := &file_holos_console_v1_projects_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckProjectIdentifierRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckProjectIdentifierRequest) ProtoMessage() {}
+
+func (x *CheckProjectIdentifierRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_projects_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckProjectIdentifierRequest.ProtoReflect.Descriptor instead.
+func (*CheckProjectIdentifierRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_projects_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CheckProjectIdentifierRequest) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
+	}
+	return ""
+}
+
+// CheckProjectIdentifierResponse indicates whether the identifier is available.
+type CheckProjectIdentifierResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// available is true when the identifier is not taken.
+	Available bool `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
+	// suggested_identifier equals the input when available, or the input with
+	// a random 6-digit suffix appended when the identifier is taken.
+	SuggestedIdentifier string `protobuf:"bytes,2,opt,name=suggested_identifier,json=suggestedIdentifier,proto3" json:"suggested_identifier,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CheckProjectIdentifierResponse) Reset() {
+	*x = CheckProjectIdentifierResponse{}
+	mi := &file_holos_console_v1_projects_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckProjectIdentifierResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckProjectIdentifierResponse) ProtoMessage() {}
+
+func (x *CheckProjectIdentifierResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_projects_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckProjectIdentifierResponse.ProtoReflect.Descriptor instead.
+func (*CheckProjectIdentifierResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_projects_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CheckProjectIdentifierResponse) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *CheckProjectIdentifierResponse) GetSuggestedIdentifier() string {
+	if x != nil {
+		return x.SuggestedIdentifier
+	}
+	return ""
+}
+
 var File_holos_console_v1_projects_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_projects_proto_rawDesc = "" +
@@ -1139,7 +1241,14 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\x13default_user_grants\x18\x02 \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultUserGrants\x12L\n" +
 	"\x13default_role_grants\x18\x03 \x03(\v2\x1c.holos.console.v1.ShareGrantR\x11defaultRoleGrants\"Z\n" +
 	"#UpdateProjectDefaultSharingResponse\x123\n" +
-	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject2\xd4\x06\n" +
+	"\aproject\x18\x01 \x01(\v2\x19.holos.console.v1.ProjectR\aproject\"?\n" +
+	"\x1dCheckProjectIdentifierRequest\x12\x1e\n" +
+	"\n" +
+	"identifier\x18\x01 \x01(\tR\n" +
+	"identifier\"q\n" +
+	"\x1eCheckProjectIdentifierResponse\x12\x1c\n" +
+	"\tavailable\x18\x01 \x01(\bR\tavailable\x121\n" +
+	"\x14suggested_identifier\x18\x02 \x01(\tR\x13suggestedIdentifier2\xd1\a\n" +
 	"\x0eProjectService\x12]\n" +
 	"\fListProjects\x12%.holos.console.v1.ListProjectsRequest\x1a&.holos.console.v1.ListProjectsResponse\x12W\n" +
 	"\n" +
@@ -1149,7 +1258,8 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\rDeleteProject\x12&.holos.console.v1.DeleteProjectRequest\x1a'.holos.console.v1.DeleteProjectResponse\x12u\n" +
 	"\x14UpdateProjectSharing\x12-.holos.console.v1.UpdateProjectSharingRequest\x1a..holos.console.v1.UpdateProjectSharingResponse\x12`\n" +
 	"\rGetProjectRaw\x12&.holos.console.v1.GetProjectRawRequest\x1a'.holos.console.v1.GetProjectRawResponse\x12\x8a\x01\n" +
-	"\x1bUpdateProjectDefaultSharing\x124.holos.console.v1.UpdateProjectDefaultSharingRequest\x1a5.holos.console.v1.UpdateProjectDefaultSharingResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x1bUpdateProjectDefaultSharing\x124.holos.console.v1.UpdateProjectDefaultSharingRequest\x1a5.holos.console.v1.UpdateProjectDefaultSharingResponse\x12{\n" +
+	"\x16CheckProjectIdentifier\x12/.holos.console.v1.CheckProjectIdentifierRequest\x1a0.holos.console.v1.CheckProjectIdentifierResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_projects_proto_rawDescOnce sync.Once
@@ -1163,7 +1273,7 @@ func file_holos_console_v1_projects_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_projects_proto_rawDescData
 }
 
-var file_holos_console_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_holos_console_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_holos_console_v1_projects_proto_goTypes = []any{
 	(*Project)(nil),                             // 0: holos.console.v1.Project
 	(*ListProjectsRequest)(nil),                 // 1: holos.console.v1.ListProjectsRequest
@@ -1182,29 +1292,31 @@ var file_holos_console_v1_projects_proto_goTypes = []any{
 	(*GetProjectRawResponse)(nil),               // 14: holos.console.v1.GetProjectRawResponse
 	(*UpdateProjectDefaultSharingRequest)(nil),  // 15: holos.console.v1.UpdateProjectDefaultSharingRequest
 	(*UpdateProjectDefaultSharingResponse)(nil), // 16: holos.console.v1.UpdateProjectDefaultSharingResponse
-	(*ShareGrant)(nil),                          // 17: holos.console.v1.ShareGrant
-	(Role)(0),                                   // 18: holos.console.v1.Role
-	(ParentType)(0),                             // 19: holos.console.v1.ParentType
+	(*CheckProjectIdentifierRequest)(nil),       // 17: holos.console.v1.CheckProjectIdentifierRequest
+	(*CheckProjectIdentifierResponse)(nil),      // 18: holos.console.v1.CheckProjectIdentifierResponse
+	(*ShareGrant)(nil),                          // 19: holos.console.v1.ShareGrant
+	(Role)(0),                                   // 20: holos.console.v1.Role
+	(ParentType)(0),                             // 21: holos.console.v1.ParentType
 }
 var file_holos_console_v1_projects_proto_depIdxs = []int32{
-	17, // 0: holos.console.v1.Project.user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 1: holos.console.v1.Project.role_grants:type_name -> holos.console.v1.ShareGrant
-	18, // 2: holos.console.v1.Project.user_role:type_name -> holos.console.v1.Role
-	17, // 3: holos.console.v1.Project.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 4: holos.console.v1.Project.default_role_grants:type_name -> holos.console.v1.ShareGrant
-	19, // 5: holos.console.v1.Project.parent_type:type_name -> holos.console.v1.ParentType
-	19, // 6: holos.console.v1.ListProjectsRequest.parent_type:type_name -> holos.console.v1.ParentType
+	19, // 0: holos.console.v1.Project.user_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 1: holos.console.v1.Project.role_grants:type_name -> holos.console.v1.ShareGrant
+	20, // 2: holos.console.v1.Project.user_role:type_name -> holos.console.v1.Role
+	19, // 3: holos.console.v1.Project.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 4: holos.console.v1.Project.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	21, // 5: holos.console.v1.Project.parent_type:type_name -> holos.console.v1.ParentType
+	21, // 6: holos.console.v1.ListProjectsRequest.parent_type:type_name -> holos.console.v1.ParentType
 	0,  // 7: holos.console.v1.ListProjectsResponse.projects:type_name -> holos.console.v1.Project
 	0,  // 8: holos.console.v1.GetProjectResponse.project:type_name -> holos.console.v1.Project
-	17, // 9: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 10: holos.console.v1.CreateProjectRequest.role_grants:type_name -> holos.console.v1.ShareGrant
-	19, // 11: holos.console.v1.CreateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
-	19, // 12: holos.console.v1.UpdateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
-	17, // 13: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 14: holos.console.v1.UpdateProjectSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 9: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 10: holos.console.v1.CreateProjectRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	21, // 11: holos.console.v1.CreateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
+	21, // 12: holos.console.v1.UpdateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
+	19, // 13: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 14: holos.console.v1.UpdateProjectSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 15: holos.console.v1.UpdateProjectSharingResponse.project:type_name -> holos.console.v1.Project
-	17, // 16: holos.console.v1.UpdateProjectDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 17: holos.console.v1.UpdateProjectDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 16: holos.console.v1.UpdateProjectDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	19, // 17: holos.console.v1.UpdateProjectDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
 	0,  // 18: holos.console.v1.UpdateProjectDefaultSharingResponse.project:type_name -> holos.console.v1.Project
 	1,  // 19: holos.console.v1.ProjectService.ListProjects:input_type -> holos.console.v1.ListProjectsRequest
 	3,  // 20: holos.console.v1.ProjectService.GetProject:input_type -> holos.console.v1.GetProjectRequest
@@ -1214,16 +1326,18 @@ var file_holos_console_v1_projects_proto_depIdxs = []int32{
 	11, // 24: holos.console.v1.ProjectService.UpdateProjectSharing:input_type -> holos.console.v1.UpdateProjectSharingRequest
 	13, // 25: holos.console.v1.ProjectService.GetProjectRaw:input_type -> holos.console.v1.GetProjectRawRequest
 	15, // 26: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:input_type -> holos.console.v1.UpdateProjectDefaultSharingRequest
-	2,  // 27: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
-	4,  // 28: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
-	6,  // 29: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
-	8,  // 30: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
-	10, // 31: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
-	12, // 32: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
-	14, // 33: holos.console.v1.ProjectService.GetProjectRaw:output_type -> holos.console.v1.GetProjectRawResponse
-	16, // 34: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:output_type -> holos.console.v1.UpdateProjectDefaultSharingResponse
-	27, // [27:35] is the sub-list for method output_type
-	19, // [19:27] is the sub-list for method input_type
+	17, // 27: holos.console.v1.ProjectService.CheckProjectIdentifier:input_type -> holos.console.v1.CheckProjectIdentifierRequest
+	2,  // 28: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
+	4,  // 29: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
+	6,  // 30: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
+	8,  // 31: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
+	10, // 32: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
+	12, // 33: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
+	14, // 34: holos.console.v1.ProjectService.GetProjectRaw:output_type -> holos.console.v1.GetProjectRawResponse
+	16, // 35: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:output_type -> holos.console.v1.UpdateProjectDefaultSharingResponse
+	18, // 36: holos.console.v1.ProjectService.CheckProjectIdentifier:output_type -> holos.console.v1.CheckProjectIdentifierResponse
+	28, // [28:37] is the sub-list for method output_type
+	19, // [19:28] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -1244,7 +1358,7 @@ func file_holos_console_v1_projects_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_projects_proto_rawDesc), len(file_holos_console_v1_projects_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

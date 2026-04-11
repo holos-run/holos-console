@@ -57,6 +57,9 @@ const (
 	// ProjectServiceUpdateProjectDefaultSharingProcedure is the fully-qualified name of the
 	// ProjectService's UpdateProjectDefaultSharing RPC.
 	ProjectServiceUpdateProjectDefaultSharingProcedure = "/holos.console.v1.ProjectService/UpdateProjectDefaultSharing"
+	// ProjectServiceCheckProjectIdentifierProcedure is the fully-qualified name of the ProjectService's
+	// CheckProjectIdentifier RPC.
+	ProjectServiceCheckProjectIdentifierProcedure = "/holos.console.v1.ProjectService/CheckProjectIdentifier"
 )
 
 // ProjectServiceClient is a client for the holos.console.v1.ProjectService service.
@@ -85,6 +88,11 @@ type ProjectServiceClient interface {
 	// These grants are applied by default to new secrets created in this project.
 	// Requires PERMISSION_PROJECTS_ADMIN on the project.
 	UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error)
+	// CheckProjectIdentifier checks whether a proposed project identifier (slug) is
+	// available. If the identifier is taken, the response includes a server-suggested
+	// alternative with a random 6-digit suffix appended. The suggestion is NOT
+	// reserved -- the Create RPC handles the race with retry logic.
+	CheckProjectIdentifier(context.Context, *connect.Request[v1.CheckProjectIdentifierRequest]) (*connect.Response[v1.CheckProjectIdentifierResponse], error)
 }
 
 // NewProjectServiceClient constructs a client for the holos.console.v1.ProjectService service. By
@@ -146,6 +154,12 @@ func NewProjectServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(projectServiceMethods.ByName("UpdateProjectDefaultSharing")),
 			connect.WithClientOptions(opts...),
 		),
+		checkProjectIdentifier: connect.NewClient[v1.CheckProjectIdentifierRequest, v1.CheckProjectIdentifierResponse](
+			httpClient,
+			baseURL+ProjectServiceCheckProjectIdentifierProcedure,
+			connect.WithSchema(projectServiceMethods.ByName("CheckProjectIdentifier")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -159,6 +173,7 @@ type projectServiceClient struct {
 	updateProjectSharing        *connect.Client[v1.UpdateProjectSharingRequest, v1.UpdateProjectSharingResponse]
 	getProjectRaw               *connect.Client[v1.GetProjectRawRequest, v1.GetProjectRawResponse]
 	updateProjectDefaultSharing *connect.Client[v1.UpdateProjectDefaultSharingRequest, v1.UpdateProjectDefaultSharingResponse]
+	checkProjectIdentifier      *connect.Client[v1.CheckProjectIdentifierRequest, v1.CheckProjectIdentifierResponse]
 }
 
 // ListProjects calls holos.console.v1.ProjectService.ListProjects.
@@ -201,6 +216,11 @@ func (c *projectServiceClient) UpdateProjectDefaultSharing(ctx context.Context, 
 	return c.updateProjectDefaultSharing.CallUnary(ctx, req)
 }
 
+// CheckProjectIdentifier calls holos.console.v1.ProjectService.CheckProjectIdentifier.
+func (c *projectServiceClient) CheckProjectIdentifier(ctx context.Context, req *connect.Request[v1.CheckProjectIdentifierRequest]) (*connect.Response[v1.CheckProjectIdentifierResponse], error) {
+	return c.checkProjectIdentifier.CallUnary(ctx, req)
+}
+
 // ProjectServiceHandler is an implementation of the holos.console.v1.ProjectService service.
 type ProjectServiceHandler interface {
 	// ListProjects returns all projects the user has access to.
@@ -227,6 +247,11 @@ type ProjectServiceHandler interface {
 	// These grants are applied by default to new secrets created in this project.
 	// Requires PERMISSION_PROJECTS_ADMIN on the project.
 	UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error)
+	// CheckProjectIdentifier checks whether a proposed project identifier (slug) is
+	// available. If the identifier is taken, the response includes a server-suggested
+	// alternative with a random 6-digit suffix appended. The suggestion is NOT
+	// reserved -- the Create RPC handles the race with retry logic.
+	CheckProjectIdentifier(context.Context, *connect.Request[v1.CheckProjectIdentifierRequest]) (*connect.Response[v1.CheckProjectIdentifierResponse], error)
 }
 
 // NewProjectServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -284,6 +309,12 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 		connect.WithSchema(projectServiceMethods.ByName("UpdateProjectDefaultSharing")),
 		connect.WithHandlerOptions(opts...),
 	)
+	projectServiceCheckProjectIdentifierHandler := connect.NewUnaryHandler(
+		ProjectServiceCheckProjectIdentifierProcedure,
+		svc.CheckProjectIdentifier,
+		connect.WithSchema(projectServiceMethods.ByName("CheckProjectIdentifier")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.ProjectService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ProjectServiceListProjectsProcedure:
@@ -302,6 +333,8 @@ func NewProjectServiceHandler(svc ProjectServiceHandler, opts ...connect.Handler
 			projectServiceGetProjectRawHandler.ServeHTTP(w, r)
 		case ProjectServiceUpdateProjectDefaultSharingProcedure:
 			projectServiceUpdateProjectDefaultSharingHandler.ServeHTTP(w, r)
+		case ProjectServiceCheckProjectIdentifierProcedure:
+			projectServiceCheckProjectIdentifierHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -341,4 +374,8 @@ func (UnimplementedProjectServiceHandler) GetProjectRaw(context.Context, *connec
 
 func (UnimplementedProjectServiceHandler) UpdateProjectDefaultSharing(context.Context, *connect.Request[v1.UpdateProjectDefaultSharingRequest]) (*connect.Response[v1.UpdateProjectDefaultSharingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.UpdateProjectDefaultSharing is not implemented"))
+}
+
+func (UnimplementedProjectServiceHandler) CheckProjectIdentifier(context.Context, *connect.Request[v1.CheckProjectIdentifierRequest]) (*connect.Response[v1.CheckProjectIdentifierResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.ProjectService.CheckProjectIdentifier is not implemented"))
 }
