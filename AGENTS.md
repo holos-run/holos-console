@@ -543,6 +543,30 @@ Workflow:
 
 Project defaults are in `agent-browser.json`: headless mode, self-signed cert acceptance, 1920x1080 viewport, screenshots to `tmp/screenshots/`.
 
+## Skills
+
+Skills live in `.claude/skills/<name>/SKILL.md` using the **directory-based layout**. Do not create single-file skills (`.claude/skills/<name>.md`). The directory layout allows supporting files (reference docs, templates, scripts) alongside the skill definition.
+
+Use the `/skill-creator` skill to create and manage skills when available. If `/skill-creator` is not available, create the directory and `SKILL.md` manually following the standard layout:
+
+```
+.claude/skills/<name>/
+├── SKILL.md          # Required — YAML frontmatter + markdown instructions
+├── reference.md      # Optional — detailed reference material
+├── examples.md       # Optional — usage examples
+├── template.md       # Optional — template for Claude to fill in
+└── scripts/          # Optional — executable helpers
+```
+
+Current skills:
+
+| Skill | Purpose |
+|-------|---------|
+| `agent-browser` | Browser automation for visual verification and E2E workflows |
+| `implement-issue` | Implement a GitHub issue end-to-end (branch, code, PR) |
+| `plan-issue` | Create implementation plans as GitHub issue hierarchies |
+| `review-pr` | Cross-model PR review (currently Codex CLI backend) |
+
 ## Contributing
 
 The GitHub issue tracker is for use by project maintainers and their agents. Features and bugs should be reported using Discord. This project operates on a best effort support model; see the LICENSE for the terms of support.
