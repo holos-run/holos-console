@@ -27,11 +27,26 @@ type ProjectLister interface {
 	ListProjects(ctx context.Context, org, parentNs string) ([]*corev1.Namespace, error)
 }
 
+// FolderCreator creates a folder namespace. Used by CreateOrganization to
+// auto-create the default folder without importing the folders package directly.
+type FolderCreator interface {
+	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	NamespaceExists(ctx context.Context, nsName string) (bool, error)
+}
+
+// FolderLister retrieves folder namespaces for validation.
+type FolderLister interface {
+	GetFolder(ctx context.Context, name string) (*corev1.Namespace, error)
+}
+
 // Handler implements the OrganizationService.
 type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
 	k8s             *K8sClient
 	projectLister   ProjectLister
+	folderCreator   FolderCreator
+	folderLister    FolderLister
+	folderPrefix    string // namespace prefix + folder prefix (e.g. "holos-fld-")
 	disableCreation bool
 	creatorUsers    []string
 	creatorRoles    []string
@@ -43,6 +58,15 @@ type Handler struct {
 // creatorRoles are allowed to create organizations.
 func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorRoles []string) *Handler {
 	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorRoles: creatorRoles}
+}
+
+// WithFolderCreator sets the folder creator used to auto-create the default
+// folder when a new organization is created.
+func (h *Handler) WithFolderCreator(fc FolderCreator, fl FolderLister, folderPrefix string) *Handler {
+	h.folderCreator = fc
+	h.folderLister = fl
+	h.folderPrefix = folderPrefix
+	return h
 }
 
 // ListOrganizations returns all organizations the user has access to.
@@ -140,7 +164,8 @@ func (h *Handler) GetOrganization(
 	}), nil
 }
 
-// CreateOrganization creates a new organization.
+// CreateOrganization creates a new organization and its default folder.
+// If default folder creation fails, the org namespace is rolled back.
 func (h *Handler) CreateOrganization(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateOrganizationRequest],
@@ -177,6 +202,40 @@ func (h *Handler) CreateOrganization(
 		return nil, mapK8sError(err)
 	}
 
+	// Auto-create the default folder as an immediate child of the org.
+	if h.folderCreator != nil {
+		folderDisplayName := "Default"
+		if req.Msg.DefaultFolder != nil && *req.Msg.DefaultFolder != "" {
+			folderDisplayName = *req.Msg.DefaultFolder
+		}
+
+		folderName, err := h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, shareUsers, shareRoles)
+		if err != nil {
+			// Rollback: delete the org namespace on default folder failure.
+			slog.ErrorContext(ctx, "default folder creation failed, rolling back org",
+				slog.String("organization", req.Msg.Name),
+				slog.Any("error", err),
+			)
+			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
+				slog.ErrorContext(ctx, "org rollback failed",
+					slog.String("organization", req.Msg.Name),
+					slog.Any("error", delErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("creating default folder: %w", err))
+		}
+
+		// Store the default folder identifier on the org namespace.
+		if err := h.k8s.SetDefaultFolder(ctx, req.Msg.Name, folderName); err != nil {
+			slog.ErrorContext(ctx, "failed to set default folder annotation",
+				slog.String("organization", req.Msg.Name),
+				slog.String("folder", folderName),
+				slog.Any("error", err),
+			)
+			// Non-fatal: the org and folder exist, the annotation is just missing.
+		}
+	}
+
 	slog.InfoContext(ctx, "organization created",
 		slog.String("action", "organization_create"),
 		slog.String("resource_type", auditResourceType),
@@ -188,6 +247,25 @@ func (h *Handler) CreateOrganization(
 	return connect.NewResponse(&consolev1.CreateOrganizationResponse{
 		Name: req.Msg.Name,
 	}), nil
+}
+
+// createDefaultFolder generates an identifier from the display name and creates
+// the folder namespace as a direct child of the organization. Returns the folder
+// identifier (slug).
+func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.folderCreator.NamespaceExists(ctx, nsName)
+	}
+	folderName, err := v1alpha2.GenerateIdentifier(ctx, displayName, h.folderPrefix, exists)
+	if err != nil {
+		return "", fmt.Errorf("generating folder identifier: %w", err)
+	}
+
+	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
+	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, shareUsers, shareRoles); err != nil {
+		return "", fmt.Errorf("creating folder namespace: %w", err)
+	}
+	return folderName, nil
 }
 
 // UpdateOrganization updates organization metadata.
@@ -215,15 +293,43 @@ func (h *Handler) UpdateOrganization(
 	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
 	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	if err := CheckOrgWriteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization update denied",
-			slog.String("action", "organization_update_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
+	// Changing default_folder requires ADMIN (OWNER) permission.
+	if req.Msg.DefaultFolder != nil {
+		if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
+			slog.WarnContext(ctx, "organization update default folder denied",
+				slog.String("action", "organization_update_denied"),
+				slog.String("resource_type", auditResourceType),
+				slog.String("organization", req.Msg.Name),
+				slog.String("sub", claims.Sub),
+				slog.String("email", claims.Email),
+			)
+			return nil, err
+		}
+	} else {
+		if err := CheckOrgWriteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
+			slog.WarnContext(ctx, "organization update denied",
+				slog.String("action", "organization_update_denied"),
+				slog.String("resource_type", auditResourceType),
+				slog.String("organization", req.Msg.Name),
+				slog.String("sub", claims.Sub),
+				slog.String("email", claims.Email),
+			)
+			return nil, err
+		}
+	}
+
+	// Validate and update default folder if requested.
+	if req.Msg.DefaultFolder != nil {
+		newFolder := *req.Msg.DefaultFolder
+		if newFolder == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("default_folder must not be empty"))
+		}
+		if err := h.validateDefaultFolder(ctx, req.Msg.Name, newFolder); err != nil {
+			return nil, err
+		}
+		if err := h.k8s.SetDefaultFolder(ctx, req.Msg.Name, newFolder); err != nil {
+			return nil, mapK8sError(err)
+		}
 	}
 
 	if _, err := h.k8s.UpdateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
@@ -239,6 +345,26 @@ func (h *Handler) UpdateOrganization(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationResponse{}), nil
+}
+
+// validateDefaultFolder checks that the referenced folder exists and is an
+// immediate child of the organization (parent label matches org namespace).
+func (h *Handler) validateDefaultFolder(ctx context.Context, orgName, folderName string) error {
+	if h.folderLister == nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("folder lister not configured"))
+	}
+	folderNs, err := h.folderLister.GetFolder(ctx, folderName)
+	if err != nil {
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf("folder %q not found: %w", folderName, err))
+	}
+	// Verify the folder is a direct child of the org.
+	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
+	parentNs := folderNs.Labels[v1alpha2.AnnotationParent]
+	if parentNs != orgNsName {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("folder %q is not an immediate child of organization %q", folderName, orgName))
+	}
+	return nil
 }
 
 // DeleteOrganization deletes a managed organization.
@@ -551,6 +677,7 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 			org.DisplayName = annotations[v1alpha2.AnnotationDisplayName]
 			org.Description = annotations[v1alpha2.AnnotationDescription]
 			org.CreatorEmail = annotations[v1alpha2.AnnotationCreatorEmail]
+			org.DefaultFolder = annotations[v1alpha2.AnnotationDefaultFolder]
 		}
 		// Populate default sharing grants and creation timestamp from typed namespace
 		if nsTyped, ok := ns.(*corev1.Namespace); ok {

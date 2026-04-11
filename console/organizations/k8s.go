@@ -166,6 +166,29 @@ func (c *K8sClient) DeleteOrganization(ctx context.Context, name string) error {
 	return c.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 }
 
+// SetDefaultFolder sets the default-folder annotation on the org namespace.
+func (c *K8sClient) SetDefaultFolder(ctx context.Context, name, folderName string) error {
+	ns, err := c.GetOrganization(ctx, name)
+	if err != nil {
+		return err
+	}
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	ns.Annotations[v1alpha2.AnnotationDefaultFolder] = folderName
+	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return err
+}
+
+// GetDefaultFolder reads the default-folder annotation from an org namespace.
+// Returns empty string if not set.
+func GetDefaultFolder(ns *corev1.Namespace) string {
+	if ns.Annotations == nil {
+		return ""
+	}
+	return ns.Annotations[v1alpha2.AnnotationDefaultFolder]
+}
+
 // UpdateOrganizationSharing updates the sharing annotations on an organization namespace.
 func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating organization sharing in kubernetes",
