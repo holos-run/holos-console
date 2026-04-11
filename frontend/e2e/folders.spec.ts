@@ -42,7 +42,7 @@ test.describe('Folder list page', () => {
     await apiDeleteOrg(page, orgName)
   })
 
-  test('empty folder list shows empty state', async ({ page }) => {
+  test('new org has default folder', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const orgName = `e2e-no-folders-${Date.now()}`
@@ -51,8 +51,8 @@ test.describe('Folder list page', () => {
     await page.goto(`/orgs/${orgName}/folders`)
     await page.waitForLoadState('networkidle')
 
-    // No folders → empty state text
-    await expect(page.getByText(/no folders/i)).toBeVisible({ timeout: 10000 })
+    // A new org auto-creates a "Default" folder — verify it appears
+    await expect(page.locator('span.font-medium', { hasText: 'Default' })).toBeVisible({ timeout: 10000 })
 
     await apiDeleteOrg(page, orgName)
   })
