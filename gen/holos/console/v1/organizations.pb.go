@@ -43,7 +43,10 @@ type Organization struct {
 	// creator_email is the email address of the user who created this organization.
 	CreatorEmail string `protobuf:"bytes,9,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`
 	// created_at is the RFC3339-formatted timestamp when this organization was created.
-	CreatedAt     string `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt string `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// default_folder is the name of the default folder for this organization.
+	// New projects without an explicit parent are created in this folder (ADR 022 Decision 3).
+	DefaultFolder string `protobuf:"bytes,11,opt,name=default_folder,json=defaultFolder,proto3" json:"default_folder,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -144,6 +147,13 @@ func (x *Organization) GetCreatorEmail() string {
 func (x *Organization) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *Organization) GetDefaultFolder() string {
+	if x != nil {
+		return x.DefaultFolder
 	}
 	return ""
 }
@@ -335,7 +345,10 @@ type CreateOrganizationRequest struct {
 	// user_grants are the initial per-user sharing grants.
 	UserGrants []*ShareGrant `protobuf:"bytes,4,rep,name=user_grants,json=userGrants,proto3" json:"user_grants,omitempty"`
 	// role_grants are the initial per-role sharing grants.
-	RoleGrants    []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
+	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
+	// default_folder is the name for the default folder created with the organization.
+	// When unset, defaults to "default" (ADR 022 Decision 1).
+	DefaultFolder *string `protobuf:"bytes,6,opt,name=default_folder,json=defaultFolder,proto3,oneof" json:"default_folder,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -405,6 +418,13 @@ func (x *CreateOrganizationRequest) GetRoleGrants() []*ShareGrant {
 	return nil
 }
 
+func (x *CreateOrganizationRequest) GetDefaultFolder() string {
+	if x != nil && x.DefaultFolder != nil {
+		return *x.DefaultFolder
+	}
+	return ""
+}
+
 // CreateOrganizationResponse contains the name of the created organization.
 type CreateOrganizationResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -459,7 +479,10 @@ type UpdateOrganizationRequest struct {
 	// display_name is the new display name. When unset, preserves the existing value.
 	DisplayName *string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
 	// description is the new description. When unset, preserves the existing value.
-	Description   *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	Description *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// default_folder is the new default folder name. When unset, preserves the existing value.
+	// The referenced folder must exist and be an immediate child of the organization (ADR 022 Decision 2).
+	DefaultFolder *string `protobuf:"bytes,4,opt,name=default_folder,json=defaultFolder,proto3,oneof" json:"default_folder,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -511,6 +534,13 @@ func (x *UpdateOrganizationRequest) GetDisplayName() string {
 func (x *UpdateOrganizationRequest) GetDescription() string {
 	if x != nil && x.Description != nil {
 		return *x.Description
+	}
+	return ""
+}
+
+func (x *UpdateOrganizationRequest) GetDefaultFolder() string {
+	if x != nil && x.DefaultFolder != nil {
+		return *x.DefaultFolder
 	}
 	return ""
 }
@@ -951,7 +981,7 @@ var File_holos_console_v1_organizations_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\n" +
-	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xfa\x03\n" +
+	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xa1\x04\n" +
 	"\fOrganization\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -966,14 +996,15 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\rcreator_email\x18\t \x01(\tR\fcreatorEmail\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\n" +
-	" \x01(\tR\tcreatedAt\"\x1a\n" +
+	" \x01(\tR\tcreatedAt\x12%\n" +
+	"\x0edefault_folder\x18\v \x01(\tR\rdefaultFolder\"\x1a\n" +
 	"\x18ListOrganizationsRequest\"a\n" +
 	"\x19ListOrganizationsResponse\x12D\n" +
 	"\rorganizations\x18\x01 \x03(\v2\x1e.holos.console.v1.OrganizationR\rorganizations\",\n" +
 	"\x16GetOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"]\n" +
 	"\x17GetOrganizationResponse\x12B\n" +
-	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xf2\x01\n" +
+	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xb1\x02\n" +
 	"\x19CreateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -981,15 +1012,19 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\vuser_grants\x18\x04 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"userGrants\x12=\n" +
 	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
-	"roleGrants\"0\n" +
+	"roleGrants\x12*\n" +
+	"\x0edefault_folder\x18\x06 \x01(\tH\x00R\rdefaultFolder\x88\x01\x01B\x11\n" +
+	"\x0f_default_folder\"0\n" +
 	"\x1aCreateOrganizationResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x9f\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xde\x01\n" +
 	"\x19UpdateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01B\x0f\n" +
+	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01\x12*\n" +
+	"\x0edefault_folder\x18\x04 \x01(\tH\x02R\rdefaultFolder\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
-	"\f_description\"\x1c\n" +
+	"\f_descriptionB\x11\n" +
+	"\x0f_default_folder\"\x1c\n" +
 	"\x1aUpdateOrganizationResponse\"/\n" +
 	"\x19DeleteOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x1c\n" +
@@ -1102,6 +1137,7 @@ func file_holos_console_v1_organizations_proto_init() {
 	}
 	file_holos_console_v1_rbac_proto_init()
 	file_holos_console_v1_secrets_proto_init()
+	file_holos_console_v1_organizations_proto_msgTypes[5].OneofWrappers = []any{}
 	file_holos_console_v1_organizations_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

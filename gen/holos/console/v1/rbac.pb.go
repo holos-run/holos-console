@@ -156,6 +156,11 @@ const (
 	Permission_PERMISSION_TEMPLATES_DELETE Permission = 42
 	// PERMISSION_TEMPLATES_ADMIN allows administrative operations on templates (IAM).
 	Permission_PERMISSION_TEMPLATES_ADMIN Permission = 43
+	// PERMISSION_REPARENT allows moving a folder or project to a different parent.
+	// Required on BOTH the source parent and the destination parent. Granted only
+	// to OWNERs — deliberately more restrictive than WRITE because reparenting
+	// changes RBAC inheritance chains (ADR 022 Decision 4).
+	Permission_PERMISSION_REPARENT Permission = 44
 )
 
 // Enum value maps for Permission.
@@ -199,6 +204,7 @@ var (
 		41: "PERMISSION_TEMPLATES_WRITE",
 		42: "PERMISSION_TEMPLATES_DELETE",
 		43: "PERMISSION_TEMPLATES_ADMIN",
+		44: "PERMISSION_REPARENT",
 	}
 	Permission_value = map[string]int32{
 		"PERMISSION_UNSPECIFIED":                0,
@@ -239,6 +245,7 @@ var (
 		"PERMISSION_TEMPLATES_WRITE":            41,
 		"PERMISSION_TEMPLATES_DELETE":           42,
 		"PERMISSION_TEMPLATES_ADMIN":            43,
+		"PERMISSION_REPARENT":                   44,
 	}
 )
 
@@ -279,7 +286,7 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_EDITOR\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x03*\xe4\t\n" +
+	"ROLE_OWNER\x10\x03*\xfd\t\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -320,7 +327,8 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\x19PERMISSION_TEMPLATES_READ\x10(\x12\x1e\n" +
 	"\x1aPERMISSION_TEMPLATES_WRITE\x10)\x12\x1f\n" +
 	"\x1bPERMISSION_TEMPLATES_DELETE\x10*\x12\x1e\n" +
-	"\x1aPERMISSION_TEMPLATES_ADMIN\x10+BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x1aPERMISSION_TEMPLATES_ADMIN\x10+\x12\x17\n" +
+	"\x13PERMISSION_REPARENT\x10,BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_rbac_proto_rawDescOnce sync.Once

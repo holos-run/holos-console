@@ -312,6 +312,16 @@ export enum Permission {
    * @generated from enum value: PERMISSION_TEMPLATES_ADMIN = 43;
    */
   TEMPLATES_ADMIN = 43,
+
+  /**
+   * PERMISSION_REPARENT allows moving a folder or project to a different parent.
+   * Required on BOTH the source parent and the destination parent. Granted only
+   * to OWNERs — deliberately more restrictive than WRITE because reparenting
+   * changes RBAC inheritance chains (ADR 022 Decision 4).
+   *
+   * @generated from enum value: PERMISSION_REPARENT = 44;
+   */
+  REPARENT = 44,
 }
 
 /**

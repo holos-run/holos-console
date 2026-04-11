@@ -546,7 +546,13 @@ type UpdateProjectRequest struct {
 	// display_name is the new display name. When unset, preserves the existing value.
 	DisplayName *string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
 	// description is the new description. When unset, preserves the existing value.
-	Description   *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	Description *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+	// Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+	ParentType *ParentType `protobuf:"varint,4,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType,oneof" json:"parent_type,omitempty"`
+	// parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
+	// Must be set together with parent_type.
+	ParentName    *string `protobuf:"bytes,5,opt,name=parent_name,json=parentName,proto3,oneof" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -598,6 +604,20 @@ func (x *UpdateProjectRequest) GetDisplayName() string {
 func (x *UpdateProjectRequest) GetDescription() string {
 	if x != nil && x.Description != nil {
 		return *x.Description
+	}
+	return ""
+}
+
+func (x *UpdateProjectRequest) GetParentType() ParentType {
+	if x != nil && x.ParentType != nil {
+		return *x.ParentType
+	}
+	return ParentType_PARENT_TYPE_UNSPECIFIED
+}
+
+func (x *UpdateProjectRequest) GetParentName() string {
+	if x != nil && x.ParentName != nil {
+		return *x.ParentName
 	}
 	return ""
 }
@@ -1085,13 +1105,19 @@ const file_holos_console_v1_projects_proto_rawDesc = "" +
 	"\vparent_name\x18\b \x01(\tR\n" +
 	"parentName\"+\n" +
 	"\x15CreateProjectResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x9a\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa4\x02\n" +
 	"\x14UpdateProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01B\x0f\n" +
+	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01\x12B\n" +
+	"\vparent_type\x18\x04 \x01(\x0e2\x1c.holos.console.v1.ParentTypeH\x02R\n" +
+	"parentType\x88\x01\x01\x12$\n" +
+	"\vparent_name\x18\x05 \x01(\tH\x03R\n" +
+	"parentName\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
-	"\f_description\"\x17\n" +
+	"\f_descriptionB\x0e\n" +
+	"\f_parent_typeB\x0e\n" +
+	"\f_parent_name\"\x17\n" +
 	"\x15UpdateProjectResponse\"*\n" +
 	"\x14DeleteProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x17\n" +
@@ -1173,33 +1199,34 @@ var file_holos_console_v1_projects_proto_depIdxs = []int32{
 	17, // 9: holos.console.v1.CreateProjectRequest.user_grants:type_name -> holos.console.v1.ShareGrant
 	17, // 10: holos.console.v1.CreateProjectRequest.role_grants:type_name -> holos.console.v1.ShareGrant
 	19, // 11: holos.console.v1.CreateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
-	17, // 12: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 13: holos.console.v1.UpdateProjectSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
-	0,  // 14: holos.console.v1.UpdateProjectSharingResponse.project:type_name -> holos.console.v1.Project
-	17, // 15: holos.console.v1.UpdateProjectDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
-	17, // 16: holos.console.v1.UpdateProjectDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
-	0,  // 17: holos.console.v1.UpdateProjectDefaultSharingResponse.project:type_name -> holos.console.v1.Project
-	1,  // 18: holos.console.v1.ProjectService.ListProjects:input_type -> holos.console.v1.ListProjectsRequest
-	3,  // 19: holos.console.v1.ProjectService.GetProject:input_type -> holos.console.v1.GetProjectRequest
-	5,  // 20: holos.console.v1.ProjectService.CreateProject:input_type -> holos.console.v1.CreateProjectRequest
-	7,  // 21: holos.console.v1.ProjectService.UpdateProject:input_type -> holos.console.v1.UpdateProjectRequest
-	9,  // 22: holos.console.v1.ProjectService.DeleteProject:input_type -> holos.console.v1.DeleteProjectRequest
-	11, // 23: holos.console.v1.ProjectService.UpdateProjectSharing:input_type -> holos.console.v1.UpdateProjectSharingRequest
-	13, // 24: holos.console.v1.ProjectService.GetProjectRaw:input_type -> holos.console.v1.GetProjectRawRequest
-	15, // 25: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:input_type -> holos.console.v1.UpdateProjectDefaultSharingRequest
-	2,  // 26: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
-	4,  // 27: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
-	6,  // 28: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
-	8,  // 29: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
-	10, // 30: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
-	12, // 31: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
-	14, // 32: holos.console.v1.ProjectService.GetProjectRaw:output_type -> holos.console.v1.GetProjectRawResponse
-	16, // 33: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:output_type -> holos.console.v1.UpdateProjectDefaultSharingResponse
-	26, // [26:34] is the sub-list for method output_type
-	18, // [18:26] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	19, // 12: holos.console.v1.UpdateProjectRequest.parent_type:type_name -> holos.console.v1.ParentType
+	17, // 13: holos.console.v1.UpdateProjectSharingRequest.user_grants:type_name -> holos.console.v1.ShareGrant
+	17, // 14: holos.console.v1.UpdateProjectSharingRequest.role_grants:type_name -> holos.console.v1.ShareGrant
+	0,  // 15: holos.console.v1.UpdateProjectSharingResponse.project:type_name -> holos.console.v1.Project
+	17, // 16: holos.console.v1.UpdateProjectDefaultSharingRequest.default_user_grants:type_name -> holos.console.v1.ShareGrant
+	17, // 17: holos.console.v1.UpdateProjectDefaultSharingRequest.default_role_grants:type_name -> holos.console.v1.ShareGrant
+	0,  // 18: holos.console.v1.UpdateProjectDefaultSharingResponse.project:type_name -> holos.console.v1.Project
+	1,  // 19: holos.console.v1.ProjectService.ListProjects:input_type -> holos.console.v1.ListProjectsRequest
+	3,  // 20: holos.console.v1.ProjectService.GetProject:input_type -> holos.console.v1.GetProjectRequest
+	5,  // 21: holos.console.v1.ProjectService.CreateProject:input_type -> holos.console.v1.CreateProjectRequest
+	7,  // 22: holos.console.v1.ProjectService.UpdateProject:input_type -> holos.console.v1.UpdateProjectRequest
+	9,  // 23: holos.console.v1.ProjectService.DeleteProject:input_type -> holos.console.v1.DeleteProjectRequest
+	11, // 24: holos.console.v1.ProjectService.UpdateProjectSharing:input_type -> holos.console.v1.UpdateProjectSharingRequest
+	13, // 25: holos.console.v1.ProjectService.GetProjectRaw:input_type -> holos.console.v1.GetProjectRawRequest
+	15, // 26: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:input_type -> holos.console.v1.UpdateProjectDefaultSharingRequest
+	2,  // 27: holos.console.v1.ProjectService.ListProjects:output_type -> holos.console.v1.ListProjectsResponse
+	4,  // 28: holos.console.v1.ProjectService.GetProject:output_type -> holos.console.v1.GetProjectResponse
+	6,  // 29: holos.console.v1.ProjectService.CreateProject:output_type -> holos.console.v1.CreateProjectResponse
+	8,  // 30: holos.console.v1.ProjectService.UpdateProject:output_type -> holos.console.v1.UpdateProjectResponse
+	10, // 31: holos.console.v1.ProjectService.DeleteProject:output_type -> holos.console.v1.DeleteProjectResponse
+	12, // 32: holos.console.v1.ProjectService.UpdateProjectSharing:output_type -> holos.console.v1.UpdateProjectSharingResponse
+	14, // 33: holos.console.v1.ProjectService.GetProjectRaw:output_type -> holos.console.v1.GetProjectRawResponse
+	16, // 34: holos.console.v1.ProjectService.UpdateProjectDefaultSharing:output_type -> holos.console.v1.UpdateProjectDefaultSharingResponse
+	27, // [27:35] is the sub-list for method output_type
+	19, // [19:27] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_projects_proto_init() }
