@@ -81,11 +81,15 @@ vi.mock('@/components/create-org-dialog', () => ({
 vi.mock('@/components/create-project-dialog', () => ({
   CreateProjectDialog: () => <div data-testid="create-project-dialog" />,
 }))
+vi.mock('@/lib/console-config', () => ({
+  getConsoleConfig: vi.fn(),
+}))
 
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 import { useGetProjectSettings } from '@/queries/project-settings'
+import { getConsoleConfig } from '@/lib/console-config'
 import { AppSidebar } from './app-sidebar'
 
 function setDefaults() {
@@ -103,6 +107,7 @@ function setDefaults() {
   })
   ;(useVersion as Mock).mockReturnValue({ data: { version: 'v0.0.0-test' } })
   ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
+  ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: false })
 }
 
 describe('AppSidebar', () => {
@@ -395,5 +400,41 @@ describe('AppSidebar — Templates nav item conditional visibility', () => {
     render(<AppSidebar />)
     const link = screen.getByRole('link', { name: /^deployments$/i })
     expect(link.getAttribute('href')).toBe('/projects/my-project/deployments')
+  })
+})
+
+describe('AppSidebar — Dev Tools conditional visibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+  })
+
+  it('renders Dev Tools link when devToolsEnabled is true', () => {
+    ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
+    render(<AppSidebar />)
+    expect(screen.getByText('Dev Tools')).toBeInTheDocument()
+  })
+
+  it('does not render Dev Tools link when devToolsEnabled is false', () => {
+    ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: false })
+    render(<AppSidebar />)
+    expect(screen.queryByText('Dev Tools')).not.toBeInTheDocument()
+  })
+
+  it('Dev Tools link points to /dev-tools', () => {
+    ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
+    render(<AppSidebar />)
+    const link = screen.getByRole('link', { name: /dev tools/i })
+    expect(link.getAttribute('href')).toBe('/dev-tools')
+  })
+
+  it('Dev Tools appears before About in DOM order', () => {
+    ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
+    render(<AppSidebar />)
+    const items = screen.getAllByRole('listitem')
+    const devToolsIdx = items.findIndex((el) => el.textContent?.includes('Dev Tools'))
+    const aboutIdx = items.findIndex((el) => el.textContent?.includes('About'))
+    expect(devToolsIdx).toBeGreaterThanOrEqual(0)
+    expect(aboutIdx).toBeGreaterThan(devToolsIdx)
   })
 })

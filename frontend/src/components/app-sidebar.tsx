@@ -11,6 +11,7 @@ import {
   Plus,
   Settings,
   User,
+  Wrench,
   ChevronsUpDown,
 } from 'lucide-react'
 import {
@@ -36,15 +37,22 @@ import {
 import { Button } from '@/components/ui/button'
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
+import { getConsoleConfig } from '@/lib/console-config'
 import { useVersion } from '@/queries/version'
 import { useGetProjectSettings } from '@/queries/project-settings'
 import { CreateOrgDialog } from '@/components/create-org-dialog'
 import { CreateProjectDialog } from '@/components/create-project-dialog'
 
-const bottomItems = [
-  { label: 'About', to: '/about' as const, icon: Info },
-  { label: 'Profile', to: '/profile' as const, icon: User },
-]
+function getBottomItems() {
+  const { devToolsEnabled } = getConsoleConfig()
+  return [
+    ...(devToolsEnabled
+      ? [{ label: 'Dev Tools', to: '/dev-tools' as const, icon: Wrench }]
+      : []),
+    { label: 'About', to: '/about' as const, icon: Info },
+    { label: 'Profile', to: '/profile' as const, icon: User },
+  ]
+}
 
 export function AppSidebar() {
   const { data: versionData } = useVersion()
@@ -200,7 +208,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarSeparator />
         <SidebarMenu>
-          {bottomItems.map((item) => (
+          {getBottomItems().map((item) => (
             <SidebarMenuItem key={item.label}>
               <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)}>
                 <Link to={item.to}>
