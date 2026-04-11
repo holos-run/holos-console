@@ -1,7 +1,7 @@
 ---
 name: implement-issue
 description: Implement a single GitHub issue end-to-end. Use this skill when the user provides a GitHub issue URL and asks to implement it, work on it, fix it, or resolve it. Triggers on phrases like "implement issue", "work on this issue", "fix this issue", or when given a GitHub issue URL alone. Handles the full workflow: fetch, branch, comment, implement, and open a PR. For parent issues with sub-issues, use /implement-plan instead.
-version: 6.0.0
+version: 7.0.0
 ---
 
 # Implement Issue
@@ -25,7 +25,20 @@ Parse the issue URL to extract the repo and issue number. URL formats:
 
 If the issue body contains sub-issue references (task-list lines like `- [ ] #123`), this is a parent issue. **Stop and inform the user** to use `/implement-plan` instead. Do not attempt to implement a parent issue directly.
 
-### 2. Fetch Origin and Create Branch
+### 2. Name the Session
+
+Rename the current session so the human operator can see what this agent is working on:
+
+```
+/rename #<number> <issue title>
+```
+
+For example, if implementing issue #42 "Add Playwright E2E test infrastructure":
+```
+/rename #42 Add Playwright E2E test infrastructure
+```
+
+### 3. Fetch Origin and Create Branch
 
 ```bash
 git fetch origin
@@ -41,7 +54,7 @@ git checkout -b <branch-name>
 
 Strip special characters from the slug (keep only alphanumeric and hyphens).
 
-### 3. Comment on the Issue
+### 4. Comment on the Issue
 
 Post a comment announcing which agent is working on this issue:
 
@@ -62,7 +75,7 @@ pwd          # working directory
 hostname     # machine hostname
 ```
 
-### 4. Read and Understand the Codebase
+### 5. Read and Understand the Codebase
 
 Before implementing:
 1. Read `AGENTS.md` (or `CLAUDE.md`) for project conventions
@@ -70,7 +83,7 @@ Before implementing:
 3. Explore the relevant code areas mentioned in the issue
 4. Understand existing patterns before writing new code
 
-### 5. Implement Using RED GREEN Approach
+### 6. Implement Using RED GREEN Approach
 
 Follow the RED GREEN pattern from the repository's conventions:
 
@@ -93,7 +106,7 @@ Run the relevant test commands to verify your implementation:
 
 **Always run `make generate` before committing** if any generated files might be affected.
 
-### 6. Final Cleanup Phase
+### 7. Final Cleanup Phase
 
 Before opening the PR, scan for:
 - Dead code introduced or made stale by the implementation
@@ -103,7 +116,7 @@ Before opening the PR, scan for:
 
 Commit cleanup separately with a message explaining what was removed and why.
 
-### 7. Open the PR
+### 8. Open the PR
 
 The PR must close the **specific issue being implemented**. When implementing a sub-issue dispatched from a parent issue, close the sub-issue number -- not the parent.
 

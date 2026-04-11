@@ -1,7 +1,7 @@
 ---
 name: implement-plan
 description: Execute a full implementation plan from a parent GitHub issue with sub-issues. Iterates over each sub-issue, implements it with a Claude Opus sub-agent, runs two code review/fix loops using the review-pr skill, and merges or escalates. Triggers on phrases like "implement plan", "execute plan", "run the plan", "implement parent issue", or when given a parent issue URL with sub-issues.
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Implement Plan
@@ -29,7 +29,20 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh issue view <number> --repo $REPO --json number,title,body,state
 ```
 
-### 2. Extract Sub-Issues
+### 2. Name the Session
+
+Rename the current session so the human operator can see what this agent is working on:
+
+```
+/rename Plan #<number> <parent issue title>
+```
+
+For example, if executing plan issue #42 "Add RBAC for secrets":
+```
+/rename Plan #42 Add RBAC for secrets
+```
+
+### 3. Extract Sub-Issues
 
 Parse the parent issue body for sub-issue references. Sub-issues appear as task-list lines:
 
@@ -47,13 +60,19 @@ If no sub-issues are found, treat the issue as a single issue and delegate direc
 
 If all sub-issues are already checked off, comment on the parent issue that all work is complete and stop.
 
-### 3. Iterate Over Sub-Issues
+### 4. Iterate Over Sub-Issues
 
-For each unchecked sub-issue, execute the full implement-review-merge cycle (steps 4-8). Process sub-issues **sequentially** in the order they appear in the parent issue body.
+For each unchecked sub-issue, execute the full implement-review-merge cycle (steps 5-9). Process sub-issues **sequentially** in the order they appear in the parent issue body.
+
+Before starting each sub-issue, update the session name:
+
+```
+/rename #<sub-number> <sub-issue title> (plan #<parent-number>)
+```
 
 After each sub-issue completes (merged or escalated), move to the next one.
 
-### 4. Implement the Sub-Issue
+### 5. Implement the Sub-Issue
 
 Launch an Opus sub-agent to implement the sub-issue. The sub-agent invokes `/implement-issue` which handles branching, coding, testing, and opening a draft PR.
 
@@ -85,7 +104,7 @@ PR_NUMBER=$(gh pr list --state open --json number,body --jq '.[] | select(.body 
 
 If still not found, comment on the sub-issue that implementation failed and continue to the next sub-issue.
 
-### 5. Wait for CI
+### 6. Wait for CI
 
 After the PR is open, wait for CI checks to complete:
 
@@ -105,7 +124,7 @@ Agent(
 
 Re-check CI after the fix. If CI still fails after one fix attempt, add the `needs-human-review` label and continue to the review step anyway (the review may catch the root cause).
 
-### 6. Review the PR (Round 1)
+### 7. Review the PR (Round 1)
 
 Launch a sub-agent to run the `/review-pr` skill. The review runs in a sub-agent to preserve the main agent's context window and to ensure the Codex review process is isolated.
 
@@ -122,13 +141,13 @@ Agent(
 - **Important count**: Number of `[IMPORTANT]` findings
 - **Style count**: Number of `[STYLE]` findings
 
-**If APPROVE (no findings):** Skip to step 8 (merge).
+**If APPROVE (no findings):** Skip to step 9 (merge).
 
-**If non-critical findings only (no CRITICAL):** Skip to step 8 (merge with follow-up).
+**If non-critical findings only (no CRITICAL):** Skip to step 9 (merge with follow-up).
 
-**If critical findings exist:** Proceed to step 7 (fix).
+**If critical findings exist:** Proceed to step 8 (fix).
 
-### 7. Fix-Review Loop (Up to 2 Rounds)
+### 8. Fix-Review Loop (Up to 2 Rounds)
 
 Execute up to 2 fix-review rounds for critical findings. Each round:
 
@@ -208,7 +227,7 @@ gh pr edit $PR_NUMBER --add-label "needs-human-review"
 3. Do NOT merge the PR.
 4. Continue to the next sub-issue.
 
-### 8. Merge the PR
+### 9. Merge the PR
 
 Before merging, handle any non-critical findings:
 
@@ -261,7 +280,7 @@ After successful merge, update the parent issue to check off this sub-issue (the
 gh issue view <sub-issue-number> --json state -q .state
 ```
 
-### 9. Reset for Next Sub-Issue
+### 10. Reset for Next Sub-Issue
 
 After merge, prepare the working directory for the next sub-issue:
 
@@ -270,9 +289,9 @@ git checkout main
 git pull origin main
 ```
 
-Return to step 3 to process the next unchecked sub-issue.
+Return to step 4 to process the next unchecked sub-issue.
 
-### 10. Completion
+### 11. Completion
 
 After all sub-issues have been processed (merged or escalated), post a summary comment on the parent issue:
 
