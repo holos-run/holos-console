@@ -114,3 +114,10 @@ The token claims include `iss`, `sub`, `aud`, `exp`, `iat`, `email`, `email_veri
 ## Security
 
 This endpoint is for **local development only**. It requires no authentication and returns tokens for any registered test user. It is gated behind `--enable-insecure-dex` to prevent accidental exposure in production.
+
+## See Also
+
+- [ADR 023](adrs/023-multi-persona-test-identities.md) -- Design decisions for the multi-persona test identity system
+- [Authentication](authentication.md) -- Overview of the OIDC authentication system and test personas
+- [E2E Testing](e2e-testing.md) -- Multi-persona E2E test patterns using this endpoint
+- [CONTRIBUTING.md](../CONTRIBUTING.md) -- Dev tools setup and persona switching for local development
