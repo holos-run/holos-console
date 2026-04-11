@@ -68,6 +68,8 @@ const (
 	PermissionProjectSettingsWrite = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_WRITE
 
 	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
+
+	PermissionReparent = consolev1.Permission_PERMISSION_REPARENT
 )
 
 // rolePermissions defines which permissions each role has.
@@ -148,6 +150,7 @@ var rolePermissions = map[Role]map[Permission]bool{
 		PermissionTemplatesAdmin:       true,
 		PermissionProjectSettingsRead:  true,
 		PermissionProjectSettingsWrite: true,
+		PermissionReparent:             true,
 	},
 }
 
@@ -351,6 +354,16 @@ var TemplateCascadePerms = CascadeTable{
 		PermissionTemplatesWrite:  true,
 		PermissionTemplatesDelete: true,
 		PermissionTemplatesAdmin:  true,
+	},
+}
+
+// ReparentCascadePerms defines what reparent permissions each role grants via
+// cascade. Org-level OWNERs can reparent folders and projects within the org.
+// Reparenting is OWNER-only because it changes RBAC inheritance chains
+// (ADR 022 Decision 4).
+var ReparentCascadePerms = CascadeTable{
+	RoleOwner: {
+		PermissionReparent: true,
 	},
 }
 

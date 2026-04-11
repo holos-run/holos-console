@@ -253,7 +253,7 @@ func (h *Handler) CreateFolder(
 	}), nil
 }
 
-// UpdateFolder updates folder metadata.
+// UpdateFolder updates folder metadata and optionally reparents the folder.
 func (h *Handler) UpdateFolder(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateFolderRequest],
@@ -289,6 +289,13 @@ func (h *Handler) UpdateFolder(
 		return nil, err
 	}
 
+	// Handle reparenting if parent_type and parent_name are set.
+	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
+		if err := h.reparentFolder(ctx, ns, claims, *req.Msg.ParentType, *req.Msg.ParentName); err != nil {
+			return nil, err
+		}
+	}
+
 	if _, err := h.k8s.UpdateFolder(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -302,6 +309,203 @@ func (h *Handler) UpdateFolder(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateFolderResponse{}), nil
+}
+
+// reparentFolder validates and executes a folder reparent operation.
+// Checks PERMISSION_REPARENT on both source and destination parents,
+// enforces depth limits, and detects cycles.
+func (h *Handler) reparentFolder(
+	ctx context.Context,
+	ns *corev1.Namespace,
+	claims *rpc.Claims,
+	newParentType consolev1.ParentType,
+	newParentName string,
+) error {
+	folderName := ns.Labels[v1alpha2.LabelFolder]
+	folderNsName := ns.Name
+
+	// Resolve new parent namespace.
+	newParentNs, err := h.resolveParentNS(newParentType, newParentName)
+	if err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	// Resolve current parent namespace from the folder's label.
+	currentParentNs := ns.Labels[v1alpha2.AnnotationParent]
+	if currentParentNs == "" {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("folder %q is missing parent label", folderName))
+	}
+
+	// No-op: same parent, return success without a K8s write.
+	if currentParentNs == newParentNs {
+		return nil
+	}
+
+	// Verify new parent namespace exists.
+	newParentNamespace, err := h.k8s.GetNamespace(ctx, newParentNs)
+	if err != nil {
+		return mapK8sError(err)
+	}
+
+	// Check PERMISSION_REPARENT on the current (source) parent.
+	sourceNs, err := h.k8s.GetNamespace(ctx, currentParentNs)
+	if err != nil {
+		return mapK8sError(err)
+	}
+	if err := h.checkReparentAccess(ctx, claims, sourceNs, "source"); err != nil {
+		slog.WarnContext(ctx, "folder reparent denied on source",
+			slog.String("action", "folder_reparent_denied_source"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("folder", folderName),
+			slog.String("source_parent", currentParentNs),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return err
+	}
+
+	// Check PERMISSION_REPARENT on the new (destination) parent.
+	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, "destination"); err != nil {
+		slog.WarnContext(ctx, "folder reparent denied on destination",
+			slog.String("action", "folder_reparent_denied_destination"),
+			slog.String("resource_type", auditResourceType),
+			slog.String("folder", folderName),
+			slog.String("dest_parent", newParentNs),
+			slog.String("sub", claims.Sub),
+			slog.String("email", claims.Email),
+		)
+		return err
+	}
+
+	// Cycle detection: walk new parent's ancestors; if the folder being moved
+	// appears, the move would create a cycle.
+	if err := h.detectCycle(ctx, folderNsName, newParentNs); err != nil {
+		return err
+	}
+
+	// Depth enforcement: compute depth at new parent, then compute subtree depth
+	// of the folder being moved. Total must not exceed maxFolderDepth.
+	newParentDepth, err := h.computeFolderDepth(ctx, newParentNs)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("computing new parent depth: %w", err))
+	}
+	subtreeDepth, err := h.computeSubtreeDepth(ctx, folderNsName)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("computing subtree depth: %w", err))
+	}
+	// newParentDepth is the number of folder levels above the new parent.
+	// subtreeDepth is the max folder depth below and including the folder being moved.
+	// The folder being moved will be at depth newParentDepth+1, and the deepest
+	// descendant at newParentDepth+subtreeDepth.
+	totalDepth := newParentDepth + subtreeDepth
+	if totalDepth > maxFolderDepth {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("reparenting would exceed maximum folder depth of %d (new depth: %d)", maxFolderDepth, totalDepth))
+	}
+
+	// Execute the reparent: update the parent label.
+	if _, err := h.k8s.UpdateParentLabel(ctx, folderName, newParentNs); err != nil {
+		return mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "folder reparented",
+		slog.String("action", "folder_reparent"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("folder", folderName),
+		slog.String("from_parent", currentParentNs),
+		slog.String("to_parent", newParentNs),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return nil
+}
+
+// checkReparentAccess verifies that the user has PERMISSION_REPARENT on the given
+// parent namespace. Uses direct grants on the parent plus org-level cascade via
+// ReparentCascadePerms.
+func (h *Handler) checkReparentAccess(ctx context.Context, claims *rpc.Claims, parentNs *corev1.Namespace, direction string) error {
+	shareUsers, _ := GetShareUsers(parentNs)
+	shareRoles, _ := GetShareRoles(parentNs)
+	now := time.Now()
+	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
+	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
+
+	// Check direct grants on the parent resource.
+	if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionReparent); err == nil {
+		return nil
+	}
+
+	// Check org-level cascade: org OWNERs get REPARENT on all children via ReparentCascadePerms.
+	org := ""
+	if parentNs.Labels != nil {
+		org = parentNs.Labels[v1alpha2.LabelOrganization]
+	}
+	if org != "" {
+		orgNsName := h.k8s.Resolver.OrgNamespace(org)
+		orgNs, err := h.k8s.GetNamespace(ctx, orgNsName)
+		if err == nil {
+			orgShareUsers, _ := GetShareUsers(orgNs)
+			orgShareRoles, _ := GetShareRoles(orgNs)
+			orgActiveUsers := secrets.ActiveGrantsMap(orgShareUsers, now)
+			orgActiveRoles := secrets.ActiveGrantsMap(orgShareRoles, now)
+			if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, orgActiveUsers, orgActiveRoles, rbac.PermissionReparent, rbac.ReparentCascadePerms); err == nil {
+				return nil
+			}
+		}
+	}
+
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: reparent authorization denied on %s parent", direction))
+}
+
+// detectCycle walks from startNs up through ancestors. If folderNsName appears
+// in the ancestor chain, the move would create a cycle.
+func (h *Handler) detectCycle(ctx context.Context, folderNsName, startNs string) error {
+	current := startNs
+	for i := 0; i <= maxFolderDepth+1; i++ {
+		if current == folderNsName {
+			return connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("reparenting would create a cycle: folder is an ancestor of the destination"))
+		}
+		ns, err := h.k8s.GetNamespace(ctx, current)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("cycle detection: getting namespace %q: %w", current, err))
+		}
+		resourceType := ns.Labels[v1alpha2.LabelResourceType]
+		if resourceType == v1alpha2.ResourceTypeOrganization {
+			// Reached the org root, no cycle.
+			return nil
+		}
+		parent := ns.Labels[v1alpha2.AnnotationParent]
+		if parent == "" {
+			return nil
+		}
+		current = parent
+	}
+	return nil
+}
+
+// computeSubtreeDepth returns the maximum folder depth below (and including)
+// the given folder namespace. A leaf folder returns 1.
+func (h *Handler) computeSubtreeDepth(ctx context.Context, folderNsName string) (int, error) {
+	children, err := h.k8s.ListChildFolders(ctx, folderNsName)
+	if err != nil {
+		return 0, err
+	}
+	if len(children) == 0 {
+		return 1, nil
+	}
+	maxChildDepth := 0
+	for _, child := range children {
+		childDepth, err := h.computeSubtreeDepth(ctx, child.Name)
+		if err != nil {
+			return 0, err
+		}
+		if childDepth > maxChildDepth {
+			maxChildDepth = childDepth
+		}
+	}
+	return 1 + maxChildDepth, nil
 }
 
 // DeleteFolder deletes a folder.

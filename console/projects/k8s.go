@@ -186,6 +186,29 @@ func (c *K8sClient) UpdateProject(ctx context.Context, name string, displayName,
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
+// UpdateParentLabel updates the parent label on a project namespace.
+func (c *K8sClient) UpdateParentLabel(ctx context.Context, name, newParentNs string) (*corev1.Namespace, error) {
+	slog.DebugContext(ctx, "updating project parent label in kubernetes",
+		slog.String("name", name),
+		slog.String("newParent", newParentNs),
+	)
+	ns, err := c.GetProject(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if ns.Labels == nil {
+		ns.Labels = make(map[string]string)
+	}
+	ns.Labels[v1alpha2.AnnotationParent] = newParentNs
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
+// GetNamespace retrieves any namespace by its full Kubernetes name.
+// Used for resolving parent namespaces during reparent validation.
+func (c *K8sClient) GetNamespace(ctx context.Context, nsName string) (*corev1.Namespace, error) {
+	return c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+}
+
 // DeleteProject deletes a managed project namespace.
 // Returns an error if the namespace does not have the managed-by label.
 func (c *K8sClient) DeleteProject(ctx context.Context, name string) error {
