@@ -56,24 +56,26 @@ collisions in shared test clusters.
 
 ### 2. Default folder created at organization creation.
 
-`CreateOrganization` creates a folder named `default` (or a user-specified name
-via `CreateOrganizationRequest.default_folder`) as an immediate child of the
-organization. The folder's name is stored as a
-`console.holos.run/default-folder` annotation on the organization namespace.
+`CreateOrganization` creates a default folder as an immediate child of the
+organization. The folder receives a randomly generated six-digit numeric
+identifier (per Decision 1) and a display name of `"Default"` (or the value
+of `CreateOrganizationRequest.default_folder_display_name` if set). The
+folder's identifier is stored as a `console.holos.run/default-folder`
+annotation on the organization namespace.
 
-If `CreateOrganizationRequest.default_folder` is unset, the server uses
-`"default"` as the folder name. The field is optional — omitting it produces
-the same result as explicitly passing `"default"`.
+If `CreateOrganizationRequest.default_folder_display_name` is unset, the
+server uses `"Default"` as the display name. The identifier is always
+server-generated — callers do not choose it.
 
 ### 3. Default folder is configurable.
 
 `UpdateOrganization` can change the default folder reference via
 `UpdateOrganizationRequest.default_folder`. The annotation on the organization
-namespace is updated to point to the new folder's logical name (not K8s
-namespace). The referenced folder must exist and be an immediate child of the
-organization. The server validates this constraint and returns
-`codes.InvalidArgument` if the folder does not exist or is not an immediate
-child.
+namespace is updated to point to the new folder's identifier (the six-digit
+numeric suffix, not the K8s namespace name). The referenced folder must exist
+and be an immediate child of the organization. The server validates this
+constraint and returns `codes.InvalidArgument` if the folder does not exist
+or is not an immediate child.
 
 Changing the default folder does not move existing projects. It only affects
 where new projects are created when no explicit parent is specified.
