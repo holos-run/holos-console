@@ -95,36 +95,16 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		return nil, fmt.Errorf("failed to marshal auto connector config: %w", err)
 	}
 
-	// Build connector list: auto-login connector first, then one password
-	// connector per TestUser for multi-persona testing.
-	connectors := []storage.Connector{
+	// Single auto-login connector for development. Dex auto-redirects when
+	// there is exactly one connector, which is required for E2E tests.
+	store = storage.WithStaticConnectors(store, []storage.Connector{
 		{
 			ID:     "holos",
 			Type:   "holosAuto",
 			Name:   "Development Auto-Login",
 			Config: autoConfig,
 		},
-	}
-
-	for _, u := range TestUsers {
-		cfg, err := json.Marshal(PasswordConnectorConfig{
-			Username: u.Email,
-			Password: u.Password,
-			Groups:   u.Groups,
-			UserID:   u.UserID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal password connector config for %s: %w", u.ID, err)
-		}
-		connectors = append(connectors, storage.Connector{
-			ID:     "password-" + u.ID,
-			Type:   "holosPassword",
-			Name:   u.DisplayName,
-			Config: cfg,
-		})
-	}
-
-	store = storage.WithStaticConnectors(store, connectors)
+	})
 
 	// Create Dex server config
 	serverConfig := server.Config{

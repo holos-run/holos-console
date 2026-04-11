@@ -34,13 +34,13 @@ func TestNewHandler_Success(t *testing.T) {
 	var _ http.Handler = handler
 }
 
-func TestNewHandler_RegistersMultipleConnectors(t *testing.T) {
+func TestNewHandler_RegistersSingleAutoConnector(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	// NewHandler should succeed with multi-connector configuration.
-	// The auto-login connector plus one password connector per TestUser
-	// are all registered without error.
+	// NewHandler should succeed with only the auto-login connector.
+	// A single connector ensures Dex auto-redirects without showing
+	// a connector selection page, which E2E tests depend on.
 	handler, err := oidc.NewHandler(ctx, oidc.Config{
 		Issuer:       "https://test.example.com/dex",
 		ClientID:     "test-client",
