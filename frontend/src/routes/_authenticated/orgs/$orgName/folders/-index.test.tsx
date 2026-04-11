@@ -168,8 +168,8 @@ describe('FoldersIndexPage', () => {
     const row = screen.getByText('Payments Team').closest('tr')!
     fireEvent.click(row)
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/orgs/$orgName/folders/$folderName',
-      params: { orgName: 'test-org', folderName: 'payments' },
+      to: '/folders/$folderName',
+      params: { folderName: 'payments' },
     })
   })
 
