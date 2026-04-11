@@ -181,6 +181,31 @@ The `reuseExistingServer` option detects when servers are already running and sk
 
 The embedded Dex OIDC provider is enabled by `make run` via `--enable-insecure-dex` and auto-logs in during local development. See [docs/authentication.md](docs/authentication.md) for detailed documentation including external OIDC provider configuration.
 
+### Dev Tools and Persona Switching
+
+`make run` passes `--enable-dev-tools`, which exposes a Dev Tools page at `/dev-tools` in the sidebar. The Dev Tools page provides an interactive persona switcher to test the application as different RBAC roles without restarting the server.
+
+Available personas:
+
+| Persona | Email | Role |
+|---------|-------|------|
+| Platform Engineer | `platform@localhost` | Owner |
+| Product Engineer | `product@localhost` | Editor |
+| SRE | `sre@localhost` | Viewer |
+
+To switch personas in the UI: navigate to Dev Tools in the sidebar and click a persona card.
+
+To obtain tokens for API testing via the command line:
+
+```bash
+curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
+  -X POST https://localhost:8443/api/dev/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"product@localhost"}' | jq -r .id_token
+```
+
+See [docs/dev-token-endpoint.md](docs/dev-token-endpoint.md) for the full API reference.
+
 ## Commit Messages
 
 All commit messages must follow this format and include the root-cause analysis for why the issue happened, with citations to sources (for example, deep links to GitHub issues that describe the problem and its cause):
