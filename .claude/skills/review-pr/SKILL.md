@@ -291,7 +291,7 @@ Then provide guidance based on the classification:
 
 ## Fix-Review Loop
 
-When used during implementation (integrated into the implement-issue workflow):
+When used during implementation (integrated into the implement-plan workflow):
 
 ```
 1. Implementation complete, PR open, CI green

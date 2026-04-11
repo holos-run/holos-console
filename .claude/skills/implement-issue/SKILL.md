@@ -156,7 +156,7 @@ EOF
 
 The `Closes #<number>` line automatically closes the issue when the PR is merged. Use the issue number you are implementing (the sub-issue number when dispatched from a parent).
 
-**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for a human or another agent to review, fix CI, and merge. This boundary exists because code review (e.g., `/review-pr`) is being integrated into the workflow -- until that integration is complete, each PR should be reviewed before further work proceeds.
+**Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for review. The `/implement-plan` skill handles the review-fix-merge cycle via `/review-pr` when orchestrating sub-issues. When `/implement-issue` is invoked standalone, a human or separate agent should review before merging.
 
 ## Key Conventions
 
@@ -166,6 +166,6 @@ The `Closes #<number>` line automatically closes the issue when the PR is merged
 - **make generate**: Always run before committing if proto or generated files are involved
 - **E2E decision-making**: Assess whether `make test-e2e` is warranted using the E2E relevance heuristic (see Step 6). Run it locally when relevant and the environment supports it; otherwise note the skip in the PR description
 - **Cleanup phase**: Every implementation ends with a cleanup commit
-- **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR
+- **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR. The `/implement-plan` skill handles review and merge
 - **Single issues only**: If the issue has sub-issues, stop and direct the user to `/implement-plan`
 - **Close the right issue**: PRs close the specific issue being worked on (`Closes #<sub-issue>` for sub-issues, not the parent)
