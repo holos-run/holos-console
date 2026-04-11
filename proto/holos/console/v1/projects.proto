@@ -142,6 +142,12 @@ message UpdateProjectRequest {
   optional string display_name = 2;
   // description is the new description. When unset, preserves the existing value.
   optional string description = 3;
+  // parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+  // Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+  optional ParentType parent_type = 4;
+  // parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
+  // Must be set together with parent_type.
+  optional string parent_name = 5;
 }
 
 // UpdateProjectResponse is empty on success.
