@@ -1,12 +1,12 @@
 ---
 name: implement-plan
-description: Execute a full implementation plan from a parent GitHub issue with sub-issues. Iterates over each sub-issue, implements it with a Claude Opus sub-agent, runs two code review/fix loops using the review-pr skill, and merges or escalates. Triggers on phrases like "implement plan", "execute plan", "run the plan", "implement parent issue", or when given a parent issue URL with sub-issues.
-version: 2.0.0
+description: Execute a full implementation plan from a parent GitHub issue with sub-issues. Iterates over each sub-issue, implements it with a Claude Opus sub-agent, runs a fix-first code review loop using the review-pr skill, and merges or escalates. Implements follow-up issues created during review. Posts wall clock timing summaries to each issue. Triggers on phrases like "implement plan", "execute plan", "run the plan", "implement parent issue", or when given a parent issue URL with sub-issues.
+version: 3.0.0
 ---
 
 # Implement Plan
 
-Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed by an Opus sub-agent if needed, and merged or escalated -- all without human intervention unless critical findings persist.
+Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed in-PR if findings exist, and merged or escalated -- all without human intervention unless critical findings persist. After all sub-issues are processed, the plan re-reads the parent issue for follow-up issues created during review and implements those too. Wall clock timing is tracked per sub-issue and overall.
 
 ## Arguments
 
@@ -17,17 +17,26 @@ Automated implementation cycle for a parent GitHub issue containing sub-issues. 
 
 ## Workflow
 
-### 1. Resolve the Parent Issue
+### 1. Start Wall Clock Timer and Resolve the Parent Issue
 
-Parse `{{ARGUMENTS}}` to extract the repo and issue number.
+Record the plan start time and parse `{{ARGUMENTS}}` to extract the repo and issue number.
 
 ```bash
+PLAN_START_TIME=$(date +%s)
+
 # Determine repo from git remote
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 
 # Fetch parent issue
 gh issue view <number> --repo $REPO --json number,title,body,state
 ```
+
+Initialize a tracking structure for per-sub-issue timing and results. For each sub-issue processed, record:
+- `SUB_START_TIME` -- when work began on this sub-issue
+- `SUB_END_TIME` -- when the sub-issue was merged/escalated/failed
+- `SUB_RESULT` -- MERGED, ESCALATED, or FAILED
+- `SUB_PR` -- the PR number (if any)
+- `FOLLOW_UP_ISSUE` -- follow-up issue number (if any)
 
 ### 2. Name the Session
 
@@ -64,13 +73,22 @@ If all sub-issues are already checked off, comment on the parent issue that all 
 
 For each unchecked sub-issue, execute the full implement-review-merge cycle (steps 5-9). Process sub-issues **sequentially** in the order they appear in the parent issue body.
 
-Before starting each sub-issue, update the session name:
+Before starting each sub-issue, record the start time and update the session name:
+
+```bash
+SUB_START_TIME=$(date +%s)
+```
 
 ```
 /rename #<sub-number> <sub-issue title> (plan #<parent-number>)
 ```
 
-After each sub-issue completes (merged or escalated), move to the next one.
+After each sub-issue completes (merged or escalated), record the end time and result before moving to the next one:
+
+```bash
+SUB_END_TIME=$(date +%s)
+SUB_ELAPSED=$((SUB_END_TIME - SUB_START_TIME))
+```
 
 ### 5. Implement the Sub-Issue
 
@@ -222,65 +240,67 @@ Agent(
 
 **If APPROVE (no findings):** Skip to step 9 (merge).
 
-**If non-critical findings only (no CRITICAL):** Skip to step 9 (merge with follow-up).
+**If any findings exist (any severity):** Proceed to step 8 (fix all findings in-PR).
 
-**If critical findings exist:** Proceed to step 8 (fix).
+### 8. Fix-First Review Loop
 
-### 8. Fix-Review Loop (Up to 2 Rounds)
+The review follows a **fix-first** model. Round 1 findings are fixed directly in the PR — no follow-up issues are created after round 1. Follow-up issues are only created for findings that persist after round 2.
 
-Execute up to 2 fix-review rounds for critical findings. Each round:
-
-#### 7a. Fix Critical Findings
+#### 8a. Fix ALL Findings (Round 1)
 
 Read the review output to understand what needs fixing:
 
 ```bash
-REVIEW_FILE="tmp/review-pr/pr-${PR_NUMBER}/round-<R>.md"
+REVIEW_FILE="tmp/review-pr/pr-${PR_NUMBER}/round-1.md"
 ```
 
-Launch an Opus sub-agent to fix the critical findings:
+Launch an Opus sub-agent to fix **all** findings — critical, important, and style:
 
 ```
 Agent(
-  description: "Fix review findings PR #<PR_NUMBER> round <R>",
+  description: "Fix review findings PR #<PR_NUMBER> round 1",
   model: "opus",
   prompt: "You are working in <working-directory> on the branch for PR #<PR_NUMBER>.
 
-The Codex code review (round <R>) found critical issues that must be fixed before merge. The review is at: <REVIEW_FILE>
+The Codex code review (round 1) found issues that should be fixed in this PR. The review is at: <REVIEW_FILE>
 
-Read the review file, then fix each [CRITICAL] finding. For each fix:
+Read the review file, then fix ALL findings — [CRITICAL], [IMPORTANT], and [STYLE]. For each fix:
 1. Read the cited file and line
 2. Understand the issue
 3. Apply the concrete fix suggested (or a better one if you disagree -- leave a comment on the PR explaining why)
 4. Run relevant tests to verify the fix
 
-After all critical fixes:
+After all fixes:
 - Run `make generate && make test` to ensure nothing is broken
-- Commit: 'fix: address codex review round <R> critical findings'
+- Commit: 'fix: address codex review round 1 findings'
 - Push the fixes
 
-Do NOT fix [IMPORTANT] or [STYLE] findings -- those are tracked separately."
+Fix ALL findings, not just critical ones. The goal is to resolve everything in this PR."
 )
 ```
 
 **Wait for the fix sub-agent to complete.**
 
-#### 7b. Re-Review
+#### 8b. Re-Review (Round 2)
 
 Launch another review sub-agent:
 
 ```
 Agent(
-  description: "Review PR #<PR_NUMBER> round <R+1>",
+  description: "Review PR #<PR_NUMBER> round 2",
   prompt: "You are working in <working-directory> on the branch for PR #<PR_NUMBER>. Run the /review-pr skill with argument '<PR_NUMBER>'. This is a re-review after fixes were applied. Report the verdict, finding counts, and output file path."
 )
 ```
 
-Parse the result. If APPROVE or non-critical only, proceed to merge. If critical findings remain and this was round 2, proceed to escalation.
+Parse the result:
 
-#### 7c. Escalation After 2 Rounds
+- **If APPROVE (no findings):** Proceed to step 9 (merge).
+- **If non-critical findings only (no CRITICAL):** Proceed to step 9 (merge with follow-up issue).
+- **If critical findings remain:** Proceed to step 8c (escalation).
 
-If critical findings remain after 2 fix-review rounds:
+#### 8c. Escalation After Round 2
+
+If critical findings remain after round 2:
 
 1. Post a summary comment on the PR listing the unresolved critical findings:
 
@@ -308,29 +328,35 @@ gh pr edit $PR_NUMBER --add-label "needs-human-review"
 
 ### 9. Merge the PR
 
-Before merging, handle any non-critical findings:
+Before merging, handle any remaining non-critical findings from round 2:
 
-**If non-critical findings exist**, create a follow-up issue:
+**If non-critical findings remain after round 2**, create a follow-up issue **attached to the parent issue**:
 
 ```bash
-gh issue create \
-  --title "fix: address non-critical review findings from PR #${PR_NUMBER}" \
-  --body "$(cat <<'EOF'
+FOLLOW_UP=$(gh issue create \
+  --title "fix: address review findings from PR #${PR_NUMBER}" \
+  --body "$(cat <<EOF
 ## Context
 
-PR #<PR_NUMBER> was merged with non-critical review findings that should be addressed in a follow-up.
+PR #${PR_NUMBER} was merged with non-critical review findings that remain after round 2 fixes. These should be addressed in a follow-up.
 
 ## Findings
 
-<paste non-critical findings from the review output>
+<paste remaining non-critical findings from round 2 review output>
 
 ## Source
 
-Review output: `tmp/review-pr/pr-<PR_NUMBER>/round-<R>.md`
+Review output: \`tmp/review-pr/pr-${PR_NUMBER}/round-2.md\`
 
 Parent plan: #<parent-issue-number>
 EOF
-)"
+)" | sed -E 's#.*/([0-9]+)$#\1#')
+
+# Add as a sub-issue on the parent by editing the parent issue body
+# Append the follow-up issue reference to the parent's task list
+gh issue view <parent-issue-number> --json body -q .body > /tmp/parent-body.md
+echo "- [ ] #${FOLLOW_UP} -- follow-up: review findings from PR #${PR_NUMBER}" >> /tmp/parent-body.md
+gh issue edit <parent-issue-number> --body-file /tmp/parent-body.md
 ```
 
 **Merge the PR:**
@@ -352,10 +378,9 @@ git push --force-with-lease
 gh pr merge $PR_NUMBER --merge --delete-branch
 ```
 
-After successful merge, update the parent issue to check off this sub-issue (the `Closes #<N>` in the PR body handles this automatically via GitHub, but verify):
+After successful merge, verify the sub-issue was closed:
 
 ```bash
-# Verify the sub-issue was closed
 gh issue view <sub-issue-number> --json state -q .state
 ```
 
@@ -370,31 +395,75 @@ git pull origin main
 
 Return to step 4 to process the next unchecked sub-issue.
 
-### 11. Completion
+### 11. Re-Read Parent for Follow-Up Issues
 
-After all sub-issues have been processed (merged or escalated), post a summary comment on the parent issue:
+After all original sub-issues have been processed, re-read the parent issue to discover any follow-up issues that were added during the review cycle (step 9):
 
 ```bash
-gh issue comment <parent-number> --body "$(cat <<'EOF'
+gh issue view <parent-number> --repo $REPO --json number,title,body
+```
+
+Parse the parent issue body again for unchecked sub-issues. Compare against the original sub-issue list. Any **new** unchecked issues (not in the original list) are follow-up issues that were created during the review cycle.
+
+For each follow-up issue found, execute the same implement-review-merge cycle (steps 4-10). Track timing and results the same way as original sub-issues.
+
+Update the session name when processing follow-ups:
+
+```
+/rename #<follow-up-number> <title> (follow-up, plan #<parent-number>)
+```
+
+If no follow-up issues are found, proceed directly to step 12.
+
+### 12. Completion — Post Summary with Wall Clock Timing
+
+After all sub-issues and follow-up issues have been processed, calculate total elapsed time and post a comprehensive summary comment on the parent issue:
+
+```bash
+PLAN_END_TIME=$(date +%s)
+PLAN_ELAPSED=$((PLAN_END_TIME - PLAN_START_TIME))
+PLAN_MINUTES=$((PLAN_ELAPSED / 60))
+PLAN_SECONDS=$((PLAN_ELAPSED % 60))
+```
+
+Post the closing summary:
+
+```bash
+gh issue comment <parent-number> --body "$(cat <<EOF
 ## Plan Execution Complete
 
-All sub-issues have been processed:
+**Total wall clock time**: ${PLAN_MINUTES}m ${PLAN_SECONDS}s
+
+### Sub-Issues
 
 <for each sub-issue>
-- #<N> <title>: <MERGED | ESCALATED (needs-human-review) | FAILED>
+- #<N> <title>: **<MERGED | ESCALATED | FAILED>**
   - PR: #<PR_NUMBER>
   - Review rounds: <count>
-  - Non-critical follow-up: #<follow-up-issue> (if any)
+  - Wall clock time: <minutes>m <seconds>s
+  - Follow-up: #<follow-up-issue> (if any)
 </for each>
 
+### Follow-Up Issues
+
+<for each follow-up issue implemented>
+- #<N> <title>: **<MERGED | ESCALATED | FAILED>**
+  - PR: #<PR_NUMBER>
+  - Wall clock time: <minutes>m <seconds>s
+</for each>
+
+<if none>
+No follow-up issues were created during review.
+</if>
+
 <if any escalated>
-**Action required**: Some PRs have the `needs-human-review` label and were not merged. Please review the critical findings and merge manually.
+**Action required**: Some PRs have the \`needs-human-review\` label and were not merged. Please review the critical findings and merge manually.
 </if>
 EOF
 )"
 ```
 
-If all sub-issues were successfully merged, close the parent issue if it's still open:
+If all sub-issues and follow-ups were successfully merged, close the parent issue if it's still open:
 
 ```bash
 # Only close if all sub-issues are done
@@ -424,9 +493,9 @@ Using sub-agents preserves the orchestrator's context window. The orchestrator o
 | Situation | Action |
 |-----------|--------|
 | Clean review (APPROVE, no findings) | Merge immediately |
-| Non-critical findings only | Merge, create follow-up issue |
-| Critical findings resolved within 2 rounds | Merge after clean re-review |
-| Critical findings unresolved after 2 rounds | Do NOT merge, add `needs-human-review` label |
+| All findings fixed in round 1, clean re-review | Merge after clean re-review |
+| Non-critical findings remain after round 2 | Merge, create follow-up issue attached to parent |
+| Critical findings unresolved after round 2 | Do NOT merge, add `needs-human-review` label |
 | CI failures unresolved after 1 fix attempt | Add `needs-human-review` label, continue to review |
 
 ### Safety
@@ -434,13 +503,16 @@ Using sub-agents preserves the orchestrator's context window. The orchestrator o
 - **One sub-issue at a time**: Sub-issues are processed sequentially. No parallel PRs.
 - **No force merges**: If a merge fails due to conflicts, rebase and retry once. If it fails again, escalate.
 - **Review isolation**: The Codex review runs in a separate sub-agent process with no influence from the implementing agent. This ensures independent cross-model review.
-- **Fix scope**: Fix sub-agents address only critical findings. Non-critical findings are tracked in follow-up issues, not fixed inline.
+- **Fix-first model**: Round 1 fix sub-agents address ALL findings (critical, important, and style) in the PR directly. Follow-up issues are only created for findings that remain after round 2.
+- **Follow-up attachment**: Follow-up issues are added to the parent issue's task list so the plan can discover and implement them.
+- **Follow-up sweep**: After all original sub-issues are processed, the plan re-reads the parent issue and implements any follow-up issues that were added during review.
 - **Escalation is permanent**: Once a PR gets `needs-human-review`, the agent does not re-attempt it. A human must intervene.
+- **Wall clock timing**: Every sub-issue and the overall plan track wall clock time. The closing summary on the parent issue includes timing for each item.
 
 ### Commit Conventions
 
 - Implementation commits follow CONTRIBUTING.md format
-- Fix commits: `fix: address codex review round <R> critical findings`
+- Fix commits: `fix: address codex review round <R> findings`
 - Each review round is tracked in `tmp/review-pr/pr-<N>/round-<R>.md`
 
 ## Prerequisites
@@ -463,7 +535,8 @@ Using sub-agents preserves the orchestrator's context window. The orchestrator o
 
 The skill will:
 1. Fetch issue #42, find sub-issues #43, #44, #45
-2. Implement #43 -> PR #50 -> review -> fix -> merge
+2. Implement #43 -> PR #50 -> review (findings) -> fix all in-PR -> re-review (clean) -> merge
 3. Implement #44 -> PR #51 -> review -> approve -> merge
-4. Implement #45 -> PR #52 -> review -> critical findings persist -> escalate
-5. Post summary on #42 with results
+4. Implement #45 -> PR #52 -> review (findings) -> fix in-PR -> re-review (non-critical remain) -> merge + follow-up #60
+5. Re-read #42, find follow-up #60 -> implement #60 -> PR #53 -> review -> merge
+6. Post summary with wall clock timing on #42

@@ -1,16 +1,24 @@
 ---
 name: implement-issue
 description: Implement a single GitHub issue end-to-end. Use this skill when the user provides a GitHub issue URL and asks to implement it, work on it, fix it, or resolve it. Triggers on phrases like "implement issue", "work on this issue", "fix this issue", or when given a GitHub issue URL alone. Handles the full workflow: fetch, branch, comment, implement, and open a PR. For parent issues with sub-issues, use /implement-plan instead.
-version: 8.0.0
+version: 9.0.0
 ---
 
 # Implement Issue
 
-Full workflow for implementing a single GitHub issue: fetch the issue, create a feature branch, announce on the issue, implement using repository conventions, and open a PR.
+Full workflow for implementing a single GitHub issue: fetch the issue, create a feature branch, announce on the issue, implement using repository conventions, open a PR, and post a summary comment with wall clock timing.
 
 For parent issues with sub-issues, use the `/implement-plan` skill instead -- it iterates over sub-issues, implements each one via this skill, runs code review/fix loops, and merges.
 
 ## Workflow
+
+### 0. Start Wall Clock Timer
+
+Record the start time immediately so total elapsed time can be reported at the end:
+
+```bash
+ISSUE_START_TIME=$(date +%s)
+```
 
 ### 1. Fetch the Issue
 
@@ -156,6 +164,32 @@ EOF
 
 The `Closes #<number>` line automatically closes the issue when the PR is merged. Use the issue number you are implementing (the sub-issue number when dispatched from a parent).
 
+### 9. Post Summary Comment
+
+After opening the PR, calculate elapsed time and post a summary comment to the issue:
+
+```bash
+ISSUE_END_TIME=$(date +%s)
+ELAPSED=$((ISSUE_END_TIME - ISSUE_START_TIME))
+MINUTES=$((ELAPSED / 60))
+SECONDS=$((ELAPSED % 60))
+
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+PR_NUMBER=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number')
+
+gh issue comment <number> --repo $REPO --body "$(cat <<EOF
+## Implementation Complete
+
+- **PR**: #${PR_NUMBER}
+- **Branch**: \`${BRANCH}\`
+- **Wall clock time**: ${MINUTES}m ${SECONDS}s
+
+The PR is open and ready for review.
+EOF
+)"
+```
+
 **Stop here.** Do not loop on CI checks, capture screenshots, or merge. The PR is open and ready for review. The `/implement-plan` skill handles the review-fix-merge cycle via `/review-pr` when orchestrating sub-issues. When `/implement-issue` is invoked standalone, a human or separate agent should review before merging.
 
 ## Key Conventions
@@ -166,6 +200,7 @@ The `Closes #<number>` line automatically closes the issue when the PR is merged
 - **make generate**: Always run before committing if proto or generated files are involved
 - **E2E decision-making**: Assess whether `make test-e2e` is warranted using the E2E relevance heuristic (see Step 6). Run it locally when relevant and the environment supports it; otherwise note the skip in the PR description
 - **Cleanup phase**: Every implementation ends with a cleanup commit
+- **Wall clock timing**: Record start time at step 0, post elapsed time in the summary comment at step 9
 - **Stop at PR**: Do not loop on CI, capture screenshots, or merge -- stop after opening the PR. The `/implement-plan` skill handles review and merge
 - **Single issues only**: If the issue has sub-issues, stop and direct the user to `/implement-plan`
 - **Close the right issue**: PRs close the specific issue being worked on (`Closes #<sub-issue>` for sub-issues, not the parent)
