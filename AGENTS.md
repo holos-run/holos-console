@@ -1,628 +1,70 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is a map of context for Claude Code agents working in this repository. Each link points to a single-idea document in `docs/agents/`. Follow the cross-links within each document to navigate related concepts.
 
 This code is not yet released. Do not preserve backwards compatibility when making changes.
 
 Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 
-## Before Committing
-
-**IMPORTANT:** Always run `make generate` before committing changes. This command:
-1. Regenerates protobuf code (Go and TypeScript)
-2. Rebuilds the UI (runs `npm run build` which includes TypeScript type checking)
-
-If `make generate` fails, fix the errors before committing. Common issues:
-- TypeScript type errors in test mocks (cast mock responses with `as unknown as ...`)
-- Missing protobuf imports after adding new message types
-
-## Implementing Plans
-
-Plans are recorded as GitHub issues. Implement each plan on a feature branch with regular commits in a single PR that references the issue.
-
-1. **Create a feature branch** from `main` for the plan.
-2. **Make regular commits** as you work. Each commit should be a logical unit of change.
-3. **Open a PR** when the work is complete. Include `Closes: #NN` (where NN is the issue number) in the PR description so the issue is automatically closed when the PR is merged.
-4. **Loop on PR checks**: after pushing, watch CI checks (`gh pr checks <N> --watch`) and fix any failures. Iterate until all checks pass.
-5. **Merge via merge commit** once all checks pass: `gh pr merge <N> --merge`. Do not squash or rebase — the project uses merge commits so that commit SHAs referenced in screenshot URLs remain reachable in `main` history.
-
-### Test Strategy
-
-**Prefer unit tests over E2E tests.** Rendering, interaction, navigation logic, and ConnectRPC data shaping all belong in unit tests using mocked query hooks. Reserve E2E tests for:
-- The OIDC login flow (requires a real Dex server)
-- Full-stack CRUD round-trips that verify server-side behavior (requires a real Kubernetes cluster)
-
-When a behavior can be verified with a unit test, write a unit test. Do not add an E2E test for the same behavior.
-
-### Identifying Your Agent Slot
-
-Agents run in worktrees whose path encodes the agent slot. Identify your slot from your working directory — for example, if `pwd` is `/path/to/worktrees/holos-run/agent-2/holos-console`, your slot is `agent-2`.
-
-**Issue title**: Use a conventional commit prefix (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`). Do **not** include the agent slot.
-
-**PR title**: Use a conventional commit prefix (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`). Do **not** include the agent slot.
-
-**PR description**: Include the slot in the footer so reviewers know which agent produced the work.
-
-Example workflow:
-```bash
-git checkout -b feat/add-playwright-config
-# ... implement changes, committing as you go ...
-git commit -m "Add webServer configuration to playwright.config.ts
-
-Configure Playwright to automatically start Go backend and Vite dev
-server before running E2E tests."
-
-# Determine agent slot from working directory
-SLOT=$(pwd | grep -oP 'agent-\d+' || echo "agent-0")
-
-# Open a PR that closes the plan issue
-# Note: PR title uses conventional commit format — no agent slot prefix
-gh pr create --title "feat: add Playwright E2E test infrastructure" --body "$(cat <<'EOF'
-## Summary
-- Configure Playwright to start Go backend and Vite dev server
-- Add E2E test for the login flow
-
-Closes: #42
-
-## Test plan
-- [ ] `make test-e2e` passes
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code) · ${SLOT}
-EOF
-)"
-
-```
-
-## Build Commands
-
-```bash
-make build          # Build executable to bin/holos-console
-make debug          # Build with debug symbols to bin/holos-console-debug
-make test           # Run all tests (Go + UI unit tests)
-make test-go        # Run Go tests with race detector
-make test-ui        # Run UI unit tests (one-shot)
-make test-e2e       # Run E2E tests (builds binary, starts servers, runs Playwright)
-make generate       # Run go generate (regenerates protobuf code + builds UI)
-make tools          # Install pinned tool dependencies (buf)
-make certs          # Generate TLS certificates with mkcert (one-time setup)
-make run            # Build and run server with generated certificates
-make dev            # Start Vite dev server with hot reload (use alongside make run)
-make dispatch ISSUE=N  # Dispatch a plan issue to a Claude Code agent in a new worktree
-make agent-tools    # Install agent-browser for browser automation
-make cluster        # Create local k3d cluster (DNS + cluster + CA)
-make bump-major     # Bump major version (resets minor and patch to 0)
-make bump-minor     # Bump minor version (resets patch to 0)
-make bump-patch     # Bump patch version
-make tag            # Create annotated git tag from version files (never use git tag directly)
-make fmt            # Format code
-make vet            # Run go vet
-make lint           # Run golangci-lint
-make coverage       # Generate HTML coverage report
-```
-
-### Running Single Tests
-
-```bash
-# Go: single test by name
-go test -v -run TestNewHandler_Success ./console/oidc
-
-# UI unit: by file or test name
-cd frontend && npm test -- SecretPage
-cd frontend && npm test -- -t "displays error message"
-
-# E2E: by test name
-cd frontend && npx playwright test --grep "should complete full login flow"
-```
-
 ## Architecture
 
-This is a Go HTTPS server that serves a web console UI and exposes ConnectRPC services. The built UI is embedded into the Go binary via `//go:embed` for single-binary deployment.
-
-### Package Structure
-
-- `api/v1alpha2/` - Centralized API types, constants (labels, annotations, resource types), and CUE schema generation. Go types (`PlatformInput`, `ProjectInput`, `Claims`, `EnvVar`) are the source of truth for CUE schema generated via `cue get go`. Embeds the generated CUE schema as `GeneratedSchema` for the renderer to prepend.
-- `cmd/` - Main entrypoint, calls into cli package
-- `cli/` - Cobra CLI setup with Cobra flags for listen addr, TLS, OIDC, RBAC, logging config
-- `console/` - Core server package
-  - `console.go` - HTTP server setup, TLS, route registration, embedded UI serving
-  - `version.go` - Version info with embedded version files and ldflags
-  - `rpc/` - ConnectRPC handler implementations and auth interceptor
-  - `oidc/` - Embedded Dex OIDC provider
-  - `organizations/` - OrganizationService with K8s Namespace backend and annotation-based grants
-  - `projects/` - ProjectService with K8s Namespace backend and annotation-based grants
-  - `resolver/` - Namespace prefix resolver translating user-facing names to K8s namespace names (`{namespace-prefix}{organization-prefix}{name}` for orgs, `{namespace-prefix}{project-prefix}{name}` for projects)
-  - `secrets/` - SecretsService with K8s backend and annotation-based RBAC
-  - `settings/` - ProjectSettingsService managing per-project feature flags (e.g. deployments toggle) stored as annotations on the project Namespace; deployments toggle requires org-level OWNER via `PERMISSION_PROJECT_DEPLOYMENTS_ENABLE`
-  - `templates/` - Unified `TemplateService` (ADR 021) managing CUE-based templates at organization, folder, and project scopes, stored as K8s ConfigMaps. Scope is encoded in the `console.holos.run/template-scope` label (`organization|folder|project`) and each template carries a `TemplateScopeRef{scope, scope_name}` discriminator in its proto representation. Embeds `default_template.cue` (the built-in project template with ServiceAccount, Deployment, Service, and ReferenceGrant), `example_httpbin.cue` (the go-httpbin project example), `default_referencegrant.cue` (the built-in org-level HTTPRoute platform template), and `example_httpbin_platform.cue` (the go-httpbin org-level platform template). Templates use the structured `projectResources.namespacedResources`/`projectResources.clusterResources` output format (see `docs/cue-template-guide.md`). Templates can carry `DeploymentDefaults` (name, description, image, tag, command, args, env, port) extracted from the `defaults` block in the CUE source (ADR 018) that pre-fill the Create Deployment form. The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`). The default template adds a `console.holos.run/deployer-email` annotation to all resources from `platform.claims.email`. The default template includes a `ReferenceGrant` (using `platform.gatewayNamespace`, default "istio-ingress") that allows HTTPRoute resources from the gateway namespace to reference Services in the project namespace. Platform templates (org-scoped or folder-scoped) can be marked `mandatory` (applied to project namespaces at creation time; always unified at render time) and/or `enabled` (available for linking and render-time unification). **Explicit linking model (ADR 019, extended to cross-level refs):** each deployment template ConfigMap may carry the annotation `console.holos.run/linked-templates` (JSON array of `{scope, scope_name, name}` objects); at render time these refs are resolved and passed to `ListOrgTemplateSourcesForRender`. The render set formula is `(mandatory AND enabled) UNION (enabled AND ref IN linked_list)`. `MandatoryTemplateApplier` walks the full ancestor hierarchy (org + folder ancestors) applying mandatory+enabled templates at project creation. Edit access requires `PERMISSION_TEMPLATES_WRITE`, enforced via the unified `TemplateCascadePerms` table (Viewer=read-only, Editor=read/write, Owner=full control) applied uniformly at org, folder, and project scope (ADR 021 Decision 2).
-  - `deployments/` - DeploymentService managing Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `projectResources`/`platformResources` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, listing project-namespace Secrets/ConfigMaps for env var references, and `GetDeploymentRenderPreview` (returns the CUE template, platform input, project input, rendered YAML, and rendered JSON for a live deployment). CUE render uses split `PlatformInput` (project, namespace, gatewayNamespace, claims) and `ProjectInput` (name, image, tag, etc.) — see `docs/cue-template-guide.md`. At render time, `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` is called with the linked names resolved from the deployment template's `console.holos.run/linked-templates` annotation; platform templates may define resources under `platformResources` and/or `projectResources` — the renderer reads both collections when processing platform templates (ADR 016 Decision 8). `CreateDeployment` is all-or-nothing: if render or apply fails, partially-applied K8s resources and the deployment ConfigMap are rolled back via `Applier.Cleanup`. `UpdateDeployment` uses `Applier.Reconcile` (apply desired resources then delete orphaned owned resources), so removing a resource from a template causes it to be cleaned up. `DeleteDeployment` uses `Applier.Cleanup` (delete all owned resources unconditionally).
-  - `dist/` - Embedded static files served at `/` (build output from frontend, not source)
-- `proto/` - Protobuf source files
-  - `holos/console/v1/organizations.proto` - OrganizationService
-  - `holos/console/v1/projects.proto` - ProjectService
-  - `holos/console/v1/secrets.proto` - SecretsService
-  - `holos/console/v1/project_settings.proto` - ProjectSettingsService
-  - `holos/console/v1/templates.proto` - unified `TemplateService` (organization, folder, and project scopes)
-  - `holos/console/v1/deployments.proto` - DeploymentService
-  - `holos/console/v1/rbac.proto` - Role definitions (VIEWER, EDITOR, OWNER)
-  - `holos/console/v1/version.proto` - VersionService
-- `gen/` - Generated protobuf Go code (do not edit)
-- `frontend/` - React frontend source (see UI Architecture below)
-
-### UI Architecture
-
-React 19 + TypeScript + Vite 7 app in the `frontend/` directory.
+- [Project Overview](docs/agents/project-overview.md) — Go HTTPS server with embedded UI serving a web console via ConnectRPC.
+- [Package Structure](docs/agents/package-structure.md) — Go package layout: api, cmd, cli, console (services), proto, gen, frontend.
+- [UI Architecture](docs/agents/ui-architecture.md) — React 19 + Vite 7 + TanStack Router/Query + shadcn/ui + ConnectRPC Query.
+- [Embedded Services](docs/agents/embedded-services.md) — Dex and NATS embedded in the binary for zero-dependency dev mode.
+- [Template Service](docs/agents/template-service.md) — Unified CUE-based templates at org, folder, and project scopes with explicit linking.
+- [Deployment Service](docs/agents/deployment-service.md) — Kubernetes Deployment CRUD with CUE rendering, reconcile, and rollback semantics.
 
-- **UI Library**: shadcn/ui with Tailwind CSS v4
-- **Routing**: TanStack Router with file-based routing (serves at `/`)
-- **Server state**: TanStack Query v5 with ConnectRPC Query integration (`@connectrpc/connect-query`)
-- **Auth**: oidc-client-ts library with OIDC PKCE flow
-- **Generated types**: `frontend/src/gen/` contains TypeScript protobuf types generated by buf
+## Authentication & Authorization
 
-Key files:
-- `frontend/src/main.tsx` - Entry point; mounts RouterProvider
-- `frontend/src/routes/__root.tsx` - Root layout with TransportProvider, QueryClientProvider, AuthProvider, and sidebar
-- `frontend/src/routes/_authenticated.tsx` - Auth gate with OIDC redirect
-- `frontend/src/lib/auth/` - Auth context (AuthProvider, useAuth, userManager) with OIDC PKCE flow
-- `frontend/src/lib/transport.ts` - ConnectRPC transport with Bearer token attachment, 401 renewal, and retry
-- `frontend/src/lib/query-client.ts` - QueryClient with retry suppression for Unauthenticated errors
-- `frontend/src/routes/` - File-based route definitions
+- [Authentication](docs/agents/authentication.md) — OIDC PKCE flow, embedded Dex, test personas, and dev token endpoint.
+- [RBAC](docs/agents/rbac.md) — Three-tier grant model (org/project/secret) on K8s annotations with namespace prefixes.
 
-### UI Styling Conventions
+## Development Workflow
 
-The application uses a dark-only theme (ADR 011). All new UI elements must follow the conventions in `docs/ui-styling-guide.md`, which covers:
+- [Build Commands](docs/agents/build-commands.md) — All make targets for building, testing, running, and versioning.
+- [Pre-Commit Workflow](docs/agents/pre-commit.md) — Always run `make generate` before committing.
+- [Code Generation](docs/agents/code-generation.md) — buf generates Go structs, ConnectRPC bindings, and TypeScript types from proto files.
+- [Adding New RPCs](docs/agents/adding-rpcs.md) — Define proto, generate, implement handler, auto-wire.
+- [API Access](docs/agents/api-access.md) — Call RPCs from the command line with curl or grpcurl.
+- [Version Management](docs/agents/version-management.md) — Embedded version files, ldflags, container build workflow.
+- [Tool Dependencies](docs/agents/tool-dependencies.md) — Pinned tools (buf) via Go tools pattern; CUE as a runtime dependency.
 
-- Color palette usage — always use semantic CSS token classes (e.g., `bg-background`, `text-foreground`, `border-border`); never hardcode colors
-- Scrollbar styling — global CSS in `frontend/src/app.css` handles scrollbars; new scrollable elements need only `overflow-auto` or `overflow-y-auto`
-- Component selection — prefer shadcn/ui components in `frontend/src/components/ui/`
-- Typography — `font-mono` for code/CUE content, default sans-serif for UI text
-- Spacing — Tailwind default scale; `gap-*` for flex/grid layouts
-- Form patterns — Display Name + slug, `Label` + `Input`/`Textarea` pairs
-- Dialog/modal patterns — shadcn `Dialog`, `max-w-2xl` for forms, `DialogHeader` + `DialogFooter`
-- Toast notifications — `sonner` with `theme="dark"` (already configured at root)
+## UI Conventions
 
-The guide also includes a "Before adding new UI elements" checklist. Consult it before writing any new component.
+- [UI Styling Conventions](docs/agents/ui-styling.md) — Dark-only theme with semantic CSS tokens, shadcn/ui components, and Tailwind spacing.
+- [Selection Components](docs/agents/selection-components.md) — Use Combobox for dynamic collections, Select only for small static enumerations.
 
-### Selection Components
+## Testing
 
-All selection inputs that present a **dynamic collection of items** MUST use the searchable
-`Combobox` component (`frontend/src/components/ui/combobox.tsx`), not the basic `Select`
-component. This follows the Linear-style pattern: text input for filtering, keyboard-navigable
-list, single-select.
+- [Test Strategy](docs/agents/test-strategy.md) — Prefer unit tests; reserve E2E for OIDC login and real K8s round-trips.
+- [Testing Patterns](docs/agents/testing-patterns.md) — Go table-driven tests, Vitest + RTL for UI, Playwright for E2E, multi-persona helpers.
 
-Use the basic `Select` only for **small, static enumerations** (e.g., 2–4 fixed choices such
-as "Value / SecretRef / ConfigMapRef" or "Viewer / Editor / Owner"). When in doubt, use
-`Combobox`.
+## Guardrails
 
-Examples:
-- Template selection in the Create Deployment form → `Combobox` (dynamic list from K8s)
-- Organization selection in the Create Project dialog → `Combobox` (dynamic list from K8s)
-- Env var source type ("Value / SecretRef / ConfigMapRef") → `Select` (3 static choices)
-- Role picker ("Viewer / Editor / Owner") in the sharing panel → `Select` (3 static choices)
+- [Template Fields](docs/agents/guardrail-template-fields.md) — New proto fields must propagate through types, render pipeline, frontend preview, and defaults extraction.
+- [Template Linking](docs/agents/guardrail-template-linking.md) — Linked templates annotation must use v1alpha2 format and call ListOrgTemplateSourcesForRender.
+- [Template Docs](docs/agents/guardrail-template-docs.md) — Verify cue-template-guide.md completeness after any template or render change.
+- [TLS Commands](docs/agents/guardrail-tls-commands.md) — Never use `-k`, `--insecure`, or `-plaintext` in any example command.
+- [Terminology](docs/agents/guardrail-terminology.md) — Use "platform template" not "system template" for org/folder-level templates.
+- [Resource Naming](docs/agents/guardrail-resource-naming.md) — Slug-based identifiers with six-digit collision suffix, never random-only.
 
-### Embedded Services
+## Planning & Execution
 
-External dependencies (OIDC, NATS) are embedded in the console binary for dev mode and single-replica deployments. The approach: configure as close to production as possible, optimize for developer experience (no passwords, no sidecars), and support full automation. `make run` starts a complete system with zero external infrastructure.
+- [Implementing Plans](docs/agents/implementing-plans.md) — GitHub issue to feature branch to PR with merge commits.
+- [Agent Slot Identification](docs/agents/agent-slot.md) — Derive slot from working directory path; include in PR footer, not title.
+- [Red-Green Implementation](docs/agents/red-green.md) — Write failing tests first, then the minimum implementation.
+- [Dispatching Plans](docs/agents/dispatching-plans.md) — `scripts/dispatch <issue-number>` creates a worktree and starts an agent.
+- [Cleanup Phase](docs/agents/cleanup-phase.md) — Every plan ends with a scan for dead code, stale docs, and unused imports.
+- [Tracking Progress](docs/agents/tracking-progress.md) — Check off TODO items in GitHub issues as phases complete.
 
-See `docs/embedded-services.md` for the full pattern, lifecycle conventions, and instructions for adding new embedded services.
+## Browser Automation
 
-Current embedded services:
-- **Dex** (`console/oidc/`) — OIDC provider, enabled via `--enable-insecure-dex`
-- **NATS JetStream** (`console/nats/`, planned) — event backbone, enabled via `--enable-embedded-nats`
+- [Browser Automation](docs/agents/browser-automation.md) — agent-browser setup, authentication scripts, and screenshot capture.
+- [Per-Agent Dev Servers](docs/agents/per-agent-dev-servers.md) — Deterministic port assignment (9000+N) with SIGPIPE lifecycle.
+- [Visual Verification](docs/agents/visual-verification.md) — Screenshot capture workflow for PRs, only when explicitly requested.
 
-### Authentication
+## Skills & Contributing
 
-OIDC PKCE flow: Requires `--enable-insecure-dex` flag for embedded Dex at `/dex/`, or an external OIDC provider configured with `--issuer`. Tokens stored in session storage, sent as `Authorization: Bearer` headers. Default credentials: `admin` / `verysecret` (override with `HOLOS_DEX_INITIAL_ADMIN_USERNAME`/`PASSWORD` env vars).
-
-Backend auth: `LazyAuthInterceptor` in `console/rpc/auth.go` verifies JWTs from the `Authorization: Bearer` header and stores `rpc.Claims` in context. Lazy initialization avoids startup race with embedded Dex.
-
-#### Test Personas
-
-When running with `--enable-insecure-dex`, embedded Dex registers four test identities (defined in `console/oidc/config.go`):
-
-| Persona | Email | Groups | RBAC Role | Password |
-|---------|-------|--------|-----------|----------|
-| Admin (default) | `admin@localhost` | `["owner"]` | OWNER | (auto-login) |
-| Platform Engineer | `platform@localhost` | `["owner"]` | OWNER | `verysecret` |
-| Product Engineer | `product@localhost` | `["editor"]` | EDITOR | `verysecret` |
-| SRE | `sre@localhost` | `["viewer"]` | VIEWER | `verysecret` |
-
-The admin user is authenticated automatically via the auto-login connector. The other three personas are available via the dev token endpoint and the Dev Tools UI.
-
-**Dev token endpoint** (`POST /api/dev/token`): Obtain a signed OIDC ID token for any test persona. Requires `--enable-insecure-dex`. See `docs/dev-token-endpoint.md` for full API reference.
-
-```bash
-curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
-  -X POST https://localhost:8443/api/dev/token \
-  -H "Content-Type: application/json" \
-  -d '{"email":"sre@localhost"}'
-```
-
-**Dev Tools UI** (`/dev-tools`): Enable with `--enable-dev-tools` (passed automatically by `make run`). Provides an interactive persona switcher that injects tokens into sessionStorage without a Dex redirect. See ADR 023 for design rationale.
-
-### RBAC
-
-Three-tier access control model evaluated in order (highest role wins):
-
-1. **Organization-level**: Per-org grants stored as JSON annotations on K8s Namespace objects (prefix configurable via `--organization-prefix`, default `org-`)
-2. **Project-level**: Per-project grants stored as JSON annotations on K8s Namespace objects (prefix configurable via `--project-prefix`, default `prj-`)
-3. **Secret-level**: Per-secret grants stored as JSON annotations on K8s Secret objects
-
-Grant annotations: `console.holos.run/share-users`, `console.holos.run/share-roles`
-
-Metadata annotations on org/project namespaces: `console.holos.run/display-name`, `console.holos.run/creator-email` (email of the user who created the resource, written at creation time from the OIDC email claim)
-
-Namespace prefix scheme (three-part naming: `{namespace-prefix}{type-prefix}{name}`):
-- Organizations: `{namespace-prefix}{organization-prefix}{name}` (resource-type label: `organization`)
-- Projects: `{namespace-prefix}{project-prefix}{name}` (resource-type label: `project`, optional organization label for IAM inheritance, project label stores project name)
-
-The `--namespace-prefix` flag (default `"holos-"`) prefixes all console-managed namespace names, enabling multi-instance isolation in the same cluster (e.g., `prod-org-acme`, `ci-prj-api`).
-
-Organization creation is controlled by `--disable-org-creation`, `--org-creator-users`, and `--org-creator-roles` CLI flags. By default all authenticated principals can create organizations (implicit grant). Setting `--disable-org-creation` disables this implicit grant; explicit `--org-creator-users` and `--org-creator-roles` lists are still honored.
-
-The `--roles-claim` flag (default `"groups"`) configures which OIDC token claim is used to extract role memberships. This allows integration with identity providers that use non-standard claim names (e.g., `realm_roles`).
-
-Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac.proto`
-
-`PERMISSION_TEMPLATES_WRITE` is required to create, update, or delete templates at any scope. It is granted to EDITORs and OWNERs via the unified `TemplateCascadePerms` cascade table in `console/rbac/rbac.go`.
-
-### Code Generation
-
-Protobuf code is generated using buf. The `generate.go` file contains the `//go:generate buf generate` directive. After modifying `.proto` files in `proto/`, run:
-
-```bash
-make generate   # or: go generate ./...
-```
-
-This produces:
-- `gen/**/*.pb.go` - Go structs for messages
-- `gen/**/consolev1connect/*.connect.go` - ConnectRPC client/server bindings
-- `frontend/src/gen/**/*_pb.ts` - TypeScript message classes and service definitions (protobuf-es v2)
-
-### Adding New RPCs
-
-1. Define RPC and messages in `proto/holos/console/v1/*.proto`
-2. Run `make generate`
-3. Implement handler method in `console/rpc/` (embed `Unimplemented*Handler` for forward compatibility)
-4. Handler is auto-wired when service is registered in `console/console.go`
-
-See `docs/rpc-service-definitions.md` for detailed examples. See `docs/permissions-guide.md` for permission design guidelines including narrow scoping, multi-level grantability, and the cascade table pattern.
-
-### API Access
-
-Users and agents can call any RPC from the command line using `curl` (Connect protocol — recommended) or `grpcurl` (gRPC backward compatibility). See `docs/api-access.md` for the canonical reference covering:
-
-- How to obtain an ID token from the profile page (`/profile`)
-- Shell-history-safe `export HOLOS_ID_TOKEN=...` workflow
-- `curl` Connect-protocol invocation (`-H "Connect-Protocol-Version: 1"`)
-- `grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem"` invocation (never `-plaintext` or `-insecure` — the listener is TLS-only and always presents a valid cert)
-- gRPC reflection (`grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" localhost:8443 list`)
-- Troubleshooting the `first record does not look like a TLS handshake` error
-
-### Terminology
-
-**Authoritative reference**: `docs/glossary.md`
-
-**Rule**: In documentation, Go comments, and TypeScript comments, use "platform
-template" (not "system template") when referring to the concept of an
-organization-level or folder-level CUE template. The unified service is `TemplateService`
-in `console/templates/` (proto: `templates.proto`). Scope-specific concepts may use
-`org-scoped`, `folder-scoped`, or `project-scoped` as adjectives.
-
-**Triggers**: Apply this rule when writing or editing any `.md` file, Go
-comment, or TypeScript comment that mentions templates at the organization or folder level.
-
-Examples of correct usage:
-
-| Context | Correct | Incorrect |
-|---------|---------|-----------|
-| Prose / docs | "Create a platform template to enforce labels…" | "Create a system template…" |
-| Code identifier | `TemplateService.CreateTemplate` | `OrgTemplateService.CreateOrgTemplate` |
-| Mixed reference | "`TemplateService` (platform template) controls…" | "system template controls…" |
-
-### Template Field Guardrail
-
-**When adding new fields to `CreateDeploymentRequest`, `DeploymentDefaults`, or related template proto messages**, the field must also be:
-
-1. Added to the `ProjectInput` (user-provided fields) or `PlatformInput` (platform fields) Go struct in `api/v1alpha2/types.go` — CUE schema is generated from these types via `cue get go`
-2. Included in the rendering pipeline in `console/deployments/render.go`
-3. Reflected in the template editor preview's Project Input or Platform Input default values in the frontend (see `frontend/src/routes/`)
-4. Added to the `ExtractDefaults` mapping in `console/templates/defaults.go` if it should be extractable from the CUE `defaults` block (ADR 018)
-
-This ensures template authors always see new fields in the preview, that the CUE schema stays in sync with the proto interface, and that the `defaults` block extraction covers all form fields. See `docs/cue-template-guide.md` for the full template interface.
-
-### Template Linking Guardrail
-
-**When adding new fields that affect which platform templates are included in a render**, ensure:
-
-1. The linking list is read from the `console.holos.run/linked-templates` annotation on the deployment template ConfigMap (JSON array of `{scope, scope_name, name}` objects — v1alpha2 format).
-2. `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` is called with the resolved linked names (not `ListEnabledOrgTemplateSources` — that method no longer exists).
-3. `docs/cue-template-guide.md` "Linking Platform Templates" section and the render set formula remain accurate.
-
-When adding new fields that affect template linking, update `docs/cue-template-guide.md` and this AGENTS.md section.
-
-### Template Doc Completeness Guardrail
-
-**When making any of the following changes**, verify that the "Writing a Custom Template" section of `docs/cue-template-guide.md` remains end-to-end complete for a product engineer trying to deploy a web service:
-
-Triggers:
-1. Adding or removing kinds from the allowed kinds list in `console/deployments/render.go` or `apply.go`.
-2. Modifying `console/templates/default_template.cue` (the default resource set).
-3. Editing any section of `docs/cue-template-guide.md`.
-
-After any of the above, confirm the "Writing a Custom Template" section still includes:
-- A complete working template with `ServiceAccount`, `Deployment`, and `Service`.
-- An explanation of the port flow: `input.port` → container `containerPort` → Service `targetPort` → HTTPRoute (optional).
-- Guidance on `HTTPRoute`: when to add one (external access) versus relying on the Service ClusterIP (cluster-internal), with a minimal CUE example.
-
-If any of the above is missing or stale after your changes, update the doc as part of the same commit.
-
-### TLS Example Command Guardrail
-
-**Never include TLS verification bypass flags in any example command**, whether in documentation, UI-rendered snippets, tests, or code comments. Specifically:
-
-- Do not emit `curl -k`, `curl -sk`, or `curl --insecure`.
-- Do not emit `grpcurl -insecure`.
-
-**Reason**: Holos Console always runs with valid TLS certs. Local development uses `make certs` to generate a locally-trusted mkcert certificate; production uses a public-CA cert. There is no supported mode in which the server serves an untrusted certificate.
-
-**Correct form** (matches `scripts/rpc-version`):
-
-```bash
-curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" https://localhost:8443/...
-grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" localhost:8443 ...
-```
-
-Production examples whose server cert chains to a public CA may omit `--cacert` entirely and rely on the system CA store.
-
-**Not covered by this rule**: `--enable-insecure-dex` is the server CLI flag that enables the embedded Dex OIDC provider. It is unrelated to TLS verification and must not be changed or removed.
-
-**Triggers**: Apply this rule when writing or editing any `.md`, `.go`, `.ts`, `.tsx`, or shell script that contains a `curl` or `grpcurl` example.
-
-### Resource Naming Guardrail
-
-**Slug-based identifiers with collision suffix.** Folder and project identifiers
-are derived from the display name by slugifying it (lowercase, hyphens for
-spaces, strip non-alphanumeric). If the resulting namespace name is already taken
-globally, the server appends `-NNNNNN` (six random digits) to ensure uniqueness.
-This follows the Google Cloud project naming model (ADR 022 Decisions 1-2).
-
-| Resource     | Prefix       | Identifier source      | Example (no collision)      | Example (collision)              |
-|--------------|--------------|------------------------|-----------------------------|----------------------------------|
-| Organization | `holos-org-` | user-chosen slug       | `holos-org-acme`            | n/a (must be unique)             |
-| Folder       | `holos-fld-` | slug from display name | `holos-fld-default`         | `holos-fld-default-482917`       |
-| Project      | `holos-prj-` | slug from display name | `holos-prj-frontend`        | `holos-prj-frontend-731204`      |
-
-**Do NOT use random-only numeric identifiers** for folders or projects. The
-identifier must always start with the slug derived from the display name. A
-six-digit random suffix is only appended when the slug is already taken.
-
-**CheckIdentifier RPCs.** `FolderService.CheckFolderIdentifier` and
-`ProjectService.CheckProjectIdentifier` let callers check availability before
-creation and get a server-suggested alternative if the slug is taken. The
-server generates suggestions to normalize behavior across all callers.
-
-**Triggers**: Apply this rule when writing or editing any code that creates
-folders or projects, any proto definitions for folder/project creation, or any
-documentation that describes the namespace naming scheme.
-
-### Testing Patterns
-
-**Preference: unit tests first, E2E only for full-stack behaviours.**  
-Rendering, interaction, navigation logic, and ConnectRPC data shaping belong in unit tests with mocked query hooks. Reserve E2E for the OIDC login flow and real Kubernetes CRUD round-trips.
-
-See `docs/testing.md` for the complete decision rule, the ConnectRPC mock pattern with a worked example, file-naming conventions for route-directory test files, and a table of all existing test files.
-
-**Go tests**: Standard `*_test.go` files with table-driven tests. Uses `k8s.io/client-go/kubernetes/fake` for K8s operations. CLI integration tests use `testscript` in `console/testscript_test.go`.
-
-**UI unit tests**: Vitest + React Testing Library + jsdom. Mock query hooks (`@/queries/*`) with `vi.mock()` and `vi.fn()`. Route-directory test files must be prefixed with `-` (e.g. `-about.test.tsx`) so TanStack Router's generator ignores them. Run with `make test-ui`.
-
-**E2E tests**: Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For tight iteration, start servers once and run targeted tests — see `docs/e2e-testing.md` for the full workflow including K8s-backed tests.
-
-**Multi-persona E2E helpers**: `frontend/e2e/helpers.ts` exports `getPersonaToken()`, `switchPersona()`, `loginAsPersona()`, and `apiGrantOrgAccess()` for tests that verify RBAC behavior across different roles. These helpers use the dev token endpoint (`POST /api/dev/token`) to obtain tokens and inject them into sessionStorage. See `docs/e2e-testing.md` for usage patterns.
-
-See `docs/frontend-patterns.md` for common UI patterns (copy-to-clipboard, toast notifications).
-
-### Version Management
-
-Version is determined by:
-1. `console/version/{major,minor,patch}` files (embedded at compile time)
-2. `GitDescribe` ldflags override (set by Makefile during build)
-
-Build metadata (commit, tree state, date) injected via ldflags in Makefile.
-
-See `docs/versioning.md` for the complete versioning workflow including bump and tag procedures.
-
-### Container Builds
-
-Trigger container image builds using the `container.yaml` GitHub workflow. The workflow runs from `main` and accepts a `git_ref` input specifying what to check out and build:
-
-```bash
-gh workflow run container.yaml --ref main -f git_ref=refs/heads/<branch-name>
-gh workflow run container.yaml --ref main -f git_ref=refs/tags/v1.2.3
-```
-
-### Tool Dependencies
-
-Tool versions are pinned in `tools.go` using the Go tools pattern. Install with `make tools`. Currently pins: buf.
-
-CUE is used at runtime (not as a pinned tool) by the `console/templates/` package to parse and validate deployment template source. The `cuelang.org/go` module is a regular Go dependency listed in `go.mod`. See `docs/cue-template-guide.md` for the full template interface, including the structured `projectResources`/`platformResources` output format (ADR 016). CUE schema definitions for template types (`#ProjectInput`, `#PlatformInput`, etc.) are generated from `api/v1alpha2` Go types via `cue get go` and prepended by the renderer.
-
-## Planning and Execution
-
-### Feature Planning
-
-Plan features using phases. Record plans as GitHub issues before execution using `gh issue create`.
-
-### Dispatching Plans to Agents
-
-After drafting a plan as a GitHub issue, dispatch it to a Claude Code agent
-in a new worktree:
-
-    scripts/dispatch <issue-number>
-
-This creates a git worktree at ../holos-console-<N>, opens a new tmux window
-named i<N>, and starts a Claude Code agent that reads the issue and implements
-the plan. The script returns immediately so the main agent can continue planning.
-
-Prerequisite: must be run inside a tmux session.
-
-### RED GREEN Implementation
-
-Implement each phase using a RED GREEN approach:
-
-1. **RED** - Write failing tests first that define the expected behavior.
-2. **GREEN** - Write the minimum implementation to make the tests pass.
-
-### Final Cleanup Phase
-
-Every plan must include a final phase to scan the entire repository for dead, deprecated, or outdated information introduced or made stale by the commits implementing the plan. This includes removing obsolete comments, unused imports, stale documentation, dead code paths, and outdated references in AGENTS.md, README files, and doc files. Commit cleanup changes separately with a clear message explaining what was removed and why.
-
-### Tracking Progress
-
-When executing plans, record progress by checking off TODO items in the relevant GitHub issue using `gh issue edit` or the API. Keep issues up to date as each phase completes. When the PR is merged, the `Closes: #NN` line in the PR description automatically closes the issue.
-
-## Browser Automation (agent-browser)
-
-Coding agents can interact with the running console UI via `agent-browser`. This enables visual verification of changes, OIDC login automation, and end-to-end workflow testing through the browser.
-
-### Setup
-
-```bash
-make agent-tools              # Install agent-browser + Chrome for Testing
-scripts/test-agent-browser    # Verify installation
-```
-
-### Usage
-
-All browser scripts require the dev stack running (`make run`). For hot reload verification, also run `make dev`. All browser scripts source `scripts/browser-env` and respect `HOLOS_BACKEND_PORT` / `HOLOS_VITE_PORT` environment variables (defaults: 8443 / 5173).
-
-```bash
-# Authenticate (OIDC auto-login via embedded Dex, no password prompt)
-scripts/browser-login
-
-# Clear session state (triggers fresh OIDC login on next navigation)
-scripts/browser-logout
-
-# Verify ID token and refresh token status on the profile page
-scripts/browser-verify-change
-
-# Run the full self-service workflow (create org → project → secret → verify → cleanup)
-# Requires a Kubernetes cluster (e.g. k3d cluster create holos-dev)
-scripts/browser-self-service
-
-# Capture a screenshot of a secret detail page (or any URL)
-scripts/browser-capture-secret [URL]
-
-# Capture visual verification screenshots for a PR
-# (runs scripts/pr-<N>/capture with agent-dev lifecycle)
-scripts/browser-capture-pr <N>
-
-# Test per-key trailing newline affordance in the secret grid
-scripts/browser-test-newline
-```
-
-Screenshots are saved to `tmp/screenshots/`. After restarting the server, run `scripts/browser-logout && scripts/browser-login` to get a fresh OIDC token (the old Dex signing keys are invalidated).
-
-### Per-Agent Dev Servers
-
-`scripts/agent-dev` builds the frontend into the Go binary (`make generate` + `make build`), then starts the backend on a deterministic port (9000+N, where N is derived from the `agent-N` path segment in the working directory). It uses SIGPIPE-based lifecycle: the script writes the port assignment to stdout, then enters a heartbeat loop. When the pipe reader exits, SIGPIPE terminates the script and an EXIT trap kills the server. No PID files, no stale processes.
-
-Usage (pipe pattern):
-```bash
-scripts/agent-dev | {
-  eval "$(head -1)"                     # sets BACKEND_PORT
-  export HOLOS_BACKEND_PORT=$BACKEND_PORT
-  scripts/browser-login                 # uses HOLOS_BACKEND_URL
-  scripts/browser-capture-secret        # uses HOLOS_BACKEND_URL
-  # block exits → pipe breaks → SIGPIPE → server cleaned up
-}
-```
-
-The Go backend serves the embedded frontend — no Vite dev server is needed for automated screenshot capture. This avoids OIDC port mismatch issues that arise when the Vite dev server runs on a different port than the backend.
-
-`frontend/vite.config.ts` reads `HOLOS_BACKEND_PORT` and `HOLOS_VITE_PORT` from the environment (same defaults) for interactive development with `make dev`.
-
-### Visual Verification for Frontend PRs
-
-Visual verification (screenshots, capture scripts) is **not required by default**. Include it only when:
-1. The implementation plan (GitHub issue) explicitly calls for visual verification.
-2. A human reviewer requests it via a comment on the pull request.
-
-When visual verification is requested, the PR should include:
-1. A PR-specific capture script at `scripts/pr-<N>/capture` that takes screenshots of the affected pages.
-2. Screenshots committed to `docs/screenshots/pr-<N>/` and referenced in the PR.
-
-The generic launcher `scripts/browser-capture-pr <N>` handles the full agent-dev lifecycle (build, start backend, login, SIGPIPE cleanup) and calls the PR-specific capture script with these environment variables:
-- `HOLOS_BACKEND_PORT` — the backend port
-- `HOLOS_BACKEND_URL` — `https://localhost:$HOLOS_BACKEND_PORT`
-- `PR_SCREENSHOT_DIR` — `docs/screenshots/pr-<N>/` (already created)
-
-For simple cases (single page, no K8s fixtures needed), pass `--url` to skip writing a capture script:
-```bash
-scripts/browser-capture-pr <N> --url /profile
-```
-This navigates to the given path and saves `$PR_SCREENSHOT_DIR/screenshot.png` automatically.
-
-For complex cases (multiple pages, K8s fixtures, multiple screenshots), write `scripts/pr-<N>/capture`:
-- Apply any required K8s fixtures
-- Use `agent-browser` to navigate and capture screenshots to `$PR_SCREENSHOT_DIR`
-- The Go backend serves the built frontend — do not use Vite
-
-Workflow:
-
-1. **Add E2E tests** in `frontend/e2e/` asserting the new/changed behavior.
-2. **Write the capture script** at `scripts/pr-<N>/capture` (or use `--url` for simple pages).
-3. **Run it** after the PR is created to capture screenshots:
-   ```bash
-   scripts/browser-capture-pr <N>
-   # or for simple pages:
-   scripts/browser-capture-pr <N> --url /profile
-   ```
-4. **Commit images** to the feature branch:
-   ```bash
-   git add docs/screenshots/pr-<N>/ && git commit -m "Add visual verification screenshots for PR #<N>"
-   git push
-   ```
-5. **Reference in PR** using the **commit SHA** in raw GitHub URLs so images remain accessible after the branch is deleted on merge:
-   ```bash
-   SHA=$(git rev-parse HEAD)
-   REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-   gh pr comment <N> --body "![description](https://raw.githubusercontent.com/${REPO}/${SHA}/docs/screenshots/pr-<N>/filename.png)"
-   ```
-   Using the commit SHA (not the branch name) is the conventional approach — the SHA is immutable and resolves correctly both before and after merge. **Important**: PRs with screenshot references must be merged using a **merge commit** (not squash), so the referenced commit SHA survives in the target branch history.
-6. **Annotate**: Include a brief caption describing what the screenshot shows and which script produced it.
-
-### Configuration
-
-Project defaults are in `agent-browser.json`: headless mode, self-signed cert acceptance, 1920x1080 viewport, screenshots to `tmp/screenshots/`.
-
-## Skills
-
-Skills live in `.claude/skills/<name>/SKILL.md` using the **directory-based layout**. Do not create single-file skills (`.claude/skills/<name>.md`). The directory layout allows supporting files (reference docs, templates, scripts) alongside the skill definition.
-
-Use the `/skill-creator` skill to create and manage skills when available. If `/skill-creator` is not available, create the directory and `SKILL.md` manually following the standard layout:
-
-```
-.claude/skills/<name>/
-├── SKILL.md          # Required — YAML frontmatter + markdown instructions
-├── reference.md      # Optional — detailed reference material
-├── examples.md       # Optional — usage examples
-├── template.md       # Optional — template for Claude to fill in
-└── scripts/          # Optional — executable helpers
-```
-
-Current skills:
-
-| Skill | Purpose |
-|-------|---------|
-| `agent-browser` | Browser automation for visual verification and E2E workflows |
-| `implement-issue` | Implement a single GitHub issue end-to-end (branch, code, PR) |
-| `implement-plan` | Execute a full plan: iterate sub-issues, implement (Opus), review (Codex), fix, merge or escalate |
-| `plan-issue` | Create implementation plans as GitHub issue hierarchies |
-| `reset-agent` | Reset the current agent worktree to a clean state on origin/main |
-| `review-pr` | Cross-model PR review (currently Codex CLI backend) |
-
-## Contributing
-
-The GitHub issue tracker is for use by project maintainers and their agents. Features and bugs should be reported using Discord. This project operates on a best effort support model; see the LICENSE for the terms of support.
+- [Skills](docs/agents/skills.md) — Directory-based skill layout and current skill inventory.
+- [Contributing](docs/agents/contributing.md) — Issue tracker for maintainers; Discord for community reports.
