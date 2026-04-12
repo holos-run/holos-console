@@ -21,6 +21,16 @@ The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`ren
 
 The default template adds a `console.holos.run/deployer-email` annotation to all resources from `platform.claims.email`. The default template includes a `ReferenceGrant` (using `platform.gatewayNamespace`, default "istio-ingress") that allows HTTPRoute resources from the gateway namespace to reference Services in the project namespace.
 
+## Org Seeding via `populate_defaults`
+
+When `CreateOrganization` is called with `populate_defaults: true`, the backend seeds example resources into the new org:
+
+1. An org-level platform template (HTTPRoute ReferenceGrant, enabled) via `SeedOrgTemplate`
+2. A default project in the org's default folder
+3. An example project-level deployment template (go-httpbin) via `SeedProjectTemplate`
+
+The frontend exposes this as a "Populate with example resources" checkbox in the Create Organization dialog.
+
 ## Mandatory and Enabled Flags
 
 Platform templates (org-scoped or folder-scoped) can be marked `mandatory` (applied to project namespaces at creation time; always unified at render time) and/or `enabled` (available for linking and render-time unification).
@@ -32,6 +42,10 @@ ADR 019, extended to cross-level refs: each deployment template ConfigMap may ca
 The render set formula is: `(mandatory AND enabled) UNION (enabled AND ref IN linked_list)`.
 
 `MandatoryTemplateApplier` walks the full ancestor hierarchy (org + folder ancestors) applying mandatory+enabled templates at project creation.
+
+## Folder Template Management
+
+The folder templates page (`/folders/$folderName/templates`) provides a read-only list of platform templates at folder scope. Full CRUD (create, edit, clone, delete) for folder-scoped templates is available through the same UI patterns as org and project templates, with create and detail routes under the folder settings area.
 
 ## Permissions
 
