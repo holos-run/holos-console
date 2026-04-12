@@ -253,4 +253,21 @@ message GetDeploymentRenderPreviewResponse {
   string rendered_yaml = 4;
   // rendered_json is the rendered Kubernetes manifests as a JSON array.
   string rendered_json = 5;
+  // platform_resources_yaml contains resources from platformResources
+  // (contributed by organization/folder-level templates) as multi-document YAML
+  // separated by "---\n". Empty when no platform templates are linked or when
+  // the template is rendered without ancestor templates.
+  string platform_resources_yaml = 6;
+  // platform_resources_json contains resources from platformResources
+  // (contributed by organization/folder-level templates) as a JSON array.
+  // Empty when no platform templates are linked or when the template is
+  // rendered without ancestor templates.
+  string platform_resources_json = 7;
+  // project_resources_yaml contains resources from projectResources
+  // (contributed by the project template) as multi-document YAML separated by
+  // "---\n".
+  string project_resources_yaml = 8;
+  // project_resources_json contains resources from projectResources
+  // (contributed by the project template) as a JSON array.
+  string project_resources_json = 9;
 }

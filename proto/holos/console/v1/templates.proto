@@ -250,6 +250,23 @@ message RenderTemplateResponse {
   // rendered_json is the pretty-printed JSON representation of all rendered
   // resources as a JSON array.
   string rendered_json = 2;
+  // platform_resources_yaml contains resources from platformResources
+  // (contributed by organization/folder-level templates) as multi-document YAML
+  // separated by "---\n". Empty when no platform templates are linked or when
+  // the template is rendered without ancestor templates.
+  string platform_resources_yaml = 3;
+  // platform_resources_json contains resources from platformResources
+  // (contributed by organization/folder-level templates) as a JSON array.
+  // Empty when no platform templates are linked or when the template is
+  // rendered without ancestor templates.
+  string platform_resources_json = 4;
+  // project_resources_yaml contains resources from projectResources
+  // (contributed by the project template) as multi-document YAML separated by
+  // "---\n".
+  string project_resources_yaml = 5;
+  // project_resources_json contains resources from projectResources
+  // (contributed by the project template) as a JSON array.
+  string project_resources_json = 6;
 }
 
 // CloneTemplateRequest copies an existing template to a new name within the same scope.

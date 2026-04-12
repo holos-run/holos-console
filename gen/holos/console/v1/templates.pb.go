@@ -1037,9 +1037,26 @@ type RenderTemplateResponse struct {
 	RenderedYaml string `protobuf:"bytes,1,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
 	// rendered_json is the pretty-printed JSON representation of all rendered
 	// resources as a JSON array.
-	RenderedJson  string `protobuf:"bytes,2,opt,name=rendered_json,json=renderedJson,proto3" json:"rendered_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RenderedJson string `protobuf:"bytes,2,opt,name=rendered_json,json=renderedJson,proto3" json:"rendered_json,omitempty"`
+	// platform_resources_yaml contains resources from platformResources
+	// (contributed by organization/folder-level templates) as multi-document YAML
+	// separated by "---\n". Empty when no platform templates are linked or when
+	// the template is rendered without ancestor templates.
+	PlatformResourcesYaml string `protobuf:"bytes,3,opt,name=platform_resources_yaml,json=platformResourcesYaml,proto3" json:"platform_resources_yaml,omitempty"`
+	// platform_resources_json contains resources from platformResources
+	// (contributed by organization/folder-level templates) as a JSON array.
+	// Empty when no platform templates are linked or when the template is
+	// rendered without ancestor templates.
+	PlatformResourcesJson string `protobuf:"bytes,4,opt,name=platform_resources_json,json=platformResourcesJson,proto3" json:"platform_resources_json,omitempty"`
+	// project_resources_yaml contains resources from projectResources
+	// (contributed by the project template) as multi-document YAML separated by
+	// "---\n".
+	ProjectResourcesYaml string `protobuf:"bytes,5,opt,name=project_resources_yaml,json=projectResourcesYaml,proto3" json:"project_resources_yaml,omitempty"`
+	// project_resources_json contains resources from projectResources
+	// (contributed by the project template) as a JSON array.
+	ProjectResourcesJson string `protobuf:"bytes,6,opt,name=project_resources_json,json=projectResourcesJson,proto3" json:"project_resources_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *RenderTemplateResponse) Reset() {
@@ -1082,6 +1099,34 @@ func (x *RenderTemplateResponse) GetRenderedYaml() string {
 func (x *RenderTemplateResponse) GetRenderedJson() string {
 	if x != nil {
 		return x.RenderedJson
+	}
+	return ""
+}
+
+func (x *RenderTemplateResponse) GetPlatformResourcesYaml() string {
+	if x != nil {
+		return x.PlatformResourcesYaml
+	}
+	return ""
+}
+
+func (x *RenderTemplateResponse) GetPlatformResourcesJson() string {
+	if x != nil {
+		return x.PlatformResourcesJson
+	}
+	return ""
+}
+
+func (x *RenderTemplateResponse) GetProjectResourcesYaml() string {
+	if x != nil {
+		return x.ProjectResourcesYaml
+	}
+	return ""
+}
+
+func (x *RenderTemplateResponse) GetProjectResourcesJson() string {
+	if x != nil {
+		return x.ProjectResourcesJson
 	}
 	return ""
 }
@@ -2168,10 +2213,14 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12,\n" +
 	"\x12cue_platform_input\x18\x03 \x01(\tR\x10cuePlatformInput\x12*\n" +
 	"\x11cue_project_input\x18\x04 \x01(\tR\x0fcueProjectInput\x12N\n" +
-	"\x10linked_templates\x18\x05 \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\"b\n" +
+	"\x10linked_templates\x18\x05 \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\"\xbe\x02\n" +
 	"\x16RenderTemplateResponse\x12#\n" +
 	"\rrendered_yaml\x18\x01 \x01(\tR\frenderedYaml\x12#\n" +
-	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson\"\xa8\x01\n" +
+	"\rrendered_json\x18\x02 \x01(\tR\frenderedJson\x126\n" +
+	"\x17platform_resources_yaml\x18\x03 \x01(\tR\x15platformResourcesYaml\x126\n" +
+	"\x17platform_resources_json\x18\x04 \x01(\tR\x15platformResourcesJson\x124\n" +
+	"\x16project_resources_yaml\x18\x05 \x01(\tR\x14projectResourcesYaml\x124\n" +
+	"\x16project_resources_json\x18\x06 \x01(\tR\x14projectResourcesJson\"\xa8\x01\n" +
 	"\x14CloneTemplateRequest\x128\n" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x1f\n" +
 	"\vsource_name\x18\x02 \x01(\tR\n" +
