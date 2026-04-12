@@ -64,8 +64,8 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeTemplateName, setUpgradeTemplateName] = useState<string | null>(null)
 
-  // Fetch updates for the selected upgrade template (when dialog is open).
-  const { data: upgradeUpdates = [] } = useCheckUpdates(scope, upgradeTemplateName ?? '')
+  // Fetch updates for the selected upgrade template (only when dialog is open).
+  const { data: upgradeUpdates = [] } = useCheckUpdates(scope, upgradeTemplateName ?? '', { enabled: !!upgradeTemplateName })
   // Fetch the selected template to get its linkedTemplates for the dialog.
   const { data: upgradeTemplate } = useGetTemplate(scope, upgradeTemplateName ?? '')
 
