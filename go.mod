@@ -7,6 +7,7 @@ require (
 	connectrpc.com/grpcreflect v1.3.0
 	cuelang.org/go v0.16.0
 	filippo.io/mkcert v1.4.4
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/bufbuild/buf v1.62.1
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/dexidp/dex v0.0.0-20251209162832-8ab38ebb7920
@@ -49,7 +50,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
