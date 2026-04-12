@@ -43,19 +43,24 @@ func NewApplier(client dynamic.Interface) *Applier {
 	return &Applier{client: client}
 }
 
-// Apply performs server-side apply of the rendered manifests, adding the
-// ownership label so resources can be cleaned up when the deployment is deleted.
+// Apply performs server-side apply of the rendered manifests, adding ownership
+// labels so resources can be cleaned up when the deployment is deleted.
 // Each resource is applied to its own metadata.namespace. Cluster-scoped
 // resources (namespace == "") use the unnamespaced client.
-func (a *Applier) Apply(ctx context.Context, deploymentName string, resources []unstructured.Unstructured) error {
+//
+// Both the project and deployment name are stamped as labels so that
+// Reconcile and Cleanup can scope queries to a single project, preventing
+// cross-project collisions in shared namespaces.
+func (a *Applier) Apply(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured) error {
 	for i := range resources {
 		r := resources[i].DeepCopy()
 
-		// Inject ownership label.
+		// Inject ownership labels (project + deployment).
 		labels := r.GetLabels()
 		if labels == nil {
 			labels = make(map[string]string)
 		}
+		labels[v1alpha2.LabelProject] = project
 		labels[v1alpha2.AnnotationDeployment] = deploymentName
 		r.SetLabels(labels)
 
@@ -116,9 +121,9 @@ func (a *Applier) Apply(ctx context.Context, deploymentName string, resources []
 // previousNamespaces should contain namespaces that previously held resources
 // for this deployment (e.g. derived from the last successful render). This
 // ensures orphans are cleaned up when resources move between namespaces.
-func (a *Applier) Reconcile(ctx context.Context, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error {
+func (a *Applier) Reconcile(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error {
 	// Step 1: Apply all desired resources via SSA.
-	if err := a.Apply(ctx, deploymentName, resources); err != nil {
+	if err := a.Apply(ctx, project, deploymentName, resources); err != nil {
 		return err
 	}
 
@@ -141,10 +146,13 @@ func (a *Applier) Reconcile(ctx context.Context, deploymentName string, resource
 		}
 	}
 
-	// Step 2: Delete orphaned resources — those with the ownership label that
+	// Step 2: Delete orphaned resources — those with the ownership labels that
 	// are no longer in the desired set. Scan the union of desired + previous
-	// namespaces.
-	labelSelector := fmt.Sprintf("%s=%s", v1alpha2.AnnotationDeployment, deploymentName)
+	// namespaces. The selector includes both project and deployment to avoid
+	// cross-project collisions in shared namespaces.
+	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
+		v1alpha2.LabelProject, project,
+		v1alpha2.AnnotationDeployment, deploymentName)
 
 	for kind, gvr := range allowedKinds {
 		for namespace := range scanNS {
@@ -181,10 +189,13 @@ func (a *Applier) Reconcile(ctx context.Context, deploymentName string, resource
 	return nil
 }
 
-// Cleanup deletes all K8s resources that carry the deployment ownership label
-// across all provided namespaces.
-func (a *Applier) Cleanup(ctx context.Context, namespaces []string, deploymentName string) error {
-	labelSelector := fmt.Sprintf("%s=%s", v1alpha2.AnnotationDeployment, deploymentName)
+// Cleanup deletes all K8s resources that carry the deployment ownership labels
+// across all provided namespaces. The selector includes both project and
+// deployment name to avoid cross-project collisions in shared namespaces.
+func (a *Applier) Cleanup(ctx context.Context, namespaces []string, project, deploymentName string) error {
+	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
+		v1alpha2.LabelProject, project,
+		v1alpha2.AnnotationDeployment, deploymentName)
 
 	for kind, gvr := range allowedKinds {
 		for _, namespace := range namespaces {

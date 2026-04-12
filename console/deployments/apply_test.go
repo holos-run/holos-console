@@ -88,6 +88,8 @@ func makeServiceResource(name, namespace string) unstructured.Unstructured {
 	return u
 }
 
+const testProject = "my-project"
+
 func TestApplier_Apply(t *testing.T) {
 	namespace := "prj-my-project"
 	deploymentName := "web-app"
@@ -98,7 +100,7 @@ func TestApplier_Apply(t *testing.T) {
 			makeDeploymentResource("web-app", namespace),
 		}
 
-		err := applier.Apply(context.Background(), deploymentName, resources)
+		err := applier.Apply(context.Background(), testProject, deploymentName, resources)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -120,10 +122,10 @@ func TestApplier_Apply(t *testing.T) {
 			makeDeploymentResource("web-app", namespace),
 		}
 
-		if err := applier.Apply(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Apply(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("first apply failed: %v", err)
 		}
-		if err := applier.Apply(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Apply(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("second apply failed: %v", err)
 		}
 	})
@@ -134,7 +136,7 @@ func TestApplier_Apply(t *testing.T) {
 			makeDeploymentResource("web-app", namespace),
 		}
 
-		if err := applier.Apply(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Apply(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -160,7 +162,7 @@ func TestApplier_Apply(t *testing.T) {
 			makeServiceResource("web-app", namespace),
 		}
 
-		if err := applier.Apply(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Apply(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -184,10 +186,11 @@ func TestApplier_Cleanup(t *testing.T) {
 	t.Run("cleanup deletes resources with ownership label", func(t *testing.T) {
 		applier, fakeClient := newFakeApplier()
 
-		// Pre-create a Deployment with the ownership label.
+		// Pre-create a Deployment with the ownership labels.
 		dep := makeDeploymentResource("web-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
+			v1alpha2.LabelProject:          testProject,
 			v1alpha2.AnnotationDeployment:  deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
@@ -196,7 +199,7 @@ func TestApplier_Cleanup(t *testing.T) {
 			t.Fatalf("pre-create failed: %v", err)
 		}
 
-		if err := applier.Cleanup(context.Background(), []string{namespace}, deploymentName); err != nil {
+		if err := applier.Cleanup(context.Background(), []string{namespace}, testProject, deploymentName); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -216,7 +219,7 @@ func TestApplier_Cleanup(t *testing.T) {
 	t.Run("cleanup with no owned resources is a no-op", func(t *testing.T) {
 		applier, _ := newFakeApplier()
 
-		if err := applier.Cleanup(context.Background(), []string{namespace}, deploymentName); err != nil {
+		if err := applier.Cleanup(context.Background(), []string{namespace}, testProject, deploymentName); err != nil {
 			t.Fatalf("expected no error for empty cleanup, got %v", err)
 		}
 	})
@@ -224,10 +227,11 @@ func TestApplier_Cleanup(t *testing.T) {
 	t.Run("cleanup does not delete resources owned by other deployments", func(t *testing.T) {
 		applier, fakeClient := newFakeApplier()
 
-		// Create a resource owned by "other-app".
+		// Create a resource owned by "other-app" in a different project.
 		dep := makeDeploymentResource("other-app", namespace)
 		dep.SetLabels(map[string]string{
 			"app.kubernetes.io/managed-by": "console.holos.run",
+			v1alpha2.LabelProject:          "other-project",
 			v1alpha2.AnnotationDeployment:  "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
@@ -237,7 +241,7 @@ func TestApplier_Cleanup(t *testing.T) {
 		}
 
 		// Cleanup for "web-app" should not touch "other-app"'s resource.
-		if err := applier.Cleanup(context.Background(), []string{namespace}, deploymentName); err != nil {
+		if err := applier.Cleanup(context.Background(), []string{namespace}, testProject, deploymentName); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -259,10 +263,11 @@ func TestApplier_Reconcile(t *testing.T) {
 	t.Run("applies resources and cleans orphans", func(t *testing.T) {
 		applier, fakeClient := newFakeApplier()
 
-		// Pre-create an orphaned Service with the ownership label (it was in the
+		// Pre-create an orphaned Service with the ownership labels (it was in the
 		// old desired set but is no longer in the new one).
 		orphan := makeServiceResource("old-svc", namespace)
 		orphan.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(svcGVR).Namespace(namespace).Create(
@@ -276,7 +281,7 @@ func TestApplier_Reconcile(t *testing.T) {
 			makeDeploymentResource("web-app", namespace),
 		}
 
-		if err := applier.Reconcile(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Reconcile(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -299,6 +304,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// Pre-create a Deployment that IS in the desired set.
 		existing := makeDeploymentResource("web-app", namespace)
 		existing.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
@@ -312,7 +318,7 @@ func TestApplier_Reconcile(t *testing.T) {
 			makeDeploymentResource("web-app", namespace),
 		}
 
-		if err := applier.Reconcile(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Reconcile(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -327,9 +333,10 @@ func TestApplier_Reconcile(t *testing.T) {
 	t.Run("does not delete resources owned by other deployments", func(t *testing.T) {
 		applier, fakeClient := newFakeApplier()
 
-		// Pre-create a resource owned by "other-app" (a different deployment).
+		// Pre-create a resource owned by "other-app" in a different project.
 		other := makeDeploymentResource("other-app", namespace)
 		other.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         "other-project",
 			v1alpha2.AnnotationDeployment: "other-app",
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace(namespace).Create(
@@ -339,7 +346,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		}
 
 		// Reconcile for "web-app" with an empty desired set.
-		if err := applier.Reconcile(context.Background(), deploymentName, nil); err != nil {
+		if err := applier.Reconcile(context.Background(), testProject, deploymentName, nil); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -361,6 +368,7 @@ func TestApplier_Reconcile(t *testing.T) {
 
 		orphan := makeServiceResource("old-svc", namespace)
 		orphan.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := failClient.Resource(svcGVR).Namespace(namespace).Create(
@@ -375,7 +383,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		}
 
 		// Reconcile should return an error (apply failed).
-		if err := failApplier.Reconcile(context.Background(), deploymentName, resources); err == nil {
+		if err := failApplier.Reconcile(context.Background(), testProject, deploymentName, resources); err == nil {
 			t.Fatal("expected an error from Reconcile when apply fails")
 		}
 
@@ -393,6 +401,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// Pre-create an orphaned Service in namespace "ns-a".
 		orphan := makeServiceResource("old-svc", "ns-a")
 		orphan.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(svcGVR).Namespace("ns-a").Create(
@@ -407,7 +416,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		}
 
 		// Pass "ns-a" as a previous namespace so the reconciler scans it.
-		if err := applier.Reconcile(context.Background(), deploymentName, resources, "ns-a"); err != nil {
+		if err := applier.Reconcile(context.Background(), testProject, deploymentName, resources, "ns-a"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -430,6 +439,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		// Pre-create a Service in the old namespace "ns-old".
 		oldSvc := makeServiceResource("my-svc", "ns-old")
 		oldSvc.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(svcGVR).Namespace("ns-old").Create(
@@ -444,7 +454,7 @@ func TestApplier_Reconcile(t *testing.T) {
 		}
 
 		// Pass "ns-old" as a previous namespace so the reconciler cleans it up.
-		if err := applier.Reconcile(context.Background(), deploymentName, resources, "ns-old"); err != nil {
+		if err := applier.Reconcile(context.Background(), testProject, deploymentName, resources, "ns-old"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -475,7 +485,7 @@ func TestApplier_MultiNamespace(t *testing.T) {
 			makeServiceResource("web-app", "ns-b"),
 		}
 
-		if err := applier.Apply(context.Background(), deploymentName, resources); err != nil {
+		if err := applier.Apply(context.Background(), testProject, deploymentName, resources); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -506,6 +516,7 @@ func TestApplier_MultiNamespace(t *testing.T) {
 		// Pre-create resources in two different namespaces.
 		depA := makeDeploymentResource("web-app", "ns-a")
 		depA.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err := fakeClient.Resource(depGVR).Namespace("ns-a").Create(
@@ -516,6 +527,7 @@ func TestApplier_MultiNamespace(t *testing.T) {
 
 		svcB := makeServiceResource("web-app", "ns-b")
 		svcB.SetLabels(map[string]string{
+			v1alpha2.LabelProject:         testProject,
 			v1alpha2.AnnotationDeployment: deploymentName,
 		})
 		_, err = fakeClient.Resource(svcGVR).Namespace("ns-b").Create(
@@ -525,7 +537,7 @@ func TestApplier_MultiNamespace(t *testing.T) {
 		}
 
 		namespaces := []string{"ns-a", "ns-b"}
-		if err := applier.Cleanup(context.Background(), namespaces, deploymentName); err != nil {
+		if err := applier.Cleanup(context.Background(), namespaces, testProject, deploymentName); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -547,7 +559,7 @@ func TestApplier_MultiNamespace(t *testing.T) {
 	t.Run("cleanup: empty namespace set is a no-op", func(t *testing.T) {
 		applier, _ := newFakeApplier()
 
-		if err := applier.Cleanup(context.Background(), nil, deploymentName); err != nil {
+		if err := applier.Cleanup(context.Background(), nil, testProject, deploymentName); err != nil {
 			t.Fatalf("expected no error for empty cleanup, got %v", err)
 		}
 	})
