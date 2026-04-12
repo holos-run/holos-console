@@ -49,7 +49,7 @@ export function useCreateOrganization() {
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName?: string; description?: string }) =>
+    mutationFn: (params: { name: string; displayName?: string; description?: string; populateDefaults?: boolean }) =>
       client.createOrganization(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connect-query'] })
