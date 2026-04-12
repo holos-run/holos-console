@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -13,26 +13,25 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     }),
     Link: ({
       children,
+      to,
+      params,
       ...props
-    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode }) => (
-      <a {...props}>{children}</a>
+    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode; to?: string; params?: Record<string, string> }) => (
+      <a href={to} data-params={JSON.stringify(params)} {...props}>{children}</a>
     ),
   }
 })
 
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
-  useCreateTemplate: vi.fn(),
-  makeFolderScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-folder' }),
+  makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
 }))
 
 vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-
-import { useListTemplates, useCreateTemplate } from '@/queries/templates'
+import { useListTemplates } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { FolderTemplatesIndexPage } from './index'
@@ -66,10 +65,6 @@ function setupMocks(userRole = Role.OWNER) {
     data: { name: 'test-folder', organization: 'test-org', userRole },
     isPending: false,
     error: null,
-  })
-  ;(useCreateTemplate as Mock).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({}),
-    isPending: false,
   })
 }
 
@@ -114,10 +109,6 @@ describe('FolderTemplatesIndexPage', () => {
       isPending: false,
       error: null,
     })
-    ;(useCreateTemplate as Mock).mockReturnValue({
-      mutateAsync: vi.fn(),
-      isPending: false,
-    })
     render(<FolderTemplatesIndexPage folderName="test-folder" />)
     expect(screen.queryByText('httproute-ingress')).not.toBeInTheDocument()
   })
@@ -133,10 +124,6 @@ describe('FolderTemplatesIndexPage', () => {
       isPending: false,
       error: null,
     })
-    ;(useCreateTemplate as Mock).mockReturnValue({
-      mutateAsync: vi.fn(),
-      isPending: false,
-    })
     render(<FolderTemplatesIndexPage folderName="test-folder" />)
     expect(screen.getByText('Failed to load templates')).toBeInTheDocument()
   })
@@ -151,10 +138,6 @@ describe('FolderTemplatesIndexPage', () => {
       data: { name: 'test-folder', organization: 'test-org', userRole: Role.OWNER },
       isPending: false,
       error: null,
-    })
-    ;(useCreateTemplate as Mock).mockReturnValue({
-      mutateAsync: vi.fn(),
-      isPending: false,
     })
     render(<FolderTemplatesIndexPage folderName="test-folder" />)
     expect(
@@ -178,156 +161,35 @@ describe('FolderTemplatesIndexPage', () => {
     expect(screen.queryByText('httproute-ingress')).not.toBeInTheDocument()
   })
 
-  describe('create template button and dialog', () => {
-    it('shows Create Template button for folder OWNER', () => {
+  describe('create template button', () => {
+    it('shows Create Template link for folder OWNER', () => {
       setupMocks(Role.OWNER)
       render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      expect(
-        screen.getByRole('button', { name: /create template/i }),
-      ).toBeInTheDocument()
+      const link = screen.getByRole('link', { name: /create template/i })
+      expect(link).toBeInTheDocument()
+      expect(link).toHaveAttribute('href', '/folders/$folderName/templates/new')
     })
 
-    it('does not show Create Template button for folder VIEWER', () => {
+    it('does not show Create Template link for folder VIEWER', () => {
       setupMocks(Role.VIEWER)
       render(<FolderTemplatesIndexPage folderName="test-folder" />)
       expect(
-        screen.queryByRole('button', { name: /create template/i }),
+        screen.queryByRole('link', { name: /create template/i }),
       ).not.toBeInTheDocument()
     })
 
-    it('does not show Create Template button for folder EDITOR', () => {
+    it('does not show Create Template link for folder EDITOR', () => {
       setupMocks(Role.EDITOR)
       render(<FolderTemplatesIndexPage folderName="test-folder" />)
       expect(
-        screen.queryByRole('button', { name: /create template/i }),
+        screen.queryByRole('link', { name: /create template/i }),
       ).not.toBeInTheDocument()
     })
 
-    it('clicking Create Template opens dialog', async () => {
+    it('does not render a dialog', () => {
       setupMocks(Role.OWNER)
-      const user = userEvent.setup()
       render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    it('create dialog has enabled toggle defaulting to disabled', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const toggle = screen.getByRole('switch', { name: /enabled/i })
-      expect(toggle).toBeInTheDocument()
-      expect(toggle).toHaveAttribute('data-state', 'unchecked')
-    })
-
-    it('confirming create calls createTemplate with enabled state', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, 'my-template')
-      await user.click(screen.getByRole('switch', { name: /enabled/i }))
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value
-        .mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(
-          expect.objectContaining({
-            name: 'my-template',
-            enabled: true,
-          }),
-        )
-      })
-    })
-
-    it('create with enabled defaulting to false passes disabled', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, 'my-template')
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value
-        .mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(
-          expect.objectContaining({
-            name: 'my-template',
-            enabled: false,
-          }),
-        )
-      })
-    })
-
-    it('cancel closes create dialog without saving', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      await user.click(screen.getByRole('button', { name: /cancel/i }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value
-        .mutateAsync
-      expect(mutateAsync).not.toHaveBeenCalled()
-    })
-
-    it('disables Create button when name is empty', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const createBtn = screen.getByRole('button', { name: /^create$/i })
-      expect(createBtn).toBeDisabled()
-    })
-
-    it('shows validation error when name is whitespace only', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, '   ')
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      await waitFor(() => {
-        expect(screen.getByText('Name is required')).toBeInTheDocument()
-      })
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value
-        .mutateAsync
-      expect(mutateAsync).not.toHaveBeenCalled()
-    })
-
-    it('shows error alert when create mutation fails', async () => {
-      setupMocks(Role.OWNER)
-      ;(useCreateTemplate as Mock).mockReturnValue({
-        mutateAsync: vi.fn().mockRejectedValue(new Error('Template already exists')),
-        isPending: false,
-      })
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, 'existing-template')
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      await waitFor(() => {
-        expect(screen.getByText('Template already exists')).toBeInTheDocument()
-      })
-      // Dialog should remain open on error
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    it('Load Example populates fields', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderTemplatesIndexPage folderName="test-folder" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      await user.click(screen.getByRole('button', { name: /load example/i }))
-      const nameInput = screen.getByRole('textbox', {
-        name: /^name$/i,
-      }) as HTMLInputElement
-      expect(nameInput.value).toBe('httproute-ingress')
     })
   })
 })

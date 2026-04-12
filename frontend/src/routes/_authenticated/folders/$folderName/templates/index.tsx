@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,9 +10,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
@@ -26,56 +22,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Lock, Info } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, useCreateTemplate, makeFolderScope } from '@/queries/templates'
+import { useListTemplates, makeFolderScope } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-
-// EXAMPLE_FOLDER_PLATFORM_TEMPLATE is the example folder-level platform template CUE content.
-// It provides an HTTPRoute into the istio-ingress namespace using platformResources.
-const EXAMPLE_FOLDER_PLATFORM_TEMPLATE = `// Folder-level platform template — HTTPRoute for istio-ingress gateway.
-// Applied to projects within this folder hierarchy.
-platformResources: {
-    namespacedResources: ("istio-ingress"): {
-        HTTPRoute: (input.name): {
-            apiVersion: "gateway.networking.k8s.io/v1"
-            kind:       "HTTPRoute"
-            metadata: {
-                name:      input.name
-                namespace: "istio-ingress"
-                labels: {
-                    "app.kubernetes.io/managed-by": "console.holos.run"
-                    "app.kubernetes.io/name":       input.name
-                }
-            }
-            spec: {
-                parentRefs: [{
-                    group:     "gateway.networking.k8s.io"
-                    kind:      "Gateway"
-                    namespace: platform.gatewayNamespace
-                    name:      "default"
-                }]
-                rules: [{
-                    backendRefs: [{
-                        name: input.name
-                        port: 80
-                    }]
-                }]
-            }
-        }
-    }
-    clusterResources: {}
-}
-`
 
 /** Row type for the template table. */
 type TemplateRow = {
@@ -117,19 +67,11 @@ export function FolderTemplatesIndexPage({
 
   const scope = makeFolderScope(folderName)
   const { data: templates, isPending, error } = useListTemplates(scope)
-  const createMutation = useCreateTemplate(scope)
 
   const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createName, setCreateName] = useState('')
-  const [createDisplayName, setCreateDisplayName] = useState('')
-  const [createDescription, setCreateDescription] = useState('')
-  const [createCueTemplate, setCreateCueTemplate] = useState('')
-  const [createEnabled, setCreateEnabled] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
 
   const data = useMemo<TemplateRow[]>(() => {
     if (!templates) return []
@@ -198,47 +140,6 @@ export function FolderTemplatesIndexPage({
     getFilteredRowModel: getFilteredRowModel(),
   })
 
-  const handleOpenCreate = () => {
-    setCreateName('')
-    setCreateDisplayName('')
-    setCreateDescription('')
-    setCreateCueTemplate('')
-    setCreateEnabled(false)
-    setCreateError(null)
-    setCreateOpen(true)
-  }
-
-  const handleLoadExample = () => {
-    setCreateName('httproute-ingress')
-    setCreateDisplayName('HTTPRoute Ingress')
-    setCreateDescription(
-      'Provides an HTTPRoute for the istio-ingress gateway, routing traffic to project services.',
-    )
-    setCreateCueTemplate(EXAMPLE_FOLDER_PLATFORM_TEMPLATE)
-  }
-
-  const handleCreateConfirm = async () => {
-    if (!createName.trim()) {
-      setCreateError('Name is required')
-      return
-    }
-    setCreateError(null)
-    try {
-      await createMutation.mutateAsync({
-        name: createName.trim(),
-        displayName: createDisplayName.trim(),
-        description: createDescription.trim(),
-        cueTemplate: createCueTemplate,
-        mandatory: false,
-        enabled: createEnabled,
-      })
-      toast.success(`Created platform template "${createName}"`)
-      setCreateOpen(false)
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
   if (isPending) {
     return (
       <Card>
@@ -264,8 +165,7 @@ export function FolderTemplatesIndexPage({
   }
 
   return (
-    <>
-      <Card>
+    <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div>
             <p className="text-sm text-muted-foreground">
@@ -289,9 +189,11 @@ export function FolderTemplatesIndexPage({
             <CardTitle className="mt-1">Platform Templates</CardTitle>
           </div>
           {canWrite && (
-            <Button size="sm" onClick={handleOpenCreate}>
-              Create Template
-            </Button>
+            <Link to="/folders/$folderName/templates/new" params={{ folderName }}>
+              <Button size="sm">
+                Create Template
+              </Button>
+            </Link>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -352,107 +254,6 @@ export function FolderTemplatesIndexPage({
             </p>
           )}
         </CardContent>
-      </Card>
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create Platform Template</DialogTitle>
-            <DialogDescription>
-              Create a new platform template for folder &quot;{folderName}&quot;.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleLoadExample}>
-                Load Example
-              </Button>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-default" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      Platform templates are unified with project deployment templates at render
-                      time via CUE. This example provides an HTTPRoute for the istio-ingress
-                      gateway.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-name">Name</Label>
-              <Input
-                id="create-name"
-                aria-label="Name"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="my-template"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-display-name">Display Name</Label>
-              <Input
-                id="create-display-name"
-                aria-label="Display Name"
-                value={createDisplayName}
-                onChange={(e) => setCreateDisplayName(e.target.value)}
-                placeholder="My Template"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-description">Description</Label>
-              <Input
-                id="create-description"
-                aria-label="Description"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="What does this template produce?"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-cue-template">CUE Template</Label>
-              <Textarea
-                id="create-cue-template"
-                aria-label="CUE Template"
-                value={createCueTemplate}
-                onChange={(e) => setCreateCueTemplate(e.target.value)}
-                placeholder="// CUE template content"
-                className="font-mono text-xs min-h-[120px]"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                id="create-enabled"
-                aria-label="Enabled"
-                checked={createEnabled}
-                onCheckedChange={setCreateEnabled}
-              />
-              <Label htmlFor="create-enabled" className="text-sm cursor-pointer">
-                Enabled (apply to projects in this folder)
-              </Label>
-            </div>
-          </div>
-          {createError && (
-            <Alert variant="destructive">
-              <AlertDescription>{createError}</AlertDescription>
-            </Alert>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateConfirm}
-              disabled={createMutation.isPending || !createName}
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    </Card>
   )
 }
