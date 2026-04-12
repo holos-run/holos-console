@@ -225,6 +225,15 @@ export declare type CreateOrganizationRequest = Message<"holos.console.v1.Create
    * @generated from field: optional string default_folder = 6;
    */
   defaultFolder?: string;
+
+  /**
+   * populate_defaults indicates whether the backend should seed example resources
+   * when creating the organization. When true, the backend creates example
+   * templates and a default project.
+   *
+   * @generated from field: optional bool populate_defaults = 7;
+   */
+  populateDefaults?: boolean;
 };
 
 /**
