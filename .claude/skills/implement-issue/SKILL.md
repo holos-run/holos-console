@@ -418,7 +418,7 @@ EOF
 - **RED GREEN**: Write tests before implementation
 - **Regular commits**: Commit logical units as you go, not one giant commit at the end
 - **make generate**: Always run before committing if proto or generated files are involved
-- **E2E decision-making**: Assess whether `make test-e2e` is warranted using the E2E relevance heuristic (see Step 6). Run it locally when relevant and the environment supports it; otherwise note the skip in the PR description
+- **E2E decision-making**: Assess whether `make test-e2e` is warranted using the E2E relevance heuristic (see Step 11a). Run it locally when relevant and the environment supports it; otherwise note the skip in the PR description
 - **Cleanup phase**: Every implementation ends with a cleanup commit
 - **Wall clock timing**: Record start time at step 0, post elapsed time in the summary comment at step 13
 - **Review before CI**: Run code review immediately after opening the PR, before waiting for CI checks. This minimizes wall clock time by running review in parallel with CI
