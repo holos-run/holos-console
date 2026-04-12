@@ -68,9 +68,11 @@ interface TemplateReleasesProps {
   canWrite: boolean
   /** Current CUE template source for creating a release from current state. */
   currentCueTemplate?: string
+  /** Current template defaults for creating a release from current state. */
+  currentDefaults?: Release['defaults']
 }
 
-export function TemplateReleases({ scope, templateName, canWrite, currentCueTemplate }: TemplateReleasesProps) {
+export function TemplateReleases({ scope, templateName, canWrite, currentCueTemplate, currentDefaults }: TemplateReleasesProps) {
   const { data: releases, isPending, error } = useListReleases(scope, templateName)
   const createMutation = useCreateRelease(scope, templateName)
 
@@ -149,6 +151,7 @@ export function TemplateReleases({ scope, templateName, canWrite, currentCueTemp
         changelog,
         upgradeAdvice: showUpgradeAdvice ? upgradeAdvice : '',
         cueTemplate: currentCueTemplate ?? '',
+        defaults: currentDefaults,
       })
       setDialogOpen(false)
     } catch (err) {

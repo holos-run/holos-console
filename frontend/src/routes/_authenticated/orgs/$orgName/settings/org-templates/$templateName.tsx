@@ -233,6 +233,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
             templateName={templateName}
             canWrite={canWrite}
             currentCueTemplate={cueTemplate}
+            currentDefaults={template?.defaults}
           />
         </CardContent>
       </Card>

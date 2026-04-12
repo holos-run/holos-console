@@ -263,6 +263,7 @@ export function FolderTemplateDetailPage({
             templateName={templateName}
             canWrite={canWrite}
             currentCueTemplate={cueTemplate}
+            currentDefaults={template?.defaults}
           />
         </CardContent>
       </Card>
