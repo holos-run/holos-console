@@ -135,17 +135,17 @@ type stubApplier struct {
 	cleanupErr      error
 }
 
-func (s *stubApplier) Apply(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
+func (s *stubApplier) Apply(_ context.Context, _ string, _ []unstructured.Unstructured) error {
 	s.applyCalled = true
 	return s.applyErr
 }
 
-func (s *stubApplier) Reconcile(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
+func (s *stubApplier) Reconcile(_ context.Context, _ string, _ []unstructured.Unstructured, _ ...string) error {
 	s.reconcileCalled = true
 	return s.reconcileErr
 }
 
-func (s *stubApplier) Cleanup(_ context.Context, _, _ string) error {
+func (s *stubApplier) Cleanup(_ context.Context, _ []string, _ string) error {
 	s.cleanupCalled = true
 	return s.cleanupErr
 }

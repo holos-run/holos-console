@@ -82,12 +82,17 @@ type AncestorTemplateProvider interface {
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
+// Each resource carries its own metadata.namespace; Apply and Reconcile use
+// per-resource namespaces rather than a single namespace parameter.
 type ResourceApplier interface {
-	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
+	Apply(ctx context.Context, deploymentName string, resources []unstructured.Unstructured) error
 	// Reconcile applies desired resources via SSA then deletes owned resources
-	// that are no longer in the desired set (orphan cleanup). Use for updates.
-	Reconcile(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
-	Cleanup(ctx context.Context, namespace, deploymentName string) error
+	// that are no longer in the desired set (orphan cleanup). previousNamespaces
+	// lists namespaces that previously held resources for this deployment so
+	// orphans from namespace moves are cleaned up.
+	Reconcile(ctx context.Context, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error
+	// Cleanup deletes all owned resources across the given namespaces.
+	Cleanup(ctx context.Context, namespaces []string, deploymentName string) error
 }
 
 // Handler implements the DeploymentService.
@@ -378,7 +383,7 @@ func (h *Handler) CreateDeployment(
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
-		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
+		if applyErr := h.applier.Apply(ctx, name, resources); applyErr != nil {
 			slog.WarnContext(ctx, "apply failed after creating deployment — rolling back",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -409,7 +414,7 @@ func (h *Handler) CreateDeployment(
 //
 // Rollback errors are logged at warn level but do not replace the original error.
 func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) {
-	if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+	if cleanupErr := h.applier.Cleanup(ctx, []string{ns}, name); cleanupErr != nil {
 		slog.WarnContext(ctx, "rollback: cleanup failed",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -505,7 +510,7 @@ func (h *Handler) UpdateDeployment(
 		// Use Reconcile instead of Apply so orphaned resources from template
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
 		// apply.
-		if reconcileErr := h.applier.Reconcile(ctx, ns, name, resources); reconcileErr != nil {
+		if reconcileErr := h.applier.Reconcile(ctx, name, resources, ns); reconcileErr != nil {
 			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -553,7 +558,7 @@ func (h *Handler) DeleteDeployment(
 	// Clean up all K8s resources owned by this deployment before removing the record.
 	if h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+		if cleanupErr := h.applier.Cleanup(ctx, []string{ns}, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),
 				slog.String("name", name),

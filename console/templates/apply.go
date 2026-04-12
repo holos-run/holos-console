@@ -15,9 +15,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ResourceApplier applies K8s resources to a namespace.
+// ResourceApplier applies K8s resources using each resource's own namespace.
 type ResourceApplier interface {
-	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
+	Apply(ctx context.Context, deploymentName string, resources []unstructured.Unstructured) error
 }
 
 // HierarchyWalker walks the namespace hierarchy for the mandatory template applier.
@@ -171,7 +171,8 @@ func (a *MandatoryTemplateApplier) applyMandatoryFromNamespace(ctx context.Conte
 		}
 
 		// Use the template name as the "deployment name" for the ownership label.
-		if err := a.applier.Apply(ctx, projectNamespace, cm.Name, resources); err != nil {
+		// Each resource carries its own namespace in metadata; Apply uses it.
+		if err := a.applier.Apply(ctx, cm.Name, resources); err != nil {
 			return fmt.Errorf("applying mandatory template %q from %q to project %q: %w", cm.Name, ancestorNs, project, err)
 		}
 
