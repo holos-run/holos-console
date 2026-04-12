@@ -41,6 +41,10 @@ Roles: VIEWER (1), EDITOR (2), OWNER (3) defined in `proto/holos/console/v1/rbac
 
 `PERMISSION_REPARENT` is required to move a folder or project to a different parent. It is granted only to OWNERs via the `ReparentCascadePerms` cascade table. The caller must hold this permission on both the source parent and the destination parent. This is deliberately more restrictive than WRITE because reparenting changes RBAC inheritance chains (ADR 022 Decision 6).
 
+`PERMISSION_TEMPLATES_LINK_ORG_WRITE` is required to add or remove organization-level linked template references on a template. It is checked at the template's owning scope (e.g., the project that owns the template being edited). Granted only to OWNERs via the `TemplateCascadePerms` cascade table in `console/rbac/rbac.go`.
+
+`PERMISSION_TEMPLATES_LINK_FOLDER_WRITE` is required to add or remove folder-level linked template references on a template. Same scope and cascade rules as the org variant. Both permissions are enforced by the `checkLinkPermissions` helper in `console/templates/handler.go` when `update_linked_templates` is true on an `UpdateTemplateRequest`, or when `linked_templates` is non-empty on a `CreateTemplateRequest`.
+
 ## Related
 
 - [Authentication](authentication.md) — OIDC flow that produces the identity claims RBAC evaluates
