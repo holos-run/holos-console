@@ -21,7 +21,7 @@ vi.mock('@/queries/templates', () => ({
   useDeleteTemplate: vi.fn(),
   useCloneTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
-  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isSuccess: true }),
+  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
@@ -548,7 +548,7 @@ describe('DeploymentTemplateDetailPage', () => {
     ]
 
     it('shows linked templates section with empty state when no linkable templates exist', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
       setupMocks()
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
@@ -557,14 +557,14 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('shows linked templates row when linkable templates exist', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks()
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
     })
 
     it('shows None linked when no templates are linked', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
       // mandatory template is always shown even when linkedTemplates is empty
@@ -572,35 +572,35 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('shows linked template names as badges', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText('HTTPRoute Gateway')).toBeInTheDocument()
     })
 
     it('shows edit linked templates button for owners', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER)
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByRole('button', { name: /edit linked platform templates/i })).toBeInTheDocument()
     })
 
     it('shows edit linked templates button for editors', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.EDITOR)
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByRole('button', { name: /edit linked platform templates/i })).toBeInTheDocument()
     })
 
     it('does not show edit linked templates button for viewers', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.VIEWER)
       render(<DeploymentTemplateDetailPage />)
       expect(screen.queryByRole('button', { name: /edit linked platform templates/i })).not.toBeInTheDocument()
     })
 
     it('clicking edit linked templates button opens dialog', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -609,7 +609,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('dialog shows checkboxes for each linkable template', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -619,7 +619,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('mandatory template checkbox is checked and disabled in dialog', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -630,7 +630,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -667,7 +667,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('dialog groups templates by scope with Organization and Folder headers', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -677,7 +677,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('OWNER can toggle non-mandatory checkboxes in dialog', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -689,7 +689,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('EDITOR sees all checkboxes disabled with permission message', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.EDITOR, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -704,7 +704,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('EDITOR does not see Save button in linked templates dialog', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.EDITOR, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
@@ -714,7 +714,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('useRenderTemplate is called with template linked templates', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
         { name: 'httproute', scope: 1, scopeName: 'acme' },
       ] })
@@ -730,7 +730,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('useRenderTemplate receives empty linkedTemplates when template has none', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
       const calls = (useRenderTemplate as Mock).mock.calls
@@ -740,7 +740,7 @@ describe('DeploymentTemplateDetailPage', () => {
     })
 
     it('shows scope badge per template in read-only display', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
         { name: 'httproute', scope: 1, scopeName: 'acme' },
         { name: 'team-network-policy', scope: 2, scopeName: 'platform' },
@@ -752,6 +752,21 @@ describe('DeploymentTemplateDetailPage', () => {
       // Folder badge for team-network-policy
       const folderBadges = screen.getAllByText('Folder')
       expect(folderBadges.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('shows loading state when query is pending', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: true, isSuccess: false })
+      setupMocks()
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+    })
+
+    it('does not show loading state when query errors (falls through to empty state)', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false, isSuccess: false })
+      setupMocks()
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+      expect(screen.getByText(/none linked/i)).toBeInTheDocument()
     })
   })
 })

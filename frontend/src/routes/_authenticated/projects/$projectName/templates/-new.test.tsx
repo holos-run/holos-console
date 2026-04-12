@@ -23,7 +23,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
-  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isSuccess: true }),
+  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
   linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>
@@ -261,7 +261,7 @@ describe('CreateTemplatePage', () => {
     const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
     it('shows linked templates section with empty state when no linkable templates exist', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
       setupMocks()
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
@@ -269,7 +269,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('shows empty state message for EDITOR when no linkable templates exist', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
@@ -277,14 +277,14 @@ describe('CreateTemplatePage', () => {
     })
 
     it('shows linked templates section when linkable templates exist for OWNER', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
     })
 
     it('groups templates by scope with Organization and Folder headers', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/organization templates/i)).toBeInTheDocument()
@@ -292,7 +292,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('shows checkboxes for linkable templates when user is OWNER', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       const checkboxes = screen.getAllByRole('checkbox')
@@ -300,7 +300,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('mandatory template checkbox is checked and disabled', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
@@ -309,7 +309,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('non-mandatory template checkboxes are unchecked by default', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       const httpbinCheckbox = screen.getByRole('checkbox', { name: /httpbin platform/i })
@@ -318,7 +318,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('shows read-only view for EDITOR with mandatory templates and permission note', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
@@ -327,7 +327,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('shows read-only view for VIEWER with mandatory templates and permission note', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.VIEWER)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
@@ -335,7 +335,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('selected linked templates are included in create mutation', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})
       setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
       const user = userEvent.setup()
@@ -366,7 +366,7 @@ describe('CreateTemplatePage', () => {
         { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
         { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
       ]
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: sameName, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: sameName, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})
       setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
       const user = userEvent.setup()
@@ -392,7 +392,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('create mutation receives empty linkedTemplates when no optional templates selected', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})
       setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
@@ -410,7 +410,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('useRenderTemplate is called with selected linked templates for preview', async () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})
       setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
       const user = userEvent.setup()
@@ -430,7 +430,7 @@ describe('CreateTemplatePage', () => {
     })
 
     it('useRenderTemplate receives empty linkedTemplates when none selected', () => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
 
@@ -438,6 +438,21 @@ describe('CreateTemplatePage', () => {
       const lastCall = calls[calls.length - 1]
       // arg[5] is linkedTemplates
       expect(lastCall[5]).toEqual([])
+    })
+
+    it('shows loading state when query is pending', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: true, isSuccess: false })
+      setupMocks()
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/loading platform templates/i)).toBeInTheDocument()
+    })
+
+    it('does not show loading state when query errors (falls through to empty state)', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false, isSuccess: false })
+      setupMocks()
+      render(<CreateTemplatePage />)
+      expect(screen.queryByText(/loading platform templates/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/no platform templates available to link/i)).toBeInTheDocument()
     })
   })
 })
