@@ -1,6 +1,6 @@
 # Guardrail: Template Fields
 
-**When adding new fields to `CreateDeploymentRequest`, `DeploymentDefaults`, or related template proto messages**, the field must also be:
+**When adding new fields to `CreateDeploymentRequest`, `TemplateDefaults`, or related template proto messages**, the field must also be:
 
 1. Added to the `ProjectInput` (user-provided fields) or `PlatformInput` (platform fields) Go struct in `api/v1alpha2/types.go` — CUE schema is generated from these types via `cue get go`
 2. Included in the rendering pipeline in `console/deployments/render.go`
@@ -15,5 +15,6 @@ This ensures template authors always see new fields in the preview, that the CUE
 
 - [Template Service](template-service.md) — The service these fields belong to
 - [Deployment Service](deployment-service.md) — The rendering pipeline that consumes these fields
+- [Guardrail: Template Defaults Pre-Fill](guardrail-template-defaults.md) — Per-field defaults extraction must cover all form fields
 - [Guardrail: Template Linking](guardrail-template-linking.md) — Another template guardrail
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep docs in sync with template changes
