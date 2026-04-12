@@ -70,6 +70,9 @@ const (
 	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
 
 	PermissionReparent = consolev1.Permission_PERMISSION_REPARENT
+
+	PermissionTemplatesLinkOrgWrite    = consolev1.Permission_PERMISSION_TEMPLATES_LINK_ORG_WRITE
+	PermissionTemplatesLinkFolderWrite = consolev1.Permission_PERMISSION_TEMPLATES_LINK_FOLDER_WRITE
 )
 
 // rolePermissions defines which permissions each role has.
@@ -148,9 +151,11 @@ var rolePermissions = map[Role]map[Permission]bool{
 		PermissionTemplatesWrite:       true,
 		PermissionTemplatesDelete:      true,
 		PermissionTemplatesAdmin:       true,
-		PermissionProjectSettingsRead:  true,
-		PermissionProjectSettingsWrite: true,
-		PermissionReparent:             true,
+		PermissionProjectSettingsRead:      true,
+		PermissionProjectSettingsWrite:     true,
+		PermissionReparent:                 true,
+		PermissionTemplatesLinkOrgWrite:    true,
+		PermissionTemplatesLinkFolderWrite: true,
 	},
 }
 
@@ -349,11 +354,13 @@ var TemplateCascadePerms = CascadeTable{
 		PermissionTemplatesWrite: true,
 	},
 	RoleOwner: {
-		PermissionTemplatesList:   true,
-		PermissionTemplatesRead:   true,
-		PermissionTemplatesWrite:  true,
-		PermissionTemplatesDelete: true,
-		PermissionTemplatesAdmin:  true,
+		PermissionTemplatesList:            true,
+		PermissionTemplatesRead:            true,
+		PermissionTemplatesWrite:           true,
+		PermissionTemplatesDelete:          true,
+		PermissionTemplatesAdmin:           true,
+		PermissionTemplatesLinkOrgWrite:    true,
+		PermissionTemplatesLinkFolderWrite: true,
 	},
 }
 

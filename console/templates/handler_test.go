@@ -3,12 +3,16 @@ package templates
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -236,5 +240,309 @@ func TestValidateCueSyntax(t *testing.T) {
 	}
 	if err := validateCueSyntax("this is not valid {{ cue"); err == nil {
 		t.Error("expected invalid CUE to fail, but it passed")
+	}
+}
+
+// newTestHandler builds a Handler wired to a fake K8s client and stub grant
+// resolver for link permission tests. The grant resolver maps emails to roles
+// via shareUsers so tests can control which role the caller has.
+func newTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+	k8s := NewK8sClient(fakeClient, r)
+	handler := NewHandler(k8s, r, &stubRenderer{})
+	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
+	return handler
+}
+
+// orgLinkedRef returns a LinkedTemplateRef pointing at an org-scope template.
+func orgLinkedRef(org, name string) *consolev1.LinkedTemplateRef {
+	return &consolev1.LinkedTemplateRef{
+		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		ScopeName: org,
+		Name:      name,
+	}
+}
+
+// folderLinkedRef returns a LinkedTemplateRef pointing at a folder-scope template.
+func folderLinkedRef(folder, name string) *consolev1.LinkedTemplateRef {
+	return &consolev1.LinkedTemplateRef{
+		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		ScopeName: folder,
+		Name:      name,
+	}
+}
+
+// projectScopeRef returns a project-scoped TemplateScopeRef.
+func projectScopeRef(project string) *consolev1.TemplateScopeRef {
+	return &consolev1.TemplateScopeRef{
+		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		ScopeName: project,
+	}
+}
+
+// TestCreateTemplateLinkPermissions verifies that CreateTemplate enforces scoped
+// link permissions: OWNER can create with org and folder links, EDITOR cannot.
+func TestCreateTemplateLinkPermissions(t *testing.T) {
+	const project = "my-project"
+	const ownerEmail = "platform@localhost"
+	const editorEmail = "product@localhost"
+
+	tests := []struct {
+		name            string
+		email           string
+		linkedTemplates []*consolev1.LinkedTemplateRef
+		wantErr         bool
+		wantCode        connect.Code
+	}{
+		{
+			name:            "OWNER creates template with org-linked templates succeeds",
+			email:           ownerEmail,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "httproute")},
+			wantErr:         false,
+		},
+		{
+			name:            "OWNER creates template with folder-linked templates succeeds",
+			email:           ownerEmail,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{folderLinkedRef("payments", "payments-policy")},
+			wantErr:         false,
+		},
+		{
+			name:  "OWNER creates template with both org and folder links succeeds",
+			email: ownerEmail,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef("acme", "httproute"),
+				folderLinkedRef("payments", "payments-policy"),
+			},
+			wantErr: false,
+		},
+		{
+			name:            "EDITOR creates template with org-linked templates fails",
+			email:           editorEmail,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "httproute")},
+			wantErr:         true,
+			wantCode:        connect.CodePermissionDenied,
+		},
+		{
+			name:            "EDITOR creates template with folder-linked templates fails",
+			email:           editorEmail,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{folderLinkedRef("payments", "payments-policy")},
+			wantErr:         true,
+			wantCode:        connect.CodePermissionDenied,
+		},
+		{
+			name:            "EDITOR creates template with no linked templates succeeds",
+			email:           editorEmail,
+			linkedTemplates: nil,
+			wantErr:         false,
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "prj-" + project,
+				},
+			}
+			fakeClient := fake.NewClientset(ns)
+			shareUsers := map[string]string{
+				ownerEmail:  "owner",
+				editorEmail: "editor",
+			}
+			handler := newTestHandler(fakeClient, shareUsers)
+
+			// Use a unique template name per test to avoid AlreadyExists.
+			templateName := fmt.Sprintf("tmpl-%d", i)
+			ctx := authedCtx(tt.email, nil)
+			req := connect.NewRequest(&consolev1.CreateTemplateRequest{
+				Scope: projectScopeRef(project),
+				Template: &consolev1.Template{
+					Name:            templateName,
+					CueTemplate:     validCue,
+					LinkedTemplates: tt.linkedTemplates,
+				},
+			})
+
+			_, err := handler.CreateTemplate(ctx, req)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if connectErr := new(connect.Error); connect.CodeOf(err) != tt.wantCode {
+					t.Errorf("expected code %v, got %v (%v)", tt.wantCode, connect.CodeOf(err), connectErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestUpdateTemplateLinkPermissions verifies that UpdateTemplate honors the
+// update_linked_templates flag and enforces scoped link permissions.
+func TestUpdateTemplateLinkPermissions(t *testing.T) {
+	const project = "my-project"
+	const ownerEmail = "platform@localhost"
+	const editorEmail = "product@localhost"
+
+	// Pre-seed a template with org-linked templates for update tests.
+	existingLinkedJSON := `[{"scope":"organization","scope_name":"acme","name":"httproute"}]`
+
+	makeExistingTemplate := func() *corev1.ConfigMap {
+		return &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "web-app",
+				Namespace: "prj-" + project,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationDisplayName:     "Web App",
+					v1alpha2.AnnotationDescription:     "A web app",
+					v1alpha2.AnnotationMandatory:       "false",
+					v1alpha2.AnnotationEnabled:         "false",
+					v1alpha2.AnnotationLinkedTemplates: existingLinkedJSON,
+				},
+			},
+			Data: map[string]string{
+				CueTemplateKey: validCue,
+			},
+		}
+	}
+
+	tests := []struct {
+		name                 string
+		email                string
+		updateLinkedTmpl     bool
+		linkedTemplates      []*consolev1.LinkedTemplateRef
+		wantErr              bool
+		wantCode             connect.Code
+		wantLinksPreserved   bool // When true, verify existing links are still present after update.
+		wantLinksCleared     bool // When true, verify linked-templates annotation is removed after update.
+	}{
+		{
+			name:             "OWNER updates linked templates with update_linked_templates=true succeeds",
+			email:            ownerEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef("acme", "httproute"),
+				folderLinkedRef("payments", "payments-policy"),
+			},
+			wantErr: false,
+		},
+		{
+			name:             "EDITOR updates linked templates with update_linked_templates=true fails",
+			email:            editorEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef("acme", "new-route"),
+			},
+			wantErr:  true,
+			wantCode: connect.CodePermissionDenied,
+		},
+		{
+			name:               "EDITOR updates CUE only with update_linked_templates=false succeeds and preserves links",
+			email:              editorEmail,
+			updateLinkedTmpl:   false,
+			linkedTemplates:    nil,
+			wantErr:            false,
+			wantLinksPreserved: true,
+		},
+		{
+			name:             "OWNER clears all linked templates with update_linked_templates=true empty list succeeds",
+			email:            ownerEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates:  []*consolev1.LinkedTemplateRef{}, // empty list clears links
+			wantErr:          false,
+			wantLinksCleared: true,
+		},
+		{
+			name:             "OWNER clears linked templates with update_linked_templates=true nil list succeeds",
+			email:            ownerEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates:  nil, // protobuf binary encoding delivers nil for empty repeated fields
+			wantErr:          false,
+			wantLinksCleared: true,
+		},
+		{
+			name:             "EDITOR clears linked templates with update_linked_templates=true empty list fails",
+			email:            editorEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates:  []*consolev1.LinkedTemplateRef{}, // clearing requires permission on existing scopes
+			wantErr:          true,
+			wantCode:         connect.CodePermissionDenied,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "prj-" + project,
+				},
+			}
+			cm := makeExistingTemplate()
+			fakeClient := fake.NewClientset(ns, cm)
+			shareUsers := map[string]string{
+				ownerEmail:  "owner",
+				editorEmail: "editor",
+			}
+			handler := newTestHandler(fakeClient, shareUsers)
+
+			ctx := authedCtx(tt.email, nil)
+			req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
+				Scope: projectScopeRef(project),
+				Template: &consolev1.Template{
+					Name:            "web-app",
+					CueTemplate:     validCue,
+					LinkedTemplates: tt.linkedTemplates,
+				},
+				UpdateLinkedTemplates: tt.updateLinkedTmpl,
+			})
+
+			_, err := handler.UpdateTemplate(ctx, req)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if connect.CodeOf(err) != tt.wantCode {
+					t.Errorf("expected code %v, got %v", tt.wantCode, connect.CodeOf(err))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			// Verify link preservation when update_linked_templates=false.
+			if tt.wantLinksPreserved {
+				updated, getErr := fakeClient.CoreV1().ConfigMaps("prj-"+project).Get(context.Background(), "web-app", metav1.GetOptions{})
+				if getErr != nil {
+					t.Fatalf("failed to get updated ConfigMap: %v", getErr)
+				}
+				raw, ok := updated.Annotations[v1alpha2.AnnotationLinkedTemplates]
+				if !ok {
+					t.Fatal("expected linked-templates annotation to be preserved")
+				}
+				if raw != existingLinkedJSON {
+					t.Errorf("expected links preserved as %q, got %q", existingLinkedJSON, raw)
+				}
+			}
+
+			// Verify link clearing when update_linked_templates=true with empty or nil list.
+			if tt.wantLinksCleared {
+				updated, getErr := fakeClient.CoreV1().ConfigMaps("prj-"+project).Get(context.Background(), "web-app", metav1.GetOptions{})
+				if getErr != nil {
+					t.Fatalf("failed to get updated ConfigMap: %v", getErr)
+				}
+				if raw, ok := updated.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok {
+					t.Errorf("expected linked-templates annotation to be removed, but found %q", raw)
+				}
+			}
+		})
 	}
 }

@@ -226,6 +226,13 @@ func (h *Handler) CreateTemplate(
 		return nil, err
 	}
 
+	// Enforce scoped link permissions when linked templates are provided.
+	if len(tmpl.LinkedTemplates) > 0 {
+		if err := h.checkLinkPermissions(ctx, claims, scope, scopeName, tmpl.LinkedTemplates); err != nil {
+			return nil, err
+		}
+	}
+
 	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Mandatory, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -283,7 +290,41 @@ func (h *Handler) UpdateTemplate(
 	cueTemplate := tmpl.CueTemplate
 	mandatory := tmpl.Mandatory
 	enabled := tmpl.Enabled
-	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &mandatory, &enabled, tmpl.LinkedTemplates, false)
+
+	// Determine linked template handling based on the update_linked_templates flag.
+	var linkedTemplates []*consolev1.LinkedTemplateRef
+	if req.Msg.GetUpdateLinkedTemplates() {
+		// Caller wants to modify links. Check permissions based on both old
+		// (being removed) and new (being added) linked template scopes.
+		existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+		if getErr != nil {
+			return nil, mapK8sError(getErr)
+		}
+		var existingRefs []*consolev1.LinkedTemplateRef
+		if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+			existingRefs, _ = unmarshalLinkedTemplates(raw)
+		}
+		// Merge old and new refs to check all affected scopes.
+		allRefs := append(existingRefs, tmpl.LinkedTemplates...)
+		if len(allRefs) > 0 {
+			if err := h.checkLinkPermissions(ctx, claims, scope, scopeName, allRefs); err != nil {
+				return nil, err
+			}
+		}
+		linkedTemplates = tmpl.LinkedTemplates
+		// Protobuf binary encoding cannot distinguish an omitted repeated
+		// field from an empty one — both arrive as nil.  When the caller
+		// explicitly asked to update links, nil means "clear all links,"
+		// so normalize to a non-nil empty slice.  K8sClient.UpdateTemplate
+		// treats nil as "preserve existing" and empty as "delete annotation."
+		if linkedTemplates == nil {
+			linkedTemplates = []*consolev1.LinkedTemplateRef{}
+		}
+	}
+	// When update_linked_templates is false, linkedTemplates stays nil,
+	// which tells K8sClient.UpdateTemplate to preserve existing links.
+
+	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &mandatory, &enabled, linkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -608,6 +649,38 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 	}
 
 	return result, nil
+}
+
+// checkLinkPermissions verifies the caller has the scoped link permissions
+// required by the provided linked template references. If any ref targets an
+// org-scope template, PermissionTemplatesLinkOrgWrite is checked. If any ref
+// targets a folder-scope template, PermissionTemplatesLinkFolderWrite is checked.
+// Both checks are performed at the template's owning scope.
+func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
+	hasOrg := false
+	hasFolder := false
+	for _, ref := range linkedTemplates {
+		if ref == nil {
+			continue
+		}
+		switch ref.GetScope() {
+		case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+			hasOrg = true
+		case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+			hasFolder = true
+		}
+	}
+	if hasOrg {
+		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesLinkOrgWrite); err != nil {
+			return err
+		}
+	}
+	if hasFolder {
+		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesLinkFolderWrite); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkAccess verifies the caller has the given permission for the requested scope.
