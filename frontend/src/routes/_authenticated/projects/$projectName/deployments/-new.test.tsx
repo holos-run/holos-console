@@ -456,6 +456,118 @@ describe('CreateDeploymentPage', () => {
 
   // --- End field-ordering regression tests ---
 
+  // --- Template defaults pre-fill regression tests (issue #853) ---
+
+  it('selecting a template with full defaults pre-fills all form fields', async () => {
+    const templates = [makeTemplate('full-defaults', {
+      name: 'httpbin',
+      description: 'A simple HTTP service',
+      image: 'ghcr.io/mccutchen/go-httpbin',
+      tag: '2.21.0',
+      port: 9090,
+      command: ['/bin/httpbin'],
+      args: ['--port', '9090'],
+    })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'full-defaults' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/display name/i)).toHaveValue('httpbin')
+      expect(screen.getByLabelText(/name slug/i)).toHaveValue('httpbin')
+      expect(screen.getByLabelText(/^description$/i)).toHaveValue('A simple HTTP service')
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/mccutchen/go-httpbin')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('2.21.0')
+      expect(screen.getByLabelText(/^port$/i)).toHaveValue(9090)
+    })
+    // Command and args are rendered by StringListInput as spans
+    expect(screen.getByText('/bin/httpbin')).toBeInTheDocument()
+    expect(screen.getByText('--port')).toBeInTheDocument()
+    expect(screen.getByText('9090')).toBeInTheDocument()
+  })
+
+  it('selecting a different template updates all fields to new defaults', async () => {
+    const templates = [
+      makeTemplate('template-a', {
+        name: 'alpha-svc',
+        description: 'Alpha service',
+        image: 'ghcr.io/org/alpha',
+        tag: '1.0.0',
+        port: 3000,
+        command: ['/alpha'],
+        args: ['--verbose'],
+      }),
+      makeTemplate('template-b', {
+        name: 'beta-svc',
+        description: 'Beta service',
+        image: 'ghcr.io/org/beta',
+        tag: '2.0.0',
+        port: 4000,
+        command: ['/beta'],
+        args: ['--quiet'],
+      }),
+    ]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    // Select first template
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-a' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/display name/i)).toHaveValue('alpha-svc')
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/alpha')
+    })
+    expect(screen.getByText('/alpha')).toBeInTheDocument()
+
+    // Switch to second template
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-b' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/display name/i)).toHaveValue('beta-svc')
+      expect(screen.getByLabelText(/name slug/i)).toHaveValue('beta-svc')
+      expect(screen.getByLabelText(/^description$/i)).toHaveValue('Beta service')
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/beta')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('2.0.0')
+      expect(screen.getByLabelText(/^port$/i)).toHaveValue(4000)
+    })
+    // Old command/args should be gone, new ones present
+    expect(screen.queryByText('/alpha')).not.toBeInTheDocument()
+    expect(screen.queryByText('--verbose')).not.toBeInTheDocument()
+    expect(screen.getByText('/beta')).toBeInTheDocument()
+    expect(screen.getByText('--quiet')).toBeInTheDocument()
+  })
+
+  it('selecting a template with partial defaults leaves other fields at default values', async () => {
+    const templates = [makeTemplate('partial-tmpl', {
+      image: 'ghcr.io/org/partial',
+      tag: 'latest',
+    })]
+    setupMocks(vi.fn(), templates)
+    render(<CreateDeploymentPage />)
+
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'partial-tmpl' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/partial')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('latest')
+    })
+    // Fields without defaults should be at their default/empty values
+    expect(screen.getByLabelText(/display name/i)).toHaveValue('')
+    expect(screen.getByLabelText(/name slug/i)).toHaveValue('')
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue('')
+    expect(screen.getByLabelText(/^port$/i)).toHaveValue(8080)
+    // Command and args lists should be empty (no list items rendered).
+    // StringListInput renders a "remove item N" button for each entry, so
+    // zero such buttons positively confirms both lists are empty.
+    expect(screen.queryAllByRole('button', { name: /remove item/i })).toHaveLength(0)
+    // Entry inputs should also be empty (no pending text)
+    expect(screen.getByLabelText(/command entry/i)).toHaveValue('')
+    expect(screen.getByLabelText(/args entry/i)).toHaveValue('')
+  })
+
+  // --- End template defaults pre-fill regression tests ---
+
   it('passes command and args to mutateAsync', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-api' })
     setupMocks(mutateAsync)
