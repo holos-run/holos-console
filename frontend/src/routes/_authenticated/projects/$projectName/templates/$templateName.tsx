@@ -280,11 +280,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
                             const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
-                            // Look up the version constraint from the template's linkedTemplates.
-                            const linkedRef = (template?.linkedTemplates ?? []).find(
-                              (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
-                            )
-                            const constraint = linkedRef?.versionConstraint
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
                               (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
