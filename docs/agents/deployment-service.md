@@ -6,7 +6,7 @@
 
 CUE render uses split `PlatformInput` (project, namespace, gatewayNamespace, claims) and `ProjectInput` (name, image, tag, etc.) — see `docs/cue-template-guide.md`.
 
-At render time, `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` is called with the linked names resolved from the deployment template's `console.holos.run/linked-templates` annotation; platform templates may define resources under `platformResources` and/or `projectResources` — the renderer reads both collections when processing platform templates (ADR 016 Decision 8).
+At render time, the handler builds a `PlatformInput` that includes `Folders` (resolved via `AncestorWalker`) and calls `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)` with the linked refs resolved from the deployment template's `console.holos.run/linked-templates` annotation. The provider currently resolves organization-scope templates only; folder-scope templates are not yet included in the render set. Platform templates may define resources under `platformResources` and/or `projectResources` -- the renderer reads both collections when processing platform templates (ADR 016 Decision 8). `GetDeploymentRenderPreview` returns per-collection fields (`platform_resources_yaml`, `platform_resources_json`, `project_resources_yaml`, `project_resources_json`) that partition resources by origin.
 
 ## Lifecycle Semantics
 
