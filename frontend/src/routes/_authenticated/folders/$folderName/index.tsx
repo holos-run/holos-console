@@ -117,11 +117,52 @@ export function FolderDetailPage({
     }
   }
 
-  // Build parent picker options: org root + all folders except self and descendants
+  // Depth helpers: mirrors backend computeFolderDepth / computeSubtreeDepth.
+  // maxFolderDepth must match console/folders/handler.go:maxFolderDepth.
+  const maxFolderDepth = 3
+
+  // computeFolderDepth: count folder levels from a folder up to the org root.
+  // Org root = 0, folder directly under org = 1, nested under another folder = 2, etc.
+  const computeFolderDepth = (name: string): number => {
+    if (!allFolders) return 0
+    let depth = 0
+    let current = name
+    for (let i = 0; i <= maxFolderDepth; i++) {
+      const f = allFolders.find((fld) => fld.name === current)
+      if (!f) return depth
+      depth++ // count this folder as a level
+      if (f.parentType !== ParentType.FOLDER) return depth
+      current = f.parentName
+    }
+    return depth
+  }
+
+  // computeSubtreeDepth: max folder depth below and including a folder. Leaf = 1.
+  const computeSubtreeDepth = (name: string): number => {
+    if (!allFolders) return 1
+    const children = allFolders.filter(
+      (f) => f.parentType === ParentType.FOLDER && f.parentName === name,
+    )
+    if (children.length === 0) return 1
+    return 1 + Math.max(...children.map((c) => computeSubtreeDepth(c.name)))
+  }
+
+  const subtreeDepth = computeSubtreeDepth(folderName)
+
+  // Build parent picker options: org root + folders that pass all filters:
+  // not self, not a descendant, and would not exceed maxFolderDepth.
   const parentOptions: ComboboxItem[] = [
     { value: `org:${orgName}`, label: `${org?.displayName || orgName} (organization root)` },
     ...(allFolders ?? [])
-      .filter((f) => f.name !== folderName && !descendantNames.has(f.name))
+      .filter((f) => {
+        if (f.name === folderName || descendantNames.has(f.name)) return false
+        // Depth check: the folder being moved (with its subtree) would sit
+        // under this candidate. candidateDepth counts folder levels above
+        // the candidate; placing a subtree of subtreeDepth under it yields
+        // candidateDepth + subtreeDepth total depth.
+        const candidateDepth = computeFolderDepth(f.name)
+        return candidateDepth + subtreeDepth <= maxFolderDepth
+      })
       .map((f) => ({ value: `folder:${f.name}`, label: f.displayName || f.name })),
   ]
 

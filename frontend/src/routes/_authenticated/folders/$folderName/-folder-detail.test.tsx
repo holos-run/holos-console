@@ -186,20 +186,46 @@ describe('FolderDetailPage', () => {
       })
     })
 
-    it('excludes self and descendants from parent options', () => {
+    it('excludes self and descendants from parent options', async () => {
       setupMocks()
       render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
       fireEvent.click(screen.getByRole('button', { name: /change parent/i }))
-      // After clicking Change Parent, the combobox renders. The trigger shows
-      // the current parent value and the items list is built from parentOptions.
-      // Verify by checking the combobox trigger exists and then inspect items:
-      const combobox = screen.getByRole('combobox', { name: /parent picker/i })
-      expect(combobox).toBeInTheDocument()
-      // The trigger text should show the current parent (org root), which
-      // confirms the combobox was rendered with the correct current value.
-      // We verify the filtered options indirectly by confirming that clicking
-      // "Other Folder" in the popover triggers the reparent flow (tested in
-      // the "shows confirmation dialog" test above).
+      // Open the combobox popover to inspect rendered items.
+      fireEvent.click(screen.getByRole('combobox', { name: /parent picker/i }))
+      await waitFor(() => {
+        // Valid option: other-folder must be present in the popover.
+        expect(screen.getByText('Other Folder')).toBeInTheDocument()
+      })
+      // Descendant (child-folder) must be excluded from the options.
+      // child-folder does not appear anywhere else on the page, so absence
+      // from the DOM confirms it was filtered out of the combobox items.
+      expect(screen.queryByText('Child Folder')).not.toBeInTheDocument()
+    })
+
+    it('excludes folders that would exceed max folder depth', async () => {
+      // Hierarchy: org -> level1 -> level2 -> level3
+      // Moving test-folder (which has child-folder, subtreeDepth=2) under
+      // level2 would produce depth 2+2=4 > maxFolderDepth(3). So level2
+      // must be excluded. level1 (depth 1+2=3) is allowed.
+      const deepFolders = [
+        { name: 'test-folder', displayName: 'Test Folder', parentType: 1, parentName: 'test-org' },
+        { name: 'child-folder', displayName: 'Child Folder', parentType: 2, parentName: 'test-folder' },
+        { name: 'level1', displayName: 'Level 1', parentType: 1, parentName: 'test-org' },
+        { name: 'level2', displayName: 'Level 2', parentType: 2, parentName: 'level1' },
+        { name: 'level3', displayName: 'Level 3', parentType: 2, parentName: 'level2' },
+      ]
+      setupMocks({ folders: deepFolders })
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      fireEvent.click(screen.getByRole('button', { name: /change parent/i }))
+      fireEvent.click(screen.getByRole('combobox', { name: /parent picker/i }))
+      await waitFor(() => {
+        // level1 (depth=1) is valid: 1+2=3 <= 3
+        expect(screen.getByText('Level 1')).toBeInTheDocument()
+        // level2 (depth=2) is invalid: 2+2=4 > 3
+        expect(screen.queryByText('Level 2')).not.toBeInTheDocument()
+        // level3 is a descendant of level2, excluded by depth (3+2=5 > 3)
+        expect(screen.queryByText('Level 3')).not.toBeInTheDocument()
+      })
     })
   })
 })
