@@ -49,7 +49,7 @@ vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
 
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useRenderTemplate, useListLinkableTemplates } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useRenderTemplate, useListLinkableTemplates, useCheckUpdates } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -767,6 +767,70 @@ describe('DeploymentTemplateDetailPage', () => {
       render(<DeploymentTemplateDetailPage />)
       expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
       expect(screen.getByText(/none linked/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('version status indicator', () => {
+    const mockLinkable = [
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
+      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
+    ]
+
+    it('shows green check icon when current version equals latest version', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      ;(useCheckUpdates as Mock).mockReturnValue({
+        data: [
+          { ref: { scope: 1, scopeName: 'acme', name: 'httproute' }, currentVersion: '2.1.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
+        ],
+        isPending: false,
+        error: null,
+      })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme', versionConstraint: '^2.0.0' }] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByLabelText('Up to date')).toBeInTheDocument()
+      expect(screen.getByText('v2.1.0')).toBeInTheDocument()
+    })
+
+    it('shows amber update icon when current version is behind latest', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      ;(useCheckUpdates as Mock).mockReturnValue({
+        data: [
+          { ref: { scope: 1, scopeName: 'acme', name: 'httproute' }, currentVersion: '2.0.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
+        ],
+        isPending: false,
+        error: null,
+      })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme', versionConstraint: '^2.0.0' }] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByLabelText('Update available')).toBeInTheDocument()
+      expect(screen.getByText('v2.0.0')).toBeInTheDocument()
+    })
+
+    it('shows unversioned indicator for templates with no releases', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      ;(useCheckUpdates as Mock).mockReturnValue({
+        data: [
+          { ref: { scope: 2, scopeName: 'platform', name: 'no-releases' }, currentVersion: '', latestVersion: '', latestCompatibleVersion: '', breakingUpdateAvailable: false },
+        ],
+        isPending: false,
+        error: null,
+      })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'no-releases', scope: 2, scopeName: 'platform' }] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByText('unversioned')).toBeInTheDocument()
+    })
+
+    it('passes includeCurrent: true to useCheckUpdates', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      render(<DeploymentTemplateDetailPage />)
+      // useCheckUpdates should be called with scope, templateName, and options including includeCurrent
+      expect(useCheckUpdates as Mock).toHaveBeenCalledWith(
+        expect.anything(), // scope
+        expect.any(String), // templateName
+        expect.objectContaining({ includeCurrent: true }),
+      )
     })
   })
 })

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Pencil, Copy, Lock, ArrowUpCircle } from 'lucide-react'
+import { Pencil, Copy, Lock, ArrowUpCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,7 +74,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   // Check for available updates on this template's linked templates.
-  const { data: templateUpdates = [] } = useCheckUpdates(scope, templateName)
+  // Pass includeCurrent so the response includes version info for all linked
+  // templates (not just those with pending updates), enabling the version
+  // status indicator on each pill badge.
+  const { data: templateUpdates = [] } = useCheckUpdates(scope, templateName, { includeCurrent: true })
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -277,30 +280,65 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
                             const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
-                            // Look up the version constraint from the template's linkedTemplates.
-                            const linkedRef = (template?.linkedTemplates ?? []).find(
-                              (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
+                            // Look up version status from the check-updates response.
+                            const updateEntry = templateUpdates.find(
+                              (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
                             )
-                            const constraint = linkedRef?.versionConstraint
+                            const currentVersion = updateEntry?.currentVersion
+                            const latestVersion = updateEntry?.latestVersion
+                            const isUpToDate = !!currentVersion && currentVersion === latestVersion
+                            const hasUpdate = !!currentVersion && !!latestVersion && currentVersion !== latestVersion
+                            const isUnversioned = updateEntry && !currentVersion && !latestVersion
                             return (
                               <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
                                 {t.displayName || t.name}
                                 {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
-                                {constraint && <span className="text-xs font-mono text-muted-foreground">{constraint}</span>}
+                                {currentVersion && <span className="text-xs font-mono text-muted-foreground">v{currentVersion}</span>}
+                                {isUpToDate && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <CheckCircle2 className="h-3 w-3 text-green-500" aria-label="Up to date" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Up to date &mdash; v{currentVersion}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                {hasUpdate && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <ArrowUpCircle className="h-3 w-3 text-amber-500" aria-label="Update available" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Update available: v{currentVersion} &rarr; v{latestVersion}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                {isUnversioned && <span className="text-xs text-muted-foreground italic">unversioned</span>}
                                 {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
                               </span>
                             )
                           })}
                         </div>
-                        {templateUpdates.length > 0 && (
-                          <button
-                            onClick={() => setUpgradeOpen(true)}
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit"
-                          >
-                            <ArrowUpCircle className="h-3 w-3" />
-                            {templateUpdates.length === 1 ? '1 update available' : `${templateUpdates.length} updates available`}
-                          </button>
-                        )}
+                        {(() => {
+                          const pendingUpdates = templateUpdates.filter(
+                            (u) => !!u.currentVersion && !!u.latestVersion && u.currentVersion !== u.latestVersion
+                          )
+                          if (pendingUpdates.length === 0) return null
+                          return (
+                            <button
+                              onClick={() => setUpgradeOpen(true)}
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit"
+                            >
+                              <ArrowUpCircle className="h-3 w-3" />
+                              {pendingUpdates.length === 1 ? '1 update available' : `${pendingUpdates.length} updates available`}
+                            </button>
+                          )
+                        })()}
                       </div>
                     )
                   })()}
@@ -571,7 +609,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
       <UpgradeDialog
         open={upgradeOpen}
         onOpenChange={setUpgradeOpen}
-        updates={templateUpdates}
+        updates={templateUpdates.filter(
+          (u) => !!u.currentVersion && !!u.latestVersion && u.currentVersion !== u.latestVersion
+        )}
         scope={scope}
         templateName={templateName}
         linkedTemplates={template?.linkedTemplates ?? []}
