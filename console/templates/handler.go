@@ -512,9 +512,8 @@ func (h *Handler) RenderTemplate(
 // scopes (org + folders) and delegates to the appropriate renderer method.
 // When the ancestor walker is configured, it walks the full hierarchy to
 // collect sources from every ancestor namespace using the render set formula.
-// When only org-scoped refs are present and no walker is configured, it falls
-// back to the org-only ListOrgTemplateSourcesForRender for backwards
-// compatibility.
+// When no walker is configured, it falls back to org-scope-only resolution
+// via ListOrgTemplateSourcesForRender.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
 	if h.k8s == nil {
 		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)

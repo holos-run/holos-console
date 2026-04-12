@@ -65,11 +65,6 @@ type Renderer interface {
 	RenderGroupedWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error)
 }
 
-// OrgProvider resolves the organization for a project.
-type OrgProvider interface {
-	GetProjectOrg(ctx context.Context, project string) (string, error)
-}
-
 // AncestorWalker resolves the folder ancestry for a project namespace.
 // It returns the list of folder user-facing names from the organization down
 // to (but not including) the project (i.e. org → folder1 → folder2 → project
@@ -77,18 +72,6 @@ type OrgProvider interface {
 // populate PlatformInput.Folders so CUE templates can reference platform.folders.
 type AncestorWalker interface {
 	GetProjectFolders(ctx context.Context, project string) ([]string, error)
-}
-
-// OrgTemplateProvider resolves platform template CUE sources for render (ADR 019).
-// The effective set at render time is:
-//
-//	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
-//
-// Disabled templates are never included even when explicitly listed.
-// Linked refs carry version constraints; the provider uses them to resolve
-// versioned release sources via ResolveVersionedSource (ADR 024).
-type OrgTemplateProvider interface {
-	ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
 }
 
 // AncestorTemplateProvider resolves platform template CUE sources from the
@@ -117,8 +100,6 @@ type Handler struct {
 	renderer                 Renderer
 	applier                  ResourceApplier
 	logReader                LogReader
-	orgProvider              OrgProvider
-	orgTemplateProvider      OrgTemplateProvider
 	ancestorWalker           AncestorWalker
 	ancestorTemplateProvider AncestorTemplateProvider
 }
@@ -135,20 +116,6 @@ func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolve
 	}
 }
 
-// WithOrgProvider configures the handler with an OrgProvider for resolving
-// the organization a project belongs to. Required for platform template unification.
-func (h *Handler) WithOrgProvider(op OrgProvider) *Handler {
-	h.orgProvider = op
-	return h
-}
-
-// WithOrgTemplateProvider configures the handler with a OrgTemplateProvider
-// for loading enabled platform templates at render time.
-func (h *Handler) WithOrgTemplateProvider(stp OrgTemplateProvider) *Handler {
-	h.orgTemplateProvider = stp
-	return h
-}
-
 // WithAncestorWalker configures the handler with an AncestorWalker for
 // resolving folder ancestry. When set, PlatformInput.Folders is populated
 // so CUE templates can reference platform.folders.
@@ -159,9 +126,7 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 
 // WithAncestorTemplateProvider configures the handler with an
 // AncestorTemplateProvider for resolving platform template CUE sources from
-// the full ancestor chain (org + folders) at render time. When set,
-// renderResources and renderResourcesGrouped prefer ancestor-walking
-// resolution over org-only resolution.
+// the full ancestor chain (org + folders) at render time.
 func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Handler {
 	h.ancestorTemplateProvider = atp
 	return h
@@ -169,8 +134,8 @@ func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Ha
 
 // resolveAncestorTemplateSources resolves platform template CUE sources from
 // the full ancestor chain when an AncestorTemplateProvider is configured.
-// Returns (sources, true) on success, or (nil, false) to signal the caller
-// should fall back to org-only resolution.
+// Returns (sources, true) on success, or (nil, false) when no provider is
+// configured or the walk fails.
 func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
 	if h.ancestorTemplateProvider == nil {
 		return nil, false
@@ -178,7 +143,7 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
 	sources, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, linkedRefs)
 	if err != nil {
-		slog.WarnContext(ctx, "ancestor template resolution failed, falling back to org-only",
+		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
 			slog.Any("error", err),
 		)
@@ -188,9 +153,8 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 }
 
 // renderResources renders deployment resources, unifying with platform
-// templates from the ancestor chain (org + folders) when an
-// AncestorTemplateProvider is configured, or from org-only when only an
-// OrgTemplateProvider is available.
+// templates from the full ancestor chain (org + folders) when an
+// AncestorTemplateProvider is configured.
 //
 // linkedRefs contains the explicit linking list from the deployment template
 // annotation (console.holos.run/linked-templates). Each ref carries a version
@@ -198,10 +162,9 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 // The effective template set at render time is the union of mandatory+enabled
 // templates and the explicitly linked enabled templates (ADR 019).
 //
-// If neither OrgProvider nor OrgTemplateProvider is configured, falls back to
-// Render (deployment template only, no platform template unification).
+// When no AncestorTemplateProvider is configured, falls back to Render
+// (deployment template only, no platform template unification).
 func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	// Prefer ancestor-walking resolution when available.
 	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
 		if len(sources) > 0 {
 			return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
@@ -209,42 +172,14 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	// Fallback: org-only resolution.
-	if h.orgProvider == nil || h.orgTemplateProvider == nil {
-		return h.renderer.Render(ctx, cueSource, platform, projectInput)
-	}
-
-	org, err := h.orgProvider.GetProjectOrg(ctx, project)
-	if err != nil {
-		slog.WarnContext(ctx, "could not resolve org for project, skipping platform template unification",
-			slog.String("project", project),
-			slog.Any("error", err),
-		)
-		return h.renderer.Render(ctx, cueSource, platform, projectInput)
-	}
-	if org == "" {
-		// Project is not associated with an org; no platform templates apply.
-		return h.renderer.Render(ctx, cueSource, platform, projectInput)
-	}
-
-	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)
-	if err != nil {
-		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
-			slog.String("project", project),
-			slog.String("org", org),
-			slog.Any("error", err),
-		)
-		return h.renderer.Render(ctx, cueSource, platform, projectInput)
-	}
-
-	return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
+	// No AncestorTemplateProvider configured; render without platform templates.
+	return h.renderer.Render(ctx, cueSource, platform, projectInput)
 }
 
 // renderResourcesGrouped mirrors renderResources but returns resources grouped
 // by origin (platform vs project). Used by GetDeploymentRenderPreview to populate
 // the per-collection response fields.
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
-	// Prefer ancestor-walking resolution when available.
 	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
 		if len(sources) > 0 {
 			return h.renderer.RenderGroupedWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
@@ -252,34 +187,8 @@ func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource
 		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
 	}
 
-	// Fallback: org-only resolution.
-	if h.orgProvider == nil || h.orgTemplateProvider == nil {
-		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
-	}
-
-	org, err := h.orgProvider.GetProjectOrg(ctx, project)
-	if err != nil {
-		slog.WarnContext(ctx, "could not resolve org for project, skipping platform template unification",
-			slog.String("project", project),
-			slog.Any("error", err),
-		)
-		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
-	}
-	if org == "" {
-		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
-	}
-
-	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)
-	if err != nil {
-		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
-			slog.String("project", project),
-			slog.String("org", org),
-			slog.Any("error", err),
-		)
-		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
-	}
-
-	return h.renderer.RenderGroupedWithAncestorTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
+	// No AncestorTemplateProvider configured; render without platform templates.
+	return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.

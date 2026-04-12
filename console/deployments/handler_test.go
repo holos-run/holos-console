@@ -1225,16 +1225,12 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to org provider when ancestor provider not configured", func(t *testing.T) {
+	t.Run("falls back to plain render when no ancestor provider configured", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
 		renderer := &trackingDeploymentRenderer{}
-		orgProvider := &stubOrgProvider{org: "acme"}
-		orgTemplateProvider := &stubOrgTemplateProvider{sources: []string{"// org template"}}
 
-		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
-			WithOrgProvider(orgProvider).
-			WithOrgTemplateProvider(orgTemplateProvider)
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil)
 
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
@@ -1243,22 +1239,18 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !renderer.calledRenderWithAncestor {
-			t.Error("expected RenderWithAncestorTemplates to be called via org fallback")
+		if !renderer.calledRender {
+			t.Error("expected plain Render to be called when no ancestor provider configured")
 		}
 	})
 
-	t.Run("ancestor provider error falls back to org provider", func(t *testing.T) {
+	t.Run("ancestor provider error falls back to plain render", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		k8s := NewK8sClient(fakeClient, testResolver())
 		renderer := &trackingDeploymentRenderer{}
 		atp := &stubAncestorTemplateProvider{err: fmt.Errorf("walk failed")}
-		orgProvider := &stubOrgProvider{org: "acme"}
-		orgTemplateProvider := &stubOrgTemplateProvider{sources: []string{"// org template"}}
 
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
-			WithOrgProvider(orgProvider).
-			WithOrgTemplateProvider(orgTemplateProvider).
 			WithAncestorTemplateProvider(atp)
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -1271,9 +1263,9 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		if !atp.called {
 			t.Error("expected ancestor provider to be called first")
 		}
-		// Should fall back to org provider.
-		if !renderer.calledRenderWithAncestor {
-			t.Error("expected RenderWithAncestorTemplates to be called via org fallback")
+		// Should fall back to plain render without platform templates.
+		if !renderer.calledRender {
+			t.Error("expected plain Render to be called after ancestor provider error")
 		}
 	})
 }
@@ -1325,22 +1317,3 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 	})
 }
 
-// stubOrgProvider implements OrgProvider for tests.
-type stubOrgProvider struct {
-	org string
-	err error
-}
-
-func (s *stubOrgProvider) GetProjectOrg(_ context.Context, _ string) (string, error) {
-	return s.org, s.err
-}
-
-// stubOrgTemplateProvider implements OrgTemplateProvider for tests.
-type stubOrgTemplateProvider struct {
-	sources []string
-	err     error
-}
-
-func (s *stubOrgTemplateProvider) ListOrgTemplateSourcesForRender(_ context.Context, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
-	return s.sources, s.err
-}

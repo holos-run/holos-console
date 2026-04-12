@@ -3,7 +3,7 @@
 **When adding new fields that affect which platform templates are included in a render**, ensure:
 
 1. The linking list is read from the `console.holos.run/linked-templates` annotation on the deployment template ConfigMap (JSON array of `{scope, scope_name, name, version_constraint}` objects -- v1alpha2 format). The `version_constraint` field is optional.
-2. When an `AncestorTemplateProvider` (or the template handler's `AncestorWalker`) is configured, `ListAncestorTemplateSourcesForRender` walks the full ancestor chain (org + folders) to resolve templates from all ancestor scopes. The deployments handler falls back to `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)` when the ancestor provider is not configured.
+2. The deployments handler resolves templates via `AncestorTemplateProvider.ListAncestorTemplateSources` which walks the full ancestor chain (org + folders) to resolve templates from all ancestor scopes. The template handler's `renderTemplateGrouped` falls back to `ListOrgTemplateSourcesForRender` (org-scope only) when the ancestor walker is not configured.
 3. `docs/cue-template-guide.md` "Linking Platform Templates" section and the render set formula remain accurate.
 
 When adding new fields that affect template linking, update `docs/cue-template-guide.md` and the AGENTS.md context map.
