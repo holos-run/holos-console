@@ -856,13 +856,20 @@ func (m *mockOrgResolver) GetOrgGrants(_ context.Context, _ string) (map[string]
 }
 
 func newHandlerWithOrg(orgResolver OrgResolver, namespaces ...*corev1.Namespace) *Handler {
+	handler, _ := newHandlerWithOrgAndClient(orgResolver, namespaces...)
+	return handler
+}
+
+// newHandlerWithOrgAndClient creates a handler and returns the fake K8s
+// clientset so tests can inspect the actions taken.
+func newHandlerWithOrgAndClient(orgResolver OrgResolver, namespaces ...*corev1.Namespace) (*Handler, *fake.Clientset) {
 	objs := make([]runtime.Object, len(namespaces))
 	for i, ns := range namespaces {
 		objs[i] = ns
 	}
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
-	return NewHandler(k8s, orgResolver)
+	return NewHandler(k8s, orgResolver), fakeClient
 }
 
 // managedNSWithOrg creates a managed project namespace associated with an org.
@@ -1582,6 +1589,42 @@ func TestUpdateProject_Reparent_SameParentIsNoop(t *testing.T) {
 	}))
 	if err != nil {
 		t.Fatalf("expected no error (no-op), got %v", err)
+	}
+}
+
+func TestUpdateProject_Reparent_SameParentSkipsK8sWrite(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	folder := folderNSWithGrants("rp-prj-noop2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	prj := projectNSWithParent("rp-prj-noop2-test", "acme", "holos-fld-rp-prj-noop2", `[{"principal":"alice@example.com","role":"editor"}]`)
+
+	handler, fakeClient := newHandlerWithOrgAndClient(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, folder, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	// Record action count before the call.
+	beforeActions := len(fakeClient.Actions())
+
+	// Move to same parent with no metadata changes.
+	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
+	newParentName := "rp-prj-noop2"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-noop2-test",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify no update actions were issued after the initial get.
+	afterActions := fakeClient.Actions()
+	for _, action := range afterActions[beforeActions:] {
+		if action.GetVerb() == "update" {
+			t.Fatalf("expected no K8s update for same-parent reparent with no metadata changes, but got update action on %s", action.GetResource().Resource)
+		}
 	}
 }
 

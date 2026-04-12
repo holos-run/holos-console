@@ -36,6 +36,13 @@ func contextWithClaims(email string, groups ...string) context.Context {
 
 // newTestHandler creates a handler with a fake K8s client pre-populated with namespaces.
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
+	handler, _ := newTestHandlerWithClient(namespaces...)
+	return handler
+}
+
+// newTestHandlerWithClient creates a handler and returns the fake K8s clientset
+// so tests can inspect the actions taken.
+func newTestHandlerWithClient(namespaces ...*corev1.Namespace) (*Handler, *fake.Clientset) {
 	objs := make([]runtime.Object, len(namespaces))
 	for i, ns := range namespaces {
 		objs[i] = ns
@@ -43,7 +50,7 @@ func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
 	fakeClient := fake.NewClientset(objs...)
 	k8s := NewK8sClient(fakeClient, testResolver())
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	return NewHandler(k8s)
+	return NewHandler(k8s), fakeClient
 }
 
 // folderNSWithGrants creates a folder namespace with share-users annotation.
@@ -902,6 +909,36 @@ func TestUpdateFolder_Reparent_SameParentIsNoop(t *testing.T) {
 	}))
 	if err != nil {
 		t.Fatalf("expected no error (no-op), got %v", err)
+	}
+}
+
+func TestUpdateFolder_Reparent_SameParentSkipsK8sWrite(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	f := folderNSWithGrants("rp-noop-2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	handler, fakeClient := newTestHandlerWithClient(orgNs, f)
+	ctx := contextWithClaims("alice@example.com")
+
+	// Record action count before the call.
+	beforeActions := len(fakeClient.Actions())
+
+	// Move to same parent with no metadata changes.
+	newParentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	newParentName := "acme"
+	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
+		Name:       "rp-noop-2",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify no update actions were issued after the initial get.
+	afterActions := fakeClient.Actions()
+	for _, action := range afterActions[beforeActions:] {
+		if action.GetVerb() == "update" {
+			t.Fatalf("expected no K8s update for same-parent reparent with no metadata changes, but got update action on %s", action.GetResource().Resource)
+		}
 	}
 }
 

@@ -373,8 +373,12 @@ func (h *Handler) UpdateProject(
 		}
 	}
 
-	if _, err := h.k8s.UpdateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
-		return nil, mapK8sError(err)
+	// Only issue a K8s write when metadata fields are provided; skip when the
+	// request is a reparent-only operation (or a no-op same-parent reparent).
+	if req.Msg.DisplayName != nil || req.Msg.Description != nil {
+		if _, err := h.k8s.UpdateProject(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
+			return nil, mapK8sError(err)
+		}
 	}
 
 	slog.InfoContext(ctx, "project updated",
