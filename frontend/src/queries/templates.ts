@@ -7,12 +7,13 @@ import {
   TemplateService,
   TemplateScopeRefSchema,
   TemplateScope,
+  ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef } from '@/gen/holos/console/v1/templates_pb.js'
+import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release } from '@/gen/holos/console/v1/templates_pb.js'
 import { useAuth } from '@/lib/auth'
 
 // Re-export types used by consumers.
-export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef }
+export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release }
 export { TemplateScope }
 
 // makeScope is a helper to build a TemplateScopeRef from scope and scopeName.
@@ -176,6 +177,74 @@ export function useListLinkableTemplates(scope: TemplateScopeRef) {
       return response.templates
     },
     enabled: isAuthenticated && !!scope.scopeName,
+  })
+}
+
+// --- Release hooks ---
+
+function releaseListKey(scope: TemplateScopeRef, templateName: string) {
+  return ['releases', 'list', scope.scope, scope.scopeName, templateName] as const
+}
+
+function releaseGetKey(scope: TemplateScopeRef, templateName: string, version: string) {
+  return ['releases', 'get', scope.scope, scope.scopeName, templateName, version] as const
+}
+
+export function useListReleases(scope: TemplateScopeRef, templateName: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: releaseListKey(scope, templateName),
+    queryFn: async () => {
+      const response = await client.listReleases({ scope, templateName })
+      return response.releases
+    },
+    enabled: isAuthenticated && !!scope.scopeName && !!templateName,
+  })
+}
+
+export function useGetRelease(scope: TemplateScopeRef, templateName: string, version: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: releaseGetKey(scope, templateName, version),
+    queryFn: async () => {
+      const response = await client.getRelease({ scope, templateName, version })
+      return response.release
+    },
+    enabled: isAuthenticated && !!scope.scopeName && !!templateName && !!version,
+  })
+}
+
+export function useCreateRelease(scope: TemplateScopeRef, templateName: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      version: string
+      changelog: string
+      upgradeAdvice?: string
+      cueTemplate: string
+      defaults?: Release['defaults']
+    }) =>
+      client.createRelease({
+        scope,
+        release: create(ReleaseSchema, {
+          templateName,
+          scopeRef: scope,
+          version: params.version,
+          changelog: params.changelog,
+          upgradeAdvice: params.upgradeAdvice ?? '',
+          cueTemplate: params.cueTemplate,
+          defaults: params.defaults,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: releaseListKey(scope, templateName) })
+    },
   })
 }
 
