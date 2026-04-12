@@ -174,6 +174,10 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
               {orgName}
             </Link>
             {' / '}
+            <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+              Settings
+            </Link>
+            {' / '}
             <Link
               to="/orgs/$orgName/settings/org-templates"
               params={{ orgName }}
@@ -181,7 +185,7 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
             >
               Platform Templates
             </Link>
-            {' / New'}
+            {' / Create'}
           </p>
           <CardTitle className="mt-1">Create Platform Template</CardTitle>
         </div>

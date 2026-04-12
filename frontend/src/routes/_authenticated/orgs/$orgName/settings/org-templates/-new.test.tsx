@@ -170,8 +170,9 @@ describe('CreateOrgTemplatePage', () => {
 
   it('renders breadcrumb navigation', () => {
     render(<CreateOrgTemplatePage orgName="test-org" />)
-    expect(screen.getByText('Platform Templates')).toBeInTheDocument()
     expect(screen.getByText('test-org')).toBeInTheDocument()
+    expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText('Platform Templates')).toBeInTheDocument()
   })
 
   describe('Load httpbin Example button', () => {
