@@ -347,6 +347,115 @@ func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string,
 	return sources, nil
 }
 
+// RenderHierarchyWalker walks the namespace hierarchy for render-time ancestor
+// template resolution. This mirrors HierarchyWalker from apply.go but is
+// defined here to avoid coupling the render path to the apply path.
+type RenderHierarchyWalker interface {
+	WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error)
+}
+
+// ListAncestorTemplateSourcesForRender walks the ancestor chain from the given
+// project namespace and collects CUE sources from all ancestor scopes (folders
+// and org) using the render set formula:
+//
+//	(mandatory AND enabled) UNION (enabled AND ref IN linkedRefs)
+//
+// at each ancestor namespace. For linked templates with a version constraint,
+// the CUE source is resolved from the latest matching release via
+// ResolveVersionedSource. Disabled templates are never included.
+//
+// If the walker fails, the method degrades gracefully by returning an empty
+// source list (no error).
+func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef, walker RenderHierarchyWalker) ([]string, error) {
+	if walker == nil {
+		return nil, nil
+	}
+
+	ancestors, err := walker.WalkAncestors(ctx, projectNs)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to walk ancestor chain for render, returning empty sources",
+			slog.String("projectNs", projectNs),
+			slog.Any("error", err),
+		)
+		return nil, nil
+	}
+
+	// Build a lookup from (scope, scopeName, name) -> linked ref for O(1) checks.
+	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(linkedRefs))
+	for _, ref := range linkedRefs {
+		if ref == nil {
+			continue
+		}
+		linkedByKey[linkedRefFromProto(ref)] = ref
+	}
+
+	// Walk ancestors: skip the project namespace itself (ancestors[0]) since we
+	// only collect from org and folder ancestors.
+	var allSources []string
+	seen := make(map[string]bool)
+	for i := 1; i < len(ancestors); i++ {
+		ns := ancestors[i]
+		cms, listErr := k.ListTemplatesInNamespace(ctx, ns.Name)
+		if listErr != nil {
+			slog.WarnContext(ctx, "failed to list templates in ancestor namespace, skipping",
+				slog.String("namespace", ns.Name),
+				slog.Any("error", listErr),
+			)
+			continue
+		}
+
+		for _, cm := range cms {
+			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+			if !enabled {
+				continue
+			}
+
+			// Determine the scope for this template.
+			scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
+			scopeName := scopeNameFromNs(k.Resolver, ns.Name, scopeLabel)
+			ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
+			protoRef, isLinked := linkedByKey[ref]
+
+			include := mandatory || isLinked
+			if !include {
+				continue
+			}
+
+			dedupeKey := scopeLabel + "/" + scopeName + "/" + cm.Name
+			if seen[dedupeKey] {
+				continue
+			}
+			seen[dedupeKey] = true
+
+			// For linked templates, resolve versioned source (ADR 024).
+			if isLinked {
+				scope := scopeFromLabel(scopeLabel)
+				src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, cm.Name, protoRef.GetVersionConstraint())
+				if resolveErr != nil {
+					slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
+						slog.String("template", cm.Name),
+						slog.String("namespace", ns.Name),
+						slog.Any("error", resolveErr),
+					)
+					// Fall through to live ConfigMap below.
+				} else if src != "" {
+					allSources = append(allSources, src)
+					continue
+				}
+			}
+
+			// Mandatory templates and fallback: use the live ConfigMap CUE source.
+			src := cm.Data[CueTemplateKey]
+			if src != "" {
+				allSources = append(allSources, src)
+			}
+		}
+	}
+
+	return allSources, nil
+}
+
 // ListOrgTemplateSourcesForRender satisfies the deployments.OrgTemplateProvider
 // interface. It returns CUE sources for the effective set of organization-scope
 // templates using the render set formula:
@@ -881,4 +990,24 @@ func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScop
 		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, name
 	}
 	return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, ""
+}
+
+// AncestorTemplateResolver adapts K8sClient + a walker into a single-method
+// interface suitable for the deployments package (which cannot import templates
+// directly due to the avoid-import-cycle convention). The walker is closed over
+// at construction time so the caller only needs to pass project namespace and
+// linked refs.
+type AncestorTemplateResolver struct {
+	k8s    *K8sClient
+	walker RenderHierarchyWalker
+}
+
+// NewAncestorTemplateResolver creates an AncestorTemplateResolver.
+func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker) *AncestorTemplateResolver {
+	return &AncestorTemplateResolver{k8s: k8s, walker: walker}
+}
+
+// ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
+func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
+	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, linkedRefs, a.walker)
 }

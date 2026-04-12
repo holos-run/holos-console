@@ -627,3 +627,248 @@ func TestUpdateTemplateMalformedLinkedAnnotation(t *testing.T) {
 		t.Errorf("expected code %v, got %v: %v", connect.CodeInternal, connect.CodeOf(err), err)
 	}
 }
+
+// trackingRenderer records which renderer method was called so tests can
+// verify that renderTemplateGrouped dispatches correctly.
+type trackingRenderer struct {
+	stubRenderer
+	calledGrouped            bool
+	calledGroupedWithSources bool
+	lastTemplateSources      []string
+}
+
+func (r *trackingRenderer) RenderGrouped(_ context.Context, _ string, _ string, _ string) (*GroupedRenderResources, error) {
+	r.calledGrouped = true
+	return &GroupedRenderResources{Project: r.resources}, r.err
+}
+
+func (r *trackingRenderer) RenderGroupedWithTemplateSources(_ context.Context, _ string, sources []string, _ string, _ string) (*GroupedRenderResources, error) {
+	r.calledGroupedWithSources = true
+	r.lastTemplateSources = sources
+	return &GroupedRenderResources{Project: r.resources}, r.err
+}
+
+// TestRenderTemplateGroupedFolderScoped verifies that renderTemplateGrouped
+// resolves folder-scoped linked template refs when a walker is configured.
+func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
+	const org = "acme"
+	const folder = "payments"
+	const project = "my-project"
+
+	t.Run("folder-only linked refs uses ancestor walking", func(t *testing.T) {
+		orgNsObj := orgNS(org)
+		fldNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+					v1alpha2.LabelFolder:       folder,
+				},
+			},
+		}
+		prjNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "prj-" + project,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.LabelProject:      project,
+				},
+			},
+		}
+
+		folderCue := "// folder payments policy"
+		fldCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "payments-policy",
+				Namespace: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationDisplayName: "Payments Policy",
+					v1alpha2.AnnotationMandatory:   "false",
+					v1alpha2.AnnotationEnabled:     "true",
+				},
+			},
+			Data: map[string]string{CueTemplateKey: folderCue},
+		}
+
+		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
+		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+		k8s := NewK8sClient(fakeClient, r)
+		renderer := &trackingRenderer{}
+		walker := &stubAncestorWalker{
+			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
+		}
+
+		handler := NewHandler(k8s, r, renderer)
+		handler.WithAncestorWalker(walker)
+
+		msg := &consolev1.RenderTemplateRequest{
+			Scope:       projectScopeRef(project),
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				folderLinkedRef(folder, "payments-policy"),
+			},
+		}
+
+		_, err := handler.renderTemplateGrouped(context.Background(), msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !renderer.calledGroupedWithSources {
+			t.Error("expected RenderGroupedWithTemplateSources to be called")
+		}
+		if len(renderer.lastTemplateSources) != 1 {
+			t.Fatalf("expected 1 template source, got %d", len(renderer.lastTemplateSources))
+		}
+		if renderer.lastTemplateSources[0] != folderCue {
+			t.Errorf("expected source %q, got %q", folderCue, renderer.lastTemplateSources[0])
+		}
+	})
+
+	t.Run("mixed org+folder linked refs resolves from all scopes", func(t *testing.T) {
+		orgNsObj := orgNS(org)
+		fldNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+					v1alpha2.LabelFolder:       folder,
+				},
+			},
+		}
+		prjNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "prj-" + project,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.LabelProject:      project,
+				},
+			},
+		}
+
+		orgCue := "// org httproute"
+		orgCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "httproute",
+				Namespace: "org-" + org,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationMandatory: "false",
+					v1alpha2.AnnotationEnabled:   "true",
+				},
+			},
+			Data: map[string]string{CueTemplateKey: orgCue},
+		}
+
+		folderCue := "// folder payments policy"
+		fldCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "payments-policy",
+				Namespace: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationMandatory: "false",
+					v1alpha2.AnnotationEnabled:   "true",
+				},
+			},
+			Data: map[string]string{CueTemplateKey: folderCue},
+		}
+
+		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
+		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+		k8s := NewK8sClient(fakeClient, r)
+		renderer := &trackingRenderer{}
+		walker := &stubAncestorWalker{
+			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
+		}
+
+		handler := NewHandler(k8s, r, renderer)
+		handler.WithAncestorWalker(walker)
+
+		msg := &consolev1.RenderTemplateRequest{
+			Scope:       projectScopeRef(project),
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef(org, "httproute"),
+				folderLinkedRef(folder, "payments-policy"),
+			},
+		}
+
+		_, err := handler.renderTemplateGrouped(context.Background(), msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !renderer.calledGroupedWithSources {
+			t.Error("expected RenderGroupedWithTemplateSources to be called")
+		}
+		if len(renderer.lastTemplateSources) != 2 {
+			t.Fatalf("expected 2 template sources, got %d", len(renderer.lastTemplateSources))
+		}
+	})
+
+	t.Run("falls back to org-only when no walker configured", func(t *testing.T) {
+		orgNsObj := orgNS(org)
+		prjNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "prj-" + project,
+			},
+		}
+
+		orgCue := "// org httproute"
+		orgCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "httproute",
+				Namespace: "org-" + org,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationMandatory: "false",
+					v1alpha2.AnnotationEnabled:   "true",
+				},
+			},
+			Data: map[string]string{CueTemplateKey: orgCue},
+		}
+
+		fakeClient := fake.NewClientset(orgNsObj, prjNsObj, orgCM)
+		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+		k8s := NewK8sClient(fakeClient, r)
+		renderer := &trackingRenderer{}
+		// No walker configured.
+		handler := NewHandler(k8s, r, renderer)
+
+		msg := &consolev1.RenderTemplateRequest{
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef(org, "httproute"),
+			},
+		}
+
+		_, err := handler.renderTemplateGrouped(context.Background(), msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Should use org-only fallback.
+		if !renderer.calledGroupedWithSources {
+			t.Error("expected RenderGroupedWithTemplateSources to be called via org fallback")
+		}
+	})
+}

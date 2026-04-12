@@ -1144,3 +1144,203 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 		}
 	})
 }
+
+// stubAncestorTemplateProvider implements AncestorTemplateProvider for tests.
+type stubAncestorTemplateProvider struct {
+	sources []string
+	err     error
+	called  bool
+}
+
+func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
+	s.called = true
+	return s.sources, s.err
+}
+
+// trackingDeploymentRenderer extends stubRenderer to track which method was called.
+type trackingDeploymentRenderer struct {
+	stubRenderer
+	calledRender                    bool
+	calledRenderWithAncestor        bool
+	calledRenderGrouped             bool
+	calledRenderGroupedWithAncestor bool
+	lastAncestorSources             []string
+}
+
+func (r *trackingDeploymentRenderer) Render(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	r.calledRender = true
+	r.lastPlatform = platform
+	r.lastProject = project
+	return r.resources, r.err
+}
+
+func (r *trackingDeploymentRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, sources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	r.calledRenderWithAncestor = true
+	r.lastAncestorSources = sources
+	r.lastPlatform = platform
+	r.lastProject = project
+	return r.resources, r.err
+}
+
+func (r *trackingDeploymentRenderer) RenderGrouped(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	r.calledRenderGrouped = true
+	r.lastPlatform = platform
+	r.lastProject = project
+	return &GroupedResources{Project: r.resources}, r.err
+}
+
+func (r *trackingDeploymentRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, sources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	r.calledRenderGroupedWithAncestor = true
+	r.lastAncestorSources = sources
+	r.lastPlatform = platform
+	r.lastProject = project
+	return &GroupedResources{Project: r.resources}, r.err
+}
+
+func TestRenderResourcesWithAncestorProvider(t *testing.T) {
+	t.Run("prefers ancestor provider when configured", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		renderer := &trackingDeploymentRenderer{}
+		atp := &stubAncestorTemplateProvider{sources: []string{"// folder template"}}
+
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
+			WithAncestorTemplateProvider(atp)
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+		}
+		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !atp.called {
+			t.Error("expected ancestor provider to be called")
+		}
+		if !renderer.calledRenderWithAncestor {
+			t.Error("expected RenderWithAncestorTemplates to be called")
+		}
+		if len(renderer.lastAncestorSources) != 1 {
+			t.Fatalf("expected 1 ancestor source, got %d", len(renderer.lastAncestorSources))
+		}
+	})
+
+	t.Run("falls back to org provider when ancestor provider not configured", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		renderer := &trackingDeploymentRenderer{}
+		orgProvider := &stubOrgProvider{org: "acme"}
+		orgTemplateProvider := &stubOrgTemplateProvider{sources: []string{"// org template"}}
+
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
+			WithOrgProvider(orgProvider).
+			WithOrgTemplateProvider(orgTemplateProvider)
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+		}
+		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !renderer.calledRenderWithAncestor {
+			t.Error("expected RenderWithAncestorTemplates to be called via org fallback")
+		}
+	})
+
+	t.Run("ancestor provider error falls back to org provider", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		renderer := &trackingDeploymentRenderer{}
+		atp := &stubAncestorTemplateProvider{err: fmt.Errorf("walk failed")}
+		orgProvider := &stubOrgProvider{org: "acme"}
+		orgTemplateProvider := &stubOrgTemplateProvider{sources: []string{"// org template"}}
+
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
+			WithOrgProvider(orgProvider).
+			WithOrgTemplateProvider(orgTemplateProvider).
+			WithAncestorTemplateProvider(atp)
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+		}
+		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !atp.called {
+			t.Error("expected ancestor provider to be called first")
+		}
+		// Should fall back to org provider.
+		if !renderer.calledRenderWithAncestor {
+			t.Error("expected RenderWithAncestorTemplates to be called via org fallback")
+		}
+	})
+}
+
+func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
+	t.Run("prefers ancestor provider for grouped rendering", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		renderer := &trackingDeploymentRenderer{}
+		atp := &stubAncestorTemplateProvider{sources: []string{"// folder template"}}
+
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
+			WithAncestorTemplateProvider(atp)
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+		}
+		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !atp.called {
+			t.Error("expected ancestor provider to be called")
+		}
+		if !renderer.calledRenderGroupedWithAncestor {
+			t.Error("expected RenderGroupedWithAncestorTemplates to be called")
+		}
+	})
+
+	t.Run("empty ancestor sources renders without ancestors", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		k8s := NewK8sClient(fakeClient, testResolver())
+		renderer := &trackingDeploymentRenderer{}
+		atp := &stubAncestorTemplateProvider{sources: nil}
+
+		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
+			WithAncestorTemplateProvider(atp)
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+		}
+		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !renderer.calledRenderGrouped {
+			t.Error("expected RenderGrouped (no ancestors) to be called")
+		}
+	})
+}
+
+// stubOrgProvider implements OrgProvider for tests.
+type stubOrgProvider struct {
+	org string
+	err error
+}
+
+func (s *stubOrgProvider) GetProjectOrg(_ context.Context, _ string) (string, error) {
+	return s.org, s.err
+}
+
+// stubOrgTemplateProvider implements OrgTemplateProvider for tests.
+type stubOrgTemplateProvider struct {
+	sources []string
+	err     error
+}
+
+func (s *stubOrgTemplateProvider) ListOrgTemplateSourcesForRender(_ context.Context, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
+	return s.sources, s.err
+}
