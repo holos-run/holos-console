@@ -9,6 +9,8 @@
 
 This ensures template authors always see new fields in the preview, that the CUE schema stays in sync with the proto interface, and that the `defaults` block extraction covers all form fields. See `docs/cue-template-guide.md` for the full template interface.
 
+**Note:** Request-level flags (e.g., `update_linked_templates` on `UpdateTemplateRequest`) that control *how* the backend processes a request are not template fields. They do not need to propagate through CUE types, the render pipeline, frontend preview, or defaults extraction. They only need handler logic and tests.
+
 ## Related
 
 - [Template Service](template-service.md) — The service these fields belong to
