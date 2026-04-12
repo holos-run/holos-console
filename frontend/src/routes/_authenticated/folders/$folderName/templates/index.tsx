@@ -12,7 +12,7 @@ import { create } from '@bufbuild/protobuf'
 import { TemplateScopeRefSchema } from '@/gen/holos/console/v1/templates_pb'
 
 export const Route = createFileRoute(
-  '/_authenticated/folders/$folderName/templates',
+  '/_authenticated/folders/$folderName/templates/',
 )({
   component: FolderTemplatesRoute,
 })
@@ -103,30 +103,36 @@ export function FolderTemplatesPage({
         {templates && templates.length > 0 ? (
           <ul className="space-y-2">
             {templates.map((tmpl) => (
-              <li key={tmpl.name} className="flex items-center gap-2 p-3 rounded-md border border-border">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium font-mono">{tmpl.name}</span>
-                    {tmpl.mandatory && (
-                      <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                        <Lock className="h-3 w-3" />
-                        Mandatory
-                      </Badge>
-                    )}
-                    {tmpl.enabled ? (
-                      <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
-                        Enabled
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs text-muted-foreground">
-                        Disabled
-                      </Badge>
+              <li key={tmpl.name}>
+                <Link
+                  to="/folders/$folderName/templates/$templateName"
+                  params={{ folderName, templateName: tmpl.name }}
+                  className="flex items-center gap-2 p-3 rounded-md border border-border hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium font-mono">{tmpl.name}</span>
+                      {tmpl.mandatory && (
+                        <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                          <Lock className="h-3 w-3" />
+                          Mandatory
+                        </Badge>
+                      )}
+                      {tmpl.enabled ? (
+                        <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
+                          Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Disabled
+                        </Badge>
+                      )}
+                    </div>
+                    {tmpl.description && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{tmpl.description}</p>
                     )}
                   </div>
-                  {tmpl.description && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{tmpl.description}</p>
-                  )}
-                </div>
+                </Link>
               </li>
             ))}
           </ul>

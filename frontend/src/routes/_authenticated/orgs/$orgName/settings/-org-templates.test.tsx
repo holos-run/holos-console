@@ -24,6 +24,8 @@ vi.mock('@/queries/templates', () => ({
   useUpdateTemplate: vi.fn(),
   useCloneTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
+  useListReleases: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
+  useCreateRelease: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
   makeOrgScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-org' }),
 }))
 
