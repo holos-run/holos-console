@@ -60,6 +60,18 @@ const (
 	// TemplateServiceListAncestorTemplatesProcedure is the fully-qualified name of the
 	// TemplateService's ListAncestorTemplates RPC.
 	TemplateServiceListAncestorTemplatesProcedure = "/holos.console.v1.TemplateService/ListAncestorTemplates"
+	// TemplateServiceCreateReleaseProcedure is the fully-qualified name of the TemplateService's
+	// CreateRelease RPC.
+	TemplateServiceCreateReleaseProcedure = "/holos.console.v1.TemplateService/CreateRelease"
+	// TemplateServiceListReleasesProcedure is the fully-qualified name of the TemplateService's
+	// ListReleases RPC.
+	TemplateServiceListReleasesProcedure = "/holos.console.v1.TemplateService/ListReleases"
+	// TemplateServiceGetReleaseProcedure is the fully-qualified name of the TemplateService's
+	// GetRelease RPC.
+	TemplateServiceGetReleaseProcedure = "/holos.console.v1.TemplateService/GetRelease"
+	// TemplateServiceCheckUpdatesProcedure is the fully-qualified name of the TemplateService's
+	// CheckUpdates RPC.
+	TemplateServiceCheckUpdatesProcedure = "/holos.console.v1.TemplateService/CheckUpdates"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -93,6 +105,17 @@ type TemplateServiceClient interface {
 	// given scope, including mandatory and enabled non-linked templates. Used by
 	// the renderer to compute the effective template set.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
+	// CreateRelease publishes a new versioned release of a template, capturing
+	// the CUE source, defaults, changelog, and upgrade advice at a specific
+	// semver version.
+	CreateRelease(context.Context, *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error)
+	// ListReleases returns all releases for a template, ordered by version.
+	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
+	// GetRelease retrieves a single release by template name, scope, and version.
+	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
+	// CheckUpdates returns available version updates for linked templates in a
+	// given scope, comparing current pinned versions against published releases.
+	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -160,6 +183,30 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("ListAncestorTemplates")),
 			connect.WithClientOptions(opts...),
 		),
+		createRelease: connect.NewClient[v1.CreateReleaseRequest, v1.CreateReleaseResponse](
+			httpClient,
+			baseURL+TemplateServiceCreateReleaseProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("CreateRelease")),
+			connect.WithClientOptions(opts...),
+		),
+		listReleases: connect.NewClient[v1.ListReleasesRequest, v1.ListReleasesResponse](
+			httpClient,
+			baseURL+TemplateServiceListReleasesProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("ListReleases")),
+			connect.WithClientOptions(opts...),
+		),
+		getRelease: connect.NewClient[v1.GetReleaseRequest, v1.GetReleaseResponse](
+			httpClient,
+			baseURL+TemplateServiceGetReleaseProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("GetRelease")),
+			connect.WithClientOptions(opts...),
+		),
+		checkUpdates: connect.NewClient[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse](
+			httpClient,
+			baseURL+TemplateServiceCheckUpdatesProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -174,6 +221,10 @@ type templateServiceClient struct {
 	cloneTemplate         *connect.Client[v1.CloneTemplateRequest, v1.CloneTemplateResponse]
 	listLinkableTemplates *connect.Client[v1.ListLinkableTemplatesRequest, v1.ListLinkableTemplatesResponse]
 	listAncestorTemplates *connect.Client[v1.ListAncestorTemplatesRequest, v1.ListAncestorTemplatesResponse]
+	createRelease         *connect.Client[v1.CreateReleaseRequest, v1.CreateReleaseResponse]
+	listReleases          *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
+	getRelease            *connect.Client[v1.GetReleaseRequest, v1.GetReleaseResponse]
+	checkUpdates          *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -221,6 +272,26 @@ func (c *templateServiceClient) ListAncestorTemplates(ctx context.Context, req *
 	return c.listAncestorTemplates.CallUnary(ctx, req)
 }
 
+// CreateRelease calls holos.console.v1.TemplateService.CreateRelease.
+func (c *templateServiceClient) CreateRelease(ctx context.Context, req *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error) {
+	return c.createRelease.CallUnary(ctx, req)
+}
+
+// ListReleases calls holos.console.v1.TemplateService.ListReleases.
+func (c *templateServiceClient) ListReleases(ctx context.Context, req *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error) {
+	return c.listReleases.CallUnary(ctx, req)
+}
+
+// GetRelease calls holos.console.v1.TemplateService.GetRelease.
+func (c *templateServiceClient) GetRelease(ctx context.Context, req *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error) {
+	return c.getRelease.CallUnary(ctx, req)
+}
+
+// CheckUpdates calls holos.console.v1.TemplateService.CheckUpdates.
+func (c *templateServiceClient) CheckUpdates(ctx context.Context, req *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error) {
+	return c.checkUpdates.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
 	// ListTemplates returns all templates the user can see in the given scope.
@@ -252,6 +323,17 @@ type TemplateServiceHandler interface {
 	// given scope, including mandatory and enabled non-linked templates. Used by
 	// the renderer to compute the effective template set.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
+	// CreateRelease publishes a new versioned release of a template, capturing
+	// the CUE source, defaults, changelog, and upgrade advice at a specific
+	// semver version.
+	CreateRelease(context.Context, *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error)
+	// ListReleases returns all releases for a template, ordered by version.
+	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
+	// GetRelease retrieves a single release by template name, scope, and version.
+	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
+	// CheckUpdates returns available version updates for linked templates in a
+	// given scope, comparing current pinned versions against published releases.
+	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -315,6 +397,30 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("ListAncestorTemplates")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceCreateReleaseHandler := connect.NewUnaryHandler(
+		TemplateServiceCreateReleaseProcedure,
+		svc.CreateRelease,
+		connect.WithSchema(templateServiceMethods.ByName("CreateRelease")),
+		connect.WithHandlerOptions(opts...),
+	)
+	templateServiceListReleasesHandler := connect.NewUnaryHandler(
+		TemplateServiceListReleasesProcedure,
+		svc.ListReleases,
+		connect.WithSchema(templateServiceMethods.ByName("ListReleases")),
+		connect.WithHandlerOptions(opts...),
+	)
+	templateServiceGetReleaseHandler := connect.NewUnaryHandler(
+		TemplateServiceGetReleaseProcedure,
+		svc.GetRelease,
+		connect.WithSchema(templateServiceMethods.ByName("GetRelease")),
+		connect.WithHandlerOptions(opts...),
+	)
+	templateServiceCheckUpdatesHandler := connect.NewUnaryHandler(
+		TemplateServiceCheckUpdatesProcedure,
+		svc.CheckUpdates,
+		connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -335,6 +441,14 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceListLinkableTemplatesHandler.ServeHTTP(w, r)
 		case TemplateServiceListAncestorTemplatesProcedure:
 			templateServiceListAncestorTemplatesHandler.ServeHTTP(w, r)
+		case TemplateServiceCreateReleaseProcedure:
+			templateServiceCreateReleaseHandler.ServeHTTP(w, r)
+		case TemplateServiceListReleasesProcedure:
+			templateServiceListReleasesHandler.ServeHTTP(w, r)
+		case TemplateServiceGetReleaseProcedure:
+			templateServiceGetReleaseHandler.ServeHTTP(w, r)
+		case TemplateServiceCheckUpdatesProcedure:
+			templateServiceCheckUpdatesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -378,4 +492,20 @@ func (UnimplementedTemplateServiceHandler) ListLinkableTemplates(context.Context
 
 func (UnimplementedTemplateServiceHandler) ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListAncestorTemplates is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) CreateRelease(context.Context, *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.CreateRelease is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListReleases is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetRelease is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.CheckUpdates is not implemented"))
 }

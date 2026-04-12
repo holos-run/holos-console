@@ -5,6 +5,7 @@
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EnvVar } from "./deployments_pb";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file holos/console/v1/templates.proto.
@@ -67,6 +68,15 @@ export declare type LinkedTemplateRef = Message<"holos.console.v1.LinkedTemplate
    * @generated from field: string name = 3;
    */
   name: string;
+
+  /**
+   * version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
+   * restricts which release versions of the linked template are compatible.
+   * Empty means no constraint (latest version is used).
+   *
+   * @generated from field: string version_constraint = 4;
+   */
+  versionConstraint: string;
 };
 
 /**
@@ -222,6 +232,14 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
    * @generated from field: bool enabled = 9;
    */
   enabled: boolean;
+
+  /**
+   * version is the current semver version string (e.g. "1.2.3") of this
+   * template. Empty means the template has no published version yet.
+   *
+   * @generated from field: string version = 10;
+   */
+  version: string;
 };
 
 /**
@@ -706,6 +724,320 @@ export declare type ListAncestorTemplatesResponse = Message<"holos.console.v1.Li
 export declare const ListAncestorTemplatesResponseSchema: GenMessage<ListAncestorTemplatesResponse>;
 
 /**
+ * Release is a published, immutable snapshot of a template at a specific semver
+ * version. Releases enable consumers to pin to known-good versions and receive
+ * upgrade notifications through the CheckUpdates RPC.
+ *
+ * @generated from message holos.console.v1.Release
+ */
+export declare type Release = Message<"holos.console.v1.Release"> & {
+  /**
+   * template_name is the DNS label slug of the template this release belongs to.
+   *
+   * @generated from field: string template_name = 1;
+   */
+  templateName: string;
+
+  /**
+   * scope_ref identifies the owning scope of the template.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope_ref = 2;
+   */
+  scopeRef?: TemplateScopeRef;
+
+  /**
+   * version is the semver version string (e.g. "1.2.3").
+   *
+   * @generated from field: string version = 3;
+   */
+  version: string;
+
+  /**
+   * changelog describes what changed in this release.
+   *
+   * @generated from field: string changelog = 4;
+   */
+  changelog: string;
+
+  /**
+   * upgrade_advice provides guidance for consumers upgrading to this version,
+   * especially for breaking changes.
+   *
+   * @generated from field: string upgrade_advice = 5;
+   */
+  upgradeAdvice: string;
+
+  /**
+   * cue_template is the CUE source code captured at the time of release.
+   *
+   * @generated from field: string cue_template = 6;
+   */
+  cueTemplate: string;
+
+  /**
+   * defaults are the template defaults captured at the time of release.
+   *
+   * @generated from field: holos.console.v1.TemplateDefaults defaults = 7;
+   */
+  defaults?: TemplateDefaults;
+
+  /**
+   * created_at is the timestamp when this release was published.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 8;
+   */
+  createdAt?: Timestamp;
+};
+
+/**
+ * Describes the message holos.console.v1.Release.
+ * Use `create(ReleaseSchema)` to create a new message.
+ */
+export declare const ReleaseSchema: GenMessage<Release>;
+
+/**
+ * TemplateUpdate describes an available version update for a linked template.
+ * Returned by CheckUpdates to help consumers decide whether to upgrade.
+ *
+ * @generated from message holos.console.v1.TemplateUpdate
+ */
+export declare type TemplateUpdate = Message<"holos.console.v1.TemplateUpdate"> & {
+  /**
+   * ref is the linked template reference being checked.
+   *
+   * @generated from field: holos.console.v1.LinkedTemplateRef ref = 1;
+   */
+  ref?: LinkedTemplateRef;
+
+  /**
+   * current_version is the version currently pinned by the consumer.
+   *
+   * @generated from field: string current_version = 2;
+   */
+  currentVersion: string;
+
+  /**
+   * latest_compatible_version is the newest release satisfying the version
+   * constraint. Empty if no compatible update is available.
+   *
+   * @generated from field: string latest_compatible_version = 3;
+   */
+  latestCompatibleVersion: string;
+
+  /**
+   * latest_version is the absolute newest release regardless of constraints.
+   *
+   * @generated from field: string latest_version = 4;
+   */
+  latestVersion: string;
+
+  /**
+   * breaking_update_available is true when a newer version exists that is
+   * outside the current version constraint (i.e. a major version bump).
+   *
+   * @generated from field: bool breaking_update_available = 5;
+   */
+  breakingUpdateAvailable: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.TemplateUpdate.
+ * Use `create(TemplateUpdateSchema)` to create a new message.
+ */
+export declare const TemplateUpdateSchema: GenMessage<TemplateUpdate>;
+
+/**
+ * CreateReleaseRequest publishes a new release for a template.
+ *
+ * @generated from message holos.console.v1.CreateReleaseRequest
+ */
+export declare type CreateReleaseRequest = Message<"holos.console.v1.CreateReleaseRequest"> & {
+  /**
+   * scope identifies the owning scope of the template.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * release is the release to create. template_name, scope_ref, version,
+   * cue_template, and defaults are required.
+   *
+   * @generated from field: holos.console.v1.Release release = 2;
+   */
+  release?: Release;
+};
+
+/**
+ * Describes the message holos.console.v1.CreateReleaseRequest.
+ * Use `create(CreateReleaseRequestSchema)` to create a new message.
+ */
+export declare const CreateReleaseRequestSchema: GenMessage<CreateReleaseRequest>;
+
+/**
+ * CreateReleaseResponse contains the created release.
+ *
+ * @generated from message holos.console.v1.CreateReleaseResponse
+ */
+export declare type CreateReleaseResponse = Message<"holos.console.v1.CreateReleaseResponse"> & {
+  /**
+   * @generated from field: holos.console.v1.Release release = 1;
+   */
+  release?: Release;
+};
+
+/**
+ * Describes the message holos.console.v1.CreateReleaseResponse.
+ * Use `create(CreateReleaseResponseSchema)` to create a new message.
+ */
+export declare const CreateReleaseResponseSchema: GenMessage<CreateReleaseResponse>;
+
+/**
+ * ListReleasesRequest requests all releases for a template.
+ *
+ * @generated from message holos.console.v1.ListReleasesRequest
+ */
+export declare type ListReleasesRequest = Message<"holos.console.v1.ListReleasesRequest"> & {
+  /**
+   * scope identifies the owning scope of the template.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * template_name is the DNS label slug of the template.
+   *
+   * @generated from field: string template_name = 2;
+   */
+  templateName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListReleasesRequest.
+ * Use `create(ListReleasesRequestSchema)` to create a new message.
+ */
+export declare const ListReleasesRequestSchema: GenMessage<ListReleasesRequest>;
+
+/**
+ * ListReleasesResponse contains the list of releases ordered by version.
+ *
+ * @generated from message holos.console.v1.ListReleasesResponse
+ */
+export declare type ListReleasesResponse = Message<"holos.console.v1.ListReleasesResponse"> & {
+  /**
+   * @generated from field: repeated holos.console.v1.Release releases = 1;
+   */
+  releases: Release[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListReleasesResponse.
+ * Use `create(ListReleasesResponseSchema)` to create a new message.
+ */
+export declare const ListReleasesResponseSchema: GenMessage<ListReleasesResponse>;
+
+/**
+ * GetReleaseRequest requests a single release by template, scope, and version.
+ *
+ * @generated from message holos.console.v1.GetReleaseRequest
+ */
+export declare type GetReleaseRequest = Message<"holos.console.v1.GetReleaseRequest"> & {
+  /**
+   * scope identifies the owning scope of the template.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * template_name is the DNS label slug of the template.
+   *
+   * @generated from field: string template_name = 2;
+   */
+  templateName: string;
+
+  /**
+   * version is the semver version string to retrieve.
+   *
+   * @generated from field: string version = 3;
+   */
+  version: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetReleaseRequest.
+ * Use `create(GetReleaseRequestSchema)` to create a new message.
+ */
+export declare const GetReleaseRequestSchema: GenMessage<GetReleaseRequest>;
+
+/**
+ * GetReleaseResponse contains the requested release.
+ *
+ * @generated from message holos.console.v1.GetReleaseResponse
+ */
+export declare type GetReleaseResponse = Message<"holos.console.v1.GetReleaseResponse"> & {
+  /**
+   * @generated from field: holos.console.v1.Release release = 1;
+   */
+  release?: Release;
+};
+
+/**
+ * Describes the message holos.console.v1.GetReleaseResponse.
+ * Use `create(GetReleaseResponseSchema)` to create a new message.
+ */
+export declare const GetReleaseResponseSchema: GenMessage<GetReleaseResponse>;
+
+/**
+ * CheckUpdatesRequest asks for available updates for linked templates in a scope.
+ *
+ * @generated from message holos.console.v1.CheckUpdatesRequest
+ */
+export declare type CheckUpdatesRequest = Message<"holos.console.v1.CheckUpdatesRequest"> & {
+  /**
+   * scope identifies the scope whose linked templates should be checked.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * template_name is the template whose linked templates should be checked.
+   * If empty, all templates in the scope are checked.
+   *
+   * @generated from field: string template_name = 2;
+   */
+  templateName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CheckUpdatesRequest.
+ * Use `create(CheckUpdatesRequestSchema)` to create a new message.
+ */
+export declare const CheckUpdatesRequestSchema: GenMessage<CheckUpdatesRequest>;
+
+/**
+ * CheckUpdatesResponse returns available updates for linked templates.
+ *
+ * @generated from message holos.console.v1.CheckUpdatesResponse
+ */
+export declare type CheckUpdatesResponse = Message<"holos.console.v1.CheckUpdatesResponse"> & {
+  /**
+   * updates lists each linked template that has an available update.
+   *
+   * @generated from field: repeated holos.console.v1.TemplateUpdate updates = 1;
+   */
+  updates: TemplateUpdate[];
+};
+
+/**
+ * Describes the message holos.console.v1.CheckUpdatesResponse.
+ * Use `create(CheckUpdatesResponseSchema)` to create a new message.
+ */
+export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse>;
+
+/**
  * TemplateScope identifies the hierarchy level at which a template is stored.
  * (ADR 021 Decision 1)
  *
@@ -857,6 +1189,49 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof ListAncestorTemplatesRequestSchema;
     output: typeof ListAncestorTemplatesResponseSchema;
+  },
+  /**
+   * CreateRelease publishes a new versioned release of a template, capturing
+   * the CUE source, defaults, changelog, and upgrade advice at a specific
+   * semver version.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.CreateRelease
+   */
+  createRelease: {
+    methodKind: "unary";
+    input: typeof CreateReleaseRequestSchema;
+    output: typeof CreateReleaseResponseSchema;
+  },
+  /**
+   * ListReleases returns all releases for a template, ordered by version.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.ListReleases
+   */
+  listReleases: {
+    methodKind: "unary";
+    input: typeof ListReleasesRequestSchema;
+    output: typeof ListReleasesResponseSchema;
+  },
+  /**
+   * GetRelease retrieves a single release by template name, scope, and version.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.GetRelease
+   */
+  getRelease: {
+    methodKind: "unary";
+    input: typeof GetReleaseRequestSchema;
+    output: typeof GetReleaseResponseSchema;
+  },
+  /**
+   * CheckUpdates returns available version updates for linked templates in a
+   * given scope, comparing current pinned versions against published releases.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.CheckUpdates
+   */
+  checkUpdates: {
+    methodKind: "unary";
+    input: typeof CheckUpdatesRequestSchema;
+    output: typeof CheckUpdatesResponseSchema;
   },
 }>;
 

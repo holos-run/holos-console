@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package holos.console.v1;
 
+import "google/protobuf/timestamp.proto";
 import "holos/console/v1/deployments.proto";
 import "holos/console/v1/rbac.proto";
 
@@ -53,6 +54,21 @@ service TemplateService {
   // given scope, including mandatory and enabled non-linked templates. Used by
   // the renderer to compute the effective template set.
   rpc ListAncestorTemplates(ListAncestorTemplatesRequest) returns (ListAncestorTemplatesResponse);
+
+  // CreateRelease publishes a new versioned release of a template, capturing
+  // the CUE source, defaults, changelog, and upgrade advice at a specific
+  // semver version.
+  rpc CreateRelease(CreateReleaseRequest) returns (CreateReleaseResponse);
+
+  // ListReleases returns all releases for a template, ordered by version.
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
+
+  // GetRelease retrieves a single release by template name, scope, and version.
+  rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
+
+  // CheckUpdates returns available version updates for linked templates in a
+  // given scope, comparing current pinned versions against published releases.
+  rpc CheckUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
 }
 
 // TemplateScope identifies the hierarchy level at which a template is stored.
@@ -86,6 +102,10 @@ message LinkedTemplateRef {
   string scope_name = 2;
   // name is the template name.
   string name = 3;
+  // version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
+  // restricts which release versions of the linked template are compatible.
+  // Empty means no constraint (latest version is used).
+  string version_constraint = 4;
 }
 
 // TemplateDefaults carries optional default values that a template provides
@@ -138,6 +158,9 @@ message Template {
   // enabled indicates whether this template is active. Disabled templates are
   // not applied to new project namespaces even if mandatory is true.
   bool enabled = 9;
+  // version is the current semver version string (e.g. "1.2.3") of this
+  // template. Empty means the template has no published version yet.
+  string version = 10;
 }
 
 // ListTemplatesRequest requests all templates visible in the given scope.
@@ -283,4 +306,101 @@ message ListAncestorTemplatesRequest {
 // ListAncestorTemplatesResponse contains ancestor templates grouped by scope.
 message ListAncestorTemplatesResponse {
   repeated Template templates = 1;
+}
+
+// Release is a published, immutable snapshot of a template at a specific semver
+// version. Releases enable consumers to pin to known-good versions and receive
+// upgrade notifications through the CheckUpdates RPC.
+message Release {
+  // template_name is the DNS label slug of the template this release belongs to.
+  string template_name = 1;
+  // scope_ref identifies the owning scope of the template.
+  TemplateScopeRef scope_ref = 2;
+  // version is the semver version string (e.g. "1.2.3").
+  string version = 3;
+  // changelog describes what changed in this release.
+  string changelog = 4;
+  // upgrade_advice provides guidance for consumers upgrading to this version,
+  // especially for breaking changes.
+  string upgrade_advice = 5;
+  // cue_template is the CUE source code captured at the time of release.
+  string cue_template = 6;
+  // defaults are the template defaults captured at the time of release.
+  TemplateDefaults defaults = 7;
+  // created_at is the timestamp when this release was published.
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// TemplateUpdate describes an available version update for a linked template.
+// Returned by CheckUpdates to help consumers decide whether to upgrade.
+message TemplateUpdate {
+  // ref is the linked template reference being checked.
+  LinkedTemplateRef ref = 1;
+  // current_version is the version currently pinned by the consumer.
+  string current_version = 2;
+  // latest_compatible_version is the newest release satisfying the version
+  // constraint. Empty if no compatible update is available.
+  string latest_compatible_version = 3;
+  // latest_version is the absolute newest release regardless of constraints.
+  string latest_version = 4;
+  // breaking_update_available is true when a newer version exists that is
+  // outside the current version constraint (i.e. a major version bump).
+  bool breaking_update_available = 5;
+}
+
+// CreateReleaseRequest publishes a new release for a template.
+message CreateReleaseRequest {
+  // scope identifies the owning scope of the template.
+  TemplateScopeRef scope = 1;
+  // release is the release to create. template_name, scope_ref, version,
+  // cue_template, and defaults are required.
+  Release release = 2;
+}
+
+// CreateReleaseResponse contains the created release.
+message CreateReleaseResponse {
+  Release release = 1;
+}
+
+// ListReleasesRequest requests all releases for a template.
+message ListReleasesRequest {
+  // scope identifies the owning scope of the template.
+  TemplateScopeRef scope = 1;
+  // template_name is the DNS label slug of the template.
+  string template_name = 2;
+}
+
+// ListReleasesResponse contains the list of releases ordered by version.
+message ListReleasesResponse {
+  repeated Release releases = 1;
+}
+
+// GetReleaseRequest requests a single release by template, scope, and version.
+message GetReleaseRequest {
+  // scope identifies the owning scope of the template.
+  TemplateScopeRef scope = 1;
+  // template_name is the DNS label slug of the template.
+  string template_name = 2;
+  // version is the semver version string to retrieve.
+  string version = 3;
+}
+
+// GetReleaseResponse contains the requested release.
+message GetReleaseResponse {
+  Release release = 1;
+}
+
+// CheckUpdatesRequest asks for available updates for linked templates in a scope.
+message CheckUpdatesRequest {
+  // scope identifies the scope whose linked templates should be checked.
+  TemplateScopeRef scope = 1;
+  // template_name is the template whose linked templates should be checked.
+  // If empty, all templates in the scope are checked.
+  string template_name = 2;
+}
+
+// CheckUpdatesResponse returns available updates for linked templates.
+message CheckUpdatesResponse {
+  // updates lists each linked template that has an available update.
+  repeated TemplateUpdate updates = 1;
 }
