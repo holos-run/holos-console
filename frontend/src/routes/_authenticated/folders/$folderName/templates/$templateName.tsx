@@ -20,10 +20,13 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { TemplateScope } from '@/gen/holos/console/v1/templates_pb'
-import { create } from '@bufbuild/protobuf'
-import { TemplateScopeRefSchema } from '@/gen/holos/console/v1/templates_pb'
-import { useGetTemplate, useUpdateTemplate, useCloneTemplate } from '@/queries/templates'
+import {
+  useGetTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+  useCloneTemplate,
+  makeFolderScope,
+} from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
@@ -64,15 +67,14 @@ export function FolderTemplateDetailPage({
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
 
-  const scope = create(TemplateScopeRefSchema, {
-    scope: TemplateScope.FOLDER,
-    scopeName: folderName,
-  })
+  const scope = makeFolderScope(folderName)
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
   const updateMutation = useUpdateTemplate(scope, templateName)
+  const deleteMutation = useDeleteTemplate(scope)
   const cloneMutation = useCloneTemplate(scope)
 
   const [cueTemplate, setCueTemplate] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [cloneOpen, setCloneOpen] = useState(false)
   const [cloneName, setCloneName] = useState('')
   const [cloneDisplayName, setCloneDisplayName] = useState('')
@@ -84,7 +86,7 @@ export function FolderTemplateDetailPage({
     }
   }, [template?.cueTemplate])
 
-  // Folder-level template editing requires OWNER role on the folder's org.
+  // Only folder OWNERs can manage folder-level platform templates.
   const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
@@ -97,6 +99,8 @@ export function FolderTemplateDetailPage({
         displayName: template?.displayName,
         description: template?.description,
         cueTemplate,
+        enabled: template?.enabled,
+        mandatory: template?.mandatory,
       })
       toast.success('Saved')
     } catch (err) {
@@ -106,10 +110,28 @@ export function FolderTemplateDetailPage({
 
   const handleToggleEnabled = async (checked: boolean) => {
     try {
-      await updateMutation.mutateAsync({ enabled: checked })
+      await updateMutation.mutateAsync({
+        displayName: template?.displayName,
+        description: template?.description,
+        cueTemplate: template?.cueTemplate,
+        mandatory: template?.mandatory,
+        enabled: checked,
+      })
       toast.success(checked ? 'Template enabled' : 'Template disabled')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteMutation.mutateAsync({ name: templateName })
+      setDeleteOpen(false)
+      if (navigate) {
+        navigate({ to: '/folders/$folderName/templates', params: { folderName } })
+      }
+    } catch {
+      /* error shown via mutation */
     }
   }
 
@@ -179,18 +201,28 @@ export function FolderTemplateDetailPage({
                 Folders
               </Link>
               {' / '}
-              <Link to="/folders/$folderName/settings" params={{ folderName }} className="hover:underline">
+              <Link
+                to="/folders/$folderName/settings"
+                params={{ folderName }}
+                className="hover:underline"
+              >
                 {folderName}
               </Link>
               {' / '}
-              <Link to="/folders/$folderName/templates" params={{ folderName }} className="hover:underline">
+              <Link
+                to="/folders/$folderName/templates"
+                params={{ folderName }}
+                className="hover:underline"
+              >
                 Platform Templates
               </Link>
               {' / '}
               {templateName}
             </p>
             <div className="flex items-center gap-2 mt-1">
-              <h2 className="text-xl font-semibold">{template?.displayName || templateName}</h2>
+              <h2 className="text-xl font-semibold">
+                {template?.displayName || templateName}
+              </h2>
               {template?.mandatory && (
                 <Badge variant="secondary" className="flex items-center gap-1">
                   <Lock className="h-3 w-3" />
@@ -211,7 +243,9 @@ export function FolderTemplateDetailPage({
 
             {template?.description && (
               <div className="flex items-start gap-2">
-                <span className="w-36 text-sm text-muted-foreground shrink-0 pt-0.5">Description</span>
+                <span className="w-36 text-sm text-muted-foreground shrink-0 pt-0.5">
+                  Description
+                </span>
                 <span className="text-sm">{template.description}</span>
               </div>
             )}
@@ -225,7 +259,9 @@ export function FolderTemplateDetailPage({
                 disabled={!canWrite || updateMutation.isPending}
               />
               <span className="text-sm text-muted-foreground">
-                {template?.enabled ? 'Active — applied to new project namespaces' : 'Inactive — not applied to new project namespaces'}
+                {template?.enabled
+                  ? 'Active — applied to projects in this folder'
+                  : 'Inactive — not applied to projects in this folder'}
               </span>
             </div>
           </div>
@@ -233,10 +269,12 @@ export function FolderTemplateDetailPage({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">CUE Template</h3>
-              <Button variant="outline" size="sm" onClick={handleOpenClone}>
-                <Copy className="h-3.5 w-3.5 mr-1.5" />
-                Clone
-              </Button>
+              {canWrite && (
+                <Button variant="outline" size="sm" onClick={handleOpenClone}>
+                  <Copy className="h-3.5 w-3.5 mr-1.5" />
+                  Clone
+                </Button>
+              )}
             </div>
             <Separator />
             {!canWrite && (
@@ -265,8 +303,53 @@ export function FolderTemplateDetailPage({
             currentCueTemplate={cueTemplate}
             currentDefaults={template?.defaults}
           />
+
+          {canWrite && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-destructive">Danger Zone</h3>
+              <Separator />
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  deleteMutation.reset()
+                  setDeleteOpen(true)
+                }}
+              >
+                Delete Template
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              This will permanently delete template &quot;{templateName}&quot;. This action cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
         <DialogContent className="max-w-2xl">
@@ -304,8 +387,13 @@ export function FolderTemplateDetailPage({
             </Alert>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setCloneOpen(false)}>Cancel</Button>
-            <Button onClick={handleCloneConfirm} disabled={cloneMutation.isPending || !cloneName}>
+            <Button variant="ghost" onClick={() => setCloneOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCloneConfirm}
+              disabled={cloneMutation.isPending || !cloneName}
+            >
               {cloneMutation.isPending ? 'Cloning...' : 'Clone'}
             </Button>
           </DialogFooter>

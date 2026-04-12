@@ -37,6 +37,11 @@ export function makeOrgScope(org: string): TemplateScopeRef {
   return makeScope(TemplateScope.ORGANIZATION, org)
 }
 
+// makeFolderScope builds a TemplateScopeRef for a folder-scoped template.
+export function makeFolderScope(folder: string): TemplateScopeRef {
+  return makeScope(TemplateScope.FOLDER, folder)
+}
+
 // makeProjectScope builds a TemplateScopeRef for a project-scoped template.
 export function makeProjectScope(project: string): TemplateScopeRef {
   return makeScope(TemplateScope.PROJECT, project)
