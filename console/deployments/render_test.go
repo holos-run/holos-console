@@ -2235,3 +2235,138 @@ func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
 		}
 	})
 }
+
+// TestEvaluateStructuredGrouped verifies that evaluateStructuredGrouped
+// partitions resources into Platform and Project groups correctly.
+func TestEvaluateStructuredGrouped(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("project-only template produces empty platform group", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Platform) != 0 {
+			t.Errorf("expected 0 platform resources, got %d: %v",
+				len(grouped.Platform), resourceKinds(grouped.Platform))
+		}
+		if len(grouped.Project) != 1 {
+			t.Fatalf("expected 1 project resource, got %d: %v",
+				len(grouped.Project), resourceKinds(grouped.Project))
+		}
+		if grouped.Project[0].GetKind() != "Deployment" {
+			t.Errorf("expected Deployment, got %q", grouped.Project[0].GetKind())
+		}
+	})
+
+	t.Run("template with both collections produces populated platform and project groups", func(t *testing.T) {
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil, // deployment template itself defines platformResources
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Platform) != 1 {
+			t.Fatalf("expected 1 platform resource, got %d: %v",
+				len(grouped.Platform), resourceKinds(grouped.Platform))
+		}
+		if grouped.Platform[0].GetKind() != "ServiceAccount" {
+			t.Errorf("expected platform ServiceAccount, got %q", grouped.Platform[0].GetKind())
+		}
+		if len(grouped.Project) != 1 {
+			t.Fatalf("expected 1 project resource, got %d: %v",
+				len(grouped.Project), resourceKinds(grouped.Project))
+		}
+		if grouped.Project[0].GetKind() != "Deployment" {
+			t.Errorf("expected project Deployment, got %q", grouped.Project[0].GetKind())
+		}
+	})
+
+	t.Run("unified fields equal union of both groups", func(t *testing.T) {
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// The flat render should return the same total count as Platform + Project.
+		flat, err := renderer.RenderWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("expected no error from flat render, got %v", err)
+		}
+
+		totalGrouped := len(grouped.Platform) + len(grouped.Project)
+		if totalGrouped != len(flat) {
+			t.Errorf("grouped total (%d) != flat total (%d)", totalGrouped, len(flat))
+		}
+
+		// Build a set of kind/name pairs from the grouped result and verify
+		// they match the flat result exactly.
+		groupedSet := make(map[string]bool)
+		for _, r := range grouped.Platform {
+			groupedSet[r.GetKind()+"/"+r.GetName()] = true
+		}
+		for _, r := range grouped.Project {
+			groupedSet[r.GetKind()+"/"+r.GetName()] = true
+		}
+		for _, r := range flat {
+			key := r.GetKind() + "/" + r.GetName()
+			if !groupedSet[key] {
+				t.Errorf("flat resource %s not found in grouped result", key)
+			}
+		}
+	})
+
+	t.Run("org template with closed struct produces grouped results", func(t *testing.T) {
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			closedStructProjectTemplate,
+			[]string{closedStructOrgTemplate},
+			v1alpha2.PlatformInput{
+				Project:          "my-project",
+				Namespace:        namespace,
+				GatewayNamespace: DefaultGatewayNamespace,
+			},
+			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// Platform group should have HTTPRoute from the org template.
+		if len(grouped.Platform) != 1 {
+			t.Fatalf("expected 1 platform resource, got %d: %v",
+				len(grouped.Platform), resourceKinds(grouped.Platform))
+		}
+		if grouped.Platform[0].GetKind() != "HTTPRoute" {
+			t.Errorf("expected platform HTTPRoute, got %q", grouped.Platform[0].GetKind())
+		}
+		// Project group should have Deployment, Service, ServiceAccount.
+		if len(grouped.Project) != 3 {
+			t.Fatalf("expected 3 project resources, got %d: %v",
+				len(grouped.Project), resourceKinds(grouped.Project))
+		}
+		kindSet := make(map[string]bool)
+		for _, r := range grouped.Project {
+			kindSet[r.GetKind()] = true
+		}
+		if !kindSet["Deployment"] || !kindSet["Service"] || !kindSet["ServiceAccount"] {
+			t.Errorf("expected Deployment, Service, ServiceAccount in project group, got %v", kindSet)
+		}
+	})
+}
