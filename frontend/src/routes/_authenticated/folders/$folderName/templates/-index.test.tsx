@@ -274,6 +274,50 @@ describe('FolderTemplatesIndexPage', () => {
       expect(mutateAsync).not.toHaveBeenCalled()
     })
 
+    it('disables Create button when name is empty', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<FolderTemplatesIndexPage folderName="test-folder" />)
+      await user.click(screen.getByRole('button', { name: /create template/i }))
+      const createBtn = screen.getByRole('button', { name: /^create$/i })
+      expect(createBtn).toBeDisabled()
+    })
+
+    it('shows validation error when name is whitespace only', async () => {
+      setupMocks(Role.OWNER)
+      const user = userEvent.setup()
+      render(<FolderTemplatesIndexPage folderName="test-folder" />)
+      await user.click(screen.getByRole('button', { name: /create template/i }))
+      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
+      await user.type(nameInput, '   ')
+      await user.click(screen.getByRole('button', { name: /^create$/i }))
+      await waitFor(() => {
+        expect(screen.getByText('Name is required')).toBeInTheDocument()
+      })
+      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value
+        .mutateAsync
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('shows error alert when create mutation fails', async () => {
+      setupMocks(Role.OWNER)
+      ;(useCreateTemplate as Mock).mockReturnValue({
+        mutateAsync: vi.fn().mockRejectedValue(new Error('Template already exists')),
+        isPending: false,
+      })
+      const user = userEvent.setup()
+      render(<FolderTemplatesIndexPage folderName="test-folder" />)
+      await user.click(screen.getByRole('button', { name: /create template/i }))
+      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
+      await user.type(nameInput, 'existing-template')
+      await user.click(screen.getByRole('button', { name: /^create$/i }))
+      await waitFor(() => {
+        expect(screen.getByText('Template already exists')).toBeInTheDocument()
+      })
+      // Dialog should remain open on error
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
     it('Load Example populates fields', async () => {
       setupMocks(Role.OWNER)
       const user = userEvent.setup()
