@@ -496,10 +496,13 @@ func (h *Handler) RenderTemplate(
 	}), nil
 }
 
-// renderTemplateGrouped resolves linked template sources (if any) and delegates
-// to the appropriate renderer method. When linked_templates are provided in the
-// request, org-level template CUE sources are resolved and unified with the main
-// template so that platform resources appear in the grouped output.
+// renderTemplateGrouped resolves linked template sources from all ancestor
+// scopes (org + folders) and delegates to the appropriate renderer method.
+// When the ancestor walker is configured, it walks the full hierarchy to
+// collect sources from every ancestor namespace using the render set formula.
+// When only org-scoped refs are present and no walker is configured, it falls
+// back to the org-only ListOrgTemplateSourcesForRender for backwards
+// compatibility.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
 	if len(msg.LinkedTemplates) == 0 || h.k8s == nil {
 		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
@@ -509,8 +512,35 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 		return grouped, nil
 	}
 
-	// Derive the org name from the linked template refs. Linked templates are
-	// org-level, so we use the scope_name from the first org-scoped ref.
+	// Prefer ancestor-walking resolution when the walker is available and we
+	// have a scope to derive the start namespace from.
+	if h.walker != nil && msg.GetScope() != nil {
+		startNs, nsErr := h.k8s.namespaceForScope(msg.GetScope().GetScope(), msg.GetScope().GetScopeName())
+		if nsErr == nil {
+			templateSources, walkErr := h.k8s.ListAncestorTemplateSourcesForRender(ctx, startNs, msg.LinkedTemplates, h.walker)
+			if walkErr != nil {
+				slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
+					slog.Any("error", walkErr),
+				)
+			} else if len(templateSources) > 0 {
+				grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
+				if err != nil {
+					return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+				}
+				return grouped, nil
+			} else {
+				// No ancestor sources (e.g. all disabled or no mandatory) — render plain.
+				grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+				if err != nil {
+					return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+				}
+				return grouped, nil
+			}
+		}
+	}
+
+	// Fallback: org-only resolution when no walker is configured or the scope
+	// namespace could not be derived. Derives the org name from linked refs.
 	var org string
 	for _, ref := range msg.LinkedTemplates {
 		if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.GetScopeName() != "" {
@@ -519,7 +549,7 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 		}
 	}
 	if org == "" {
-		// No org-scoped linked templates; render without ancestor unification.
+		// No org-scoped linked templates and no walker; render without ancestors.
 		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
