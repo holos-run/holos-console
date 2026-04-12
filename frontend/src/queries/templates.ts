@@ -277,15 +277,18 @@ function checkUpdatesKey(scope: TemplateScopeRef, templateName: string) {
 // When templateName is provided, only that template's links are checked.
 // When empty, all templates in the scope are checked.
 // Pass options.enabled to control when the query fires (defaults to true).
-export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', options?: { enabled?: boolean }) {
+// Pass options.includeCurrent to include entries for templates already at their
+// latest version (useful for the version status indicator).
+export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', options?: { enabled?: boolean; includeCurrent?: boolean }) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const callerEnabled = options?.enabled ?? true
+  const includeCurrent = options?.includeCurrent ?? false
   return useQuery({
-    queryKey: checkUpdatesKey(scope, templateName),
+    queryKey: [...checkUpdatesKey(scope, templateName), includeCurrent] as const,
     queryFn: async () => {
-      const response = await client.checkUpdates({ scope, templateName })
+      const response = await client.checkUpdates({ scope, templateName, includeCurrent })
       return response.updates
     },
     enabled: isAuthenticated && !!scope.scopeName && callerEnabled,
