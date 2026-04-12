@@ -507,6 +507,7 @@ func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateS
 		data[DefaultsKey] = string(b)
 	}
 
+	immutable := true
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cmName,
@@ -521,7 +522,8 @@ func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateS
 				v1alpha2.AnnotationTemplateVersion: version.String(),
 			},
 		},
-		Data: data,
+		Immutable: &immutable,
+		Data:      data,
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 }

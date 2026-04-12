@@ -17,6 +17,9 @@ func TestParseVersion(t *testing.T) {
 		{name: "valid with v prefix", input: "v1.2.3", wantStr: "1.2.3"},
 		{name: "valid zero", input: "0.0.0", wantStr: "0.0.0"},
 		{name: "valid high numbers", input: "100.200.300", wantStr: "100.200.300"},
+		{name: "invalid prerelease", input: "1.2.3-beta.1", wantErr: true},
+		{name: "invalid build metadata", input: "1.2.3+meta", wantErr: true},
+		{name: "invalid prerelease with v", input: "v1.0.0-rc1", wantErr: true},
 		{name: "invalid empty", input: "", wantErr: true},
 		{name: "invalid letters", input: "abc", wantErr: true},
 		{name: "invalid partial", input: "1.2", wantErr: true},
@@ -212,6 +215,77 @@ func TestLatestMatchingVersion(t *testing.T) {
 				t.Fatalf("failed to parse constraint: %v", err)
 			}
 			got := LatestMatchingVersion(tt.versions, c)
+			if tt.want == "" {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected %q, got nil", tt.want)
+			}
+			if got.String() != tt.want {
+				t.Errorf("expected %q, got %q", tt.want, got.String())
+			}
+		})
+	}
+}
+
+func TestOldestMatchingVersion(t *testing.T) {
+	mkVersions := func(strs ...string) []*semver.Version {
+		var result []*semver.Version
+		for _, s := range strs {
+			v, _ := ParseVersion(s)
+			result = append(result, v)
+		}
+		return result
+	}
+
+	tests := []struct {
+		name       string
+		versions   []*semver.Version
+		constraint string
+		want       string // empty means nil
+	}{
+		{
+			name:       "nil constraint returns oldest",
+			versions:   mkVersions("1.0.0", "2.0.0", "1.5.0"),
+			constraint: "",
+			want:       "1.0.0",
+		},
+		{
+			name:       "constraint filters to oldest compatible",
+			versions:   mkVersions("1.0.0", "2.0.0", "1.5.0", "1.9.0"),
+			constraint: ">=1.0.0 <2.0.0",
+			want:       "1.0.0",
+		},
+		{
+			name:       "no matching version",
+			versions:   mkVersions("3.0.0", "4.0.0"),
+			constraint: ">=1.0.0 <2.0.0",
+			want:       "",
+		},
+		{
+			name:       "empty versions list",
+			versions:   nil,
+			constraint: "",
+			want:       "",
+		},
+		{
+			name:       "single matching version",
+			versions:   mkVersions("1.2.3"),
+			constraint: "^1.0.0",
+			want:       "1.2.3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := ParseConstraint(tt.constraint)
+			if err != nil {
+				t.Fatalf("failed to parse constraint: %v", err)
+			}
+			got := OldestMatchingVersion(tt.versions, c)
 			if tt.want == "" {
 				if got != nil {
 					t.Errorf("expected nil, got %v", got)

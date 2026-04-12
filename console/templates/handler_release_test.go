@@ -102,6 +102,57 @@ func TestCreateRelease(t *testing.T) {
 		if cm.Annotations[v1alpha2.AnnotationTemplateVersion] != "1.0.0" {
 			t.Errorf("expected version annotation 1.0.0, got %q", cm.Annotations[v1alpha2.AnnotationTemplateVersion])
 		}
+		if cm.Immutable == nil || !*cm.Immutable {
+			t.Error("expected ConfigMap to be immutable")
+		}
+	})
+
+	t.Run("rejects prerelease version", func(t *testing.T) {
+		ns := orgNS(org)
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
+			Scope: orgScopeRef(org),
+			Release: &consolev1.Release{
+				TemplateName: templateName,
+				Version:      "1.0.0-beta.1",
+				CueTemplate:  validCue,
+			},
+		})
+
+		_, err := handler.CreateRelease(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for prerelease version, got nil")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected code InvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("rejects build metadata version", func(t *testing.T) {
+		ns := orgNS(org)
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
+			Scope: orgScopeRef(org),
+			Release: &consolev1.Release{
+				TemplateName: templateName,
+				Version:      "1.0.0+build.123",
+				CueTemplate:  validCue,
+			},
+		})
+
+		_, err := handler.CreateRelease(ctx, req)
+		if err == nil {
+			t.Fatal("expected error for build metadata version, got nil")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected code InvalidArgument, got %v", connect.CodeOf(err))
+		}
 	})
 
 	t.Run("rejects duplicate version", func(t *testing.T) {

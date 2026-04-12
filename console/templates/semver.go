@@ -10,12 +10,19 @@ import (
 
 // ParseVersion parses and validates a semver version string. It accepts
 // versions with or without a "v" prefix (e.g. "1.2.3" or "v1.2.3").
-// The version must be a strict MAJOR.MINOR.PATCH triple.
+// The version must be a strict MAJOR.MINOR.PATCH triple with no prerelease
+// or build metadata (e.g. "1.2.3-beta.1" and "1.2.3+meta" are rejected).
 func ParseVersion(version string) (*semver.Version, error) {
 	raw := strings.TrimPrefix(version, "v")
 	v, err := semver.StrictNewVersion(raw)
 	if err != nil {
 		return nil, fmt.Errorf("invalid semver version %q: %w", version, err)
+	}
+	if v.Prerelease() != "" {
+		return nil, fmt.Errorf("invalid semver version %q: prerelease versions are not supported", version)
+	}
+	if v.Metadata() != "" {
+		return nil, fmt.Errorf("invalid semver version %q: build metadata is not supported", version)
 	}
 	return v, nil
 }
@@ -72,4 +79,22 @@ func LatestMatchingVersion(versions []*semver.Version, c *semver.Constraints) *s
 		}
 	}
 	return nil
+}
+
+// OldestMatchingVersion returns the lowest version from the given list that
+// satisfies the constraint. Returns nil if no version matches. The input slice
+// is not modified.
+func OldestMatchingVersion(versions []*semver.Version, c *semver.Constraints) *semver.Version {
+	// Make a copy to avoid mutating the caller's slice.
+	sorted := make([]*semver.Version, len(versions))
+	copy(sorted, versions)
+	SortVersionsDesc(sorted)
+
+	var oldest *semver.Version
+	for _, v := range sorted {
+		if MatchesConstraint(v, c) {
+			oldest = v
+		}
+	}
+	return oldest
 }

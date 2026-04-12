@@ -139,12 +139,21 @@ func TestCheckUpdates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// With constraint >=1.0.0 <2.0.0, the current version is the latest
-		// matching = 1.1.0. The latest compatible is also 1.1.0. Since there
-		// is no breaking version outside the range, no update is reported.
-		// This tests the "already at latest" case.
-		if len(resp.Msg.Updates) != 0 {
-			t.Errorf("expected 0 updates (already at latest compatible), got %d", len(resp.Msg.Updates))
+		// With constraint >=1.0.0 <2.0.0 and releases 1.0.0 + 1.1.0,
+		// the current (oldest matching) is 1.0.0 and the latest compatible
+		// is 1.1.0, so a compatible update should be reported.
+		if len(resp.Msg.Updates) != 1 {
+			t.Fatalf("expected 1 update (compatible), got %d", len(resp.Msg.Updates))
+		}
+		update := resp.Msg.Updates[0]
+		if update.CurrentVersion != "1.0.0" {
+			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
+		}
+		if update.LatestCompatibleVersion != "1.1.0" {
+			t.Errorf("expected latest_compatible_version 1.1.0, got %q", update.LatestCompatibleVersion)
+		}
+		if update.BreakingUpdateAvailable {
+			t.Error("expected breaking_update_available=false")
 		}
 	})
 
@@ -188,12 +197,12 @@ func TestCheckUpdates(t *testing.T) {
 		if update.LatestCompatibleVersion != "1.5.0" {
 			t.Errorf("expected latest_compatible_version 1.5.0, got %q", update.LatestCompatibleVersion)
 		}
-		if update.CurrentVersion != "1.5.0" {
-			t.Errorf("expected current_version 1.5.0, got %q", update.CurrentVersion)
+		if update.CurrentVersion != "1.0.0" {
+			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
 		}
 	})
 
-	t.Run("no constraint means all versions match", func(t *testing.T) {
+	t.Run("no constraint reports compatible update when multiple releases exist", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
 			{
@@ -219,9 +228,50 @@ func TestCheckUpdates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// No constraint: current=latest=2.0.0. No update.
+		// No constraint: current (oldest) = 1.0.0, latest compatible = 2.0.0.
+		// A compatible update is reported.
+		if len(resp.Msg.Updates) != 1 {
+			t.Fatalf("expected 1 update, got %d", len(resp.Msg.Updates))
+		}
+		update := resp.Msg.Updates[0]
+		if update.CurrentVersion != "1.0.0" {
+			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
+		}
+		if update.LatestCompatibleVersion != "2.0.0" {
+			t.Errorf("expected latest_compatible_version 2.0.0, got %q", update.LatestCompatibleVersion)
+		}
+		if update.BreakingUpdateAvailable {
+			t.Error("expected breaking_update_available=false")
+		}
+	})
+
+	t.Run("no constraint single release means no update", func(t *testing.T) {
+		projectNs := projectNS(project)
+		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
+			{
+				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName: org,
+				Name:      linkedTemplateName,
+				// No version constraint
+			},
+		})
+		// Single release: current == latest, no update.
+		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1)
+		handler := newTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
+			Scope:        projectScopeRef(project),
+			TemplateName: "web-app",
+		})
+
+		resp, err := handler.CheckUpdates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
 		if len(resp.Msg.Updates) != 0 {
-			t.Errorf("expected 0 updates when no constraint and at latest, got %d", len(resp.Msg.Updates))
+			t.Errorf("expected 0 updates when single release, got %d", len(resp.Msg.Updates))
 		}
 	})
 

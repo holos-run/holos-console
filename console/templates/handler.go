@@ -990,8 +990,12 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 		return nil, err
 	}
 
-	// Find the current pinned version (the latest that matches the constraint).
-	currentVersion := LatestMatchingVersion(versions, constraint)
+	// Find the current pinned version. Without a stored resolved-version we
+	// approximate with the oldest matching release so that any newer compatible
+	// release is surfaced as an available update.
+	// TODO(versioning): track the actually-resolved version per deployment so
+	// currentVersion reflects the real pinned version, not an approximation.
+	currentVersion := OldestMatchingVersion(versions, constraint)
 	var currentStr string
 	if currentVersion != nil {
 		currentStr = currentVersion.String()
