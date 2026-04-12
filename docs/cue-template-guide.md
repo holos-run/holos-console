@@ -588,11 +588,11 @@ multiple non-overlapping archetypes to coexist in the same organization.
 **How to link templates in the editor**
 
 When creating or editing a deployment template, the form shows a
-"Linked Platform Templates" section listing all enabled platform templates for
-the organization. Each non-mandatory template has a checkbox — check it to
-include that template in every render of this deployment template. Mandatory
-templates appear pre-checked with a lock icon; they are always included and
-cannot be deselected.
+"Linked Platform Templates" section listing all enabled ancestor platform
+templates (organization and folder scopes), grouped by scope. Each non-mandatory
+template has a checkbox — check it to include that template in every render of
+this deployment template. Mandatory templates appear pre-checked with a lock
+icon; they are always included and cannot be deselected.
 
 **Render set formula**
 
