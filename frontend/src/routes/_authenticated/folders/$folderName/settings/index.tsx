@@ -28,9 +28,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
+import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
-import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -74,6 +75,8 @@ export function FolderDetailPage({
   const { data: org } = useGetOrganization(orgName)
   const updateMutation = useUpdateFolder(orgName, folderName)
   const { data: allFolders } = useListFolders(orgName)
+  const updateFolderSharing = useUpdateFolderSharing(orgName, folderName)
+  const updateFolderDefaultSharing = useUpdateFolderDefaultSharing(orgName, folderName)
 
   // View mode: data or raw
   const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
@@ -235,6 +238,14 @@ export function FolderDetailPage({
     }
   }
 
+  const handleSaveSharing = async (userGrants: Grant[], roleGrants: Grant[]) => {
+    await updateFolderSharing.mutateAsync({ userGrants, roleGrants })
+  }
+
+  const handleSaveDefaultSharing = async (defaultUserGrants: Grant[], defaultRoleGrants: Grant[]) => {
+    await updateFolderDefaultSharing.mutateAsync({ defaultUserGrants, defaultRoleGrants })
+  }
+
   if (isPending) {
     return (
       <Card>
@@ -262,6 +273,10 @@ export function FolderDetailPage({
   const displayName = folder?.displayName ?? ''
   const description = folder?.description ?? ''
   const creatorEmail = folder?.creatorEmail ?? ''
+  const userGrants = (folder?.userGrants ?? []) as Grant[]
+  const roleGrants = (folder?.roleGrants ?? []) as Grant[]
+  const defaultUserGrants = (folder?.defaultUserGrants ?? []) as Grant[]
+  const defaultRoleGrants = (folder?.defaultRoleGrants ?? []) as Grant[]
 
   return (
     <>
@@ -482,6 +497,26 @@ export function FolderDetailPage({
               )}
             </div>
           </div>
+
+          {/* Sharing section */}
+          <SharingPanel
+            userGrants={userGrants}
+            roleGrants={roleGrants}
+            isOwner={isOwner}
+            onSave={handleSaveSharing}
+            isSaving={updateFolderSharing.isPending}
+          />
+
+          {/* Default Sharing section */}
+          <SharingPanel
+            title="Default Sharing"
+            description="These grants are automatically applied to every new secret created in projects within this folder."
+            userGrants={defaultUserGrants}
+            roleGrants={defaultRoleGrants}
+            isOwner={isOwner}
+            onSave={handleSaveDefaultSharing}
+            isSaving={updateFolderDefaultSharing.isPending}
+          />
 
           {/* Platform Templates section */}
           <div className="space-y-4">

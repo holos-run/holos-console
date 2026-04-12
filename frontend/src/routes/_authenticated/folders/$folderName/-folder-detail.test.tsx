@@ -22,6 +22,8 @@ vi.mock('@/queries/folders', () => ({
   useGetFolderRaw: vi.fn(),
   useUpdateFolder: vi.fn(),
   useListFolders: vi.fn(),
+  useUpdateFolderSharing: vi.fn(),
+  useUpdateFolderDefaultSharing: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/settings/index'
 
@@ -43,6 +45,10 @@ const mockFolder = {
   parentType: 1, // ORGANIZATION
   parentName: 'test-org',
   userRole: 3, // OWNER
+  userGrants: [{ principal: 'alice@example.com', role: 3 }],
+  roleGrants: [],
+  defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
+  defaultRoleGrants: [],
 }
 
 const mockOrg = {
@@ -85,6 +91,14 @@ function setupMocks(overrides: { folder?: Partial<typeof mockFolder>; org?: Part
     data: folders,
     isPending: false,
     error: null,
+  })
+  ;(useUpdateFolderSharing as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
+  ;(useUpdateFolderDefaultSharing as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
   })
 }
 
@@ -227,6 +241,63 @@ describe('FolderDetailPage', () => {
         // level3 is a descendant of level2, excluded by depth (3+2=5 > 3)
         expect(screen.queryByText('Level 3')).not.toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Sharing section', () => {
+    it('renders SharingPanel with user grants', () => {
+      setupMocks()
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      expect(screen.getByText('alice@example.com')).toBeInTheDocument()
+    })
+
+    it('saving sharing calls useUpdateFolderSharing', async () => {
+      setupMocks()
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      // First Edit button is the Sharing section (index 0), second is Default Sharing (index 1)
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      fireEvent.click(editButtons[0])
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateFolderSharing as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalled()
+      })
+    })
+  })
+
+  describe('Default Sharing section', () => {
+    it('renders default grants from folder data', () => {
+      setupMocks()
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      expect(screen.getByText('Default Sharing')).toBeInTheDocument()
+      expect(screen.getByText('bob@example.com')).toBeInTheDocument()
+    })
+
+    it('shows explanatory description text', () => {
+      setupMocks()
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      expect(screen.getByText(/automatically applied to every new secret created in projects within this folder/i)).toBeInTheDocument()
+    })
+
+    it('save calls useUpdateFolderDefaultSharing mutation', async () => {
+      setupMocks()
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      // Second Edit button is the Default Sharing section (index 1)
+      const editButtons = screen.getAllByRole('button', { name: /^edit$/i })
+      fireEvent.click(editButtons[1])
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+      const mutateAsync = (useUpdateFolderDefaultSharing as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalled()
+      })
+    })
+
+    it('non-owners cannot edit sharing grants', () => {
+      setupMocks({ folder: { userRole: 1 }, org: { userRole: 1 } }) // VIEWER
+      render(<FolderDetailPage orgName="test-org" folderName="test-folder" />)
+      // With userRole=VIEWER (not owner), there should be no Edit buttons for sharing
+      const editButtons = screen.queryAllByRole('button', { name: /^edit$/i })
+      expect(editButtons.length).toBe(0)
     })
   })
 })
