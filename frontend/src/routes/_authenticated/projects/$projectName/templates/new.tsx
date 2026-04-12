@@ -283,7 +283,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 }`
 
   // Build LinkedTemplateRef objects from the currently selected keys for the
-  // preview render so the preview pane shows unified output.
+  // preview render so the preview pane shows grouped output (platform + project).
   const previewLinkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys.map((key) => {
     const parsed = parseLinkableKey(key)
     const vc = selectedVersionConstraints.get(key) ?? ''

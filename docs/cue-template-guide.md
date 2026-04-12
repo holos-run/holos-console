@@ -549,7 +549,7 @@ projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
 ```
 
 The error names the exact field path. Because it is a CUE evaluation error, it
-is reported by the `RenderDeploymentTemplate` preview RPC and by the deployment
+is reported by the `RenderTemplate` preview RPC and by the deployment
 create/update RPC before any Kubernetes call is attempted.
 
 #### Enforcement Layers
@@ -675,7 +675,7 @@ descriptive error.
 
 ### Previewing Your Template
 
-Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
+Use the `RenderTemplate` RPC to preview a template without creating a
 deployment. This accepts a `cue_template` (raw CUE source) and a `cue_input`
 (valid CUE source that supplies concrete values for template parameters),
 returning the rendered resources as multi-document YAML (`rendered_yaml`) and as
