@@ -251,7 +251,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         </div>
                       )
                     }
-                    // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
                     const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
                     const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
                     const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
