@@ -229,9 +229,9 @@ describe('CreateOrgDialog', () => {
       fireEvent.submit(screen.getByRole('form'))
 
       await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalledWith(
-          expect.not.objectContaining({ populateDefaults: true })
-        )
+        expect(mockMutateAsync).toHaveBeenCalled()
+        const args = mockMutateAsync.mock.calls[0][0]
+        expect(args).not.toHaveProperty('populateDefaults')
       })
     })
   })
