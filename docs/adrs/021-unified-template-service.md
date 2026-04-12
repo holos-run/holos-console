@@ -463,9 +463,17 @@ templates co-located with their owning namespace.
   implementer should default to passing the namespace name for folder scopes to
   avoid ambiguity.
 
+**Extended by [ADR 024](024-template-versioning.md)**: The unified `TemplateService`
+is extended with template versioning via immutable Release objects (Decision 2),
+semver version constraints on `LinkedTemplateRef` (Decision 3), and a
+`CheckUpdates` RPC for update visibility (Decision 5). The render pipeline
+resolves version constraints against the set of releases rather than reading the
+latest ConfigMap by name.
+
 ## References
 
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md) — Decision 5 sketches the collapsed permission set
 - [ADR 019: Explicit Platform Template Linking](019-explicit-template-linking.md) — extended by this ADR to cross-level references
 - [ADR 020: v1alpha2 Folder Hierarchy, Package Layout, and Secrets Semantics](020-v1alpha2-folder-hierarchy.md) — the hierarchy walk used by the rendering walk and permission checks
 - [ADR 016: Configuration Management Resource Schema](016-config-management-resource-schema.md) — resource collection policy that the renderer implements
+- [ADR 024: Template Versioning, Releases, and Dependency Constraints](024-template-versioning.md) — extends the unified TemplateService with immutable Release objects, semver version constraints on LinkedTemplateRef, and a CheckUpdates RPC

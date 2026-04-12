@@ -169,7 +169,10 @@ Rejected because:
 
 - **Template versioning and pinning.** Linked templates are resolved by name to
   the latest version at render time. Pinning to a specific template content hash
-  is deferred to a future release.
+  is deferred to a future release. **Resolved by [ADR 024](024-template-versioning.md)**:
+  templates now carry semver versions via immutable Release objects, and
+  `LinkedTemplateRef` includes a `version_constraint` field for pinning to a
+  compatible version range.
 
 - **Opt-out of mandatory templates.** Mandatory templates apply unconditionally.
   A per-project opt-out mechanism is deferred.
@@ -193,3 +196,4 @@ always included. See [ADR 021](021-unified-template-service.md) Decision 5.
 - [ADR 017: Configuration Management RBAC Levels](017-config-management-rbac-levels.md)
 - [ADR 018: CUE Template Default Values](018-cue-template-default-values.md)
 - [ADR 021: Unified Template Service and Collapsed Template Permissions](021-unified-template-service.md) — extends this ADR to cross-level linking and the unified TemplateService
+- [ADR 024: Template Versioning, Releases, and Dependency Constraints](024-template-versioning.md) — resolves the deferred versioning and pinning decision with semver releases and version constraints on LinkedTemplateRef

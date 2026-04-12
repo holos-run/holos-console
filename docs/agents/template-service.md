@@ -47,6 +47,16 @@ The render set formula is: `(mandatory AND enabled) UNION (enabled AND ref IN li
 
 The folder templates page (`/folders/$folderName/templates`) provides a read-only list of platform templates at folder scope. Mandatory templates are marked with a lock badge.
 
+## Versioning, Releases, and Version Constraints
+
+ADR 024 introduces template versioning on top of the unified TemplateService:
+
+- **Semantic versioning** -- templates carry a `version` field using `MAJOR.MINOR.PATCH`. New templates start at `0.1.0`; the `0.x` series signals pre-stable development. Versions are immutable once released.
+- **Release objects** -- a Release is an immutable snapshot stored as a separate ConfigMap in the same namespace as the parent template. The ConfigMap name encodes `<template-name>--v<MAJOR>-<MINOR>-<PATCH>`. Each release captures the CUE source, defaults, changelog, and upgrade advice.
+- **Version constraints on LinkedTemplateRef** -- the `version_constraint` field on `LinkedTemplateRef` accepts semver range expressions (e.g. `^1.2.0`, `>=1.0.0 <2.0.0`). At render time the resolver selects the latest release satisfying the constraint. Empty means latest released version.
+- **Safe update propagation** -- MINOR and PATCH releases propagate automatically to consumers whose constraints permit them. MAJOR releases require explicit consumer action (updating the constraint).
+- **CheckUpdates RPC** -- returns available updates for all linked templates in a given scope, powering the "updates available" badge and upgrade dialog in the UI.
+
 ## Permissions
 
 Edit access requires `PERMISSION_TEMPLATES_WRITE`, enforced via the unified `TemplateCascadePerms` table (Viewer=read-only, Editor=read/write, Owner=full control) applied uniformly at org, folder, and project scope (ADR 021 Decision 2).
@@ -60,3 +70,4 @@ Edit access requires `PERMISSION_TEMPLATES_WRITE`, enforced via the unified `Tem
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep cue-template-guide.md current
 - [Guardrail: Terminology](guardrail-terminology.md) — Use "platform template" not "system template"
 - [Tool Dependencies](tool-dependencies.md) — CUE runtime dependency
+- [ADR 024](../adrs/024-template-versioning.md) — Versioning, releases, and version constraints design
