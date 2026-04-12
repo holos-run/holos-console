@@ -6,7 +6,7 @@ version: 3.0.0
 
 # Implement Plan
 
-Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed in-PR if findings exist, and merged or escalated -- all without human intervention unless critical findings persist. After all sub-issues are processed, the plan re-reads the parent issue for follow-up issues created during review and implements those too. Wall clock timing is tracked per sub-issue and overall.
+Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed in-PR if findings exist, and merged or escalated -- all without human intervention unless critical or important findings persist. After all sub-issues are processed, the plan re-reads the parent issue for follow-up issues created during review and implements those too. Wall clock timing is tracked per sub-issue and overall.
 
 ## Arguments
 
@@ -342,7 +342,7 @@ gh pr edit $PR_NUMBER --add-label "needs-human-review"
 
 ### 9. Merge the PR
 
-Before merging, handle any remaining non-critical findings from round 2:
+Before merging, handle any remaining style-only findings from round 2:
 
 **If style-only findings remain after round 2** (no CRITICAL or IMPORTANT), create a follow-up issue **attached to the parent issue**:
 
@@ -471,7 +471,7 @@ No follow-up issues were created during review.
 </if>
 
 <if any escalated>
-**Action required**: Some PRs have the \`needs-human-review\` label and were not merged. Please review the critical findings and merge manually.
+**Action required**: Some PRs have the \`needs-human-review\` label and were not merged. Please review the critical/important findings and merge manually.
 </if>
 EOF
 )"
@@ -495,7 +495,7 @@ Each sub-agent runs in the same working directory but is isolated by purpose:
 |-----------|-------|---------|-------|--------|
 | Implement | Opus | Code the sub-issue | Issue body, codebase | Branch, commits, PR |
 | Review | Default | Run `/review-pr` (Codex) | PR diff, conventions | Review file, GitHub review |
-| Fix | Opus | Fix critical findings | Review file, codebase | Commits, push |
+| Fix | Opus | Fix review findings | Review file, codebase | Commits, push |
 | CI Fix | Opus | Fix CI failures | CI output, codebase | Commits, push |
 
 Using sub-agents preserves the orchestrator's context window. The orchestrator only tracks issue state, PR numbers, and verdicts -- not the full implementation or review details.
@@ -551,6 +551,6 @@ The skill will:
 1. Fetch issue #42, find sub-issues #43, #44, #45
 2. Implement #43 -> PR #50 -> review (findings) -> fix all in-PR -> re-review (clean) -> merge
 3. Implement #44 -> PR #51 -> review -> approve -> merge
-4. Implement #45 -> PR #52 -> review (findings) -> fix in-PR -> re-review (non-critical remain) -> merge + follow-up #60
+4. Implement #45 -> PR #52 -> review (findings) -> fix in-PR -> re-review (style-only remain) -> merge + follow-up #60
 5. Re-read #42, find follow-up #60 -> implement #60 -> PR #53 -> review -> merge
 6. Post summary with wall clock timing on #42

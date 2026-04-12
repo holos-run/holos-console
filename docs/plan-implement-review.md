@@ -202,8 +202,8 @@ claude "/implement-issue <master-issue-number>"
 - Master issue closed with all sub-issues checked off
 - One merged PR per sub-issue
 - Review comments on each PR (from Codex)
-- Follow-up issues for any non-critical review findings
-- Any PRs labeled `needs-human-review` if critical findings were unresolved
+- Follow-up issues for any remaining style findings
+- Any PRs labeled `needs-human-review` if critical or important findings were unresolved
 
 ### Dispatch via tmux
 
