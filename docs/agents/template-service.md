@@ -37,7 +37,7 @@ Platform templates (org-scoped or folder-scoped) can be marked `mandatory` (appl
 
 ## Explicit Linking Model
 
-ADR 019, extended to cross-level refs: each deployment template ConfigMap may carry the annotation `console.holos.run/linked-templates` (JSON array of `{scope, scope_name, name, version_constraint}` objects); at render time these refs are resolved and passed to `ListOrgTemplateSourcesForRender` (currently resolves organization-scope templates only). The `version_constraint` field is optional; when present it selects the latest Release satisfying the semver range instead of the mutable working copy.
+ADR 019, extended to cross-level refs: each deployment template ConfigMap may carry the annotation `console.holos.run/linked-templates` (JSON array of `{scope, scope_name, name, version_constraint}` objects); at render time these refs are resolved via `ListAncestorTemplateSourcesForRender` which walks the full ancestor chain (org + folders) and applies the render set formula at each ancestor scope. When the ancestor walker is not available, the system falls back to `ListOrgTemplateSourcesForRender` (org-scope only). The `version_constraint` field is optional; when present it selects the latest Release satisfying the semver range instead of the mutable working copy.
 
 The render set formula is: `(mandatory AND enabled) UNION (enabled AND ref IN linked_list)`.
 
