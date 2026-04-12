@@ -544,11 +544,13 @@ describe('DeploymentTemplateDetailPage', () => {
       { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' } },
     ]
 
-    it('does not show linked templates row when no linkable templates exist', () => {
+    it('shows linked templates section with empty state when no linkable templates exist', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [] })
       setupMocks()
       render(<DeploymentTemplateDetailPage />)
-      expect(screen.queryByText(/linked platform templates/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/none linked/i)).toBeInTheDocument()
+      expect(screen.getByText(/no platform templates available to link/i)).toBeInTheDocument()
     })
 
     it('shows linked templates row when linkable templates exist', () => {

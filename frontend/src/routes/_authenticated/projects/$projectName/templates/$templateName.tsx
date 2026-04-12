@@ -235,71 +235,77 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               </div>
             </div>
 
-            {linkableTemplates.length > 0 && (
-              <div className="flex items-start gap-2">
-                <span className="w-32 text-sm text-muted-foreground shrink-0 pt-0.5">Linked Platform Templates</span>
-                <div className="flex items-start gap-1 flex-1">
-                  <div className="flex-1">
-                    {(() => {
-                      // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
-                      const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
-                      const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
-                      const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                      const allLinked = [
-                        ...mandatoryTemplates.filter((t) => !linkedKeys.includes(keyOf(t))),
-                        ...linkableTemplates.filter((t) => linkedKeys.includes(keyOf(t)) || t.mandatory),
-                      ]
-                      const dedupedLinked = allLinked.filter(
-                        (t, i, arr) => arr.findIndex((x) => keyOf(x) === keyOf(t)) === i,
-                      )
-                      if (dedupedLinked.length === 0) {
-                        return <span className="text-sm text-muted-foreground">None linked</span>
-                      }
+            <div className="flex items-start gap-2">
+              <span className="w-32 text-sm text-muted-foreground shrink-0 pt-0.5">Linked Platform Templates</span>
+              <div className="flex items-start gap-1 flex-1">
+                <div className="flex-1">
+                  {(() => {
+                    if (linkableTemplates.length === 0) {
                       return (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex flex-wrap gap-1">
-                            {dedupedLinked.map((t) => {
-                              const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
-                              // Look up the version constraint from the template's linkedTemplates.
-                              const linkedRef = (template?.linkedTemplates ?? []).find(
-                                (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
-                              )
-                              const constraint = linkedRef?.versionConstraint
-                              return (
-                                <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
-                                  {t.displayName || t.name}
-                                  {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
-                                  {constraint && <span className="text-xs font-mono text-muted-foreground">{constraint}</span>}
-                                  {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
-                                </span>
-                              )
-                            })}
-                          </div>
-                          {templateUpdates.length > 0 && (
-                            <button
-                              onClick={() => setUpgradeOpen(true)}
-                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit"
-                            >
-                              <ArrowUpCircle className="h-3 w-3" />
-                              {templateUpdates.length === 1 ? '1 update available' : `${templateUpdates.length} updates available`}
-                            </button>
-                          )}
+                        <div className="space-y-1">
+                          <span className="text-sm text-muted-foreground">None linked</span>
+                          <p className="text-xs text-muted-foreground">No platform templates available to link. Create organization or folder templates to enable linking.</p>
                         </div>
                       )
-                    })()}
-                  </div>
-                  {canWrite && (
-                    <button
-                      aria-label="edit linked platform templates"
-                      onClick={handleOpenLinkedEdit}
-                      className="ml-1 p-0.5 text-muted-foreground hover:text-foreground shrink-0"
-                    >
-                      <Pencil className="size-3.5" />
-                    </button>
-                  )}
+                    }
+                    // linkedTemplates (v1alpha2) replaces linkedOrgTemplates (v1alpha1).
+                    const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
+                    const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
+                    const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                    const allLinked = [
+                      ...mandatoryTemplates.filter((t) => !linkedKeys.includes(keyOf(t))),
+                      ...linkableTemplates.filter((t) => linkedKeys.includes(keyOf(t)) || t.mandatory),
+                    ]
+                    const dedupedLinked = allLinked.filter(
+                      (t, i, arr) => arr.findIndex((x) => keyOf(x) === keyOf(t)) === i,
+                    )
+                    if (dedupedLinked.length === 0) {
+                      return <span className="text-sm text-muted-foreground">None linked</span>
+                    }
+                    return (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-1">
+                          {dedupedLinked.map((t) => {
+                            const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            // Look up the version constraint from the template's linkedTemplates.
+                            const linkedRef = (template?.linkedTemplates ?? []).find(
+                              (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
+                            )
+                            const constraint = linkedRef?.versionConstraint
+                            return (
+                              <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
+                                {t.displayName || t.name}
+                                {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
+                                {constraint && <span className="text-xs font-mono text-muted-foreground">{constraint}</span>}
+                                {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
+                              </span>
+                            )
+                          })}
+                        </div>
+                        {templateUpdates.length > 0 && (
+                          <button
+                            onClick={() => setUpgradeOpen(true)}
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit"
+                          >
+                            <ArrowUpCircle className="h-3 w-3" />
+                            {templateUpdates.length === 1 ? '1 update available' : `${templateUpdates.length} updates available`}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
+                {canWrite && linkableTemplates.length > 0 && (
+                  <button
+                    aria-label="edit linked platform templates"
+                    onClick={handleOpenLinkedEdit}
+                    className="ml-1 p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="space-y-4">

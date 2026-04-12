@@ -260,11 +260,20 @@ describe('CreateTemplatePage', () => {
     ]
     const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
-    it('hides linked templates section when no linkable templates exist', () => {
+    it('shows linked templates section with empty state when no linkable templates exist', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [] })
       setupMocks()
       render(<CreateTemplatePage />)
-      expect(screen.queryByText(/linked platform templates/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/no platform templates available to link/i)).toBeInTheDocument()
+    })
+
+    it('shows empty state message for EDITOR when no linkable templates exist', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [] })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/no platform templates available to link/i)).toBeInTheDocument()
     })
 
     it('shows linked templates section when linkable templates exist for OWNER', () => {

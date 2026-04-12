@@ -399,112 +399,112 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               className="font-mono text-sm field-sizing-normal max-h-[600px] overflow-y-auto"
             />
           </div>
-          {linkableTemplates.length > 0 && (
-            <div className="space-y-3">
-              <Label>Linked Platform Templates</Label>
-              {canLink ? (
-                <div className="space-y-4">
-                  {orgTemplates.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
-                      {orgTemplates.map((t) => {
-                        const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                        return (
-                        <div key={key} className="flex items-start gap-2">
-                          <Checkbox
-                            id={`linked-create-${key}`}
-                            checked={t.mandatory || selectedLinkedKeys.includes(key)}
-                            disabled={t.mandatory}
-                            onCheckedChange={(checked) => {
-                              if (t.mandatory) return
-                              setSelectedLinkedKeys((prev) =>
-                                checked ? [...prev, key] : prev.filter((k) => k !== key),
-                              )
-                            }}
-                          />
-                          <div className="flex flex-col">
-                            <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
-                              {t.displayName || t.name}
-                              {t.mandatory && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>This platform template is mandatory and always applied.</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </label>
-                            {t.description && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+          <div className="space-y-3">
+            <Label>Linked Platform Templates</Label>
+            {linkableTemplates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No platform templates available to link. Create organization or folder templates to enable linking.</p>
+            ) : canLink ? (
+              <div className="space-y-4">
+                {orgTemplates.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
+                    {orgTemplates.map((t) => {
+                      const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      return (
+                      <div key={key} className="flex items-start gap-2">
+                        <Checkbox
+                          id={`linked-create-${key}`}
+                          checked={t.mandatory || selectedLinkedKeys.includes(key)}
+                          disabled={t.mandatory}
+                          onCheckedChange={(checked) => {
+                            if (t.mandatory) return
+                            setSelectedLinkedKeys((prev) =>
+                              checked ? [...prev, key] : prev.filter((k) => k !== key),
+                            )
+                          }}
+                        />
+                        <div className="flex flex-col">
+                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                            {t.displayName || t.name}
+                            {t.mandatory && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>This platform template is mandatory and always applied.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             )}
-                          </div>
+                          </label>
+                          {t.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                          )}
                         </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {folderTemplates.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
-                      {folderTemplates.map((t) => {
-                        const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                        return (
-                        <div key={key} className="flex items-start gap-2">
-                          <Checkbox
-                            id={`linked-create-${key}`}
-                            checked={t.mandatory || selectedLinkedKeys.includes(key)}
-                            disabled={t.mandatory}
-                            onCheckedChange={(checked) => {
-                              if (t.mandatory) return
-                              setSelectedLinkedKeys((prev) =>
-                                checked ? [...prev, key] : prev.filter((k) => k !== key),
-                              )
-                            }}
-                          />
-                          <div className="flex flex-col">
-                            <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
-                              {t.displayName || t.name}
-                              {t.mandatory && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>This platform template is mandatory and always applied.</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </label>
-                            {t.description && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                      </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {folderTemplates.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
+                    {folderTemplates.map((t) => {
+                      const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      return (
+                      <div key={key} className="flex items-start gap-2">
+                        <Checkbox
+                          id={`linked-create-${key}`}
+                          checked={t.mandatory || selectedLinkedKeys.includes(key)}
+                          disabled={t.mandatory}
+                          onCheckedChange={(checked) => {
+                            if (t.mandatory) return
+                            setSelectedLinkedKeys((prev) =>
+                              checked ? [...prev, key] : prev.filter((k) => k !== key),
+                            )
+                          }}
+                        />
+                        <div className="flex flex-col">
+                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                            {t.displayName || t.name}
+                            {t.mandatory && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>This platform template is mandatory and always applied.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             )}
-                          </div>
+                          </label>
+                          {t.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                          )}
                         </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {linkableTemplates.filter((t) => t.mandatory).map((t) => (
-                    <div key={linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)} className="flex items-center gap-1 text-sm">
-                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                      <span>{t.displayName || t.name}</span>
-                      <span className="text-muted-foreground">(mandatory, auto-applied)</span>
-                    </div>
-                  ))}
-                  <p className="text-xs text-muted-foreground">Only owners can link additional platform templates.</p>
-                </div>
-              )}
-            </div>
-          )}
+                      </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {linkableTemplates.filter((t) => t.mandatory).map((t) => (
+                  <div key={linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)} className="flex items-center gap-1 text-sm">
+                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                    <span>{t.displayName || t.name}</span>
+                    <span className="text-muted-foreground">(mandatory, auto-applied)</span>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">Only owners can link additional platform templates.</p>
+              </div>
+            )}
+          </div>
           <div>
             <Button variant="outline" type="button" onClick={() => setPreviewOpen((v) => !v)}>
               {previewOpen ? 'Hide Preview' : 'Preview'}
