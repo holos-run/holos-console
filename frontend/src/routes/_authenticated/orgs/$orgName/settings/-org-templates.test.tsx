@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -42,7 +42,6 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import {
   useListTemplates,
   useGetTemplate,
-  useCreateTemplate,
   useUpdateTemplate,
   useCloneTemplate,
   useRenderTemplate,
@@ -83,10 +82,6 @@ function setupListMocks(userRole = Role.OWNER) {
     data: { name: 'test-org', userRole },
     isPending: false,
     error: null,
-  })
-  ;(useCreateTemplate as Mock).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({}),
-    isPending: false,
   })
 }
 
@@ -148,7 +143,6 @@ describe('OrgTemplatesListPage', () => {
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
@@ -172,7 +166,6 @@ describe('OrgTemplatesListPage', () => {
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     // Should not crash; skeleton elements rendered
     expect(screen.queryByText('reference-grant')).not.toBeInTheDocument()
@@ -185,87 +178,29 @@ describe('OrgTemplatesListPage', () => {
       error: new Error('Failed to load templates'),
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.getByText('Failed to load templates')).toBeInTheDocument()
   })
 
-  describe('create template button and dialog', () => {
-    it('shows Create Template button for org OWNER', () => {
+  describe('create template link', () => {
+    it('shows Create Template link for org OWNER', () => {
       setupListMocks(Role.OWNER)
       render(<OrgTemplatesListPage orgName="test-org" />)
       expect(screen.getByRole('button', { name: /create template/i })).toBeInTheDocument()
     })
 
-    it('does not show Create Template button for org VIEWER', () => {
+    it('does not show Create Template link for org VIEWER', () => {
       setupListMocks(Role.VIEWER)
       render(<OrgTemplatesListPage orgName="test-org" />)
       expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument()
     })
 
-    it('clicking Create Template opens dialog', async () => {
+    it('Create Template button is wrapped in a link to the new page', () => {
       setupListMocks(Role.OWNER)
-      const user = userEvent.setup()
       render(<OrgTemplatesListPage orgName="test-org" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    it('create dialog has enabled toggle defaulting to disabled', async () => {
-      setupListMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<OrgTemplatesListPage orgName="test-org" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const toggle = screen.getByRole('switch', { name: /enabled/i })
-      expect(toggle).toBeInTheDocument()
-      expect(toggle).toHaveAttribute('data-state', 'unchecked')
-    })
-
-    it('confirming create calls createOrgTemplate with enabled state', async () => {
-      setupListMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<OrgTemplatesListPage orgName="test-org" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, 'my-template')
-      // Toggle enabled on
-      await user.click(screen.getByRole('switch', { name: /enabled/i }))
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-          name: 'my-template',
-          enabled: true,
-        }))
-      })
-    })
-
-    it('create with enabled defaulting to false passes disabled to createOrgTemplate', async () => {
-      setupListMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<OrgTemplatesListPage orgName="test-org" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.type(nameInput, 'my-template')
-      await user.click(screen.getByRole('button', { name: /^create$/i }))
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-          name: 'my-template',
-          enabled: false,
-        }))
-      })
-    })
-
-    it('cancel closes create dialog without saving', async () => {
-      setupListMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<OrgTemplatesListPage orgName="test-org" />)
-      await user.click(screen.getByRole('button', { name: /create template/i }))
-      await user.click(screen.getByRole('button', { name: /cancel/i }))
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      const mutateAsync = (useCreateTemplate as Mock).mock.results[0].value.mutateAsync
-      expect(mutateAsync).not.toHaveBeenCalled()
+      const button = screen.getByRole('button', { name: /create template/i })
+      const link = button.closest('a')
+      expect(link).toBeInTheDocument()
     })
   })
 })

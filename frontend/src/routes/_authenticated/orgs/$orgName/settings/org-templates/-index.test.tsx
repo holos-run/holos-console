@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -18,7 +18,6 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
-  useCreateTemplate: vi.fn(),
   makeOrgScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-org' }),
 }))
 
@@ -26,76 +25,73 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-
-import { useListTemplates, useCreateTemplate } from '@/queries/templates'
+import { useListTemplates } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatesListPage } from './index'
 
-function setupMocks(userRole = Role.OWNER) {
-  ;(useListTemplates as Mock).mockReturnValue({ data: [], isPending: false, error: null })
+function setupMocks(userRole = Role.OWNER, templates: Array<{ name: string; description?: string; mandatory?: boolean; enabled?: boolean }> = []) {
+  ;(useListTemplates as Mock).mockReturnValue({ data: templates, isPending: false, error: null })
   ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole } })
-  ;(useCreateTemplate as Mock).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({}),
-    isPending: false,
-  })
 }
 
-describe('OrgTemplatesListPage - Load httpbin Example button', () => {
+describe('OrgTemplatesListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders Load httpbin Example button for ORG_OWNER after opening create dialog', async () => {
+  it('renders Create Template link button for OWNER', () => {
     setupMocks(Role.OWNER)
     render(<OrgTemplatesListPage orgName="test-org" />)
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
-    })
+    const link = screen.getByRole('link', { name: /create template/i })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/orgs/$orgName/settings/org-templates/new')
   })
 
-  it('does NOT render Load httpbin Example button for VIEWER (create button not shown)', () => {
+  it('does NOT render Create Template link for VIEWER', () => {
     setupMocks(Role.VIEWER)
     render(<OrgTemplatesListPage orgName="test-org" />)
-    expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /load httpbin example/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /create template/i })).not.toBeInTheDocument()
   })
 
-  it('clicking Load httpbin Example populates the name field', async () => {
+  it('renders the empty state when no templates exist', () => {
     setupMocks(Role.OWNER)
     render(<OrgTemplatesListPage orgName="test-org" />)
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
-    })
-    fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
-    const nameInput = screen.getByRole('textbox', { name: /^name$/i }) as HTMLInputElement
-    expect(nameInput.value).toBe('httpbin-platform')
+    expect(screen.getByText(/no platform templates found/i)).toBeInTheDocument()
   })
 
-  it('clicking Load httpbin Example populates the display name field', async () => {
-    setupMocks(Role.OWNER)
+  it('renders template list items', () => {
+    setupMocks(Role.OWNER, [
+      { name: 'httpbin-platform', description: 'HTTPRoute for gateway', mandatory: false, enabled: true },
+      { name: 'lockdown', description: 'Restrict kinds', mandatory: true, enabled: false },
+    ])
     render(<OrgTemplatesListPage orgName="test-org" />)
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
-    })
-    fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
-    const displayNameInput = screen.getByRole('textbox', { name: /display name/i }) as HTMLInputElement
-    expect(displayNameInput.value).toBe('httpbin Platform')
+    expect(screen.getByText('httpbin-platform')).toBeInTheDocument()
+    expect(screen.getByText('lockdown')).toBeInTheDocument()
+    expect(screen.getByText('Mandatory')).toBeInTheDocument()
+    expect(screen.getByText('Enabled')).toBeInTheDocument()
+    expect(screen.getByText('Disabled')).toBeInTheDocument()
   })
 
-  it('clicking Load httpbin Example populates the description field', async () => {
+  it('renders loading skeleton when isPending', () => {
+    ;(useListTemplates as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER } })
+    render(<OrgTemplatesListPage orgName="test-org" />)
+    // Skeleton elements do not have accessible names, but the Create Template button should not be visible
+    expect(screen.queryByRole('link', { name: /create template/i })).not.toBeInTheDocument()
+  })
+
+  it('renders error alert when query fails', () => {
+    ;(useListTemplates as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('fetch failed') })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER } })
+    render(<OrgTemplatesListPage orgName="test-org" />)
+    expect(screen.getByText(/fetch failed/i)).toBeInTheDocument()
+  })
+
+  it('renders breadcrumb path with org name', () => {
     setupMocks(Role.OWNER)
     render(<OrgTemplatesListPage orgName="test-org" />)
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
-    })
-    fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
-    const descInput = screen.getByRole('textbox', { name: /description/i }) as HTMLInputElement
-    expect(descInput.value).toContain('HTTPRoute')
+    // The breadcrumb line contains the orgName and "Platform Templates" text
+    expect(screen.getByText(/test-org/)).toBeInTheDocument()
   })
 })
