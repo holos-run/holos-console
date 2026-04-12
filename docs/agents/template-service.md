@@ -70,3 +70,4 @@ Edit access requires `PERMISSION_TEMPLATES_WRITE`, enforced via the unified `Tem
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep cue-template-guide.md current
 - [Guardrail: Terminology](guardrail-terminology.md) — Use "platform template" not "system template"
 - [Tool Dependencies](tool-dependencies.md) — CUE runtime dependency
+- [ADR 024](../adrs/024-template-versioning.md) — Versioning, releases, and version constraints design
