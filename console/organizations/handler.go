@@ -27,16 +27,35 @@ type ProjectLister interface {
 	ListProjects(ctx context.Context, org, parentNs string) ([]*corev1.Namespace, error)
 }
 
-// FolderCreator creates a folder namespace. Used by CreateOrganization to
+// FolderCreator creates and deletes a folder namespace. Used by CreateOrganization to
 // auto-create the default folder without importing the folders package directly.
+// DeleteFolder is needed for rollback when later steps of org creation fail.
 type FolderCreator interface {
 	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	DeleteFolder(ctx context.Context, name string) error
 	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
 
 // FolderLister retrieves folder namespaces for validation.
 type FolderLister interface {
 	GetFolder(ctx context.Context, name string) (*corev1.Namespace, error)
+}
+
+// TemplateSeeder seeds default templates into a scope. Used by
+// CreateOrganization to seed example templates when populate_defaults is true.
+type TemplateSeeder interface {
+	SeedOrgTemplate(ctx context.Context, org string) error
+	SeedProjectTemplate(ctx context.Context, project string) error
+}
+
+// ProjectCreator creates and deletes a project namespace. Used by CreateOrganization to
+// create a default project when populate_defaults is true, following the same
+// pattern as FolderCreator. DeleteProject is needed for rollback when later
+// seeding steps fail.
+type ProjectCreator interface {
+	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error
+	DeleteProject(ctx context.Context, name string) error
+	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
 
 // Handler implements the OrganizationService.
@@ -47,6 +66,9 @@ type Handler struct {
 	folderCreator   FolderCreator
 	folderLister    FolderLister
 	folderPrefix    string // namespace prefix + folder prefix (e.g. "holos-fld-")
+	templateSeeder  TemplateSeeder
+	projectCreator  ProjectCreator
+	projectPrefix   string // namespace prefix + project prefix (e.g. "holos-prj-")
 	disableCreation bool
 	creatorUsers    []string
 	creatorRoles    []string
@@ -66,6 +88,15 @@ func (h *Handler) WithFolderCreator(fc FolderCreator, fl FolderLister, folderPre
 	h.folderCreator = fc
 	h.folderLister = fl
 	h.folderPrefix = folderPrefix
+	return h
+}
+
+// WithDefaultsSeeder sets the template seeder and project creator used to
+// populate example resources when populate_defaults is true on CreateOrganization.
+func (h *Handler) WithDefaultsSeeder(ts TemplateSeeder, pc ProjectCreator, projectPrefix string) *Handler {
+	h.templateSeeder = ts
+	h.projectCreator = pc
+	h.projectPrefix = projectPrefix
 	return h
 }
 
@@ -203,15 +234,22 @@ func (h *Handler) CreateOrganization(
 	}
 
 	// Auto-create the default folder as an immediate child of the org.
+	// folderName is hoisted so the seed-defaults rollback can also delete
+	// the folder namespace (Kubernetes namespaces are flat — deleting the
+	// org does not cascade to the folder or project namespaces).
+	var folderName string
 	if h.folderCreator != nil {
 		folderDisplayName := "Default"
 		if req.Msg.DefaultFolder != nil && *req.Msg.DefaultFolder != "" {
 			folderDisplayName = *req.Msg.DefaultFolder
 		}
 
-		folderName, err := h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, shareUsers, shareRoles)
+		var err error
+		folderName, err = h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, shareUsers, shareRoles)
 		if err != nil {
 			// Rollback: delete the org namespace on default folder failure.
+			// The folder namespace does not exist yet (creation failed), so
+			// only the org needs cleanup.
 			slog.ErrorContext(ctx, "default folder creation failed, rolling back org",
 				slog.String("organization", req.Msg.Name),
 				slog.Any("error", err),
@@ -232,7 +270,9 @@ func (h *Handler) CreateOrganization(
 				slog.String("folder", folderName),
 				slog.Any("error", err),
 			)
-			// Roll back: the org contract requires default_folder to be set.
+			// Roll back folder then org: the folder was already created but the
+			// annotation write failed, so we must explicitly remove it.
+			h.rollbackFolder(ctx, folderName)
 			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
 				slog.ErrorContext(ctx, "org rollback after annotation failure failed",
 					slog.String("organization", req.Msg.Name),
@@ -240,6 +280,27 @@ func (h *Handler) CreateOrganization(
 				)
 			}
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("setting default folder annotation: %w", err))
+		}
+	}
+
+	// Seed example resources when populate_defaults is requested.
+	if req.Msg.GetPopulateDefaults() {
+		if err := h.seedDefaults(ctx, req.Msg.Name, claims.Email, shareUsers, shareRoles); err != nil {
+			slog.ErrorContext(ctx, "populate defaults failed, rolling back org",
+				slog.String("organization", req.Msg.Name),
+				slog.Any("error", err),
+			)
+			// seedDefaults performs incremental rollback for resources it
+			// created (e.g. project namespace). Here we clean up the folder
+			// and org namespaces which were created before seeding began.
+			h.rollbackFolder(ctx, folderName)
+			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
+				slog.ErrorContext(ctx, "org rollback after seed failure failed",
+					slog.String("organization", req.Msg.Name),
+					slog.Any("error", delErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("seeding default resources: %w", err))
 		}
 	}
 
@@ -273,6 +334,83 @@ func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName,
 		return "", fmt.Errorf("creating folder namespace: %w", err)
 	}
 	return folderName, nil
+}
+
+// rollbackFolder deletes the folder namespace as part of org creation rollback.
+// Errors are logged but not propagated since this is best-effort cleanup.
+func (h *Handler) rollbackFolder(ctx context.Context, folderName string) {
+	if folderName == "" || h.folderCreator == nil {
+		return
+	}
+	if delErr := h.folderCreator.DeleteFolder(ctx, folderName); delErr != nil {
+		slog.ErrorContext(ctx, "folder rollback failed",
+			slog.String("folder", folderName),
+			slog.Any("error", delErr),
+		)
+	}
+}
+
+// seedDefaults creates example resources for the new organization:
+//  1. An org-level platform template (HTTPRoute, enabled)
+//  2. A default project in the default folder
+//  3. An example project-level deployment template in the new project
+//
+// Each step performs incremental rollback of resources it created on failure.
+// The caller is responsible for rolling back the org and folder namespaces.
+func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	if h.templateSeeder == nil || h.projectCreator == nil {
+		return fmt.Errorf("defaults seeder not configured")
+	}
+
+	// Step 1: Seed org-level platform template (enabled).
+	if err := h.templateSeeder.SeedOrgTemplate(ctx, orgName); err != nil {
+		return fmt.Errorf("seeding org template: %w", err)
+	}
+
+	// Step 2: Create default project in the default folder.
+	// Resolve the default folder namespace from the org's annotation.
+	orgNs, err := h.k8s.GetOrganization(ctx, orgName)
+	if err != nil {
+		return fmt.Errorf("looking up org for default folder: %w", err)
+	}
+	defaultFolder := orgNs.Annotations[v1alpha2.AnnotationDefaultFolder]
+	if defaultFolder == "" {
+		return fmt.Errorf("organization %q has no default folder set", orgName)
+	}
+
+	// Derive the parent namespace from the default folder.
+	parentNs := h.k8s.resolver.FolderNamespace(defaultFolder)
+
+	projectDisplayName := "Default"
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.projectCreator.NamespaceExists(ctx, nsName)
+	}
+	projectName, err := v1alpha2.GenerateIdentifier(ctx, projectDisplayName, h.projectPrefix, exists)
+	if err != nil {
+		return fmt.Errorf("generating project identifier: %w", err)
+	}
+
+	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, shareUsers, shareRoles); err != nil {
+		return fmt.Errorf("creating default project: %w", err)
+	}
+
+	// Step 3: Seed project-level example deployment template.
+	if err := h.templateSeeder.SeedProjectTemplate(ctx, projectName); err != nil {
+		// Rollback: delete the project namespace created in step 2.
+		slog.ErrorContext(ctx, "project template seeding failed, rolling back project",
+			slog.String("project", projectName),
+			slog.Any("error", err),
+		)
+		if delErr := h.projectCreator.DeleteProject(ctx, projectName); delErr != nil {
+			slog.ErrorContext(ctx, "project rollback within seedDefaults failed",
+				slog.String("project", projectName),
+				slog.Any("error", delErr),
+			)
+		}
+		return fmt.Errorf("seeding project template: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateOrganization updates organization metadata.

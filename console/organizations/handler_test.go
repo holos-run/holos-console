@@ -60,6 +60,9 @@ type testHandlerOpts struct {
 	creatorRoles       []string
 	projectLister      ProjectLister
 	withFolderCreator  bool
+	withDefaultsSeeder bool
+	templateSeeder     TemplateSeeder
+	projectCreator     ProjectCreator
 }
 
 func newTestHandler(namespaces ...*corev1.Namespace) *Handler {
@@ -80,6 +83,19 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 		fc := &k8sFolderCreator{client: fakeClient, resolver: r}
 		folderPrefix := r.NamespacePrefix + r.FolderPrefix
 		handler.WithFolderCreator(fc, fc, folderPrefix)
+	}
+
+	if opts.withDefaultsSeeder {
+		ts := opts.templateSeeder
+		if ts == nil {
+			ts = &mockTemplateSeeder{}
+		}
+		pc := opts.projectCreator
+		if pc == nil {
+			pc = &k8sProjectCreator{client: fakeClient, resolver: r}
+		}
+		projectPrefix := r.NamespacePrefix + r.ProjectPrefix
+		handler.WithDefaultsSeeder(ts, pc, projectPrefix)
 	}
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -123,6 +139,11 @@ func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, 
 		},
 	}
 	return f.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+}
+
+func (f *k8sFolderCreator) DeleteFolder(ctx context.Context, name string) error {
+	nsName := f.resolver.FolderNamespace(name)
+	return f.client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
 }
 
 func (f *k8sFolderCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
@@ -1183,6 +1204,322 @@ func TestUpdateOrganization_UpdateDefaultFolder_EmptyValue(t *testing.T) {
 		DefaultFolder: &empty,
 	}))
 	assertInvalidArgument(t, err)
+}
+
+// ---- PopulateDefaults tests ----
+
+// mockTemplateSeeder implements TemplateSeeder for tests.
+type mockTemplateSeeder struct {
+	orgTemplateSeeded     bool
+	projectTemplateSeeded bool
+	seedOrgErr            error
+	seedProjectErr        error
+	// Track the project name for verification.
+	seededProjectName string
+}
+
+func (m *mockTemplateSeeder) SeedOrgTemplate(_ context.Context, _ string) error {
+	if m.seedOrgErr != nil {
+		return m.seedOrgErr
+	}
+	m.orgTemplateSeeded = true
+	return nil
+}
+
+func (m *mockTemplateSeeder) SeedProjectTemplate(_ context.Context, project string) error {
+	if m.seedProjectErr != nil {
+		return m.seedProjectErr
+	}
+	m.projectTemplateSeeded = true
+	m.seededProjectName = project
+	return nil
+}
+
+// k8sProjectCreator implements ProjectCreator for tests.
+type k8sProjectCreator struct {
+	client    *fake.Clientset
+	resolver  *resolver.Resolver
+	createErr error
+}
+
+func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	if p.createErr != nil {
+		return p.createErr
+	}
+	usersJSON, _ := json.Marshal(shareUsers)
+	rolesJSON, _ := json.Marshal(shareRoles)
+	annotations := map[string]string{
+		v1alpha2.AnnotationShareUsers: string(usersJSON),
+		v1alpha2.AnnotationShareRoles: string(rolesJSON),
+	}
+	if displayName != "" {
+		annotations[v1alpha2.AnnotationDisplayName] = displayName
+	}
+	if creatorEmail != "" {
+		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
+	}
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: p.resolver.ProjectNamespace(name),
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelOrganization: org,
+				v1alpha2.LabelProject:      name,
+				v1alpha2.AnnotationParent:  parentNs,
+			},
+			Annotations: annotations,
+		},
+	}
+	_, err := p.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	return err
+}
+
+func (p *k8sProjectCreator) DeleteProject(ctx context.Context, name string) error {
+	nsName := p.resolver.ProjectNamespace(name)
+	return p.client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
+}
+
+func (p *k8sProjectCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	_, err := p.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func TestCreateOrganization_PopulateDefaults(t *testing.T) {
+	t.Run("true creates all expected resources", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "seed-org",
+			DisplayName:      "Seed Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "seed-org" {
+			t.Errorf("expected name 'seed-org', got %q", resp.Msg.Name)
+		}
+
+		// Verify org-level template was seeded.
+		if !ts.orgTemplateSeeded {
+			t.Error("expected org-level template to be seeded")
+		}
+
+		// Verify project-level template was seeded.
+		if !ts.projectTemplateSeeded {
+			t.Error("expected project-level template to be seeded")
+		}
+
+		// Verify the default project was created (check that at least one project namespace exists).
+		pc := handler.projectCreator.(*k8sProjectCreator)
+		projectNsName := pc.resolver.ProjectNamespace(ts.seededProjectName)
+		_, err = pc.client.CoreV1().Namespaces().Get(context.Background(), projectNsName, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected default project namespace %q to exist, got %v", projectNsName, err)
+		}
+	})
+
+	t.Run("false behaves as before", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := false
+
+		resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "no-seed-org",
+			DisplayName:      "No Seed Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "no-seed-org" {
+			t.Errorf("expected name 'no-seed-org', got %q", resp.Msg.Name)
+		}
+
+		// Verify no seeding occurred.
+		if ts.orgTemplateSeeded {
+			t.Error("expected org-level template NOT to be seeded")
+		}
+		if ts.projectTemplateSeeded {
+			t.Error("expected project-level template NOT to be seeded")
+		}
+	})
+
+	t.Run("unset behaves as before", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+
+		resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:        "unset-org",
+			DisplayName: "Unset Org",
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Name != "unset-org" {
+			t.Errorf("expected name 'unset-org', got %q", resp.Msg.Name)
+		}
+
+		// Verify no seeding occurred.
+		if ts.orgTemplateSeeded {
+			t.Error("expected org-level template NOT to be seeded")
+		}
+		if ts.projectTemplateSeeded {
+			t.Error("expected project-level template NOT to be seeded")
+		}
+	})
+
+	t.Run("rollback on org template seed failure", func(t *testing.T) {
+		ts := &mockTemplateSeeder{seedOrgErr: fmt.Errorf("simulated org template failure")}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "fail-seed-org",
+			DisplayName:      "Fail Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		fc := handler.folderCreator.(*k8sFolderCreator)
+
+		// Verify the org namespace was cleaned up.
+		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-seed-org", metav1.GetOptions{})
+		if !k8serrors.IsNotFound(getErr) {
+			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+		}
+
+		// Verify the folder namespace was also cleaned up (namespaces are flat,
+		// deleting the org does not cascade to the folder).
+		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
+	})
+
+	t.Run("rollback on project creation failure", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		pc := &k8sProjectCreator{
+			client:    nil, // will be set below
+			resolver:  testResolver(),
+			createErr: fmt.Errorf("simulated project creation failure"),
+		}
+		objs := []runtime.Object{}
+		fakeClient := fake.NewClientset(objs...)
+		r := testResolver()
+		k8s := NewK8sClient(fakeClient, r)
+		handler := NewHandler(k8s, nil, false, nil, nil)
+		fc := &k8sFolderCreator{client: fakeClient, resolver: r}
+		folderPrefix := r.NamespacePrefix + r.FolderPrefix
+		handler.WithFolderCreator(fc, fc, folderPrefix)
+		pc.client = fakeClient
+		projectPrefix := r.NamespacePrefix + r.ProjectPrefix
+		handler.WithDefaultsSeeder(ts, pc, projectPrefix)
+		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "fail-proj-org",
+			DisplayName:      "Fail Project Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		// Verify the org namespace was cleaned up.
+		_, getErr := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-proj-org", metav1.GetOptions{})
+		if !k8serrors.IsNotFound(getErr) {
+			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+		}
+
+		// Verify the folder namespace was also cleaned up.
+		nsList, _ := fakeClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
+	})
+
+	t.Run("rollback on project template seed failure", func(t *testing.T) {
+		ts := &mockTemplateSeeder{seedProjectErr: fmt.Errorf("simulated project template failure")}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "fail-ptmpl-org",
+			DisplayName:      "Fail Project Template Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		fc := handler.folderCreator.(*k8sFolderCreator)
+
+		// Verify the org namespace was cleaned up.
+		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-ptmpl-org", metav1.GetOptions{})
+		if !k8serrors.IsNotFound(getErr) {
+			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+		}
+
+		// Verify the folder namespace was cleaned up.
+		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
+
+		// Verify the project namespace was cleaned up by seedDefaults'
+		// incremental rollback (project was created in step 2, then step 3 failed).
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeProject {
+				t.Errorf("expected project namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
+	})
 }
 
 // ---- Helpers ----

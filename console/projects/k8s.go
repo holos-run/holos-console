@@ -372,6 +372,30 @@ func (c *K8sClient) UpdateProjectDefaultSharing(ctx context.Context, name string
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
+// ProjectCreatorAdapter adapts the projects K8sClient to satisfy the
+// organizations.ProjectCreator interface. The adapter drops the
+// defaultShareUsers/defaultShareRoles parameters that are not needed for
+// the populate_defaults seeding flow.
+type ProjectCreatorAdapter struct {
+	K8s *K8sClient
+}
+
+// CreateProject creates a project namespace without default sharing grants.
+func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	_, err := a.K8s.CreateProject(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, nil, nil)
+	return err
+}
+
+// DeleteProject delegates to the K8sClient.
+func (a *ProjectCreatorAdapter) DeleteProject(ctx context.Context, name string) error {
+	return a.K8s.DeleteProject(ctx, name)
+}
+
+// NamespaceExists delegates to the K8sClient.
+func (a *ProjectCreatorAdapter) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	return a.K8s.NamespaceExists(ctx, nsName)
+}
+
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
 	if ns.Annotations == nil {
 		return nil, nil
