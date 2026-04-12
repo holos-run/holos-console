@@ -129,6 +129,32 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
       <CardContent>
         <div className="space-y-4">
           <div>
+            <Label>Template</Label>
+            {templates.length === 0 ? (
+              <p className="text-sm text-muted-foreground mt-1">
+                No templates available.{' '}
+                <Link
+                  to="/projects/$projectName/templates/new"
+                  params={{ projectName }}
+                  className="underline"
+                >
+                  Create a template
+                </Link>{' '}
+                first.
+              </p>
+            ) : (
+              <Combobox
+                aria-label="Template"
+                items={templates.map((t) => ({ value: t.name, label: t.name }))}
+                value={template}
+                onValueChange={handleTemplateChange}
+                placeholder="Select a template..."
+                searchPlaceholder="Search templates..."
+                emptyMessage="No templates found."
+              />
+            )}
+          </div>
+          <div>
             <Label htmlFor="deployment-display-name">Display Name</Label>
             <Input
               id="deployment-display-name"
@@ -160,32 +186,6 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What does this deployment serve?"
             />
-          </div>
-          <div>
-            <Label>Template</Label>
-            {templates.length === 0 ? (
-              <p className="text-sm text-muted-foreground mt-1">
-                No templates available.{' '}
-                <Link
-                  to="/projects/$projectName/templates/new"
-                  params={{ projectName }}
-                  className="underline"
-                >
-                  Create a template
-                </Link>{' '}
-                first.
-              </p>
-            ) : (
-              <Combobox
-                aria-label="Template"
-                items={templates.map((t) => ({ value: t.name, label: t.name }))}
-                value={template}
-                onValueChange={handleTemplateChange}
-                placeholder="Select a template..."
-                searchPlaceholder="Search templates..."
-                emptyMessage="No templates found."
-              />
-            )}
           </div>
           <div>
             <Label htmlFor="deployment-image">Image</Label>
