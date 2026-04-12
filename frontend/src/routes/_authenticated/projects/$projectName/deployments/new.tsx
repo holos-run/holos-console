@@ -59,7 +59,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     setTemplate(templateName)
     const selected = templates.find((t) => t.name === templateName)
     const defaults = selected?.defaults
-    // Pre-fill name and description from CUE-extracted defaults (ADR 018).
+    // Pre-fill form fields from CUE-extracted defaults (ADR 018 design, ADR 025 per-field extraction).
     if (defaults?.name) {
       setDisplayName(defaults.name)
       setName(slugify(defaults.name))
