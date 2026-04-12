@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -619,15 +619,16 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const dialog = screen.getByRole('dialog')
       // Check the non-mandatory template
-      await user.click(screen.getByRole('checkbox', { name: /httproute gateway/i }))
-      await user.click(screen.getByRole('button', { name: /^save$/i }))
+      await user.click(within(dialog).getByRole('checkbox', { name: /httproute gateway/i }))
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
       const mutateAsync = (useUpdateTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             linkedTemplates: expect.arrayContaining([
-              expect.objectContaining({ name: 'httproute' }),
+              expect.objectContaining({ scope: 1, scopeName: 'acme', name: 'httproute' }),
             ]),
             updateLinkedTemplates: true,
           }),
@@ -692,7 +693,8 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
-      expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
     })
 
     it('shows scope badge per template in read-only display', () => {
