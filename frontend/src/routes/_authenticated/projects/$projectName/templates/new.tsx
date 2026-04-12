@@ -583,11 +583,43 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     </AlertDescription>
                   </Alert>
                 )}
-                {renderQuery.data?.renderedJson && (
-                  <pre className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all">
-                    {renderQuery.data.renderedJson}
-                  </pre>
-                )}
+                {renderQuery.data && (() => {
+                  const platformJson = renderQuery.data.platformResourcesJson ?? ''
+                  const projectJson = renderQuery.data.projectResourcesJson ?? ''
+                  const hasPerCollection = !!(platformJson || projectJson)
+                  if (hasPerCollection) {
+                    return (
+                      <div className="space-y-3">
+                        {platformJson && (
+                          <>
+                            <Label>Platform Resources</Label>
+                            <pre
+                              aria-label="Platform Resources JSON"
+                              className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all"
+                            >
+                              {platformJson}
+                            </pre>
+                          </>
+                        )}
+                        <Label>{platformJson ? 'Project Resources' : 'Rendered JSON'}</Label>
+                        <pre
+                          aria-label={platformJson ? 'Project Resources JSON' : 'Rendered JSON'}
+                          className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all"
+                        >
+                          {projectJson}
+                        </pre>
+                      </div>
+                    )
+                  }
+                  if (renderQuery.data.renderedJson) {
+                    return (
+                      <pre className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all">
+                        {renderQuery.data.renderedJson}
+                      </pre>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             )}
           </div>

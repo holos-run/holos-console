@@ -125,6 +125,12 @@ export function CueTemplateEditor({
     linkedTemplates,
   )
 
+  // Per-collection fields take precedence over the unified renderedYaml
+  // when populated by the backend. Fall back to unified view for backwards
+  // compatibility with older backends that only return renderedYaml.
+  const platformResourcesYaml = renderData?.platformResourcesYaml ?? ''
+  const projectResourcesYaml = renderData?.projectResourcesYaml ?? ''
+  const hasPerCollectionFields = !!(platformResourcesYaml || projectResourcesYaml)
   const renderedYaml = renderData?.renderedYaml
 
   return (
@@ -182,13 +188,35 @@ export function CueTemplateEditor({
         </div>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label>Rendered YAML</Label>
+            <Label>{hasPerCollectionFields && platformResourcesYaml ? 'Platform Resources' : 'Rendered YAML'}</Label>
             <RenderStatusIndicator isStale={isStale} isRendering={isRendering} hasError={!!renderError} />
           </div>
           {renderError ? (
             <Alert variant="destructive">
               <AlertDescription aria-label="Preview error">{renderError.message}</AlertDescription>
             </Alert>
+          ) : hasPerCollectionFields ? (
+            <>
+              {platformResourcesYaml && (
+                <pre
+                  aria-label="Platform Resources YAML"
+                  className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+                >
+                  {platformResourcesYaml}
+                </pre>
+              )}
+              {platformResourcesYaml && projectResourcesYaml && (
+                <div className="flex items-center gap-2 pt-2">
+                  <Label>Project Resources</Label>
+                </div>
+              )}
+              <pre
+                aria-label={platformResourcesYaml ? 'Project Resources YAML' : 'Rendered YAML'}
+                className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+              >
+                {projectResourcesYaml}
+              </pre>
+            </>
           ) : (
             <pre
               aria-label="Rendered YAML"
