@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -409,6 +410,17 @@ export function FolderTemplatesIndexPage({
                 value={createDescription}
                 onChange={(e) => setCreateDescription(e.target.value)}
                 placeholder="What does this template produce?"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="create-cue-template">CUE Template</Label>
+              <Textarea
+                id="create-cue-template"
+                aria-label="CUE Template"
+                value={createCueTemplate}
+                onChange={(e) => setCreateCueTemplate(e.target.value)}
+                placeholder="// CUE template content"
+                className="font-mono text-xs min-h-[120px]"
               />
             </div>
             <div className="flex items-center gap-3">

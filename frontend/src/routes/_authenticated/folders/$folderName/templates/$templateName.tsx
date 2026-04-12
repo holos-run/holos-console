@@ -260,10 +260,12 @@ export function FolderTemplateDetailPage({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">CUE Template</h3>
-              <Button variant="outline" size="sm" onClick={handleOpenClone}>
-                <Copy className="h-3.5 w-3.5 mr-1.5" />
-                Clone
-              </Button>
+              {canWrite && (
+                <Button variant="outline" size="sm" onClick={handleOpenClone}>
+                  <Copy className="h-3.5 w-3.5 mr-1.5" />
+                  Clone
+                </Button>
+              )}
             </div>
             <Separator />
             {!canWrite && (

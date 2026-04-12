@@ -331,7 +331,7 @@ describe('FolderTemplateDetailPage', () => {
       ).toBeInTheDocument()
     })
 
-    it('shows clone button for viewer (read-only action)', () => {
+    it('does not show clone button for viewer', () => {
       setupMocks(Role.VIEWER)
       render(
         <FolderTemplateDetailPage
@@ -340,8 +340,8 @@ describe('FolderTemplateDetailPage', () => {
         />,
       )
       expect(
-        screen.getByRole('button', { name: /clone/i }),
-      ).toBeInTheDocument()
+        screen.queryByRole('button', { name: /clone/i }),
+      ).not.toBeInTheDocument()
     })
 
     it('clicking clone opens dialog', async () => {
