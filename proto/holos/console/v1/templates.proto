@@ -176,6 +176,12 @@ message CreateTemplateResponse {
 message UpdateTemplateRequest {
   TemplateScopeRef scope = 1;
   Template template = 2;
+  // update_linked_templates signals that the linked_templates field on the template
+  // message should be written. When false (default), existing linked templates are
+  // preserved regardless of the template.linked_templates value. When true, the
+  // backend replaces the stored linked templates with template.linked_templates
+  // and enforces scoped link permissions.
+  bool update_linked_templates = 3;
 }
 
 // UpdateTemplateResponse is empty on success.

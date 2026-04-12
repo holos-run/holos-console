@@ -161,6 +161,12 @@ const (
 	// to OWNERs — deliberately more restrictive than WRITE because reparenting
 	// changes RBAC inheritance chains (ADR 022 Decision 4).
 	Permission_PERMISSION_REPARENT Permission = 44
+	// PERMISSION_TEMPLATES_LINK_ORG_WRITE allows adding or removing organization-level
+	// linked template references on a template. Checked at the template's owning scope.
+	Permission_PERMISSION_TEMPLATES_LINK_ORG_WRITE Permission = 45
+	// PERMISSION_TEMPLATES_LINK_FOLDER_WRITE allows adding or removing folder-level
+	// linked template references on a template. Checked at the template's owning scope.
+	Permission_PERMISSION_TEMPLATES_LINK_FOLDER_WRITE Permission = 46
 )
 
 // Enum value maps for Permission.
@@ -205,47 +211,51 @@ var (
 		42: "PERMISSION_TEMPLATES_DELETE",
 		43: "PERMISSION_TEMPLATES_ADMIN",
 		44: "PERMISSION_REPARENT",
+		45: "PERMISSION_TEMPLATES_LINK_ORG_WRITE",
+		46: "PERMISSION_TEMPLATES_LINK_FOLDER_WRITE",
 	}
 	Permission_value = map[string]int32{
-		"PERMISSION_UNSPECIFIED":                0,
-		"PERMISSION_SECRETS_READ":               1,
-		"PERMISSION_SECRETS_LIST":               2,
-		"PERMISSION_SECRETS_WRITE":              3,
-		"PERMISSION_SECRETS_DELETE":             4,
-		"PERMISSION_SECRETS_ADMIN":              5,
-		"PERMISSION_PROJECTS_READ":              6,
-		"PERMISSION_PROJECTS_LIST":              7,
-		"PERMISSION_PROJECTS_WRITE":             8,
-		"PERMISSION_PROJECTS_DELETE":            9,
-		"PERMISSION_PROJECTS_ADMIN":             10,
-		"PERMISSION_PROJECTS_CREATE":            11,
-		"PERMISSION_ORGANIZATIONS_READ":         12,
-		"PERMISSION_ORGANIZATIONS_LIST":         13,
-		"PERMISSION_ORGANIZATIONS_WRITE":        14,
-		"PERMISSION_ORGANIZATIONS_DELETE":       15,
-		"PERMISSION_ORGANIZATIONS_ADMIN":        16,
-		"PERMISSION_ORGANIZATIONS_CREATE":       17,
-		"PERMISSION_DEPLOYMENTS_LIST":           18,
-		"PERMISSION_DEPLOYMENTS_READ":           19,
-		"PERMISSION_DEPLOYMENTS_WRITE":          20,
-		"PERMISSION_DEPLOYMENTS_DELETE":         21,
-		"PERMISSION_DEPLOYMENTS_ADMIN":          22,
-		"PERMISSION_DEPLOYMENTS_LOGS":           23,
-		"PERMISSION_PROJECT_SETTINGS_READ":      29,
-		"PERMISSION_PROJECT_SETTINGS_WRITE":     30,
-		"PERMISSION_PROJECT_DEPLOYMENTS_ENABLE": 31,
-		"PERMISSION_FOLDERS_LIST":               33,
-		"PERMISSION_FOLDERS_READ":               34,
-		"PERMISSION_FOLDERS_WRITE":              35,
-		"PERMISSION_FOLDERS_DELETE":             36,
-		"PERMISSION_FOLDERS_ADMIN":              37,
-		"PERMISSION_FOLDERS_CREATE":             38,
-		"PERMISSION_TEMPLATES_LIST":             39,
-		"PERMISSION_TEMPLATES_READ":             40,
-		"PERMISSION_TEMPLATES_WRITE":            41,
-		"PERMISSION_TEMPLATES_DELETE":           42,
-		"PERMISSION_TEMPLATES_ADMIN":            43,
-		"PERMISSION_REPARENT":                   44,
+		"PERMISSION_UNSPECIFIED":                 0,
+		"PERMISSION_SECRETS_READ":                1,
+		"PERMISSION_SECRETS_LIST":                2,
+		"PERMISSION_SECRETS_WRITE":               3,
+		"PERMISSION_SECRETS_DELETE":              4,
+		"PERMISSION_SECRETS_ADMIN":               5,
+		"PERMISSION_PROJECTS_READ":               6,
+		"PERMISSION_PROJECTS_LIST":               7,
+		"PERMISSION_PROJECTS_WRITE":              8,
+		"PERMISSION_PROJECTS_DELETE":             9,
+		"PERMISSION_PROJECTS_ADMIN":              10,
+		"PERMISSION_PROJECTS_CREATE":             11,
+		"PERMISSION_ORGANIZATIONS_READ":          12,
+		"PERMISSION_ORGANIZATIONS_LIST":          13,
+		"PERMISSION_ORGANIZATIONS_WRITE":         14,
+		"PERMISSION_ORGANIZATIONS_DELETE":        15,
+		"PERMISSION_ORGANIZATIONS_ADMIN":         16,
+		"PERMISSION_ORGANIZATIONS_CREATE":        17,
+		"PERMISSION_DEPLOYMENTS_LIST":            18,
+		"PERMISSION_DEPLOYMENTS_READ":            19,
+		"PERMISSION_DEPLOYMENTS_WRITE":           20,
+		"PERMISSION_DEPLOYMENTS_DELETE":          21,
+		"PERMISSION_DEPLOYMENTS_ADMIN":           22,
+		"PERMISSION_DEPLOYMENTS_LOGS":            23,
+		"PERMISSION_PROJECT_SETTINGS_READ":       29,
+		"PERMISSION_PROJECT_SETTINGS_WRITE":      30,
+		"PERMISSION_PROJECT_DEPLOYMENTS_ENABLE":  31,
+		"PERMISSION_FOLDERS_LIST":                33,
+		"PERMISSION_FOLDERS_READ":                34,
+		"PERMISSION_FOLDERS_WRITE":               35,
+		"PERMISSION_FOLDERS_DELETE":              36,
+		"PERMISSION_FOLDERS_ADMIN":               37,
+		"PERMISSION_FOLDERS_CREATE":              38,
+		"PERMISSION_TEMPLATES_LIST":              39,
+		"PERMISSION_TEMPLATES_READ":              40,
+		"PERMISSION_TEMPLATES_WRITE":             41,
+		"PERMISSION_TEMPLATES_DELETE":            42,
+		"PERMISSION_TEMPLATES_ADMIN":             43,
+		"PERMISSION_REPARENT":                    44,
+		"PERMISSION_TEMPLATES_LINK_ORG_WRITE":    45,
+		"PERMISSION_TEMPLATES_LINK_FOLDER_WRITE": 46,
 	}
 )
 
@@ -286,7 +296,8 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_EDITOR\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x03*\xfd\t\n" +
+	"ROLE_OWNER\x10\x03*\xd2\n" +
+	"\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -328,7 +339,9 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\x1aPERMISSION_TEMPLATES_WRITE\x10)\x12\x1f\n" +
 	"\x1bPERMISSION_TEMPLATES_DELETE\x10*\x12\x1e\n" +
 	"\x1aPERMISSION_TEMPLATES_ADMIN\x10+\x12\x17\n" +
-	"\x13PERMISSION_REPARENT\x10,BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x13PERMISSION_REPARENT\x10,\x12'\n" +
+	"#PERMISSION_TEMPLATES_LINK_ORG_WRITE\x10-\x12*\n" +
+	"&PERMISSION_TEMPLATES_LINK_FOLDER_WRITE\x10.BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_rbac_proto_rawDescOnce sync.Once

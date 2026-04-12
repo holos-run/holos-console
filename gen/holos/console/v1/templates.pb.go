@@ -725,11 +725,17 @@ func (x *CreateTemplateResponse) GetName() string {
 
 // UpdateTemplateRequest updates an existing template.
 type UpdateTemplateRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Scope         *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	Template      *Template              `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Scope    *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	Template *Template              `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
+	// update_linked_templates signals that the linked_templates field on the template
+	// message should be written. When false (default), existing linked templates are
+	// preserved regardless of the template.linked_templates value. When true, the
+	// backend replaces the stored linked templates with template.linked_templates
+	// and enforces scoped link permissions.
+	UpdateLinkedTemplates bool `protobuf:"varint,3,opt,name=update_linked_templates,json=updateLinkedTemplates,proto3" json:"update_linked_templates,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *UpdateTemplateRequest) Reset() {
@@ -774,6 +780,13 @@ func (x *UpdateTemplateRequest) GetTemplate() *Template {
 		return x.Template
 	}
 	return nil
+}
+
+func (x *UpdateTemplateRequest) GetUpdateLinkedTemplates() bool {
+	if x != nil {
+		return x.UpdateLinkedTemplates
+	}
+	return false
 }
 
 // UpdateTemplateResponse is empty on success.
@@ -1482,10 +1495,11 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x126\n" +
 	"\btemplate\x18\x02 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\",\n" +
 	"\x16CreateTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x89\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc1\x01\n" +
 	"\x15UpdateTemplateRequest\x128\n" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x126\n" +
-	"\btemplate\x18\x02 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\"\x18\n" +
+	"\btemplate\x18\x02 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\x126\n" +
+	"\x17update_linked_templates\x18\x03 \x01(\bR\x15updateLinkedTemplates\"\x18\n" +
 	"\x16UpdateTemplateResponse\"e\n" +
 	"\x15DeleteTemplateRequest\x128\n" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
