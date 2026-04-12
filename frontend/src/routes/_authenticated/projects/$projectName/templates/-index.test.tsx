@@ -20,7 +20,14 @@ vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
   useDeleteTemplate: vi.fn(),
   useCloneTemplate: vi.fn(),
+  useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
+  useGetTemplate: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
+}))
+
+vi.mock('@/components/template-updates', () => ({
+  UpdatesAvailableBadge: () => null,
+  UpgradeDialog: () => null,
 }))
 
 vi.mock('@/queries/projects', () => ({

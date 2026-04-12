@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Pencil, Copy, Lock } from 'lucide-react'
+import { Pencil, Copy, Lock, ArrowUpCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,11 +21,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
+import { UpgradeDialog } from '@/components/template-updates'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,
@@ -68,6 +69,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [linkedEditOpen, setLinkedEditOpen] = useState(false)
   const [draftLinkedTemplateKeys, setDraftLinkedTemplateKeys] = useState<string[]>([])
   const [linkedEditError, setLinkedEditError] = useState<string | null>(null)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+
+  // Check for available updates on this template's linked templates.
+  const { data: templateUpdates = [] } = useCheckUpdates(scope, templateName)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -251,17 +256,34 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         return <span className="text-sm text-muted-foreground">None linked</span>
                       }
                       return (
-                        <div className="flex flex-wrap gap-1">
-                          {dedupedLinked.map((t) => {
-                            const scopeLabel = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
-                            return (
-                              <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
-                                {t.displayName || t.name}
-                                {scopeLabel && <span className="text-xs text-muted-foreground">{scopeLabel}</span>}
-                                {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
-                              </span>
-                            )
-                          })}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap gap-1">
+                            {dedupedLinked.map((t) => {
+                              const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                              // Look up the version constraint from the template's linkedTemplates.
+                              const linkedRef = (template?.linkedTemplates ?? []).find(
+                                (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
+                              )
+                              const constraint = linkedRef?.versionConstraint
+                              return (
+                                <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
+                                  {t.displayName || t.name}
+                                  {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
+                                  {constraint && <span className="text-xs font-mono text-muted-foreground">{constraint}</span>}
+                                  {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
+                                </span>
+                              )
+                            })}
+                          </div>
+                          {templateUpdates.length > 0 && (
+                            <button
+                              onClick={() => setUpgradeOpen(true)}
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit"
+                            >
+                              <ArrowUpCircle className="h-3 w-3" />
+                              {templateUpdates.length === 1 ? '1 update available' : `${templateUpdates.length} updates available`}
+                            </button>
+                          )}
                         </div>
                       )
                     })()}
@@ -423,6 +445,17 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       {t.description && (
                         <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
                       )}
+                      {(() => {
+                        const linkedRef = (template?.linkedTemplates ?? []).find(
+                          (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
+                        )
+                        if (!linkedRef?.versionConstraint) return null
+                        return (
+                          <span className="text-xs font-mono text-muted-foreground mt-0.5">
+                            Version: {linkedRef.versionConstraint}
+                          </span>
+                        )
+                      })()}
                     </div>
                   </div>
                   )
@@ -504,6 +537,15 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UpgradeDialog
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        updates={templateUpdates}
+        scope={scope}
+        templateName={templateName}
+        linkedTemplates={template?.linkedTemplates ?? []}
+      />
     </>
   )
 }

@@ -22,6 +22,7 @@ vi.mock('@/queries/templates', () => ({
   useCloneTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [] }),
+  useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
   linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>
@@ -30,6 +31,10 @@ vi.mock('@/queries/templates', () => ({
     const parts = key.split('/')
     return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
   },
+}))
+
+vi.mock('@/components/template-updates', () => ({
+  UpgradeDialog: () => null,
 }))
 
 vi.mock('@/queries/projects', () => ({

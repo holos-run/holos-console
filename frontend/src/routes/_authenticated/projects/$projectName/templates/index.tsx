@@ -25,8 +25,9 @@ import {
 } from '@/components/ui/table'
 import { Pencil, Trash2, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, useDeleteTemplate, useCloneTemplate, makeProjectScope } from '@/queries/templates'
+import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate, makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { UpdatesAvailableBadge, UpgradeDialog } from '@/components/template-updates'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
   component: DeploymentTemplatesRoute,
@@ -60,6 +61,18 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const [cloneName, setCloneName] = useState('')
   const [cloneDisplayName, setCloneDisplayName] = useState('')
   const [cloneError, setCloneError] = useState<string | null>(null)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [upgradeTemplateName, setUpgradeTemplateName] = useState<string | null>(null)
+
+  // Fetch updates for the selected upgrade template (only when dialog is open).
+  const { data: upgradeUpdates = [] } = useCheckUpdates(scope, upgradeTemplateName ?? '', { enabled: !!upgradeTemplateName })
+  // Fetch the selected template to get its linkedTemplates for the dialog.
+  const { data: upgradeTemplate } = useGetTemplate(scope, upgradeTemplateName ?? '')
+
+  const handleOpenUpgrade = (templateName: string) => {
+    setUpgradeTemplateName(templateName)
+    setUpgradeOpen(true)
+  }
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -163,13 +176,20 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
                 {templates.map((template) => (
                   <TableRow key={template.name}>
                     <TableCell>
-                      <Link
-                        to="/projects/$projectName/templates/$templateName"
-                        params={{ projectName, templateName: template.name }}
-                        className="font-medium hover:underline"
-                      >
-                        {template.name}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to="/projects/$projectName/templates/$templateName"
+                          params={{ projectName, templateName: template.name }}
+                          className="font-medium hover:underline"
+                        >
+                          {template.name}
+                        </Link>
+                        <UpdatesAvailableBadge
+                          scope={scope}
+                          templateName={template.name}
+                          onClick={() => handleOpenUpgrade(template.name)}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell>
                       {template.description ? (
@@ -283,6 +303,20 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {upgradeTemplateName && (
+        <UpgradeDialog
+          open={upgradeOpen}
+          onOpenChange={(open) => {
+            setUpgradeOpen(open)
+            if (!open) setUpgradeTemplateName(null)
+          }}
+          updates={upgradeUpdates}
+          scope={scope}
+          templateName={upgradeTemplateName}
+          linkedTemplates={upgradeTemplate?.linkedTemplates ?? []}
+        />
+      )}
     </>
   )
 }

@@ -9,11 +9,11 @@ import {
   TemplateScope,
   ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release } from '@/gen/holos/console/v1/templates_pb.js'
+import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate } from '@/gen/holos/console/v1/templates_pb.js'
 import { useAuth } from '@/lib/auth'
 
 // Re-export types used by consumers.
-export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release }
+export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate }
 export { TemplateScope }
 
 /** Build a composite key that uniquely identifies a linkable template across scopes. */
@@ -151,6 +151,9 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
       queryClient.invalidateQueries({ queryKey: templateGetKey(scope, name) })
+      // Invalidate all check-updates queries for this scope so upgrade badges
+      // and dialogs reflect the new state immediately after a template update.
+      queryClient.invalidateQueries({ queryKey: ['templates', 'checkUpdates'] })
     },
   })
 }
@@ -261,6 +264,31 @@ export function useCreateRelease(scope: TemplateScopeRef, templateName: string) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: releaseListKey(scope, templateName) })
     },
+  })
+}
+
+// --- CheckUpdates hooks ---
+
+function checkUpdatesKey(scope: TemplateScopeRef, templateName: string) {
+  return ['templates', 'checkUpdates', scope.scope, scope.scopeName, templateName] as const
+}
+
+// useCheckUpdates returns available version updates for linked templates.
+// When templateName is provided, only that template's links are checked.
+// When empty, all templates in the scope are checked.
+// Pass options.enabled to control when the query fires (defaults to true).
+export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', options?: { enabled?: boolean }) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  const callerEnabled = options?.enabled ?? true
+  return useQuery({
+    queryKey: checkUpdatesKey(scope, templateName),
+    queryFn: async () => {
+      const response = await client.checkUpdates({ scope, templateName })
+      return response.updates
+    },
+    enabled: isAuthenticated && !!scope.scopeName && callerEnabled,
   })
 }
 
