@@ -659,6 +659,15 @@ export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplat
    * @generated from field: bool mandatory = 5;
    */
   mandatory: boolean;
+
+  /**
+   * releases carries the available published releases for this template, sorted
+   * descending by version (newest first). Populated by ListLinkableTemplates so
+   * the linking UI can display version choices without a separate RPC call.
+   *
+   * @generated from field: repeated holos.console.v1.Release releases = 6;
+   */
+  releases: Release[];
 };
 
 /**
@@ -1009,6 +1018,17 @@ export declare type CheckUpdatesRequest = Message<"holos.console.v1.CheckUpdates
    * @generated from field: string template_name = 2;
    */
   templateName: string;
+
+  /**
+   * include_current, when true, causes the response to include entries for
+   * linked templates that are already at their latest compatible version (i.e.
+   * no update available). This allows the version status indicator to display
+   * resolved version information for ALL linked templates, not just those with
+   * pending updates.
+   *
+   * @generated from field: bool include_current = 3;
+   */
+  includeCurrent: boolean;
 };
 
 /**

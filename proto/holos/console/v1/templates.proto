@@ -290,6 +290,10 @@ message LinkableTemplate {
   // mandatory indicates this template is always unified regardless of linking.
   // The UI renders mandatory templates as always-selected and disabled.
   bool mandatory = 5;
+  // releases carries the available published releases for this template, sorted
+  // descending by version (newest first). Populated by ListLinkableTemplates so
+  // the linking UI can display version choices without a separate RPC call.
+  repeated Release releases = 6;
 }
 
 // ListLinkableTemplatesResponse returns the linkable templates.
@@ -397,6 +401,12 @@ message CheckUpdatesRequest {
   // template_name is the template whose linked templates should be checked.
   // If empty, all templates in the scope are checked.
   string template_name = 2;
+  // include_current, when true, causes the response to include entries for
+  // linked templates that are already at their latest compatible version (i.e.
+  // no update available). This allows the version status indicator to display
+  // resolved version information for ALL linked templates, not just those with
+  // pending updates.
+  bool include_current = 3;
 }
 
 // CheckUpdatesResponse returns available updates for linked templates.

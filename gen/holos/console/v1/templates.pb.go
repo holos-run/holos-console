@@ -1265,7 +1265,11 @@ type LinkableTemplate struct {
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// mandatory indicates this template is always unified regardless of linking.
 	// The UI renders mandatory templates as always-selected and disabled.
-	Mandatory     bool `protobuf:"varint,5,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	Mandatory bool `protobuf:"varint,5,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	// releases carries the available published releases for this template, sorted
+	// descending by version (newest first). Populated by ListLinkableTemplates so
+	// the linking UI can display version choices without a separate RPC call.
+	Releases      []*Release `protobuf:"bytes,6,rep,name=releases,proto3" json:"releases,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1333,6 +1337,13 @@ func (x *LinkableTemplate) GetMandatory() bool {
 		return x.Mandatory
 	}
 	return false
+}
+
+func (x *LinkableTemplate) GetReleases() []*Release {
+	if x != nil {
+		return x.Releases
+	}
+	return nil
 }
 
 // ListLinkableTemplatesResponse returns the linkable templates.
@@ -1985,9 +1996,15 @@ type CheckUpdatesRequest struct {
 	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
 	// template_name is the template whose linked templates should be checked.
 	// If empty, all templates in the scope are checked.
-	TemplateName  string `protobuf:"bytes,2,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TemplateName string `protobuf:"bytes,2,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
+	// include_current, when true, causes the response to include entries for
+	// linked templates that are already at their latest compatible version (i.e.
+	// no update available). This allows the version status indicator to display
+	// resolved version information for ALL linked templates, not just those with
+	// pending updates.
+	IncludeCurrent bool `protobuf:"varint,3,opt,name=include_current,json=includeCurrent,proto3" json:"include_current,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CheckUpdatesRequest) Reset() {
@@ -2032,6 +2049,13 @@ func (x *CheckUpdatesRequest) GetTemplateName() string {
 		return x.TemplateName
 	}
 	return ""
+}
+
+func (x *CheckUpdatesRequest) GetIncludeCurrent() bool {
+	if x != nil {
+		return x.IncludeCurrent
+	}
+	return false
 }
 
 // CheckUpdatesResponse returns available updates for linked templates.
@@ -2157,13 +2181,14 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x15CloneTemplateResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"X\n" +
 	"\x1cListLinkableTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\xca\x01\n" +
+	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\x81\x02\n" +
 	"\x10LinkableTemplate\x12?\n" +
 	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x1c\n" +
-	"\tmandatory\x18\x05 \x01(\bR\tmandatory\"a\n" +
+	"\tmandatory\x18\x05 \x01(\bR\tmandatory\x125\n" +
+	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\"a\n" +
 	"\x1dListLinkableTemplatesResponse\x12@\n" +
 	"\ttemplates\x18\x01 \x03(\v2\".holos.console.v1.LinkableTemplateR\ttemplates\"X\n" +
 	"\x1cListAncestorTemplatesRequest\x128\n" +
@@ -2201,10 +2226,11 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\"I\n" +
 	"\x12GetReleaseResponse\x123\n" +
-	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"t\n" +
+	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"\x9d\x01\n" +
 	"\x13CheckUpdatesRequest\x128\n" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12#\n" +
-	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\"R\n" +
+	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\x12'\n" +
+	"\x0finclude_current\x18\x03 \x01(\bR\x0eincludeCurrent\"R\n" +
 	"\x14CheckUpdatesResponse\x12:\n" +
 	"\aupdates\x18\x01 \x03(\v2 .holos.console.v1.TemplateUpdateR\aupdates*\x87\x01\n" +
 	"\rTemplateScope\x12\x1e\n" +
@@ -2302,53 +2328,54 @@ var file_holos_console_v1_templates_proto_depIdxs = []int32{
 	1,  // 17: holos.console.v1.CloneTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
 	1,  // 18: holos.console.v1.ListLinkableTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
 	1,  // 19: holos.console.v1.LinkableTemplate.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	20, // 20: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
-	1,  // 21: holos.console.v1.ListAncestorTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 22: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	1,  // 23: holos.console.v1.Release.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 24: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
-	35, // 25: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
-	2,  // 26: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
-	1,  // 27: holos.console.v1.CreateReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 28: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
-	24, // 29: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
-	1,  // 30: holos.console.v1.ListReleasesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 31: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
-	1,  // 32: holos.console.v1.GetReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 33: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
-	1,  // 34: holos.console.v1.CheckUpdatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	25, // 35: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
-	5,  // 36: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
-	7,  // 37: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
-	9,  // 38: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
-	11, // 39: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
-	13, // 40: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
-	15, // 41: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
-	17, // 42: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
-	19, // 43: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
-	22, // 44: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
-	26, // 45: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
-	28, // 46: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
-	30, // 47: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
-	32, // 48: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
-	6,  // 49: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
-	8,  // 50: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
-	10, // 51: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
-	12, // 52: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
-	14, // 53: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
-	16, // 54: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
-	18, // 55: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
-	21, // 56: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
-	23, // 57: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
-	27, // 58: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
-	29, // 59: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
-	31, // 60: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
-	33, // 61: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
-	49, // [49:62] is the sub-list for method output_type
-	36, // [36:49] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	24, // 20: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
+	20, // 21: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
+	1,  // 22: holos.console.v1.ListAncestorTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	4,  // 23: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	1,  // 24: holos.console.v1.Release.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 25: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
+	35, // 26: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
+	2,  // 27: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
+	1,  // 28: holos.console.v1.CreateReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	24, // 29: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
+	24, // 30: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
+	1,  // 31: holos.console.v1.ListReleasesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	24, // 32: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
+	1,  // 33: holos.console.v1.GetReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	24, // 34: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
+	1,  // 35: holos.console.v1.CheckUpdatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	25, // 36: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
+	5,  // 37: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
+	7,  // 38: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
+	9,  // 39: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
+	11, // 40: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
+	13, // 41: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
+	15, // 42: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
+	17, // 43: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
+	19, // 44: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
+	22, // 45: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
+	26, // 46: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
+	28, // 47: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
+	30, // 48: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
+	32, // 49: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
+	6,  // 50: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
+	8,  // 51: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
+	10, // 52: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
+	12, // 53: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
+	14, // 54: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
+	16, // 55: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
+	18, // 56: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
+	21, // 57: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
+	23, // 58: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
+	27, // 59: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
+	29, // 60: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
+	31, // 61: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
+	33, // 62: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
+	50, // [50:63] is the sub-list for method output_type
+	37, // [37:50] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_templates_proto_init() }
