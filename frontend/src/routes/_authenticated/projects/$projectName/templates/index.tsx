@@ -26,7 +26,6 @@ import {
 import { Pencil, Trash2, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate, makeProjectScope } from '@/queries/templates'
-import type { TemplateUpdate } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { UpdatesAvailableBadge, UpgradeDialog } from '@/components/template-updates'
 
@@ -65,9 +64,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeTemplateName, setUpgradeTemplateName] = useState<string | null>(null)
 
-  // Fetch updates for all templates in this project scope.
-  const { data: allUpdates = [] } = useCheckUpdates(scope)
-  // Fetch updates for the selected upgrade template.
+  // Fetch updates for the selected upgrade template (when dialog is open).
   const { data: upgradeUpdates = [] } = useCheckUpdates(scope, upgradeTemplateName ?? '')
   // Fetch the selected template to get its linkedTemplates for the dialog.
   const { data: upgradeTemplate } = useGetTemplate(scope, upgradeTemplateName ?? '')
