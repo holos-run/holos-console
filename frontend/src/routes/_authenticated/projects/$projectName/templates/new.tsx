@@ -238,7 +238,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const scope = makeProjectScope(projectName)
   const createMutation = useCreateTemplate(scope)
   const { data: project } = useGetProject(projectName)
-  const { data: linkableTemplates = [] } = useListLinkableTemplates(scope)
+  const { data: linkableTemplates = [], isSuccess: linkableReady } = useListLinkableTemplates(scope)
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canLink = userRole === Role.OWNER
@@ -401,7 +401,9 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
           </div>
           <div className="space-y-3">
             <Label>Linked Platform Templates</Label>
-            {linkableTemplates.length === 0 ? (
+            {!linkableReady ? (
+              <p className="text-sm text-muted-foreground">Loading platform templates...</p>
+            ) : linkableTemplates.length === 0 ? (
               <p className="text-sm text-muted-foreground">No platform templates available to link. Create organization or folder templates to enable linking.</p>
             ) : canLink ? (
               <div className="space-y-4">
