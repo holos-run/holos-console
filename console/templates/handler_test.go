@@ -872,3 +872,146 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		}
 	})
 }
+
+// structuredJSONRenderer returns GroupedRenderResources with structured JSON
+// fields populated, for testing that RenderTemplate propagates them.
+type structuredJSONRenderer struct {
+	stubRenderer
+	defaultsJSON       *string
+	platformInputJSON  *string
+	projectInputJSON   *string
+	platResStructJSON  *string
+	projResStructJSON  *string
+}
+
+func (r *structuredJSONRenderer) RenderGrouped(_ context.Context, _ string, _ string, _ string) (*GroupedRenderResources, error) {
+	return &GroupedRenderResources{
+		Project:                     r.resources,
+		DefaultsJSON:                r.defaultsJSON,
+		PlatformInputJSON:           r.platformInputJSON,
+		ProjectInputJSON:            r.projectInputJSON,
+		PlatformResourcesStructJSON: r.platResStructJSON,
+		ProjectResourcesStructJSON:  r.projResStructJSON,
+	}, r.err
+}
+
+func (r *structuredJSONRenderer) RenderGroupedWithTemplateSources(_ context.Context, _ string, _ []string, _ string, _ string) (*GroupedRenderResources, error) {
+	return r.RenderGrouped(context.Background(), "", "", "")
+}
+
+func TestRenderTemplateStructuredJSON(t *testing.T) {
+	defaults := `{"name":"httpbin","image":"ghcr.io/mccutchen/go-httpbin","tag":"2.21.0"}`
+	platInput := `{"project":"my-project","namespace":"prj-my-project"}`
+	projInput := `{"name":"web-app","image":"nginx","tag":"1.25"}`
+	platRes := `{"namespacedResources":{},"clusterResources":{}}`
+	projRes := `{"namespacedResources":{"prj-my-project":{}},"clusterResources":{}}`
+
+	renderer := &structuredJSONRenderer{
+		stubRenderer: stubRenderer{
+			resources: []RenderResource{{
+				YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
+				Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
+			}},
+		},
+		defaultsJSON:      &defaults,
+		platformInputJSON: &platInput,
+		projectInputJSON:  &projInput,
+		platResStructJSON: &platRes,
+		projResStructJSON: &projRes,
+	}
+
+	handler := &Handler{renderer: renderer}
+
+	ctx := authedCtx("platform@localhost", nil)
+	req := connect.NewRequest(&consolev1.RenderTemplateRequest{
+		CueTemplate: "// dummy",
+	})
+	resp, err := handler.RenderTemplate(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("DefaultsJson is populated", func(t *testing.T) {
+		if resp.Msg.DefaultsJson == nil {
+			t.Fatal("expected DefaultsJson to be set, got nil")
+		}
+		if *resp.Msg.DefaultsJson != defaults {
+			t.Errorf("expected %q, got %q", defaults, *resp.Msg.DefaultsJson)
+		}
+	})
+
+	t.Run("PlatformInputJson is populated", func(t *testing.T) {
+		if resp.Msg.PlatformInputJson == nil {
+			t.Fatal("expected PlatformInputJson to be set, got nil")
+		}
+		if *resp.Msg.PlatformInputJson != platInput {
+			t.Errorf("expected %q, got %q", platInput, *resp.Msg.PlatformInputJson)
+		}
+	})
+
+	t.Run("ProjectInputJson is populated", func(t *testing.T) {
+		if resp.Msg.ProjectInputJson == nil {
+			t.Fatal("expected ProjectInputJson to be set, got nil")
+		}
+		if *resp.Msg.ProjectInputJson != projInput {
+			t.Errorf("expected %q, got %q", projInput, *resp.Msg.ProjectInputJson)
+		}
+	})
+
+	t.Run("PlatformResourcesStructuredJson is populated", func(t *testing.T) {
+		if resp.Msg.PlatformResourcesStructuredJson == nil {
+			t.Fatal("expected PlatformResourcesStructuredJson to be set, got nil")
+		}
+		if *resp.Msg.PlatformResourcesStructuredJson != platRes {
+			t.Errorf("expected %q, got %q", platRes, *resp.Msg.PlatformResourcesStructuredJson)
+		}
+	})
+
+	t.Run("ProjectResourcesStructuredJson is populated", func(t *testing.T) {
+		if resp.Msg.ProjectResourcesStructuredJson == nil {
+			t.Fatal("expected ProjectResourcesStructuredJson to be set, got nil")
+		}
+		if *resp.Msg.ProjectResourcesStructuredJson != projRes {
+			t.Errorf("expected %q, got %q", projRes, *resp.Msg.ProjectResourcesStructuredJson)
+		}
+	})
+
+	t.Run("all structured JSON fields are valid JSON", func(t *testing.T) {
+		fields := map[string]*string{
+			"DefaultsJson":                   resp.Msg.DefaultsJson,
+			"PlatformInputJson":              resp.Msg.PlatformInputJson,
+			"ProjectInputJson":               resp.Msg.ProjectInputJson,
+			"PlatformResourcesStructuredJson": resp.Msg.PlatformResourcesStructuredJson,
+			"ProjectResourcesStructuredJson":  resp.Msg.ProjectResourcesStructuredJson,
+		}
+		for name, val := range fields {
+			if val == nil {
+				continue
+			}
+			if !json.Valid([]byte(*val)) {
+				t.Errorf("%s is not valid JSON: %s", name, *val)
+			}
+		}
+	})
+
+	t.Run("nil structured fields remain nil in response", func(t *testing.T) {
+		// Render with a stub that returns nil structured fields.
+		plainRenderer := &stubRenderer{
+			resources: []RenderResource{{
+				YAML:   "apiVersion: v1\nkind: ServiceAccount\n",
+				Object: map[string]any{"apiVersion": "v1", "kind": "ServiceAccount"},
+			}},
+		}
+		plainHandler := &Handler{renderer: plainRenderer}
+		resp, err := plainHandler.RenderTemplate(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Msg.DefaultsJson != nil {
+			t.Errorf("expected DefaultsJson to be nil, got %q", *resp.Msg.DefaultsJson)
+		}
+		if resp.Msg.PlatformInputJson != nil {
+			t.Errorf("expected PlatformInputJson to be nil, got %q", *resp.Msg.PlatformInputJson)
+		}
+	})
+}

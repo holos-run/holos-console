@@ -32,9 +32,22 @@ const renderTimeout = 5 * time.Second
 // GroupedResources holds Kubernetes resources partitioned by origin: resources
 // from platformResources (organization/folder-level) and resources from
 // projectResources (project-level).
+//
+// The structured JSON fields carry the JSON-serialized CUE evaluation outputs
+// for each top-level section of the ResourceSetSpec. Nil means the section was
+// not present or not concrete in the CUE template. An empty struct (e.g.
+// platformResources with no resources) is serialized as its JSON representation
+// rather than left nil.
 type GroupedResources struct {
 	Platform []unstructured.Unstructured
 	Project  []unstructured.Unstructured
+	// Structured CUE evaluation outputs as JSON.
+	// Nil means the section was not evaluated or doesn't exist.
+	DefaultsJSON                *string
+	PlatformInputJSON           *string
+	ProjectInputJSON            *string
+	PlatformResourcesStructJSON *string
+	ProjectResourcesStructJSON  *string
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.
@@ -496,6 +509,51 @@ func evaluateWithCueInputGrouped(cueSource, cueInput string) (*GroupedResources,
 	return evaluateStructuredGrouped(unified, expectedNamespace, true)
 }
 
+// extractCuePathJSON looks up a CUE path in the unified value and returns the
+// JSON serialization if the path exists and is concrete. Returns nil if the path
+// does not exist. Returns an error only if the path exists but cannot be
+// marshaled to JSON.
+func extractCuePathJSON(unified cue.Value, cuePath string) (*string, error) {
+	v := unified.LookupPath(cue.ParsePath(cuePath))
+	if v.Err() != nil || !v.Exists() {
+		return nil, nil
+	}
+	b, err := v.MarshalJSON()
+	if err != nil {
+		// Path exists but isn't concrete enough to marshal — treat as absent.
+		return nil, nil //nolint:nilerr
+	}
+	if !json.Valid(b) {
+		return nil, fmt.Errorf("CUE path %q produced invalid JSON", cuePath)
+	}
+	s := string(b)
+	return &s, nil
+}
+
+// populateStructuredJSON extracts the five structured JSON sections from the
+// unified CUE value and sets the corresponding fields on the GroupedResources.
+// Extraction errors are logged but do not fail the render.
+func populateStructuredJSON(unified cue.Value, gr *GroupedResources) {
+	paths := []struct {
+		cuePath string
+		target  **string
+	}{
+		{"defaults", &gr.DefaultsJSON},
+		{"platform", &gr.PlatformInputJSON},
+		{"input", &gr.ProjectInputJSON},
+		{"platformResources", &gr.PlatformResourcesStructJSON},
+		{"projectResources", &gr.ProjectResourcesStructJSON},
+	}
+	for _, p := range paths {
+		val, err := extractCuePathJSON(unified, p.cuePath)
+		if err != nil {
+			// Non-fatal: log and skip.
+			continue
+		}
+		*p.target = val
+	}
+}
+
 // evaluateStructuredGrouped walks the structured output fields of a unified CUE
 // value and returns validated Kubernetes resources partitioned into Platform and
 // Project groups. The logic mirrors evaluateStructured but collects resources
@@ -525,10 +583,12 @@ func evaluateStructuredGrouped(unified cue.Value, expectedNamespace string, read
 	}
 
 	if !readPlatformResources {
-		return &GroupedResources{
+		gr := &GroupedResources{
 			Platform: nil,
 			Project:  projectResources,
-		}, nil
+		}
+		populateStructuredJSON(unified, gr)
+		return gr, nil
 	}
 
 	// Walk platformResources.namespacedResources
@@ -551,10 +611,12 @@ func evaluateStructuredGrouped(unified cue.Value, expectedNamespace string, read
 		platformResources = append(platformResources, resources...)
 	}
 
-	return &GroupedResources{
+	gr := &GroupedResources{
 		Platform: platformResources,
 		Project:  projectResources,
-	}, nil
+	}
+	populateStructuredJSON(unified, gr)
+	return gr, nil
 }
 
 // evaluateStructured walks the structured output fields of a unified CUE value

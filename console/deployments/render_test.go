@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -170,6 +171,55 @@ projectResources: {
 			}
 		}
 	}
+	clusterResources: {}
+}
+`
+
+// emptyPlatformResourcesTemplate defines platformResources with empty sub-structs.
+// Used to test that an explicitly defined but empty platformResources block
+// produces a non-nil JSON string rather than nil.
+const emptyPlatformResourcesTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+platformResources: {
+	namespacedResources: {}
 	clusterResources: {}
 }
 `
@@ -2367,6 +2417,290 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 		}
 		if !kindSet["Deployment"] || !kindSet["Service"] || !kindSet["ServiceAccount"] {
 			t.Errorf("expected Deployment, Service, ServiceAccount in project group, got %v", kindSet)
+		}
+	})
+}
+
+// templateWithDefaults includes a defaults block so structured JSON extraction
+// can verify it is populated.
+const templateWithDefaults = `
+
+defaults: {
+	name:  "httpbin"
+	image: "ghcr.io/mccutchen/go-httpbin"
+	tag:   "2.21.0"
+	port:  8080
+}
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+	port:  int | *8080
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+func TestStructuredJSONExtraction(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("template without defaults leaves DefaultsJSON nil", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.DefaultsJSON != nil {
+			t.Errorf("expected DefaultsJSON to be nil for template without defaults, got %q", *grouped.DefaultsJSON)
+		}
+	})
+
+	t.Run("template with defaults populates DefaultsJSON", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			templateWithDefaults,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.DefaultsJSON == nil {
+			t.Fatal("expected DefaultsJSON to be set, got nil")
+		}
+		if !json.Valid([]byte(*grouped.DefaultsJSON)) {
+			t.Errorf("DefaultsJSON is not valid JSON: %s", *grouped.DefaultsJSON)
+		}
+		// Verify the defaults contain the expected values.
+		var defaults map[string]any
+		if err := json.Unmarshal([]byte(*grouped.DefaultsJSON), &defaults); err != nil {
+			t.Fatalf("failed to unmarshal DefaultsJSON: %v", err)
+		}
+		if defaults["name"] != "httpbin" {
+			t.Errorf("expected defaults.name = httpbin, got %v", defaults["name"])
+		}
+	})
+
+	t.Run("PlatformInputJSON is populated", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.PlatformInputJSON == nil {
+			t.Fatal("expected PlatformInputJSON to be set, got nil")
+		}
+		if !json.Valid([]byte(*grouped.PlatformInputJSON)) {
+			t.Errorf("PlatformInputJSON is not valid JSON: %s", *grouped.PlatformInputJSON)
+		}
+		var pi map[string]any
+		if err := json.Unmarshal([]byte(*grouped.PlatformInputJSON), &pi); err != nil {
+			t.Fatalf("failed to unmarshal PlatformInputJSON: %v", err)
+		}
+		if pi["namespace"] != namespace {
+			t.Errorf("expected platform.namespace = %s, got %v", namespace, pi["namespace"])
+		}
+	})
+
+	t.Run("ProjectInputJSON is populated", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.ProjectInputJSON == nil {
+			t.Fatal("expected ProjectInputJSON to be set, got nil")
+		}
+		if !json.Valid([]byte(*grouped.ProjectInputJSON)) {
+			t.Errorf("ProjectInputJSON is not valid JSON: %s", *grouped.ProjectInputJSON)
+		}
+		var pi map[string]any
+		if err := json.Unmarshal([]byte(*grouped.ProjectInputJSON), &pi); err != nil {
+			t.Fatalf("failed to unmarshal ProjectInputJSON: %v", err)
+		}
+		if pi["name"] != "web-app" {
+			t.Errorf("expected input.name = web-app, got %v", pi["name"])
+		}
+	})
+
+	t.Run("ProjectResourcesStructJSON is populated for non-empty resources", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.ProjectResourcesStructJSON == nil {
+			t.Fatal("expected ProjectResourcesStructJSON to be set, got nil")
+		}
+		if !json.Valid([]byte(*grouped.ProjectResourcesStructJSON)) {
+			t.Errorf("ProjectResourcesStructJSON is not valid JSON: %s", *grouped.ProjectResourcesStructJSON)
+		}
+	})
+
+	t.Run("PlatformResourcesStructJSON is set for template with platform resources", func(t *testing.T) {
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.PlatformResourcesStructJSON == nil {
+			t.Fatal("expected PlatformResourcesStructJSON to be set, got nil")
+		}
+		if !json.Valid([]byte(*grouped.PlatformResourcesStructJSON)) {
+			t.Errorf("PlatformResourcesStructJSON is not valid JSON: %s", *grouped.PlatformResourcesStructJSON)
+		}
+	})
+
+	t.Run("absent platformResources produces nil", func(t *testing.T) {
+		// validTemplate has no platformResources, but when rendered via the
+		// org-level path (readPlatformResources=true) the platformResources CUE
+		// path does not exist, so the field should be nil.
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// validTemplate does not define platformResources at all, so nil is correct.
+		if grouped.PlatformResourcesStructJSON != nil {
+			t.Errorf("expected PlatformResourcesStructJSON to be nil when platformResources is not defined, got %q",
+				*grouped.PlatformResourcesStructJSON)
+		}
+	})
+
+	t.Run("empty platformResources struct produces non-nil JSON", func(t *testing.T) {
+		// emptyPlatformResourcesTemplate defines platformResources with empty
+		// namespacedResources and clusterResources sub-structs. The field should
+		// be non-nil because the CUE path exists and is concrete.
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			emptyPlatformResourcesTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.PlatformResourcesStructJSON == nil {
+			t.Fatal("expected PlatformResourcesStructJSON to be non-nil for empty but defined platformResources")
+		}
+		if !json.Valid([]byte(*grouped.PlatformResourcesStructJSON)) {
+			t.Errorf("PlatformResourcesStructJSON is not valid JSON: %s", *grouped.PlatformResourcesStructJSON)
+		}
+		// Verify the struct contains the expected empty sub-structs.
+		var pr map[string]any
+		if err := json.Unmarshal([]byte(*grouped.PlatformResourcesStructJSON), &pr); err != nil {
+			t.Fatalf("failed to unmarshal PlatformResourcesStructJSON: %v", err)
+		}
+		if _, ok := pr["namespacedResources"]; !ok {
+			t.Error("expected namespacedResources key in PlatformResourcesStructJSON")
+		}
+		if _, ok := pr["clusterResources"]; !ok {
+			t.Error("expected clusterResources key in PlatformResourcesStructJSON")
+		}
+	})
+
+	t.Run("populated platformResources produces JSON", func(t *testing.T) {
+		// systemOutputTemplate defines platformResources with actual resources.
+		// Use the org-level render path which reads both collections.
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.PlatformResourcesStructJSON == nil {
+			t.Fatal("expected PlatformResourcesStructJSON to be set for systemOutputTemplate")
+		}
+		// Verify it contains namespacedResources.
+		var pr map[string]any
+		if err := json.Unmarshal([]byte(*grouped.PlatformResourcesStructJSON), &pr); err != nil {
+			t.Fatalf("failed to unmarshal PlatformResourcesStructJSON: %v", err)
+		}
+		if _, ok := pr["namespacedResources"]; !ok {
+			t.Error("expected namespacedResources key in PlatformResourcesStructJSON")
+		}
+	})
+
+	t.Run("all structured JSON fields are valid JSON", func(t *testing.T) {
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			systemOutputTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		fields := map[string]*string{
+			"PlatformInputJSON":           grouped.PlatformInputJSON,
+			"ProjectInputJSON":            grouped.ProjectInputJSON,
+			"ProjectResourcesStructJSON":  grouped.ProjectResourcesStructJSON,
+			"PlatformResourcesStructJSON": grouped.PlatformResourcesStructJSON,
+		}
+		for name, val := range fields {
+			if val == nil {
+				t.Errorf("%s is nil, expected it to be set", name)
+				continue
+			}
+			if !json.Valid([]byte(*val)) {
+				t.Errorf("%s is not valid JSON: %s", name, *val)
+			}
 		}
 	})
 }

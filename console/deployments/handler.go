@@ -837,8 +837,10 @@ func (h *Handler) GetDeploymentRenderPreview(
 	var renderedYAML, renderedJSON string
 	var platformResourcesYAML, platformResourcesJSON string
 	var projectResourcesYAML, projectResourcesJSON string
+	var grouped *GroupedResources
 	if h.renderer != nil {
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		var renderErr error
+		grouped, renderErr = h.renderResourcesGrouped(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -870,16 +872,32 @@ func (h *Handler) GetDeploymentRenderPreview(
 		slog.String("sub", claims.Sub),
 	)
 
+	// Extract structured JSON fields from the grouped result if render succeeded.
+	var defaultsJSON, platformInputJSON, projectInputJSON *string
+	var platformResourcesStructJSON, projectResourcesStructJSON *string
+	if grouped != nil {
+		defaultsJSON = grouped.DefaultsJSON
+		platformInputJSON = grouped.PlatformInputJSON
+		projectInputJSON = grouped.ProjectInputJSON
+		platformResourcesStructJSON = grouped.PlatformResourcesStructJSON
+		projectResourcesStructJSON = grouped.ProjectResourcesStructJSON
+	}
+
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
-		CueTemplate:           cueTemplate,
-		CuePlatformInput:      cuePlatformInput,
-		CueProjectInput:       cueProjectInput,
-		RenderedYaml:          renderedYAML,
-		RenderedJson:          renderedJSON,
-		PlatformResourcesYaml: platformResourcesYAML,
-		PlatformResourcesJson: platformResourcesJSON,
-		ProjectResourcesYaml:  projectResourcesYAML,
-		ProjectResourcesJson:  projectResourcesJSON,
+		CueTemplate:                     cueTemplate,
+		CuePlatformInput:                cuePlatformInput,
+		CueProjectInput:                 cueProjectInput,
+		RenderedYaml:                    renderedYAML,
+		RenderedJson:                    renderedJSON,
+		PlatformResourcesYaml:          platformResourcesYAML,
+		PlatformResourcesJson:          platformResourcesJSON,
+		ProjectResourcesYaml:           projectResourcesYAML,
+		ProjectResourcesJson:           projectResourcesJSON,
+		DefaultsJson:                   defaultsJSON,
+		PlatformInputJson:              platformInputJSON,
+		ProjectInputJson:               projectInputJSON,
+		PlatformResourcesStructuredJson: platformResourcesStructJSON,
+		ProjectResourcesStructuredJson:  projectResourcesStructJSON,
 	}), nil
 }
 
