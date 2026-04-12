@@ -302,7 +302,11 @@ func (h *Handler) UpdateTemplate(
 		}
 		var existingRefs []*consolev1.LinkedTemplateRef
 		if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-			existingRefs, _ = unmarshalLinkedTemplates(raw)
+			var parseErr error
+			existingRefs, parseErr = unmarshalLinkedTemplates(raw)
+			if parseErr != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("parsing stored linked-templates annotation: %w", parseErr))
+			}
 		}
 		// Merge old and new refs to check all affected scopes.
 		allRefs := append(existingRefs, tmpl.LinkedTemplates...)

@@ -445,6 +445,16 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 			wantCode: connect.CodePermissionDenied,
 		},
 		{
+			name:             "EDITOR updates folder-linked templates with update_linked_templates=true fails",
+			email:            editorEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{
+				folderLinkedRef("payments", "payments-policy"),
+			},
+			wantErr:  true,
+			wantCode: connect.CodePermissionDenied,
+		},
+		{
 			name:               "EDITOR updates CUE only with update_linked_templates=false succeeds and preserves links",
 			email:              editorEmail,
 			updateLinkedTmpl:   false,
@@ -544,5 +554,68 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestUpdateTemplateMalformedLinkedAnnotation verifies that UpdateTemplate returns
+// an error when the stored linked-templates annotation is malformed JSON, rather
+// than silently discarding the parse error (which would leave existingRefs empty
+// and allow an EDITOR to bypass link permission checks).
+func TestUpdateTemplateMalformedLinkedAnnotation(t *testing.T) {
+	const project = "my-project"
+	const ownerEmail = "platform@localhost"
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "prj-" + project,
+		},
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "web-app",
+			Namespace: "prj-" + project,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDisplayName:     "Web App",
+				v1alpha2.AnnotationDescription:     "A web app",
+				v1alpha2.AnnotationMandatory:       "false",
+				v1alpha2.AnnotationEnabled:         "false",
+				v1alpha2.AnnotationLinkedTemplates: `{not valid json`,
+			},
+		},
+		Data: map[string]string{
+			CueTemplateKey: validCue,
+		},
+	}
+
+	fakeClient := fake.NewClientset(ns, cm)
+	shareUsers := map[string]string{
+		ownerEmail: "owner",
+	}
+	handler := newTestHandler(fakeClient, shareUsers)
+
+	ctx := authedCtx(ownerEmail, nil)
+	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
+		Scope: projectScopeRef(project),
+		Template: &consolev1.Template{
+			Name:        "web-app",
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				orgLinkedRef("acme", "httproute"),
+			},
+		},
+		UpdateLinkedTemplates: true,
+	})
+
+	_, err := handler.UpdateTemplate(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for malformed linked-templates annotation, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected code %v, got %v: %v", connect.CodeInternal, connect.CodeOf(err), err)
 	}
 }
