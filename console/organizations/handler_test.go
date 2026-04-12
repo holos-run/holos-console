@@ -141,6 +141,11 @@ func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, 
 	return f.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 }
 
+func (f *k8sFolderCreator) DeleteFolder(ctx context.Context, name string) error {
+	nsName := f.resolver.FolderNamespace(name)
+	return f.client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
+}
+
 func (f *k8sFolderCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
 	_, err := f.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 	if err != nil {
@@ -1270,6 +1275,11 @@ func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName
 	return err
 }
 
+func (p *k8sProjectCreator) DeleteProject(ctx context.Context, name string) error {
+	nsName := p.resolver.ProjectNamespace(name)
+	return p.client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
+}
+
 func (p *k8sProjectCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
 	_, err := p.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 	if err != nil {
@@ -1402,11 +1412,21 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		// Verify the org namespace was cleaned up.
 		fc := handler.folderCreator.(*k8sFolderCreator)
+
+		// Verify the org namespace was cleaned up.
 		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-seed-org", metav1.GetOptions{})
 		if !k8serrors.IsNotFound(getErr) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+		}
+
+		// Verify the folder namespace was also cleaned up (namespaces are flat,
+		// deleting the org does not cascade to the folder).
+		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
 		}
 	})
 
@@ -1447,6 +1467,14 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		if !k8serrors.IsNotFound(getErr) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
 		}
+
+		// Verify the folder namespace was also cleaned up.
+		nsList, _ := fakeClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
 	})
 
 	t.Run("rollback on project template seed failure", func(t *testing.T) {
@@ -1468,11 +1496,28 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		// Verify the org namespace was cleaned up.
 		fc := handler.folderCreator.(*k8sFolderCreator)
+
+		// Verify the org namespace was cleaned up.
 		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-ptmpl-org", metav1.GetOptions{})
 		if !k8serrors.IsNotFound(getErr) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+		}
+
+		// Verify the folder namespace was cleaned up.
+		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
+				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
+			}
+		}
+
+		// Verify the project namespace was cleaned up by seedDefaults'
+		// incremental rollback (project was created in step 2, then step 3 failed).
+		for _, ns := range nsList.Items {
+			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeProject {
+				t.Errorf("expected project namespace %q to be deleted after rollback", ns.Name)
+			}
 		}
 	})
 }

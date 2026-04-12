@@ -386,6 +386,11 @@ func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, display
 	return err
 }
 
+// DeleteProject delegates to the K8sClient.
+func (a *ProjectCreatorAdapter) DeleteProject(ctx context.Context, name string) error {
+	return a.K8s.DeleteProject(ctx, name)
+}
+
 // NamespaceExists delegates to the K8sClient.
 func (a *ProjectCreatorAdapter) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
 	return a.K8s.NamespaceExists(ctx, nsName)
