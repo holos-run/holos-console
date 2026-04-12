@@ -44,7 +44,7 @@ A project-level CUE template that defines the application resources for a
 deployment. Deployment templates are stored as Kubernetes ConfigMaps in the
 project namespace and written by product engineers. They produce resources in
 `projectResources` (Deployments, Services, ServiceAccounts) and may carry
-`DeploymentDefaults` (image, tag, port, etc.) that pre-fill the Create
+`TemplateDefaults` (image, tag, port, etc.) that pre-fill the Create
 Deployment form. At render time, the deployment template is unified with the
 applicable platform templates — always including mandatory platform templates,
 plus any enabled platform templates explicitly linked via the
