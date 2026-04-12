@@ -363,6 +363,17 @@ export declare type UpdateTemplateRequest = Message<"holos.console.v1.UpdateTemp
    * @generated from field: holos.console.v1.Template template = 2;
    */
   template?: Template;
+
+  /**
+   * update_linked_templates signals that the linked_templates field on the template
+   * message should be written. When false (default), existing linked templates are
+   * preserved regardless of the template.linked_templates value. When true, the
+   * backend replaces the stored linked templates with template.linked_templates
+   * and enforces scoped link permissions.
+   *
+   * @generated from field: bool update_linked_templates = 3;
+   */
+  updateLinkedTemplates: boolean;
 };
 
 /**

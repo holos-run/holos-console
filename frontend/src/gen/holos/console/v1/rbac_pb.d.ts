@@ -322,6 +322,22 @@ export enum Permission {
    * @generated from enum value: PERMISSION_REPARENT = 44;
    */
   REPARENT = 44,
+
+  /**
+   * PERMISSION_TEMPLATES_LINK_ORG_WRITE allows adding or removing organization-level
+   * linked template references on a template. Checked at the template's owning scope.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_LINK_ORG_WRITE = 45;
+   */
+  TEMPLATES_LINK_ORG_WRITE = 45,
+
+  /**
+   * PERMISSION_TEMPLATES_LINK_FOLDER_WRITE allows adding or removing folder-level
+   * linked template references on a template. Checked at the template's owning scope.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATES_LINK_FOLDER_WRITE = 46;
+   */
+  TEMPLATES_LINK_FOLDER_WRITE = 46,
 }
 
 /**
