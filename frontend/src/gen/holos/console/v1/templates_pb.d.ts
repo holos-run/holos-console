@@ -566,6 +566,61 @@ export declare type RenderTemplateResponse = Message<"holos.console.v1.RenderTem
    * @generated from field: string project_resources_json = 6;
    */
   projectResourcesJson: string;
+
+  /**
+   * defaults_json is the evaluated v1alpha2 ResourceSetSpec.defaults section as
+   * a JSON object. Corresponds to the CUE path `defaults` in the unified
+   * template output. Unset (absent) means render was not attempted or the
+   * section does not exist; set to "null" or "{}" means evaluation succeeded
+   * with that result.
+   *
+   * @generated from field: optional string defaults_json = 7;
+   */
+  defaultsJson?: string;
+
+  /**
+   * platform_input_json is the evaluated v1alpha2 ResourceSetSpec.platformInput
+   * section as a JSON object. Contains platform-provided values (project,
+   * namespace, folder ancestry, claims). Unset means render was not attempted;
+   * set means evaluation produced this value.
+   *
+   * @generated from field: optional string platform_input_json = 8;
+   */
+  platformInputJson?: string;
+
+  /**
+   * project_input_json is the evaluated v1alpha2 ResourceSetSpec.projectInput
+   * section as a JSON object. Contains user-provided values matching the
+   * ProjectInput schema. Unset means render was not attempted; set means
+   * evaluation produced this value.
+   *
+   * @generated from field: optional string project_input_json = 9;
+   */
+  projectInputJson?: string;
+
+  /**
+   * platform_resources_structured_json is the evaluated v1alpha2
+   * ResourceSetSpec.platformResources section as a JSON object. Unlike
+   * platform_resources_json (a flat array of extracted K8s resource objects),
+   * this field preserves the full CUE struct with namespacedResources and
+   * clusterResources nesting. Unset means render was not attempted; set means
+   * evaluation produced this value.
+   *
+   * @generated from field: optional string platform_resources_structured_json = 10;
+   */
+  platformResourcesStructuredJson?: string;
+
+  /**
+   * project_resources_structured_json is the evaluated v1alpha2
+   * ResourceSetSpec.projectResources section as a JSON object. Unlike
+   * project_resources_json (a flat array of extracted K8s resource objects),
+   * this field preserves the full CUE struct with namespacedResources and
+   * clusterResources nesting. Unset means render was not attempted; set means
+   * evaluation produced this value.
+   *
+   * @generated from field: optional string project_resources_structured_json = 11;
+   */
+  projectResourcesStructuredJson?: string;
 };
 
 /**

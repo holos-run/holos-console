@@ -1805,8 +1805,38 @@ type GetDeploymentRenderPreviewResponse struct {
 	// project_resources_json contains resources from projectResources
 	// (contributed by the project template) as a JSON array.
 	ProjectResourcesJson string `protobuf:"bytes,9,opt,name=project_resources_json,json=projectResourcesJson,proto3" json:"project_resources_json,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// defaults_json is the evaluated v1alpha2 ResourceSetSpec.defaults section as
+	// a JSON object. Corresponds to the CUE path `defaults` in the unified
+	// template output. Unset (absent) means render was not attempted or the
+	// section does not exist; set to "null" or "{}" means evaluation succeeded
+	// with that result.
+	DefaultsJson *string `protobuf:"bytes,10,opt,name=defaults_json,json=defaultsJson,proto3,oneof" json:"defaults_json,omitempty"`
+	// platform_input_json is the evaluated v1alpha2 ResourceSetSpec.platformInput
+	// section as a JSON object. Contains platform-provided values (project,
+	// namespace, folder ancestry, claims). Unset means render was not attempted;
+	// set means evaluation produced this value.
+	PlatformInputJson *string `protobuf:"bytes,11,opt,name=platform_input_json,json=platformInputJson,proto3,oneof" json:"platform_input_json,omitempty"`
+	// project_input_json is the evaluated v1alpha2 ResourceSetSpec.projectInput
+	// section as a JSON object. Contains user-provided values matching the
+	// ProjectInput schema. Unset means render was not attempted; set means
+	// evaluation produced this value.
+	ProjectInputJson *string `protobuf:"bytes,12,opt,name=project_input_json,json=projectInputJson,proto3,oneof" json:"project_input_json,omitempty"`
+	// platform_resources_structured_json is the evaluated v1alpha2
+	// ResourceSetSpec.platformResources section as a JSON object. Unlike
+	// platform_resources_json (a flat array of extracted K8s resource objects),
+	// this field preserves the full CUE struct with namespacedResources and
+	// clusterResources nesting. Unset means render was not attempted; set means
+	// evaluation produced this value.
+	PlatformResourcesStructuredJson *string `protobuf:"bytes,13,opt,name=platform_resources_structured_json,json=platformResourcesStructuredJson,proto3,oneof" json:"platform_resources_structured_json,omitempty"`
+	// project_resources_structured_json is the evaluated v1alpha2
+	// ResourceSetSpec.projectResources section as a JSON object. Unlike
+	// project_resources_json (a flat array of extracted K8s resource objects),
+	// this field preserves the full CUE struct with namespacedResources and
+	// clusterResources nesting. Unset means render was not attempted; set means
+	// evaluation produced this value.
+	ProjectResourcesStructuredJson *string `protobuf:"bytes,14,opt,name=project_resources_structured_json,json=projectResourcesStructuredJson,proto3,oneof" json:"project_resources_structured_json,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *GetDeploymentRenderPreviewResponse) Reset() {
@@ -1898,6 +1928,41 @@ func (x *GetDeploymentRenderPreviewResponse) GetProjectResourcesYaml() string {
 func (x *GetDeploymentRenderPreviewResponse) GetProjectResourcesJson() string {
 	if x != nil {
 		return x.ProjectResourcesJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetDefaultsJson() string {
+	if x != nil && x.DefaultsJson != nil {
+		return *x.DefaultsJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetPlatformInputJson() string {
+	if x != nil && x.PlatformInputJson != nil {
+		return *x.PlatformInputJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetProjectInputJson() string {
+	if x != nil && x.ProjectInputJson != nil {
+		return *x.ProjectInputJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetPlatformResourcesStructuredJson() string {
+	if x != nil && x.PlatformResourcesStructuredJson != nil {
+		return *x.PlatformResourcesStructuredJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetProjectResourcesStructuredJson() string {
+	if x != nil && x.ProjectResourcesStructuredJson != nil {
+		return *x.ProjectResourcesStructuredJson
 	}
 	return ""
 }
@@ -2031,7 +2096,7 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"configMaps\"Q\n" +
 	"!GetDeploymentRenderPreviewRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xc7\x03\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x89\a\n" +
 	"\"GetDeploymentRenderPreviewResponse\x12!\n" +
 	"\fcue_template\x18\x01 \x01(\tR\vcueTemplate\x12,\n" +
 	"\x12cue_platform_input\x18\x02 \x01(\tR\x10cuePlatformInput\x12*\n" +
@@ -2041,7 +2106,18 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x17platform_resources_yaml\x18\x06 \x01(\tR\x15platformResourcesYaml\x126\n" +
 	"\x17platform_resources_json\x18\a \x01(\tR\x15platformResourcesJson\x124\n" +
 	"\x16project_resources_yaml\x18\b \x01(\tR\x14projectResourcesYaml\x124\n" +
-	"\x16project_resources_json\x18\t \x01(\tR\x14projectResourcesJson*\xac\x01\n" +
+	"\x16project_resources_json\x18\t \x01(\tR\x14projectResourcesJson\x12(\n" +
+	"\rdefaults_json\x18\n" +
+	" \x01(\tH\x00R\fdefaultsJson\x88\x01\x01\x123\n" +
+	"\x13platform_input_json\x18\v \x01(\tH\x01R\x11platformInputJson\x88\x01\x01\x121\n" +
+	"\x12project_input_json\x18\f \x01(\tH\x02R\x10projectInputJson\x88\x01\x01\x12P\n" +
+	"\"platform_resources_structured_json\x18\r \x01(\tH\x03R\x1fplatformResourcesStructuredJson\x88\x01\x01\x12N\n" +
+	"!project_resources_structured_json\x18\x0e \x01(\tH\x04R\x1eprojectResourcesStructuredJson\x88\x01\x01B\x10\n" +
+	"\x0e_defaults_jsonB\x16\n" +
+	"\x14_platform_input_jsonB\x15\n" +
+	"\x13_project_input_jsonB%\n" +
+	"#_platform_resources_structured_jsonB$\n" +
+	"\"_project_resources_structured_json*\xac\x01\n" +
 	"\x0fDeploymentPhase\x12 \n" +
 	"\x1cDEPLOYMENT_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18DEPLOYMENT_PHASE_PENDING\x10\x01\x12\x1c\n" +
@@ -2159,6 +2235,7 @@ func file_holos_console_v1_deployments_proto_init() {
 	}
 	file_holos_console_v1_deployments_proto_msgTypes[8].OneofWrappers = []any{}
 	file_holos_console_v1_deployments_proto_msgTypes[10].OneofWrappers = []any{}
+	file_holos_console_v1_deployments_proto_msgTypes[27].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
