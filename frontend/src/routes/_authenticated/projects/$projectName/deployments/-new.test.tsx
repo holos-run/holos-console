@@ -557,8 +557,13 @@ describe('CreateDeploymentPage', () => {
     expect(screen.getByLabelText(/name slug/i)).toHaveValue('')
     expect(screen.getByLabelText(/^description$/i)).toHaveValue('')
     expect(screen.getByLabelText(/^port$/i)).toHaveValue(8080)
-    // No command or args items should be rendered (only the entry inputs)
-    expect(screen.queryByText('/bin/httpbin')).not.toBeInTheDocument()
+    // Command and args lists should be empty (no list items rendered).
+    // StringListInput renders a "remove item N" button for each entry, so
+    // zero such buttons positively confirms both lists are empty.
+    expect(screen.queryAllByRole('button', { name: /remove item/i })).toHaveLength(0)
+    // Entry inputs should also be empty (no pending text)
+    expect(screen.getByLabelText(/command entry/i)).toHaveValue('')
+    expect(screen.getByLabelText(/args entry/i)).toHaveValue('')
   })
 
   // --- End template defaults pre-fill regression tests ---
