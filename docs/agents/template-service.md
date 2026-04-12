@@ -45,7 +45,7 @@ The render set formula is: `(mandatory AND enabled) UNION (enabled AND ref IN li
 
 ## Folder Template Management
 
-The folder templates page (`/folders/$folderName/templates`) provides a read-only list of platform templates at folder scope. Full CRUD (create, edit, clone, delete) for folder-scoped templates is available through the same UI patterns as org and project templates, with create and detail routes under the folder settings area.
+The folder templates page (`/folders/$folderName/templates`) provides a read-only list of platform templates at folder scope. Mandatory templates are marked with a lock badge.
 
 ## Permissions
 
