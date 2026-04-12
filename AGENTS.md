@@ -51,6 +51,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [URL Scheme](docs/agents/guardrail-url-scheme.md) — Top-level resources get dedicated URL prefixes; never nest one top-level resource under another.
 - [Collection Index Pages](docs/agents/guardrail-collection-index.md) — Every resource collection must have an index/listing page at the root URL; settings live at a `/settings` subroute.
 - [Searchable Collections](docs/agents/guardrail-searchable-collections.md) — All index pages and dynamic-collection combo boxes must include a search/filter input using TanStack Table `globalFilterFn: 'includesString'`.
+- [Template-First Field Ordering](docs/agents/guardrail-template-first-field.md) — Template must be the first form field in Create Deployment; selecting it auto-populates all other fields.
 
 ## Planning & Execution
 
