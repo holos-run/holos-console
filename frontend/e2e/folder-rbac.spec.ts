@@ -43,8 +43,8 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     await page.waitForLoadState('networkidle')
     await expect(page.locator('span.font-medium', { hasText: folderName })).toBeVisible({ timeout: 10000 })
 
-    // Navigate to folder detail — delete button should be visible for owner
-    await page.goto(`/folders/${folderName}`)
+    // Navigate to folder settings — delete button should be visible for owner
+    await page.goto(`/folders/${folderName}/settings`)
     await page.waitForLoadState('networkidle')
     await expect(page.getByRole('button', { name: /delete folder/i })).toBeVisible({
       timeout: 10000,
@@ -65,7 +65,7 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    await page.goto(`/folders/${folderName}`)
+    await page.goto(`/folders/${folderName}/settings`)
     await page.waitForLoadState('networkidle')
 
     // Org owner should see the sharing section (Settings section with edit controls)

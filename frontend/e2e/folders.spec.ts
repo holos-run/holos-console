@@ -68,7 +68,7 @@ test.describe('Folder detail page', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    await page.goto(`/folders/${folderName}`)
+    await page.goto(`/folders/${folderName}/settings`)
     await page.waitForLoadState('networkidle')
 
     // Folder name should appear in the page heading (use role to avoid strict mode violations
@@ -103,10 +103,10 @@ test.describe('Nested folder workflow', () => {
     await page.waitForLoadState('networkidle')
     await expect(page.locator('span.font-medium', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
 
-    // Navigate to parent folder detail page — heading should show the folder name
+    // Navigate to parent folder index page — card title should show the folder name
     await page.goto(`/folders/${parentFolder}`)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByRole('heading', { name: parentFolder })).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('[data-slot="card-title"]', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
 
     // Cleanup (child first, then parent, then org)
     await apiDeleteFolder(page, childFolder, orgName)
@@ -126,12 +126,12 @@ test.describe('Nested folder workflow', () => {
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
     await apiCreateProject(page, projectName, orgName)
 
-    // Navigate to the folder detail page
+    // Navigate to the folder index page
     await page.goto(`/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
-    // Folder name should be visible in the page heading
-    await expect(page.getByRole('heading', { name: folderName })).toBeVisible({ timeout: 10000 })
+    // Folder name should be visible in the card title
+    await expect(page.locator('[data-slot="card-title"]', { hasText: folderName })).toBeVisible({ timeout: 10000 })
 
     // Cleanup
     await apiDeleteProject(page, projectName)
