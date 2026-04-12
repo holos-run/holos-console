@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+
+const mockNavigate = vi.fn()
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -26,28 +27,33 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
         {children}
       </a>
     ),
-    Navigate: () => null,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
   }
 })
 
 vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
-  useGetFolderRaw: vi.fn(),
-  useUpdateFolder: vi.fn(),
   useListFolders: vi.fn(),
+}))
+
+vi.mock('@/queries/projects', () => ({
+  useListProjectsByParent: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/components/create-folder-dialog', () => ({
+  CreateFolderDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="create-folder-dialog" /> : null,
+}))
 
-import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
+import { useGetFolder, useListFolders } from '@/queries/folders'
+import { useListProjectsByParent } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/settings/index'
+import { FolderIndexPage } from './index'
 
 const mockFolder = {
   name: 'payments',
@@ -55,21 +61,67 @@ const mockFolder = {
   description: 'Payment processing projects',
   organization: 'test-org',
   creatorEmail: 'admin@example.com',
-  createdAt: '',
+  createdAt: '2025-01-15T10:00:00Z',
   userRole: Role.OWNER,
   userGrants: [],
   roleGrants: [],
 }
 
-function setupMocks(userRole = Role.OWNER, folderOverride?: object) {
-  const folder = { ...mockFolder, ...folderOverride }
+function makeChildFolder(name: string, displayName: string, creatorEmail = 'admin@example.com') {
+  return {
+    name,
+    displayName,
+    description: '',
+    organization: 'test-org',
+    creatorEmail,
+    createdAt: '2025-02-01T08:00:00Z',
+    userRole: Role.OWNER,
+  }
+}
+
+function makeChildProject(name: string, displayName: string, creatorEmail = 'admin@example.com') {
+  return {
+    name,
+    displayName,
+    description: '',
+    organization: 'test-org',
+    creatorEmail,
+    createdAt: '2025-03-01T12:00:00Z',
+    userRole: Role.OWNER,
+  }
+}
+
+function setupMocks(
+  opts: {
+    folder?: typeof mockFolder
+    childFolders?: ReturnType<typeof makeChildFolder>[]
+    childProjects?: ReturnType<typeof makeChildProject>[]
+    userRole?: Role
+    folderLoading?: boolean
+    folderError?: Error | null
+  } = {},
+) {
+  const {
+    folder = mockFolder,
+    childFolders = [],
+    childProjects = [],
+    userRole = Role.OWNER,
+    folderLoading = false,
+    folderError = null,
+  } = opts
+
   ;(useGetFolder as Mock).mockReturnValue({
-    data: folder,
+    data: folderLoading ? undefined : folder,
+    isPending: folderLoading,
+    error: folderError,
+  })
+  ;(useListFolders as Mock).mockReturnValue({
+    data: childFolders,
     isPending: false,
     error: null,
   })
-  ;(useGetFolderRaw as Mock).mockReturnValue({
-    data: '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"fld-payments"}}',
+  ;(useListProjectsByParent as Mock).mockReturnValue({
+    data: childProjects,
     isPending: false,
     error: null,
   })
@@ -78,189 +130,132 @@ function setupMocks(userRole = Role.OWNER, folderOverride?: object) {
     isPending: false,
     error: null,
   })
-  ;(useUpdateFolder as Mock).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({}),
-    isPending: false,
-  })
-  ;(useListFolders as Mock).mockReturnValue({
-    data: [],
-    isPending: false,
-    error: null,
-  })
 }
 
-describe('FolderDetailPage', () => {
+describe('FolderIndexPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders folder display name', () => {
+  it('renders loading skeletons while folder is pending', () => {
+    setupMocks({ folderLoading: true })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('renders error alert when folder fetch fails', () => {
+    setupMocks({ folderError: new Error('folder not found') })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText(/folder not found/i)).toBeInTheDocument()
+  })
+
+  it('renders empty state when folder has no children', () => {
     setupMocks()
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    // Display name appears in the h2 heading and in the display name field
-    const matches = screen.getAllByText('Payments Team')
-    expect(matches.length).toBeGreaterThanOrEqual(1)
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText(/no items/i)).toBeInTheDocument()
   })
 
-  it('renders folder slug', () => {
+  it('renders data grid with combined folder and project rows', () => {
+    setupMocks({
+      childFolders: [makeChildFolder('billing', 'Billing')],
+      childProjects: [makeChildProject('checkout', 'Checkout')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText('Billing')).toBeInTheDocument()
+    expect(screen.getByText('Checkout')).toBeInTheDocument()
+  })
+
+  it('renders type badges for folders and projects', () => {
+    setupMocks({
+      childFolders: [makeChildFolder('billing', 'Billing')],
+      childProjects: [makeChildProject('checkout', 'Checkout')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText('Folder')).toBeInTheDocument()
+    expect(screen.getByText('Project')).toBeInTheDocument()
+  })
+
+  it('search filters rows by display name', () => {
+    setupMocks({
+      childFolders: [makeChildFolder('billing', 'Billing')],
+      childProjects: [makeChildProject('checkout', 'Checkout')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    const searchInput = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(searchInput, { target: { value: 'billing' } })
+    expect(screen.getByText('Billing')).toBeInTheDocument()
+    expect(screen.queryByText('Checkout')).not.toBeInTheDocument()
+  })
+
+  it('clicking a folder row navigates to /folders/$childFolderName', () => {
+    setupMocks({
+      childFolders: [makeChildFolder('billing', 'Billing')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    const row = screen.getByText('Billing').closest('tr')!
+    fireEvent.click(row)
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/folders/$folderName',
+      params: { folderName: 'billing' },
+    })
+  })
+
+  it('clicking a project row navigates to /projects/$projectName', () => {
+    setupMocks({
+      childProjects: [makeChildProject('checkout', 'Checkout')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    const row = screen.getByText('Checkout').closest('tr')!
+    fireEvent.click(row)
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/projects/$projectName',
+      params: { projectName: 'checkout' },
+    })
+  })
+
+  it('settings link points to /folders/$folderName/settings', () => {
     setupMocks()
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    // The slug appears in both the breadcrumb and the Name (slug) field
-    const matches = screen.getAllByText('payments')
-    expect(matches.length).toBeGreaterThanOrEqual(1)
+    render(<FolderIndexPage folderName="payments" />)
+    const settingsLink = screen.getByRole('link', { name: /settings/i })
+    expect(settingsLink).toBeInTheDocument()
+    expect(settingsLink).toHaveAttribute('href', '/folders/$folderName/settings')
   })
 
-  it('renders organization name', () => {
-    setupMocks()
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    // Multiple occurrences (breadcrumb + org field)
-    const matches = screen.getAllByText('test-org')
-    expect(matches.length).toBeGreaterThanOrEqual(1)
+  it('shows Create Folder button for OWNER', () => {
+    setupMocks({ userRole: Role.OWNER })
+    render(<FolderIndexPage folderName="payments" />)
+    const buttons = screen.getAllByRole('button', { name: /create folder/i })
+    expect(buttons.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders creator email', () => {
-    setupMocks()
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    expect(screen.getByText('admin@example.com')).toBeInTheDocument()
+  it('shows Create Folder button for EDITOR', () => {
+    setupMocks({ userRole: Role.EDITOR })
+    render(<FolderIndexPage folderName="payments" />)
+    const buttons = screen.getAllByRole('button', { name: /create folder/i })
+    expect(buttons.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders folder description', () => {
-    setupMocks()
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    expect(screen.getByText('Payment processing projects')).toBeInTheDocument()
+  it('does not show Create Folder button for VIEWER', () => {
+    setupMocks({ userRole: Role.VIEWER })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.queryByRole('button', { name: /create folder/i })).not.toBeInTheDocument()
   })
 
-  it('shows loading skeletons while pending', () => {
-    ;(useGetFolder as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
-    ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: true, error: null })
-    ;(useUpdateFolder as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
-    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    expect(screen.queryByText('Payments Team')).not.toBeInTheDocument()
+  it('clicking Create Folder button opens dialog', () => {
+    setupMocks({
+      userRole: Role.OWNER,
+      childFolders: [makeChildFolder('billing', 'Billing')],
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    fireEvent.click(screen.getByRole('button', { name: /create folder/i }))
+    expect(screen.getByTestId('create-folder-dialog')).toBeInTheDocument()
   })
 
-  it('shows error alert when fetch fails', () => {
-    ;(useGetFolder as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('not found') })
-    ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useUpdateFolder as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
-    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
-    render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    expect(screen.getByText('not found')).toBeInTheDocument()
-  })
-
-  describe('display name editing', () => {
-    it('shows edit pencil button for OWNER', () => {
-      setupMocks(Role.OWNER)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.getByRole('button', { name: /edit display name/i })).toBeInTheDocument()
+  it('renders creator email in the table', () => {
+    setupMocks({
+      childFolders: [makeChildFolder('billing', 'Billing', 'creator@example.com')],
     })
-
-    it('shows edit pencil button for EDITOR', () => {
-      setupMocks(Role.EDITOR)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.getByRole('button', { name: /edit display name/i })).toBeInTheDocument()
-    })
-
-    it('does not show edit pencil button for VIEWER', () => {
-      setupMocks(Role.VIEWER)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.queryByRole('button', { name: /edit display name/i })).not.toBeInTheDocument()
-    })
-
-    it('clicking edit display name shows input', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /edit display name/i }))
-      expect(screen.getByRole('textbox', { name: /display name/i })).toBeInTheDocument()
-    })
-
-    it('saving display name calls updateFolder', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /edit display name/i }))
-      const input = screen.getByRole('textbox', { name: /display name/i })
-      await user.clear(input)
-      await user.type(input, 'New Name')
-      await user.click(screen.getByRole('button', { name: /save display name/i }))
-      const mutateAsync = (useUpdateFolder as Mock).mock.results[0].value.mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'New Name' }))
-      })
-    })
-
-    it('cancel restores view mode without saving', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /edit display name/i }))
-      await user.click(screen.getByRole('button', { name: /cancel display name/i }))
-      expect(screen.queryByRole('textbox', { name: /display name/i })).not.toBeInTheDocument()
-      const mutateAsync = (useUpdateFolder as Mock).mock.results[0].value.mutateAsync
-      expect(mutateAsync).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('description editing', () => {
-    it('shows edit pencil button for OWNER', () => {
-      setupMocks(Role.OWNER)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.getByRole('button', { name: /edit description/i })).toBeInTheDocument()
-    })
-
-    it('clicking edit description shows textarea', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /edit description/i }))
-      expect(screen.getByRole('textbox', { name: /description/i })).toBeInTheDocument()
-    })
-  })
-
-  describe('breadcrumb navigation', () => {
-    it('renders org link in breadcrumb', () => {
-      setupMocks()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      const orgLink = screen.getByRole('link', { name: 'test-org' })
-      expect(orgLink).toBeInTheDocument()
-    })
-
-    it('renders Folders link in breadcrumb', () => {
-      setupMocks()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.getByRole('link', { name: 'Folders' })).toBeInTheDocument()
-    })
-  })
-
-  describe('delete dialog', () => {
-    it('shows Delete Folder button for OWNER', () => {
-      setupMocks(Role.OWNER)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.getByRole('button', { name: /delete folder/i })).toBeInTheDocument()
-    })
-
-    it('does not show Delete Folder button for VIEWER', () => {
-      setupMocks(Role.VIEWER)
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      expect(screen.queryByRole('button', { name: /delete folder/i })).not.toBeInTheDocument()
-    })
-
-    it('clicking Delete Folder opens confirmation dialog', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /delete folder/i }))
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    it('cancel closes dialog without deleting', async () => {
-      setupMocks(Role.OWNER)
-      const user = userEvent.setup()
-      render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-      await user.click(screen.getByRole('button', { name: /delete folder/i }))
-      await user.click(screen.getByRole('button', { name: /cancel/i }))
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText('creator@example.com')).toBeInTheDocument()
   })
 })
