@@ -72,12 +72,16 @@ func ExtractDefaults(cueSource string) (*consolev1.TemplateDefaults, error) {
 	}
 
 	// Integer field: port.
-	if v := defaultsVal.LookupPath(cue.ParsePath("port")); v.Exists() && v.IsConcrete() {
-		if b, err := v.MarshalJSON(); err == nil {
-			var n int32
-			if err := json.Unmarshal(b, &n); err == nil {
-				d.Port = n
-			}
+	if v := defaultsVal.LookupPath(cue.ParsePath("port")); !v.Exists() || !v.IsConcrete() {
+		slog.Debug("defaults field not concrete, skipping", "field", "port")
+	} else if b, err := v.MarshalJSON(); err != nil {
+		slog.Debug("defaults field marshal failed, skipping", "field", "port", "error", err)
+	} else {
+		var n int32
+		if err := json.Unmarshal(b, &n); err != nil {
+			slog.Debug("defaults field unmarshal failed, skipping", "field", "port", "error", err)
+		} else {
+			d.Port = n
 		}
 	}
 
@@ -91,14 +95,20 @@ func ExtractDefaults(cueSource string) (*consolev1.TemplateDefaults, error) {
 	} {
 		v := defaultsVal.LookupPath(cue.ParsePath(f.path))
 		if !v.Exists() || !v.IsConcrete() {
+			slog.Debug("defaults field not concrete, skipping", "field", f.path)
 			continue
 		}
 		b, err := v.MarshalJSON()
 		if err != nil {
+			slog.Debug("defaults field marshal failed, skipping", "field", f.path, "error", err)
 			continue
 		}
 		var ss []string
-		if err := json.Unmarshal(b, &ss); err == nil && len(ss) > 0 {
+		if err := json.Unmarshal(b, &ss); err != nil {
+			slog.Debug("defaults field unmarshal failed, skipping", "field", f.path, "error", err)
+			continue
+		}
+		if len(ss) > 0 {
 			*f.dest = ss
 		}
 	}
