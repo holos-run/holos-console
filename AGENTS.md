@@ -54,6 +54,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [Template-First Field Ordering](docs/agents/guardrail-template-first-field.md) — Template must be the first form field in Create Deployment; selecting it auto-populates all other fields.
 - [Linking UI](docs/agents/guardrail-linking-ui.md) — Linked templates section must always render on create and edit pages.
 - [CI Check Names](docs/agents/guardrail-ci-check-names.md) — Use actual GitHub Actions names: "Unit Tests", "Lint", "E2E Tests" — not lowercase shorthand.
+- [Pages Over Modals](docs/agents/guardrail-pages-over-modals.md) — Create and update UIs use dedicated route pages, not modals; modals only for brief confirmations and lightweight actions.
 
 ## Planning & Execution
 
