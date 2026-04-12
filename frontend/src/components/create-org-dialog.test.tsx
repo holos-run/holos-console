@@ -49,6 +49,31 @@ vi.mock('@/components/ui/alert', () => ({
   AlertDescription: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
+vi.mock('@/components/ui/checkbox', () => ({
+  Checkbox: ({ id, checked, onCheckedChange, ...props }: {
+    id?: string
+    checked?: boolean
+    onCheckedChange?: (checked: boolean) => void
+    [key: string]: unknown
+  }) => (
+    <input
+      type="checkbox"
+      id={id}
+      checked={checked ?? false}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+      role="checkbox"
+      {...props}
+    />
+  ),
+}))
+
+vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <div data-testid="tooltip-content">{children}</div>,
+}))
+
 import { useCreateOrganization } from '@/queries/organizations'
 import { CreateOrgDialog } from './create-org-dialog'
 
@@ -158,6 +183,56 @@ describe('CreateOrgDialog', () => {
 
     await waitFor(() => {
       expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    })
+  })
+
+  describe('populate defaults checkbox', () => {
+    it('renders checkbox unchecked by default', () => {
+      render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+      const checkbox = screen.getByRole('checkbox')
+      expect(checkbox).toBeDefined()
+      expect((checkbox as HTMLInputElement).checked).toBe(false)
+    })
+
+    it('renders label text for the checkbox', () => {
+      render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+      expect(screen.getByText('Populate with example resources')).toBeDefined()
+    })
+
+    it('renders tooltip with expected content', () => {
+      render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+      expect(
+        screen.getByText(/Creates a default folder and project structure with example templates/)
+      ).toBeDefined()
+    })
+
+    it('passes populateDefaults: true when checkbox is checked', async () => {
+      mockMutateAsync.mockResolvedValue({ name: 'new-org' })
+      render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'New Org' } })
+      fireEvent.click(screen.getByRole('checkbox'))
+      fireEvent.submit(screen.getByRole('form'))
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ populateDefaults: true })
+        )
+      })
+    })
+
+    it('does not send populateDefaults when checkbox is unchecked', async () => {
+      mockMutateAsync.mockResolvedValue({ name: 'new-org' })
+      render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/my organization/i), { target: { value: 'New Org' } })
+      fireEvent.submit(screen.getByRole('form'))
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.not.objectContaining({ populateDefaults: true })
+        )
+      })
     })
   })
 })
