@@ -294,24 +294,31 @@ export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', opti
 
 // useRenderTemplate renders a CUE template with the given inputs. The scope
 // parameter determines which ancestor platform templates are resolved.
+// linkedTemplates optionally passes explicit linked template refs to unify
+// with the project template for a combined preview.
 export function useRenderTemplate(
   scope: TemplateScopeRef,
   cueTemplate: string,
   cueInput = '',
   enabled = true,
   cuePlatformInput = '',
+  linkedTemplates: LinkedTemplateRef[] = [],
 ) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  // Serialize linked templates into the query key so the query refetches when
+  // the linked selection changes.
+  const linkedKey = linkedTemplates.map(t => `${t.scope}/${t.scopeName}/${t.name}`).join(',')
   return useQuery({
-    queryKey: ['templates', 'render', scope.scope, scope.scopeName, cueTemplate, cueInput, cuePlatformInput] as const,
+    queryKey: ['templates', 'render', scope.scope, scope.scopeName, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
     queryFn: async () => {
       const response = await client.renderTemplate({
         scope,
         cueTemplate,
         cueProjectInput: cueInput,
         cuePlatformInput,
+        linkedTemplates,
       })
       return { renderedYaml: response.renderedYaml, renderedJson: response.renderedJson }
     },

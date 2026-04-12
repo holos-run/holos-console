@@ -329,6 +329,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
               scope={scope}
+              linkedTemplates={template?.linkedTemplates ?? []}
             />
           </div>
 

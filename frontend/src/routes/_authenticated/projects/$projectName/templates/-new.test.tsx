@@ -408,5 +408,36 @@ describe('CreateTemplatePage', () => {
         )
       })
     })
+
+    it('useRenderTemplate is called with selected linked templates for preview', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
+      const user = userEvent.setup()
+      render(<CreateTemplatePage />)
+
+      // Select a non-mandatory template
+      await user.click(screen.getByRole('checkbox', { name: /httpbin platform/i }))
+
+      const calls = (useRenderTemplate as Mock).mock.calls
+      const lastCall = calls[calls.length - 1]
+      // arg[5] is linkedTemplates
+      expect(lastCall[5]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
+        ]),
+      )
+    })
+
+    it('useRenderTemplate receives empty linkedTemplates when none selected', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+
+      const calls = (useRenderTemplate as Mock).mock.calls
+      const lastCall = calls[calls.length - 1]
+      // arg[5] is linkedTemplates
+      expect(lastCall[5]).toEqual([])
+    })
   })
 })
