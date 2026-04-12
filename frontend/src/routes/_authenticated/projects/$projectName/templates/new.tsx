@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info, Lock } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -250,6 +251,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [selectedLinkedKeys, setSelectedLinkedKeys] = useState<string[]>([])
+  const [selectedVersionConstraints, setSelectedVersionConstraints] = useState<Map<string, string>>(new Map())
 
   // Group linkable templates by scope for display.
   const orgTemplates = linkableTemplates.filter(
@@ -284,7 +286,8 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   // preview render so the preview pane shows unified output.
   const previewLinkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys.map((key) => {
     const parsed = parseLinkableKey(key)
-    return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name } as LinkedTemplateRef
+    const vc = selectedVersionConstraints.get(key) ?? ''
+    return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
   })
 
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
@@ -316,11 +319,12 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     }
     setError(null)
     try {
-      // Build LinkedTemplateRef objects from scope-qualified keys.
+      // Build LinkedTemplateRef objects from scope-qualified keys with version constraints.
       const linkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys
         .map((key) => {
           const parsed = parseLinkableKey(key)
-          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name } as LinkedTemplateRef
+          const vc = selectedVersionConstraints.get(key) ?? ''
+          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
         })
 
       await createMutation.mutateAsync({
@@ -420,6 +424,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
                     {orgTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      const hasReleases = t.releases && t.releases.length > 0
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
@@ -433,7 +438,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )
                           }}
                         />
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1">
                           <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
                             {t.displayName || t.name}
                             {t.mandatory && (
@@ -450,7 +455,30 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )}
                           </label>
                           {t.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                            <p className="text-xs text-muted-foreground">{t.description}</p>
+                          )}
+                          {hasReleases && (
+                            <Select
+                              value={selectedVersionConstraints.get(key) ?? ''}
+                              onValueChange={(val) => {
+                                setSelectedVersionConstraints((prev) => {
+                                  const next = new Map(prev)
+                                  next.set(key, val === '__latest__' ? '' : val)
+                                  return next
+                                })
+                              }}
+                              disabled={t.mandatory}
+                            >
+                              <SelectTrigger size="sm" className="w-40 text-xs">
+                                <SelectValue placeholder="Latest (auto-update)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__latest__">Latest (auto-update)</SelectItem>
+                                {t.releases.map((r) => (
+                                  <SelectItem key={r.version} value={r.version}>{r.version}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         </div>
                       </div>
@@ -463,6 +491,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
                     {folderTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      const hasReleases = t.releases && t.releases.length > 0
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
@@ -476,7 +505,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )
                           }}
                         />
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1">
                           <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
                             {t.displayName || t.name}
                             {t.mandatory && (
@@ -493,7 +522,30 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )}
                           </label>
                           {t.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                            <p className="text-xs text-muted-foreground">{t.description}</p>
+                          )}
+                          {hasReleases && (
+                            <Select
+                              value={selectedVersionConstraints.get(key) ?? ''}
+                              onValueChange={(val) => {
+                                setSelectedVersionConstraints((prev) => {
+                                  const next = new Map(prev)
+                                  next.set(key, val === '__latest__' ? '' : val)
+                                  return next
+                                })
+                              }}
+                              disabled={t.mandatory}
+                            >
+                              <SelectTrigger size="sm" className="w-40 text-xs">
+                                <SelectValue placeholder="Latest (auto-update)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__latest__">Latest (auto-update)</SelectItem>
+                                {t.releases.map((r) => (
+                                  <SelectItem key={r.version} value={r.version}>{r.version}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         </div>
                       </div>
