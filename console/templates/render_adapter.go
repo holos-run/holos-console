@@ -57,6 +57,61 @@ func (a *CueRendererAdapter) RenderWithTemplateSources(ctx context.Context, cueT
 	return unstructuredToRenderResources(resources)
 }
 
+// RenderGrouped evaluates cueTemplate unified with cuePlatformInput and cueInput
+// and returns resources grouped by origin (platform vs project).
+func (a *CueRendererAdapter) RenderGrouped(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error) {
+	combined := cuePlatformInput
+	if combined != "" && cueInput != "" {
+		combined = combined + "\n" + cueInput
+	} else if cueInput != "" {
+		combined = cueInput
+	}
+	grouped, err := a.inner.RenderGroupedWithCueInput(ctx, cueTemplate, combined)
+	if err != nil {
+		return nil, err
+	}
+	return groupedUnstructuredToRenderResources(grouped)
+}
+
+// RenderGroupedWithTemplateSources evaluates the template unified with ancestor
+// template CUE sources and returns resources grouped by origin.
+func (a *CueRendererAdapter) RenderGroupedWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error) {
+	combinedInput := cuePlatformInput
+	if combinedInput != "" && cueInput != "" {
+		combinedInput = combinedInput + "\n" + cueInput
+	} else if cueInput != "" {
+		combinedInput = cueInput
+	}
+	combinedTemplate := cueTemplate
+	for _, src := range templateSources {
+		if src != "" {
+			combinedTemplate = combinedTemplate + "\n" + src
+		}
+	}
+	grouped, err := a.inner.RenderGroupedWithCueInput(ctx, combinedTemplate, combinedInput)
+	if err != nil {
+		return nil, err
+	}
+	return groupedUnstructuredToRenderResources(grouped)
+}
+
+// groupedUnstructuredToRenderResources converts GroupedResources from the
+// deployments package to GroupedRenderResources in the templates package.
+func groupedUnstructuredToRenderResources(grouped *deployments.GroupedResources) (*GroupedRenderResources, error) {
+	platform, err := unstructuredToRenderResources(grouped.Platform)
+	if err != nil {
+		return nil, err
+	}
+	project, err := unstructuredToRenderResources(grouped.Project)
+	if err != nil {
+		return nil, err
+	}
+	return &GroupedRenderResources{
+		Platform: platform,
+		Project:  project,
+	}, nil
+}
+
 // unstructuredToRenderResources converts unstructured K8s objects to RenderResource slice.
 func unstructuredToRenderResources(resources []unstructured.Unstructured) ([]RenderResource, error) {
 	out := make([]RenderResource, 0, len(resources))
