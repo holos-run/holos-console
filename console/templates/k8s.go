@@ -734,7 +734,7 @@ func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, sc
 		}
 	}
 
-	// Priority 1: CUE extraction from the template source (ADR 018 pattern).
+	// Priority 1: CUE extraction from the template source (ADR 018 design, ADR 025 per-field extraction).
 	// Only project-scope templates carry deployment defaults.
 	if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && cueSource != "" {
 		extracted, err := ExtractDefaults(cueSource)

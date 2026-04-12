@@ -3,7 +3,7 @@
 
 // defaults declares the template's default values as concrete CUE data.
 // The backend reads this block to pre-fill the Create Deployment form.
-// See ADR 018 for the design rationale.
+// See ADR 018 for the design rationale and ADR 025 for per-field extraction.
 defaults: #ProjectInput & {
 	name:        "httpbin"
 	image:       "ghcr.io/mccutchen/go-httpbin"
