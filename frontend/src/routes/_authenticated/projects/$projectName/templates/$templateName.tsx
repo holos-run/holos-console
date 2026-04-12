@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Dialog,
@@ -68,6 +69,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [linkedEditOpen, setLinkedEditOpen] = useState(false)
   const [draftLinkedTemplateKeys, setDraftLinkedTemplateKeys] = useState<string[]>([])
+  const [draftVersionConstraints, setDraftVersionConstraints] = useState<Map<string, string>>(new Map())
   const [linkedEditError, setLinkedEditError] = useState<string | null>(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
@@ -127,17 +129,23 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const handleOpenLinkedEdit = () => {
     setDraftLinkedTemplateKeys((template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name)))
+    const vcMap = new Map<string, string>()
+    for (const lt of template?.linkedTemplates ?? []) {
+      vcMap.set(linkableKey(lt.scope, lt.scopeName, lt.name), lt.versionConstraint ?? '')
+    }
+    setDraftVersionConstraints(vcMap)
     setLinkedEditError(null)
     setLinkedEditOpen(true)
   }
 
   const handleSaveLinkedTemplates = async () => {
     try {
-      // Parse composite keys back into LinkedTemplateRef objects.
+      // Parse composite keys back into LinkedTemplateRef objects with version constraints.
       const linkedTemplates: LinkedTemplateRef[] = draftLinkedTemplateKeys
         .map((key) => {
           const parsed = parseLinkableKey(key)
-          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name } as LinkedTemplateRef
+          const vc = draftVersionConstraints.get(key) ?? ''
+          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
         })
       await updateMutation.mutateAsync({ linkedTemplates, updateLinkedTemplates: true })
       toast.success('Saved')
@@ -422,6 +430,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               const renderGroup = (templates: typeof linkableTemplates) =>
                 templates.map((t) => {
                   const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                  const hasReleases = t.releases && t.releases.length > 0
                   return (
                   <div key={key} className="flex items-start gap-2">
                     <Checkbox
@@ -435,7 +444,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         )
                       }}
                     />
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1 flex-1">
                       <label htmlFor={`linked-edit-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
                         {t.displayName || t.name}
                         {t.mandatory && (
@@ -452,19 +461,31 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         )}
                       </label>
                       {t.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                        <p className="text-xs text-muted-foreground">{t.description}</p>
                       )}
-                      {(() => {
-                        const linkedRef = (template?.linkedTemplates ?? []).find(
-                          (lt) => lt.scope === t.scopeRef?.scope && lt.scopeName === t.scopeRef?.scopeName && lt.name === t.name
-                        )
-                        if (!linkedRef?.versionConstraint) return null
-                        return (
-                          <span className="text-xs font-mono text-muted-foreground mt-0.5">
-                            Version: {linkedRef.versionConstraint}
-                          </span>
-                        )
-                      })()}
+                      {hasReleases && (
+                        <Select
+                          value={draftVersionConstraints.get(key) ?? ''}
+                          onValueChange={(val) => {
+                            setDraftVersionConstraints((prev) => {
+                              const next = new Map(prev)
+                              next.set(key, val === '__latest__' ? '' : val)
+                              return next
+                            })
+                          }}
+                          disabled={t.mandatory || !canEditLinks}
+                        >
+                          <SelectTrigger size="sm" className="w-40 text-xs">
+                            <SelectValue placeholder="Latest (auto-update)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__latest__">Latest (auto-update)</SelectItem>
+                            {t.releases.map((r) => (
+                              <SelectItem key={r.version} value={r.version}>{r.version}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   </div>
                   )
