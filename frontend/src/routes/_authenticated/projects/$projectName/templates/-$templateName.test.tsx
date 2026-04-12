@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -23,6 +23,7 @@ vi.mock('@/queries/templates', () => ({
   useRenderTemplate: vi.fn(),
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [] }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
+  TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -527,8 +528,9 @@ describe('DeploymentTemplateDetailPage', () => {
 
   describe('linked platform templates', () => {
     const mockLinkable = [
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 2, scopeName: 'acme' } },
-      { name: 'mandatory-labels', displayName: 'Mandatory Labels', description: 'Enforces labels', mandatory: true, scopeRef: { scope: 2, scopeName: 'acme' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' } },
     ]
 
     it('does not show linked templates row when no linkable templates exist', () => {
@@ -550,12 +552,12 @@ describe('DeploymentTemplateDetailPage', () => {
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
       // mandatory template is always shown even when linkedTemplates is empty
-      expect(screen.getByText('Mandatory Labels')).toBeInTheDocument()
+      expect(screen.getByText('Reference Grant')).toBeInTheDocument()
     })
 
     it('shows linked template names as badges', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 2, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText('HTTPRoute Gateway')).toBeInTheDocument()
     })
@@ -563,6 +565,13 @@ describe('DeploymentTemplateDetailPage', () => {
     it('shows edit linked templates button for owners', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
       setupMocks(Role.OWNER)
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getByRole('button', { name: /edit linked platform templates/i })).toBeInTheDocument()
+    })
+
+    it('shows edit linked templates button for editors', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.EDITOR)
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByRole('button', { name: /edit linked platform templates/i })).toBeInTheDocument()
     })
@@ -576,7 +585,7 @@ describe('DeploymentTemplateDetailPage', () => {
 
     it('clicking edit linked templates button opens dialog', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 2, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
@@ -590,7 +599,7 @@ describe('DeploymentTemplateDetailPage', () => {
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
       const checkboxes = screen.getAllByRole('checkbox')
-      expect(checkboxes.length).toBeGreaterThanOrEqual(2)
+      expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
     it('mandatory template checkbox is checked and disabled in dialog', async () => {
@@ -599,30 +608,108 @@ describe('DeploymentTemplateDetailPage', () => {
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
-      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /mandatory labels/i })
+      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
       expect(mandatoryCheckbox).toBeChecked()
       expect(mandatoryCheckbox).toBeDisabled()
     })
 
-    it('saving calls updateMutation with selected linkedTemplates', async () => {
+    it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const dialog = screen.getByRole('dialog')
       // Check the non-mandatory template
-      await user.click(screen.getByRole('checkbox', { name: /httproute gateway/i }))
-      await user.click(screen.getByRole('button', { name: /^save$/i }))
+      await user.click(within(dialog).getByRole('checkbox', { name: /httproute gateway/i }))
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
       const mutateAsync = (useUpdateTemplate as Mock).mock.results[0].value.mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             linkedTemplates: expect.arrayContaining([
-              expect.objectContaining({ name: 'httproute' }),
+              expect.objectContaining({ scope: 1, scopeName: 'acme', name: 'httproute' }),
             ]),
+            updateLinkedTemplates: true,
           }),
         )
       })
+    })
+
+    it('saving CUE template does NOT include updateLinkedTemplates: true', async () => {
+      setupMocks(Role.OWNER)
+      render(<DeploymentTemplateDetailPage />)
+      const editor = screen.getByRole('textbox', { name: /cue template/i })
+      fireEvent.change(editor, { target: { value: '// updated cue' } })
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+      const mutateAsync = (useUpdateTemplate as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.not.objectContaining({ updateLinkedTemplates: true }),
+        )
+      })
+    })
+
+    it('dialog groups templates by scope with Organization and Folder headers', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      expect(screen.getByText('Organization Templates')).toBeInTheDocument()
+      expect(screen.getByText('Folder Templates')).toBeInTheDocument()
+    })
+
+    it('OWNER can toggle non-mandatory checkboxes in dialog', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const httpCheckbox = screen.getByRole('checkbox', { name: /httproute gateway/i })
+      expect(httpCheckbox).not.toBeDisabled()
+      const folderCheckbox = screen.getByRole('checkbox', { name: /team network policy/i })
+      expect(folderCheckbox).not.toBeDisabled()
+    })
+
+    it('EDITOR sees all checkboxes disabled with permission message', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.EDITOR, { ...mockTemplate, linkedTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      // All checkboxes should be disabled for EDITOR
+      const checkboxes = screen.getAllByRole('checkbox')
+      checkboxes.forEach((cb) => {
+        expect(cb).toBeDisabled()
+      })
+      // Permission message should be visible
+      expect(screen.getByText(/owner permission is required/i)).toBeInTheDocument()
+    })
+
+    it('EDITOR does not see Save button in linked templates dialog', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.EDITOR, { ...mockTemplate, linkedTemplates: [] })
+      const user = userEvent.setup()
+      render(<DeploymentTemplateDetailPage />)
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    })
+
+    it('shows scope badge per template in read-only display', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
+        { name: 'httproute', scope: 1, scopeName: 'acme' },
+        { name: 'team-network-policy', scope: 2, scopeName: 'platform' },
+      ] })
+      render(<DeploymentTemplateDetailPage />)
+      // Org badge for httproute and reference-grant (mandatory)
+      const orgBadges = screen.getAllByText('Org')
+      expect(orgBadges.length).toBeGreaterThanOrEqual(1)
+      // Folder badge for team-network-policy
+      const folderBadges = screen.getAllByText('Folder')
+      expect(folderBadges.length).toBeGreaterThanOrEqual(1)
     })
   })
 })

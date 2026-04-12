@@ -115,9 +115,11 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       mandatory?: boolean
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
+      updateLinkedTemplates?: boolean
     }) =>
       client.updateTemplate({
         scope,
+        updateLinkedTemplates: params.updateLinkedTemplates ?? false,
         template: {
           name,
           scopeRef: scope,
