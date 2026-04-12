@@ -777,9 +777,10 @@ func linkedRefFromProto(ref *consolev1.LinkedTemplateRef) linkedRef {
 // marshalLinkedTemplates serializes LinkedTemplateRef slice to JSON for annotation storage.
 func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error) {
 	type storedRef struct {
-		Scope     string `json:"scope"`
-		ScopeName string `json:"scope_name"`
-		Name      string `json:"name"`
+		Scope             string `json:"scope"`
+		ScopeName         string `json:"scope_name"`
+		Name              string `json:"name"`
+		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
 	stored := make([]storedRef, 0, len(refs))
 	for _, r := range refs {
@@ -787,9 +788,10 @@ func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error)
 			continue
 		}
 		stored = append(stored, storedRef{
-			Scope:     scopeLabelValue(r.Scope),
-			ScopeName: r.ScopeName,
-			Name:      r.Name,
+			Scope:             scopeLabelValue(r.Scope),
+			ScopeName:         r.ScopeName,
+			Name:              r.Name,
+			VersionConstraint: r.VersionConstraint,
 		})
 	}
 	b, err := json.Marshal(stored)
@@ -802,9 +804,10 @@ func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error)
 // unmarshalLinkedTemplates parses the AnnotationLinkedTemplates JSON into proto refs.
 func unmarshalLinkedTemplates(raw string) ([]*consolev1.LinkedTemplateRef, error) {
 	type storedRef struct {
-		Scope     string `json:"scope"`
-		ScopeName string `json:"scope_name"`
-		Name      string `json:"name"`
+		Scope             string `json:"scope"`
+		ScopeName         string `json:"scope_name"`
+		Name              string `json:"name"`
+		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
 	var stored []storedRef
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
@@ -813,9 +816,10 @@ func unmarshalLinkedTemplates(raw string) ([]*consolev1.LinkedTemplateRef, error
 	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, s := range stored {
 		refs = append(refs, &consolev1.LinkedTemplateRef{
-			Scope:     scopeFromLabel(s.Scope),
-			ScopeName: s.ScopeName,
-			Name:      s.Name,
+			Scope:             scopeFromLabel(s.Scope),
+			ScopeName:         s.ScopeName,
+			Name:              s.Name,
+			VersionConstraint: s.VersionConstraint,
 		})
 	}
 	return refs, nil
