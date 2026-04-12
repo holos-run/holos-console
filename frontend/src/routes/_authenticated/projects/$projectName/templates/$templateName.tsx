@@ -52,7 +52,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const scope = makeProjectScope(projectName)
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
   const { data: project } = useGetProject(projectName)
-  const { data: linkableTemplates = [], isSuccess: linkableReady } = useListLinkableTemplates(scope)
+  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
   const updateMutation = useUpdateTemplate(scope, templateName)
   const deleteMutation = useDeleteTemplate(scope)
   const cloneMutation = useCloneTemplate(scope)
@@ -240,7 +240,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               <div className="flex items-start gap-1 flex-1">
                 <div className="flex-1">
                   {(() => {
-                    if (!linkableReady) {
+                    if (linkablePending) {
                       return <span className="text-sm text-muted-foreground">Loading...</span>
                     }
                     if (linkableTemplates.length === 0) {

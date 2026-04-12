@@ -43,7 +43,7 @@ vi.mock('@/queries/templates', () => ({
   useDeleteTemplate: vi.fn(),
   useCloneTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
-  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isSuccess: true }),
+  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
@@ -153,7 +153,7 @@ describe('Linking UI regression — CreateTemplatePage', () => {
   ] as const)('role=%s', (_label, role) => {
     describe('empty linkable templates', () => {
       beforeEach(() => {
-        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isSuccess: true })
+        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
         setupCreateMocks(role)
       })
 
@@ -170,7 +170,7 @@ describe('Linking UI regression — CreateTemplatePage', () => {
 
     describe('populated linkable templates', () => {
       beforeEach(() => {
-        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
         setupCreateMocks(role)
       })
 
@@ -183,7 +183,7 @@ describe('Linking UI regression — CreateTemplatePage', () => {
 
   describe('OWNER with populated linkable templates', () => {
     beforeEach(() => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupCreateMocks(Role.OWNER)
     })
 
@@ -228,7 +228,7 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
   ] as const)('role=%s', (_label, role) => {
     describe('empty linkable templates', () => {
       beforeEach(() => {
-        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isSuccess: true })
+        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
         setupDetailMocks(role)
       })
 
@@ -245,7 +245,7 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
 
     describe('populated linkable templates', () => {
       beforeEach(() => {
-        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+        ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
         setupDetailMocks(role)
       })
 
@@ -258,7 +258,7 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
 
   describe('OWNER with populated linkable templates', () => {
     beforeEach(() => {
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isSuccess: true })
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupDetailMocks(Role.OWNER)
     })
 
