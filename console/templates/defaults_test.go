@@ -150,4 +150,94 @@ defaults: #ProjectInput & {
 			t.Errorf("expected port 9090, got %d", d.Port)
 		}
 	})
+
+	t.Run("mixed concrete and non-concrete fields returns partial defaults", func(t *testing.T) {
+		// When some fields are concrete and others are non-concrete (e.g. bare
+		// string type), only the concrete fields should be extracted. The
+		// non-concrete fields should be silently omitted.
+		cueSource := `
+defaults: #ProjectInput & {
+    name:  "httpbin"
+    image: string  // non-concrete — constrained but no value
+    tag:   "2.21.0"
+    port:  8080
+}
+`
+		d, err := ExtractDefaults(cueSource)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if d == nil {
+			t.Fatal("expected non-nil DeploymentDefaults for mixed concrete/non-concrete")
+		}
+		if d.Name != "httpbin" {
+			t.Errorf("expected name 'httpbin', got %q", d.Name)
+		}
+		if d.Image != "" {
+			t.Errorf("expected empty image (non-concrete), got %q", d.Image)
+		}
+		if d.Tag != "2.21.0" {
+			t.Errorf("expected tag '2.21.0', got %q", d.Tag)
+		}
+		if d.Port != 8080 {
+			t.Errorf("expected port 8080, got %d", d.Port)
+		}
+	})
+
+	t.Run("all non-concrete fields returns nil", func(t *testing.T) {
+		// When every field in the defaults block is non-concrete (bare type
+		// constraints with no values), ExtractDefaults should return nil because
+		// there are no meaningful defaults to pre-fill.
+		cueSource := `
+defaults: {
+    name:  string
+    image: string
+    tag:   string
+    port:  int
+}
+`
+		d, err := ExtractDefaults(cueSource)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if d != nil {
+			t.Errorf("expected nil for all non-concrete defaults, got %+v", d)
+		}
+	})
+
+	t.Run("typed defaults with one non-concrete field extracts concrete fields", func(t *testing.T) {
+		// A template using #ProjectInput & { ... } with one non-concrete field
+		// should still extract all the concrete fields.
+		cueSource := `
+defaults: #ProjectInput & {
+    name:        "my-service"
+    image:       "registry.example.com/my-service"
+    tag:         string  // non-concrete — user must provide
+    description: "My production service"
+    port:        3000
+}
+`
+		d, err := ExtractDefaults(cueSource)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if d == nil {
+			t.Fatal("expected non-nil DeploymentDefaults")
+		}
+		if d.Name != "my-service" {
+			t.Errorf("expected name 'my-service', got %q", d.Name)
+		}
+		if d.Image != "registry.example.com/my-service" {
+			t.Errorf("expected image 'registry.example.com/my-service', got %q", d.Image)
+		}
+		if d.Tag != "" {
+			t.Errorf("expected empty tag (non-concrete), got %q", d.Tag)
+		}
+		if d.Description != "My production service" {
+			t.Errorf("expected description 'My production service', got %q", d.Description)
+		}
+		if d.Port != 3000 {
+			t.Errorf("expected port 3000, got %d", d.Port)
+		}
+	})
 }
