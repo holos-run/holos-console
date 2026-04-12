@@ -49,6 +49,8 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [Terminology](docs/agents/guardrail-terminology.md) — Use "platform template" not "system template" for org/folder-level templates.
 - [Resource Naming](docs/agents/guardrail-resource-naming.md) — Slug-based identifiers with six-digit collision suffix, never random-only.
 - [URL Scheme](docs/agents/guardrail-url-scheme.md) — Top-level resources get dedicated URL prefixes; never nest one top-level resource under another.
+- [Collection Index Pages](docs/agents/guardrail-collection-index.md) — Every resource collection must have an index/listing page at the root URL; settings live at a `/settings` subroute.
+- [Searchable Collections](docs/agents/guardrail-searchable-collections.md) — All index pages and dynamic-collection combo boxes must include a search/filter input using TanStack Table `globalFilterFn: 'includesString'`.
 
 ## Planning & Execution
 
