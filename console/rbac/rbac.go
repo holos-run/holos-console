@@ -151,11 +151,11 @@ var rolePermissions = map[Role]map[Permission]bool{
 		PermissionTemplatesWrite:       true,
 		PermissionTemplatesDelete:      true,
 		PermissionTemplatesAdmin:       true,
-		PermissionProjectSettingsRead:       true,
-		PermissionProjectSettingsWrite:      true,
-		PermissionReparent:                  true,
-		PermissionTemplatesLinkOrgWrite:     true,
-		PermissionTemplatesLinkFolderWrite:  true,
+		PermissionProjectSettingsRead:      true,
+		PermissionProjectSettingsWrite:     true,
+		PermissionReparent:                 true,
+		PermissionTemplatesLinkOrgWrite:    true,
+		PermissionTemplatesLinkFolderWrite: true,
 	},
 }
 
