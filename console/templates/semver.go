@@ -80,21 +80,3 @@ func LatestMatchingVersion(versions []*semver.Version, c *semver.Constraints) *s
 	}
 	return nil
 }
-
-// OldestMatchingVersion returns the lowest version from the given list that
-// satisfies the constraint. Returns nil if no version matches. The input slice
-// is not modified.
-func OldestMatchingVersion(versions []*semver.Version, c *semver.Constraints) *semver.Version {
-	// Make a copy to avoid mutating the caller's slice.
-	sorted := make([]*semver.Version, len(versions))
-	copy(sorted, versions)
-	SortVersionsDesc(sorted)
-
-	var oldest *semver.Version
-	for _, v := range sorted {
-		if MatchesConstraint(v, c) {
-			oldest = v
-		}
-	}
-	return oldest
-}
