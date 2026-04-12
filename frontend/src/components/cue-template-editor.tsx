@@ -205,7 +205,7 @@ export function CueTemplateEditor({
                   {platformResourcesYaml}
                 </pre>
               )}
-              {platformResourcesYaml && projectResourcesYaml && (
+              {platformResourcesYaml && (
                 <div className="flex items-center gap-2 pt-2">
                   <Label>Project Resources</Label>
                 </div>
