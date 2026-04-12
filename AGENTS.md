@@ -12,7 +12,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [Package Structure](docs/agents/package-structure.md) — Go package layout: api, cmd, cli, console (services), proto, gen, frontend.
 - [UI Architecture](docs/agents/ui-architecture.md) — React 19 + Vite 7 + TanStack Router/Query + shadcn/ui + ConnectRPC Query.
 - [Embedded Services](docs/agents/embedded-services.md) — Dex and NATS embedded in the binary for zero-dependency dev mode.
-- [Template Service](docs/agents/template-service.md) — Unified CUE-based templates at org, folder, and project scopes with explicit linking.
+- [Template Service](docs/agents/template-service.md) — Unified CUE-based templates at org, folder, and project scopes with explicit linking, semver releases, and version constraints.
 - [Deployment Service](docs/agents/deployment-service.md) — Kubernetes Deployment CRUD with CUE rendering, reconcile, and rollback semantics.
 
 ## Authentication & Authorization
