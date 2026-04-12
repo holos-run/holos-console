@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -22,7 +23,13 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
-  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
+  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [] }),
+  makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
+  TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
+}))
+
+vi.mock('@/queries/projects', () => ({
+  useGetProject: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-debounced-value', () => ({
@@ -31,13 +38,16 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useCreateTemplate, useRenderTemplate } from '@/queries/templates'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates } from '@/queries/templates'
+import { useGetProject } from '@/queries/projects'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateTemplatePage } from './new'
 
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   renderData?: { renderedJson?: string },
   renderError?: Error,
+  userRole = Role.OWNER,
 ) {
   ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync,
@@ -49,6 +59,10 @@ function setupMocks(
     error: renderError ?? null,
     isLoading: false,
     isError: !!renderError,
+  })
+  ;(useGetProject as Mock).mockReturnValue({
+    data: { name: 'test-project', userRole },
+    isLoading: false,
   })
 }
 
@@ -227,6 +241,125 @@ describe('CreateTemplatePage', () => {
       expect(cueEditor.value).toContain('ServiceAccount')
       expect(cueEditor.value).toContain('Deployment')
       expect(cueEditor.value).toContain('Service')
+    })
+  })
+
+  describe('linked platform templates on create page', () => {
+    const mockOrgTemplates = [
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', mandatory: true, scopeRef: { scope: 1, scopeName: 'default' } },
+      { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
+    ]
+    const mockFolderTemplates = [
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+    ]
+    const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
+
+    it('hides linked templates section when no linkable templates exist', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [] })
+      setupMocks()
+      render(<CreateTemplatePage />)
+      expect(screen.queryByText(/linked platform templates/i)).not.toBeInTheDocument()
+    })
+
+    it('shows linked templates section when linkable templates exist for OWNER', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+    })
+
+    it('groups templates by scope with Organization and Folder headers', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/organization templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/folder templates/i)).toBeInTheDocument()
+    })
+
+    it('shows checkboxes for linkable templates when user is OWNER', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      expect(checkboxes.length).toBe(3)
+    })
+
+    it('mandatory template checkbox is checked and disabled', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
+      expect(mandatoryCheckbox).toBeChecked()
+      expect(mandatoryCheckbox).toBeDisabled()
+    })
+
+    it('non-mandatory template checkboxes are unchecked by default', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+      const httpbinCheckbox = screen.getByRole('checkbox', { name: /httpbin platform/i })
+      expect(httpbinCheckbox).not.toBeChecked()
+      expect(httpbinCheckbox).not.toBeDisabled()
+    })
+
+    it('shows read-only view for EDITOR with mandatory templates and permission note', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/reference grant/i)).toBeInTheDocument()
+      expect(screen.getByText(/only owners can link/i)).toBeInTheDocument()
+    })
+
+    it('shows read-only view for VIEWER with mandatory templates and permission note', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.VIEWER)
+      render(<CreateTemplatePage />)
+      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
+      expect(screen.getByText(/only owners can link/i)).toBeInTheDocument()
+    })
+
+    it('selected linked templates are included in create mutation', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
+      const user = userEvent.setup()
+      render(<CreateTemplatePage />)
+
+      fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+
+      // Check a non-mandatory template
+      await user.click(screen.getByRole('checkbox', { name: /httpbin platform/i }))
+
+      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            linkedTemplates: expect.arrayContaining([
+              expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
+            ]),
+          }),
+        )
+      })
+    })
+
+    it('create mutation receives empty linkedTemplates when no optional templates selected', async () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable })
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
+      render(<CreateTemplatePage />)
+
+      fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            linkedTemplates: [],
+          }),
+        )
+      })
     })
   })
 })

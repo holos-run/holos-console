@@ -82,6 +82,7 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       cueTemplate: string
       mandatory?: boolean
       enabled?: boolean
+      linkedTemplates?: LinkedTemplateRef[]
     }) =>
       client.createTemplate({
         scope,
@@ -93,7 +94,7 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
           cueTemplate: params.cueTemplate,
           mandatory: params.mandatory ?? false,
           enabled: params.enabled ?? false,
-          linkedTemplates: [],
+          linkedTemplates: params.linkedTemplates ?? [],
         },
       }),
     onSuccess: () => {

@@ -6,9 +6,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Info } from 'lucide-react'
-import { useCreateTemplate, useRenderTemplate, makeProjectScope } from '@/queries/templates'
+import { Info, Lock } from 'lucide-react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope } from '@/queries/templates'
+import type { LinkedTemplateRef } from '@/queries/templates'
+import { useGetProject } from '@/queries/projects'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha2 (prepended by renderer).
@@ -233,6 +237,11 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const navigate = useNavigate()
   const scope = makeProjectScope(projectName)
   const createMutation = useCreateTemplate(scope)
+  const { data: project } = useGetProject(projectName)
+  const { data: linkableTemplates = [] } = useListLinkableTemplates(scope)
+
+  const userRole = project?.userRole ?? Role.VIEWER
+  const canLink = userRole === Role.OWNER
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
@@ -240,6 +249,15 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [selectedLinkedNames, setSelectedLinkedNames] = useState<string[]>([])
+
+  // Group linkable templates by scope for display.
+  const orgTemplates = linkableTemplates.filter(
+    (t) => t.scopeRef?.scope === TemplateScope.ORGANIZATION,
+  )
+  const folderTemplates = linkableTemplates.filter(
+    (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
+  )
 
   const previewCuePlatformInput = `platform: {
 \tproject:          "${projectName}"
@@ -290,11 +308,22 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     }
     setError(null)
     try {
+      // Build LinkedTemplateRef objects from selected names using scopeRef
+      // from the linkable template list returned by the server.
+      const linkedTemplates: LinkedTemplateRef[] = selectedLinkedNames
+        .map((n) => {
+          const lt = linkableTemplates.find((t) => t.name === n)
+          if (!lt?.scopeRef) return null
+          return { scope: lt.scopeRef.scope, scopeName: lt.scopeRef.scopeName, name: n } as LinkedTemplateRef
+        })
+        .filter((ref): ref is LinkedTemplateRef => ref !== null)
+
       await createMutation.mutateAsync({
         name: name.trim(),
         displayName: displayName.trim(),
         description: description.trim(),
         cueTemplate,
+        linkedTemplates,
       })
       await navigate({
         to: '/projects/$projectName/templates/$templateName',
@@ -373,6 +402,106 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               className="font-mono text-sm field-sizing-normal max-h-[600px] overflow-y-auto"
             />
           </div>
+          {linkableTemplates.length > 0 && (
+            <div className="space-y-3">
+              <Label>Linked Platform Templates</Label>
+              {canLink ? (
+                <div className="space-y-4">
+                  {orgTemplates.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
+                      {orgTemplates.map((t) => (
+                        <div key={t.name} className="flex items-start gap-2">
+                          <Checkbox
+                            id={`linked-create-${t.name}`}
+                            checked={t.mandatory || selectedLinkedNames.includes(t.name)}
+                            disabled={t.mandatory}
+                            onCheckedChange={(checked) => {
+                              if (t.mandatory) return
+                              setSelectedLinkedNames((prev) =>
+                                checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                              )
+                            }}
+                          />
+                          <div className="flex flex-col">
+                            <label htmlFor={`linked-create-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                              {t.displayName || t.name}
+                              {t.mandatory && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>This platform template is mandatory and always applied.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </label>
+                            {t.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {folderTemplates.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
+                      {folderTemplates.map((t) => (
+                        <div key={t.name} className="flex items-start gap-2">
+                          <Checkbox
+                            id={`linked-create-${t.name}`}
+                            checked={t.mandatory || selectedLinkedNames.includes(t.name)}
+                            disabled={t.mandatory}
+                            onCheckedChange={(checked) => {
+                              if (t.mandatory) return
+                              setSelectedLinkedNames((prev) =>
+                                checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                              )
+                            }}
+                          />
+                          <div className="flex flex-col">
+                            <label htmlFor={`linked-create-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                              {t.displayName || t.name}
+                              {t.mandatory && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>This platform template is mandatory and always applied.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </label>
+                            {t.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {linkableTemplates.filter((t) => t.mandatory).map((t) => (
+                    <div key={t.name} className="flex items-center gap-1 text-sm">
+                      <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                      <span>{t.displayName || t.name}</span>
+                      <span className="text-muted-foreground">(mandatory, auto-applied)</span>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">Only owners can link additional platform templates.</p>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <Button variant="outline" type="button" onClick={() => setPreviewOpen((v) => !v)}>
               {previewOpen ? 'Hide Preview' : 'Preview'}
