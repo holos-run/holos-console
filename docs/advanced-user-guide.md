@@ -93,7 +93,7 @@ project namespace.
 | `CreateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Creates a new template in the scope. |
 | `UpdateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or default values of an existing template. |
 | `DeleteTemplate` | `PERMISSION_TEMPLATES_DELETE` | Deletes a template. |
-| `RenderDeploymentTemplate` | `PERMISSION_TEMPLATES_READ` | Renders a CUE template against supplied inputs and returns the resulting Kubernetes manifests as YAML and JSON. Does not create or modify any deployment — useful for previewing during authoring. |
+| `RenderTemplate` | `PERMISSION_TEMPLATES_READ` | Renders a CUE template against supplied inputs and returns the resulting Kubernetes manifests as YAML and JSON. Does not create or modify any deployment — useful for previewing during authoring. |
 
 ### TemplateService (platform templates — org and folder scope)
 
@@ -114,7 +114,7 @@ deployment template at deploy time). New templates start disabled.
 | `CreateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Creates a new platform template. Starts disabled and non-mandatory by default. |
 | `UpdateTemplate` | `PERMISSION_TEMPLATES_WRITE` | Updates the CUE source, display name, description, or the mandatory/enabled flags. |
 | `DeleteTemplate` | `PERMISSION_TEMPLATES_DELETE` | Deletes a platform template. |
-| `RenderDeploymentTemplate` | `PERMISSION_TEMPLATES_READ` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
+| `RenderTemplate` | `PERMISSION_TEMPLATES_READ` | Renders the platform template CUE against supplied inputs and returns manifests as YAML and JSON. Does not create any deployment. |
 
 > All `TemplateService` write operations require `PERMISSION_TEMPLATES_WRITE`.
 > The unified `TemplateCascadePerms` table applies the same role→permission mapping
@@ -640,9 +640,9 @@ contacted.
 |-----|------|-----|
 | Platform engineer | Enable deployments on the project | `ProjectSettingsService.UpdateProjectSettings` |
 | Platform engineer | Author and enable the org-level template | `TemplateService.CreateTemplate` + `UpdateTemplate` |
-| Platform engineer | Preview the org-level template | `TemplateService.RenderDeploymentTemplate` |
+| Platform engineer | Preview the org-level template | `TemplateService.RenderTemplate` |
 | Project engineer | Create the deployment template | `TemplateService.CreateTemplate` |
-| Project engineer | Preview the deployment template | `TemplateService.RenderDeploymentTemplate` |
+| Project engineer | Preview the deployment template | `TemplateService.RenderTemplate` |
 | Project owner | Deploy an instance | `DeploymentService.CreateDeployment` |
 | Project owner | Check deployment health | `DeploymentService.GetDeploymentStatus` |
 | Project owner | Tail logs | `DeploymentService.GetDeploymentLogs` |

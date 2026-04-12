@@ -83,7 +83,7 @@ export interface CueTemplateEditorProps {
   defaultProjectInput?: string
   /** Scope used to resolve ancestor platform templates when rendering the preview */
   scope: TemplateScopeRef
-  /** Linked template refs to include in the render preview for unified output */
+  /** Linked template refs to include in the render preview for grouped output */
   linkedTemplates?: LinkedTemplateRef[]
 }
 
@@ -126,8 +126,8 @@ export function CueTemplateEditor({
   )
 
   // Per-collection fields take precedence over the unified renderedYaml
-  // when populated by the backend. Fall back to unified view for backwards
-  // compatibility with older backends that only return renderedYaml.
+  // when populated by the backend. Fall back to unified view when the
+  // per-collection fields are empty (e.g. project-only templates).
   const platformResourcesYaml = renderData?.platformResourcesYaml ?? ''
   const projectResourcesYaml = renderData?.projectResourcesYaml ?? ''
   const hasPerCollectionFields = !!(platformResourcesYaml || projectResourcesYaml)

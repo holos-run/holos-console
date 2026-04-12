@@ -17,7 +17,7 @@ Scope is encoded in the `console.holos.run/template-scope` label (`organization|
 
 Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source (ADR 018). The backend uses per-field extraction (ADR 025) to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The extracted defaults pre-fill the Create Deployment form.
 
-The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`).
+The `RenderTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`), plus per-collection fields (`platform_resources_yaml`, `platform_resources_json`, `project_resources_yaml`, `project_resources_json`) that partition resources by origin (platform templates vs project templates).
 
 The default template adds a `console.holos.run/deployer-email` annotation to all resources from `platform.claims.email`. The default template includes a `ReferenceGrant` (using `platform.gatewayNamespace`, default "istio-ingress") that allows HTTPRoute resources from the gateway namespace to reference Services in the project namespace.
 

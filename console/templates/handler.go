@@ -479,7 +479,7 @@ func (h *Handler) RenderTemplate(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize project resources: %w", err))
 	}
 
-	// Produce the unified output (backwards compatible) by combining both collections.
+	// Produce the unified rendered output by combining both collections.
 	allResources := append(grouped.Platform, grouped.Project...)
 	unifiedYAML, unifiedJSON, err := serializeResources(allResources)
 	if err != nil {

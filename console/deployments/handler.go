@@ -799,7 +799,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 		platformResourcesYAML, platformResourcesJSON = serializeUnstructured(grouped.Platform)
 		projectResourcesYAML, projectResourcesJSON = serializeUnstructured(grouped.Project)
 
-		// Produce the unified output (backwards compatible) by combining both collections.
+		// Produce the unified rendered output by combining both collections.
 		allResources := append(grouped.Platform, grouped.Project...)
 		renderedYAML, renderedJSON = serializeUnstructured(allResources)
 	}
@@ -841,7 +841,6 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, permission, rbac.ProjectCascadeDeploymentPerms)
 }
 
-// validateDeploymentName checks that the name is a valid DNS label.
 // serializeUnstructured converts a slice of unstructured Kubernetes resources
 // into a multi-document YAML string (separated by "---\n") and a JSON array
 // string. Returns empty strings for an empty or nil slice.
@@ -870,6 +869,7 @@ func serializeUnstructured(resources []unstructured.Unstructured) (yamlStr, json
 	return buf.String(), jsonStr
 }
 
+// validateDeploymentName checks that the name is a valid DNS label.
 func validateDeploymentName(name string) error {
 	if name == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
