@@ -358,7 +358,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                       <Info className="h-4 w-4 text-muted-foreground cursor-default" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>This example deploys go-httpbin with a ServiceAccount, Deployment, and Service. When an org-level platform template is enabled, it is unified with this template at render time — the platform template can inject platform resources (like HTTPRoute) and constrain which resource kinds this template may produce.</p>
+                      <p>Deploys go-httpbin with a ServiceAccount, Deployment, and Service as an example.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
