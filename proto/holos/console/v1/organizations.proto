@@ -107,6 +107,10 @@ message CreateOrganizationRequest {
   // default_folder is the name for the default folder created with the organization.
   // When unset, defaults to "default" (ADR 022 Decision 1).
   optional string default_folder = 6;
+  // populate_defaults indicates whether the backend should seed example resources
+  // when creating the organization. When true, the backend creates example
+  // templates and a default project.
+  optional bool populate_defaults = 7;
 }
 
 // CreateOrganizationResponse contains the name of the created organization.

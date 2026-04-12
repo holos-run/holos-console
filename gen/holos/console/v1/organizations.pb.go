@@ -349,8 +349,12 @@ type CreateOrganizationRequest struct {
 	// default_folder is the name for the default folder created with the organization.
 	// When unset, defaults to "default" (ADR 022 Decision 1).
 	DefaultFolder *string `protobuf:"bytes,6,opt,name=default_folder,json=defaultFolder,proto3,oneof" json:"default_folder,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// populate_defaults indicates whether the backend should seed example resources
+	// when creating the organization. When true, the backend creates example
+	// templates and a default project.
+	PopulateDefaults *bool `protobuf:"varint,7,opt,name=populate_defaults,json=populateDefaults,proto3,oneof" json:"populate_defaults,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateOrganizationRequest) Reset() {
@@ -423,6 +427,13 @@ func (x *CreateOrganizationRequest) GetDefaultFolder() string {
 		return *x.DefaultFolder
 	}
 	return ""
+}
+
+func (x *CreateOrganizationRequest) GetPopulateDefaults() bool {
+	if x != nil && x.PopulateDefaults != nil {
+		return *x.PopulateDefaults
+	}
+	return false
 }
 
 // CreateOrganizationResponse contains the name of the created organization.
@@ -1004,7 +1015,7 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\x16GetOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"]\n" +
 	"\x17GetOrganizationResponse\x12B\n" +
-	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xb1\x02\n" +
+	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xf9\x02\n" +
 	"\x19CreateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -1013,8 +1024,10 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"userGrants\x12=\n" +
 	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"roleGrants\x12*\n" +
-	"\x0edefault_folder\x18\x06 \x01(\tH\x00R\rdefaultFolder\x88\x01\x01B\x11\n" +
-	"\x0f_default_folder\"0\n" +
+	"\x0edefault_folder\x18\x06 \x01(\tH\x00R\rdefaultFolder\x88\x01\x01\x120\n" +
+	"\x11populate_defaults\x18\a \x01(\bH\x01R\x10populateDefaults\x88\x01\x01B\x11\n" +
+	"\x0f_default_folderB\x14\n" +
+	"\x12_populate_defaults\"0\n" +
 	"\x1aCreateOrganizationResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\xde\x01\n" +
 	"\x19UpdateOrganizationRequest\x12\x12\n" +
