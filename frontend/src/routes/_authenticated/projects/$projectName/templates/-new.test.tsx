@@ -455,4 +455,54 @@ describe('CreateTemplatePage', () => {
       expect(screen.getByText(/no platform templates available to link/i)).toBeInTheDocument()
     })
   })
+
+  describe('per-collection preview sections', () => {
+    it('shows both platform and project JSON sections when both are present', () => {
+      setupMocks(
+        vi.fn().mockResolvedValue({}),
+        {
+          renderedJson: '{"unified":"data"}',
+          platformResourcesJson: '{"kind":"ReferenceGrant"}',
+          projectResourcesJson: '{"kind":"Deployment"}',
+        },
+      )
+      render(<CreateTemplatePage />)
+      fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      expect(screen.getByLabelText('Platform Resources JSON')).toHaveTextContent('ReferenceGrant')
+      expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('Deployment')
+    })
+
+    it('shows only project section when platform resources JSON is empty', () => {
+      setupMocks(
+        vi.fn().mockResolvedValue({}),
+        {
+          renderedJson: '{"unified":"data"}',
+          platformResourcesJson: '',
+          projectResourcesJson: '{"kind":"Deployment"}',
+        },
+      )
+      render(<CreateTemplatePage />)
+      fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+      expect(screen.getByText('Rendered JSON')).toBeInTheDocument()
+      expect(screen.getByLabelText('Rendered JSON')).toHaveTextContent('Deployment')
+    })
+
+    it('falls back to unified renderedJson when no per-collection fields', () => {
+      setupMocks(
+        vi.fn().mockResolvedValue({}),
+        { renderedJson: '{"apiVersion":"apps/v1"}' },
+      )
+      render(<CreateTemplatePage />)
+      fireEvent.click(screen.getByRole('button', { name: /preview/i }))
+
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+      expect(screen.queryByText('Project Resources')).not.toBeInTheDocument()
+      expect(screen.getByText(/"apiVersion":"apps\/v1"/)).toBeInTheDocument()
+    })
+  })
 })

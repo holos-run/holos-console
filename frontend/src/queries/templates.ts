@@ -323,7 +323,14 @@ export function useRenderTemplate(
         cuePlatformInput,
         linkedTemplates,
       })
-      return { renderedYaml: response.renderedYaml, renderedJson: response.renderedJson }
+      return {
+        renderedYaml: response.renderedYaml,
+        renderedJson: response.renderedJson,
+        platformResourcesYaml: response.platformResourcesYaml,
+        platformResourcesJson: response.platformResourcesJson,
+        projectResourcesYaml: response.projectResourcesYaml,
+        projectResourcesJson: response.projectResourcesJson,
+      }
     },
     enabled: isAuthenticated && !!cueTemplate && enabled,
     retry: false,

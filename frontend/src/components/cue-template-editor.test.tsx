@@ -188,4 +188,96 @@ describe('CueTemplateEditor', () => {
     await user.click(screen.getByRole('tab', { name: /preview/i }))
     expect(screen.getByLabelText('Render status: fresh')).toBeInTheDocument()
   })
+
+  describe('per-collection resource display', () => {
+    it('renders both platform and project sections when both are present', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: 'all-resources',
+          renderedJson: '',
+          platformResourcesYaml: 'apiVersion: v1\nkind: ReferenceGrant',
+          platformResourcesJson: '',
+          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Deployment',
+          projectResourcesJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      // Both labeled sections should be present
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      expect(screen.getByLabelText('Platform Resources YAML')).toHaveTextContent('ReferenceGrant')
+      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Deployment')
+      // Unified renderedYaml should NOT be shown
+      expect(screen.queryByText('all-resources')).not.toBeInTheDocument()
+    })
+
+    it('renders only project section when platform resources are empty', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: 'unified-yaml',
+          renderedJson: '',
+          platformResourcesYaml: '',
+          platformResourcesJson: '',
+          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Deployment',
+          projectResourcesJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      // Should not show "Platform Resources" heading
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+      // Should not show "Project Resources" heading (just shows "Rendered YAML")
+      expect(screen.queryByText('Project Resources')).not.toBeInTheDocument()
+      // Should show the label as "Rendered YAML"
+      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
+      // The content should be from projectResourcesYaml
+      expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('Deployment')
+    })
+
+    it('falls back to unified renderedYaml when no per-collection fields are present', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: 'apiVersion: v1\nkind: Service',
+          renderedJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
+      expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('Service')
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+      expect(screen.queryByText('Project Resources')).not.toBeInTheDocument()
+    })
+  })
 })

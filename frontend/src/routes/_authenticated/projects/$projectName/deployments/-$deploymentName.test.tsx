@@ -618,6 +618,74 @@ describe('DeploymentDetailPage', () => {
     })
   })
 
+  describe('Template tab per-collection resource display', () => {
+    it('shows both platform and project resource sections when per-collection fields are present', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: 'unified-yaml',
+          renderedJson: '',
+          platformResourcesYaml: 'apiVersion: v1\nkind: ReferenceGrant',
+          platformResourcesJson: '',
+          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Deployment',
+          projectResourcesJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
+      // Switch to preview sub-tab inside CueTemplateEditor
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      expect(screen.getByLabelText('Platform Resources YAML')).toHaveTextContent('ReferenceGrant')
+      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Deployment')
+    })
+
+    it('shows only project section when platform resources are empty', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: 'unified-yaml',
+          renderedJson: '',
+          platformResourcesYaml: '',
+          platformResourcesJson: '',
+          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Service',
+          projectResourcesJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
+    })
+
+    it('falls back to unified renderedYaml when no per-collection fields present', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: { renderedYaml: 'apiVersion: v1\nkind: ConfigMap', renderedJson: '' },
+        error: null,
+        isFetching: false,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /template/i }))
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
+      expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('ConfigMap')
+      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
+    })
+  })
+
   describe('Logs tab section', () => {
     it('renders log content after clicking Logs tab', async () => {
       const user = userEvent.setup()
