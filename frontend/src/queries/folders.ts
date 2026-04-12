@@ -94,3 +94,35 @@ export function useUpdateFolder(organization: string, name: string) {
   })
 }
 
+export function useUpdateFolderSharing(organization: string, name: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      userGrants: ShareGrant[]
+      roleGrants: ShareGrant[]
+    }) => client.updateFolderSharing({ name, organization, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
+      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+    },
+  })
+}
+
+export function useUpdateFolderDefaultSharing(organization: string, name: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      defaultUserGrants: ShareGrant[]
+      defaultRoleGrants: ShareGrant[]
+    }) => client.updateFolderDefaultSharing({ name, organization, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
+      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+    },
+  })
+}
+
