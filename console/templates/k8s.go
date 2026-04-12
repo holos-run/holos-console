@@ -349,18 +349,26 @@ func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string,
 
 // ListOrgTemplateSourcesForRender satisfies the deployments.OrgTemplateProvider
 // interface. It returns CUE sources for the effective set of org-level templates
-// using the legacy org-only linking model (linkedNames are bare template names
-// within the org scope). Used by DeploymentService until Phase 10 migrates to
-// the full cross-level linking model.
-func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedNames []string) ([]string, error) {
+// using the render set formula:
+//
+//	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
+//
+// For linked templates that carry a version constraint, the CUE source is
+// resolved from the latest matching release via ResolveVersionedSource
+// (ADR 024). Mandatory templates and linked templates without releases fall
+// back to the live ConfigMap CUE source.
+func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
 	cms, err := k.ListTemplates(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org)
 	if err != nil {
 		return nil, err
 	}
 
-	linked := make(map[string]bool, len(linkedNames))
-	for _, n := range linkedNames {
-		linked[n] = true
+	// Build a lookup from template name to the linked ref (carries version constraint).
+	linkedByName := make(map[string]*consolev1.LinkedTemplateRef, len(linkedRefs))
+	for _, ref := range linkedRefs {
+		if ref != nil {
+			linkedByName[ref.Name] = ref
+		}
 	}
 
 	seen := make(map[string]bool)
@@ -371,19 +379,37 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 		if !enabled {
 			continue
 		}
-		include := mandatory || linked[cm.Name]
+		ref, isLinked := linkedByName[cm.Name]
+		include := mandatory || isLinked
 		if !include {
 			continue
 		}
 		if seen[cm.Name] {
 			continue
 		}
-		src := cm.Data[CueTemplateKey]
-		if src == "" {
-			continue
-		}
 		seen[cm.Name] = true
-		sources = append(sources, src)
+
+		// For linked templates, resolve versioned source (ADR 024).
+		if isLinked {
+			src, resolveErr := k.ResolveVersionedSource(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org, cm.Name, ref.GetVersionConstraint())
+			if resolveErr != nil {
+				slog.WarnContext(ctx, "failed to resolve versioned source, falling back to live template",
+					slog.String("template", cm.Name),
+					slog.String("org", org),
+					slog.Any("error", resolveErr),
+				)
+				// Fall through to live ConfigMap below.
+			} else if src != "" {
+				sources = append(sources, src)
+				continue
+			}
+		}
+
+		// Mandatory templates and fallback: use the live ConfigMap CUE source.
+		src := cm.Data[CueTemplateKey]
+		if src != "" {
+			sources = append(sources, src)
+		}
 	}
 	return sources, nil
 }

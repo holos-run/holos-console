@@ -1235,7 +1235,7 @@ Two render paths exist — one for the deployment service and one for the templa
 
 | File | Purpose |
 |------|---------|
-| `console/deployments/handler.go` | Create flow — builds `PlatformInput` (including `Folders` from `AncestorWalker`) and `ProjectInput`, calls `renderResources()`, then `Apply()`. All-or-nothing: if render or apply fails, `rollbackCreate()` calls `Cleanup()` then `DeleteDeployment()` to remove partial state. Update flow uses `Reconcile()` instead of `Apply()` so orphaned resources are cleaned up after a successful apply. `linkedTemplateNamesFromAnnotation()` reads the v1alpha2 `console.holos.run/linked-templates` annotation (with legacy fallback to `console.holos.run/linked-org-templates`). |
+| `console/deployments/handler.go` | Create flow — builds `PlatformInput` (including `Folders` from `AncestorWalker`) and `ProjectInput`, calls `renderResources()`, then `Apply()`. All-or-nothing: if render or apply fails, `rollbackCreate()` calls `Cleanup()` then `DeleteDeployment()` to remove partial state. Update flow uses `Reconcile()` instead of `Apply()` so orphaned resources are cleaned up after a successful apply. `linkedTemplateRefsFromAnnotation()` reads the v1alpha2 `console.holos.run/linked-templates` annotation (with legacy fallback to `console.holos.run/linked-org-templates`) and returns full `LinkedTemplateRef` objects carrying version constraints for versioned resolution (ADR 024). |
 | `console/deployments/k8s.go` | ConfigMap storage for deployment state: image, tag, template, command, args, env stored as data keys. |
 
 ### Protobuf Definitions
