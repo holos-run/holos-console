@@ -175,6 +175,55 @@ projectResources: {
 }
 `
 
+// emptyPlatformResourcesTemplate defines platformResources with empty sub-structs.
+// Used to test that an explicitly defined but empty platformResources block
+// produces a non-nil JSON string rather than nil.
+const emptyPlatformResourcesTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+platformResources: {
+	namespacedResources: {}
+	clusterResources: {}
+}
+`
+
 // crossNamespaceTemplate tries to write into a different namespace using structured output.
 const crossNamespaceTemplate = `
 
@@ -2552,7 +2601,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 		}
 	})
 
-	t.Run("empty platformResources still produces JSON", func(t *testing.T) {
+	t.Run("absent platformResources produces nil", func(t *testing.T) {
 		// validTemplate has no platformResources, but when rendered via the
 		// org-level path (readPlatformResources=true) the platformResources CUE
 		// path does not exist, so the field should be nil.
@@ -2571,7 +2620,39 @@ func TestStructuredJSONExtraction(t *testing.T) {
 		}
 	})
 
-	t.Run("empty platformResources struct produces JSON for systemOutputTemplate", func(t *testing.T) {
+	t.Run("empty platformResources struct produces non-nil JSON", func(t *testing.T) {
+		// emptyPlatformResourcesTemplate defines platformResources with empty
+		// namespacedResources and clusterResources sub-structs. The field should
+		// be non-nil because the CUE path exists and is concrete.
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			emptyPlatformResourcesTemplate,
+			nil,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.PlatformResourcesStructJSON == nil {
+			t.Fatal("expected PlatformResourcesStructJSON to be non-nil for empty but defined platformResources")
+		}
+		if !json.Valid([]byte(*grouped.PlatformResourcesStructJSON)) {
+			t.Errorf("PlatformResourcesStructJSON is not valid JSON: %s", *grouped.PlatformResourcesStructJSON)
+		}
+		// Verify the struct contains the expected empty sub-structs.
+		var pr map[string]any
+		if err := json.Unmarshal([]byte(*grouped.PlatformResourcesStructJSON), &pr); err != nil {
+			t.Fatalf("failed to unmarshal PlatformResourcesStructJSON: %v", err)
+		}
+		if _, ok := pr["namespacedResources"]; !ok {
+			t.Error("expected namespacedResources key in PlatformResourcesStructJSON")
+		}
+		if _, ok := pr["clusterResources"]; !ok {
+			t.Error("expected clusterResources key in PlatformResourcesStructJSON")
+		}
+	})
+
+	t.Run("populated platformResources produces JSON", func(t *testing.T) {
 		// systemOutputTemplate defines platformResources with actual resources.
 		// Use the org-level render path which reads both collections.
 		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
