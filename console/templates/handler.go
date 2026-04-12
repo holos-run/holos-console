@@ -312,6 +312,14 @@ func (h *Handler) UpdateTemplate(
 			}
 		}
 		linkedTemplates = tmpl.LinkedTemplates
+		// Protobuf binary encoding cannot distinguish an omitted repeated
+		// field from an empty one — both arrive as nil.  When the caller
+		// explicitly asked to update links, nil means "clear all links,"
+		// so normalize to a non-nil empty slice.  K8sClient.UpdateTemplate
+		// treats nil as "preserve existing" and empty as "delete annotation."
+		if linkedTemplates == nil {
+			linkedTemplates = []*consolev1.LinkedTemplateRef{}
+		}
 	}
 	// When update_linked_templates is false, linkedTemplates stays nil,
 	// which tells K8sClient.UpdateTemplate to preserve existing links.

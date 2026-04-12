@@ -422,6 +422,7 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 		wantErr              bool
 		wantCode             connect.Code
 		wantLinksPreserved   bool // When true, verify existing links are still present after update.
+		wantLinksCleared     bool // When true, verify linked-templates annotation is removed after update.
 	}{
 		{
 			name:             "OWNER updates linked templates with update_linked_templates=true succeeds",
@@ -457,6 +458,15 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 			updateLinkedTmpl: true,
 			linkedTemplates:  []*consolev1.LinkedTemplateRef{}, // empty list clears links
 			wantErr:          false,
+			wantLinksCleared: true,
+		},
+		{
+			name:             "OWNER clears linked templates with update_linked_templates=true nil list succeeds",
+			email:            ownerEmail,
+			updateLinkedTmpl: true,
+			linkedTemplates:  nil, // protobuf binary encoding delivers nil for empty repeated fields
+			wantErr:          false,
+			wantLinksCleared: true,
 		},
 		{
 			name:             "EDITOR clears linked templates with update_linked_templates=true empty list fails",
@@ -520,6 +530,17 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				}
 				if raw != existingLinkedJSON {
 					t.Errorf("expected links preserved as %q, got %q", existingLinkedJSON, raw)
+				}
+			}
+
+			// Verify link clearing when update_linked_templates=true with empty or nil list.
+			if tt.wantLinksCleared {
+				updated, getErr := fakeClient.CoreV1().ConfigMaps("prj-"+project).Get(context.Background(), "web-app", metav1.GetOptions{})
+				if getErr != nil {
+					t.Fatalf("failed to get updated ConfigMap: %v", getErr)
+				}
+				if raw, ok := updated.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok {
+					t.Errorf("expected linked-templates annotation to be removed, but found %q", raw)
 				}
 			}
 		})
