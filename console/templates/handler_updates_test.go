@@ -340,4 +340,149 @@ func TestCheckUpdates(t *testing.T) {
 			t.Errorf("expected update for %q, got %q", linkedTemplateName, resp.Msg.Updates[0].Ref.Name)
 		}
 	})
+
+	t.Run("include_current returns entries for up-to-date linked templates", func(t *testing.T) {
+		projectNs := projectNS(project)
+		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
+			{
+				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:         org,
+				Name:              linkedTemplateName,
+				VersionConstraint: ">=1.0.0 <2.0.0",
+			},
+		})
+		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
+		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
+		handler := newTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
+			Scope:          projectScopeRef(project),
+			TemplateName:   "web-app",
+			IncludeCurrent: true,
+		})
+
+		resp, err := handler.CheckUpdates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// include_current=true should return 1 entry even though already up-to-date.
+		if len(resp.Msg.Updates) != 1 {
+			t.Fatalf("expected 1 update (include_current=true), got %d", len(resp.Msg.Updates))
+		}
+		update := resp.Msg.Updates[0]
+		if update.CurrentVersion != "1.1.0" {
+			t.Errorf("expected current_version 1.1.0, got %q", update.CurrentVersion)
+		}
+		if update.LatestCompatibleVersion != "1.1.0" {
+			t.Errorf("expected latest_compatible_version 1.1.0, got %q", update.LatestCompatibleVersion)
+		}
+		if update.BreakingUpdateAvailable {
+			t.Error("expected breaking_update_available=false")
+		}
+	})
+
+	t.Run("include_current false preserves existing behavior", func(t *testing.T) {
+		projectNs := projectNS(project)
+		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
+			{
+				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:         org,
+				Name:              linkedTemplateName,
+				VersionConstraint: ">=1.0.0 <2.0.0",
+			},
+		})
+		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
+		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
+		handler := newTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
+			Scope:          projectScopeRef(project),
+			TemplateName:   "web-app",
+			IncludeCurrent: false,
+		})
+
+		resp, err := handler.CheckUpdates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// include_current=false (default): no updates when already on latest.
+		if len(resp.Msg.Updates) != 0 {
+			t.Fatalf("expected 0 updates (include_current=false), got %d", len(resp.Msg.Updates))
+		}
+	})
+
+	t.Run("include_current with no releases returns no entries", func(t *testing.T) {
+		projectNs := projectNS(project)
+		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
+			{
+				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName: org,
+				Name:      linkedTemplateName,
+			},
+		})
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
+			Scope:          projectScopeRef(project),
+			TemplateName:   "web-app",
+			IncludeCurrent: true,
+		})
+
+		resp, err := handler.CheckUpdates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		// No releases exist, so even include_current should produce nothing.
+		if len(resp.Msg.Updates) != 0 {
+			t.Errorf("expected 0 updates, got %d", len(resp.Msg.Updates))
+		}
+	})
+
+	t.Run("include_current with breaking update still reports breaking", func(t *testing.T) {
+		projectNs := projectNS(project)
+		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
+			{
+				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:         org,
+				Name:              linkedTemplateName,
+				VersionConstraint: ">=1.0.0 <2.0.0",
+			},
+		})
+		// Releases: 1.0.0, 1.5.0, 2.0.0 — breaking update exists.
+		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.5.0")
+		r3 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2, r3)
+		handler := newTestHandler(fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
+			Scope:          projectScopeRef(project),
+			TemplateName:   "web-app",
+			IncludeCurrent: true,
+		})
+
+		resp, err := handler.CheckUpdates(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Msg.Updates) != 1 {
+			t.Fatalf("expected 1 update, got %d", len(resp.Msg.Updates))
+		}
+		update := resp.Msg.Updates[0]
+		if !update.BreakingUpdateAvailable {
+			t.Error("expected breaking_update_available=true")
+		}
+		if update.LatestVersion != "2.0.0" {
+			t.Errorf("expected latest_version 2.0.0, got %q", update.LatestVersion)
+		}
+	})
 }
