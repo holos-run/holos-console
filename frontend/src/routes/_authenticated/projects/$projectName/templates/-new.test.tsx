@@ -26,6 +26,12 @@ vi.mock('@/queries/templates', () => ({
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [] }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
+  linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>
+    `${scope ?? 0}/${scopeName ?? ''}/${name}`,
+  parseLinkableKey: (key: string) => {
+    const parts = key.split('/')
+    return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
+  },
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -339,6 +345,38 @@ describe('CreateTemplatePage', () => {
             linkedTemplates: expect.arrayContaining([
               expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
             ]),
+          }),
+        )
+      })
+    })
+
+    it('disambiguates same-name templates across org and folder scopes', async () => {
+      // When an org and folder template share the same name, selecting one
+      // must not affect the other and the mutation must carry the correct scope.
+      const sameName = [
+        { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
+        { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+      ]
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: sameName })
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks(mutateAsync, undefined, undefined, Role.OWNER)
+      const user = userEvent.setup()
+      render(<CreateTemplatePage />)
+
+      fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+
+      // Select only the folder-scoped template (second checkbox)
+      const checkboxes = screen.getAllByRole('checkbox')
+      await user.click(checkboxes[1])
+
+      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            linkedTemplates: [
+              expect.objectContaining({ name: 'shared-policy', scope: 2, scopeName: 'team-a' }),
+            ],
           }),
         )
       })
