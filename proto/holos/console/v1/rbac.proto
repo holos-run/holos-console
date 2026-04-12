@@ -107,4 +107,11 @@ enum Permission {
   // to OWNERs — deliberately more restrictive than WRITE because reparenting
   // changes RBAC inheritance chains (ADR 022 Decision 4).
   PERMISSION_REPARENT = 44;
+
+  // PERMISSION_TEMPLATES_LINK_ORG_WRITE allows adding or removing organization-level
+  // linked template references on a template. Checked at the template's owning scope.
+  PERMISSION_TEMPLATES_LINK_ORG_WRITE = 45;
+  // PERMISSION_TEMPLATES_LINK_FOLDER_WRITE allows adding or removing folder-level
+  // linked template references on a template. Checked at the template's owning scope.
+  PERMISSION_TEMPLATES_LINK_FOLDER_WRITE = 46;
 }
