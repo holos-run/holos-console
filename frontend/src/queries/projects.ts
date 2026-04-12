@@ -19,6 +19,20 @@ export function useListProjects(organization: string) {
   )
 }
 
+export function useListProjectsByParent(organization: string, parentType?: ParentType, parentName?: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(ProjectService, transport), [transport])
+  return useTanstackQuery({
+    queryKey: ['projects', 'listByParent', organization, parentType, parentName] as const,
+    queryFn: async () => {
+      const response = await client.listProjects({ organization, parentType, parentName })
+      return response.projects
+    },
+    enabled: isAuthenticated && !!organization,
+  })
+}
+
 export function useGetProject(name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
