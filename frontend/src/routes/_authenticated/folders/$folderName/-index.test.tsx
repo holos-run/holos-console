@@ -26,6 +26,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
         {children}
       </a>
     ),
+    Navigate: () => null,
     useNavigate: () => vi.fn(),
   }
 })
@@ -46,7 +47,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/index'
+import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/settings/index'
 
 const mockFolder = {
   name: 'payments',
@@ -104,7 +105,9 @@ describe('FolderDetailPage', () => {
   it('renders folder slug', () => {
     setupMocks()
     render(<FolderDetailPage orgName="test-org" folderName="payments" />)
-    expect(screen.getByText('payments')).toBeInTheDocument()
+    // The slug appears in both the breadcrumb and the Name (slug) field
+    const matches = screen.getAllByText('payments')
+    expect(matches.length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders organization name', () => {

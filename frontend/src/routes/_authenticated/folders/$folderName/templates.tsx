@@ -83,7 +83,7 @@ export function FolderTemplatesPage({
             </Link>
             {' / '}
             <Link
-              to="/folders/$folderName"
+              to="/folders/$folderName/settings"
               params={{ folderName }}
               className="hover:underline"
             >
