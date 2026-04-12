@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
@@ -78,6 +78,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
   const canDelete = userRole === Role.OWNER
+  const canEditLinks = userRole === Role.OWNER
 
   const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
@@ -136,7 +137,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           return { scope: lt.scopeRef.scope, scopeName: lt.scopeRef.scopeName, name } as LinkedTemplateRef
         })
         .filter((ref): ref is LinkedTemplateRef => ref !== null)
-      await updateMutation.mutateAsync({ linkedTemplates })
+      await updateMutation.mutateAsync({ linkedTemplates, updateLinkedTemplates: true })
       toast.success('Saved')
       setLinkedEditOpen(false)
     } catch (err) {
@@ -253,12 +254,16 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       }
                       return (
                         <div className="flex flex-wrap gap-1">
-                          {dedupedLinked.map((t) => (
-                            <span key={t.name} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
-                              {t.displayName || t.name}
-                              {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
-                            </span>
-                          ))}
+                          {dedupedLinked.map((t) => {
+                            const scopeLabel = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            return (
+                              <span key={t.name} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
+                                {t.displayName || t.name}
+                                {scopeLabel && <span className="text-xs text-muted-foreground">{scopeLabel}</span>}
+                                {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
+                              </span>
+                            )
+                          })}
                         </div>
                       )
                     })()}
@@ -369,45 +374,75 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <DialogHeader>
             <DialogTitle>Linked Platform Templates</DialogTitle>
             <DialogDescription>
-              Select org-level platform templates to unify with this deployment template at render time. Mandatory templates are always included.
+              Select platform templates to unify with this deployment template at render time. Mandatory templates are always included.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2" aria-label="Linked platform templates">
-            {linkableTemplates.map((t) => (
-              <div key={t.name} className="flex items-start gap-2">
-                <Checkbox
-                  id={`linked-edit-${t.name}`}
-                  checked={t.mandatory || draftLinkedTemplateNames.includes(t.name)}
-                  disabled={t.mandatory}
-                  onCheckedChange={(checked) => {
-                    if (t.mandatory) return
-                    setDraftLinkedTemplateNames((prev) =>
-                      checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
-                    )
-                  }}
-                />
-                <div className="flex flex-col">
-                  <label htmlFor={`linked-edit-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
-                    {t.displayName || t.name}
-                    {t.mandatory && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>This platform template is mandatory and always applied.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </label>
-                  {t.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+          {!canEditLinks && (
+            <Alert>
+              <AlertDescription>OWNER permission is required to modify linked templates.</AlertDescription>
+            </Alert>
+          )}
+          <div className="space-y-4" aria-label="Linked platform templates">
+            {(() => {
+              const orgTemplates = linkableTemplates.filter(
+                (t) => t.scopeRef?.scope === TemplateScope.ORGANIZATION,
+              )
+              const folderTemplates = linkableTemplates.filter(
+                (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
+              )
+              const renderGroup = (templates: typeof linkableTemplates) =>
+                templates.map((t) => (
+                  <div key={t.name} className="flex items-start gap-2">
+                    <Checkbox
+                      id={`linked-edit-${t.name}`}
+                      checked={t.mandatory || draftLinkedTemplateNames.includes(t.name)}
+                      disabled={t.mandatory || !canEditLinks}
+                      onCheckedChange={(checked) => {
+                        if (t.mandatory || !canEditLinks) return
+                        setDraftLinkedTemplateNames((prev) =>
+                          checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                        )
+                      }}
+                    />
+                    <div className="flex flex-col">
+                      <label htmlFor={`linked-edit-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                        {t.displayName || t.name}
+                        {t.mandatory && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>This platform template is mandatory and always applied.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </label>
+                      {t.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              return (
+                <>
+                  {orgTemplates.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Organization Templates</h4>
+                      {renderGroup(orgTemplates)}
+                    </div>
                   )}
-                </div>
-              </div>
-            ))}
+                  {folderTemplates.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Folder Templates</h4>
+                      {renderGroup(folderTemplates)}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
           {linkedEditError && (
             <Alert variant="destructive">
@@ -416,9 +451,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setLinkedEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveLinkedTemplates} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
-            </Button>
+            {canEditLinks && (
+              <Button onClick={handleSaveLinkedTemplates} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
