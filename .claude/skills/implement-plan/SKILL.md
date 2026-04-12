@@ -181,8 +181,21 @@ gh pr checks $PR_NUMBER --watch --fail-level all
 ```bash
 # Poll until test and lint checks reach a terminal bucket (pass, fail, cancel, skipping)
 # Supported gh pr checks --json fields: bucket, completedAt, description, event, link, name, startedAt, state, workflow
+CI_PASSED=false
+API_ERRORS=0
 while true; do
-  CHECKS=$(gh pr checks $PR_NUMBER --json name,bucket 2>/dev/null || echo "[]")
+  CHECKS=$(gh pr checks $PR_NUMBER --json name,bucket 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$CHECKS" ]; then
+    API_ERRORS=$((API_ERRORS + 1))
+    echo "gh pr checks failed (attempt $API_ERRORS)"
+    if [ "$API_ERRORS" -ge 5 ]; then
+      echo "Too many consecutive API errors ($API_ERRORS) -- treating as CI failure"
+      break
+    fi
+    sleep 30
+    continue
+  fi
+  API_ERRORS=0
 
   TEST_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .bucket' 2>/dev/null)
   LINT_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .bucket' 2>/dev/null)
@@ -194,6 +207,7 @@ while true; do
   if is_terminal "$TEST_BUCKET" && is_terminal "$LINT_BUCKET"; then
     if [ "$TEST_BUCKET" = "pass" ] && [ "$LINT_BUCKET" = "pass" ]; then
       echo "test and lint passed -- proceeding without waiting for e2e"
+      CI_PASSED=true
       break
     else
       echo "CI failed: test=$TEST_BUCKET lint=$LINT_BUCKET"
@@ -207,7 +221,7 @@ done
 
 #### 6c. Fix CI Failures
 
-If CI fails (either all-check mode or test/lint-only mode), launch an Opus sub-agent to fix the failures:
+For all-check mode, `gh pr checks --watch` exits non-zero on failure. For test/lint-only mode, check the `CI_PASSED` variable set by the polling loop above. If CI failed in either mode, launch an Opus sub-agent to fix the failures:
 
 ```
 Agent(
