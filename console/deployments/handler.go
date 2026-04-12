@@ -844,10 +844,10 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 // validateDeploymentName checks that the name is a valid DNS label.
 // serializeUnstructured converts a slice of unstructured Kubernetes resources
 // into a multi-document YAML string (separated by "---\n") and a JSON array
-// string. Returns an empty YAML string and "[]" JSON array for an empty or nil slice.
+// string. Returns empty strings for an empty or nil slice.
 func serializeUnstructured(resources []unstructured.Unstructured) (yamlStr, jsonStr string) {
 	if len(resources) == 0 {
-		return "", "[]"
+		return "", ""
 	}
 	var buf strings.Builder
 	objects := make([]map[string]any, 0, len(resources))

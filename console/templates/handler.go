@@ -464,9 +464,9 @@ func (h *Handler) RenderTemplate(
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renderer not configured"))
 	}
 
-	grouped, err := h.renderer.RenderGrouped(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueProjectInput)
+	grouped, err := h.renderTemplateGrouped(ctx, req.Msg)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		return nil, err
 	}
 
 	// Serialize per-collection resources.
@@ -494,6 +494,57 @@ func (h *Handler) RenderTemplate(
 		ProjectResourcesYaml:  projectYAML,
 		ProjectResourcesJson:  projectJSON,
 	}), nil
+}
+
+// renderTemplateGrouped resolves linked template sources (if any) and delegates
+// to the appropriate renderer method. When linked_templates are provided in the
+// request, org-level template CUE sources are resolved and unified with the main
+// template so that platform resources appear in the grouped output.
+func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
+	if len(msg.LinkedTemplates) == 0 || h.k8s == nil {
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	// Derive the org name from the linked template refs. Linked templates are
+	// org-level, so we use the scope_name from the first org-scoped ref.
+	var org string
+	for _, ref := range msg.LinkedTemplates {
+		if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.GetScopeName() != "" {
+			org = ref.GetScopeName()
+			break
+		}
+	}
+	if org == "" {
+		// No org-scoped linked templates; render without ancestor unification.
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	templateSources, err := h.k8s.ListOrgTemplateSourcesForRender(ctx, org, msg.LinkedTemplates)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
+			slog.String("org", org),
+			slog.Any("error", err),
+		)
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+	}
+	return grouped, nil
 }
 
 // ListLinkableTemplates returns all enabled templates in ancestor scopes that
@@ -1123,11 +1174,11 @@ func validateCueSyntax(source string) error {
 }
 
 // serializeResources converts a slice of RenderResource into a multi-document
-// YAML string (separated by "---\n") and a JSON array string. Returns an empty
-// YAML string and "[]" JSON array for an empty slice.
+// YAML string (separated by "---\n") and a JSON array string. Returns empty
+// strings for an empty or nil slice.
 func serializeResources(resources []RenderResource) (yamlStr, jsonStr string, err error) {
 	if len(resources) == 0 {
-		return "", "[]", nil
+		return "", "", nil
 	}
 
 	var buf strings.Builder
