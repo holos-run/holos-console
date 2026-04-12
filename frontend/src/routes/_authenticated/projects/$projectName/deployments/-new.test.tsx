@@ -400,6 +400,62 @@ describe('CreateDeploymentPage', () => {
     })
   })
 
+  // --- Field-ordering regression tests (issue #796) ---
+
+  it('renders Template as the first form field, before Display Name', () => {
+    render(<CreateDeploymentPage />)
+    const labels = screen.getAllByText(
+      /^(template|display name|name \(slug\)|description|image|tag|port)$/i,
+    )
+    const templateIndex = labels.findIndex(
+      (el) => el.textContent === 'Template',
+    )
+    const displayNameIndex = labels.findIndex((el) =>
+      /display name/i.test(el.textContent ?? ''),
+    )
+    expect(templateIndex).toBeGreaterThanOrEqual(0)
+    expect(displayNameIndex).toBeGreaterThanOrEqual(0)
+    expect(templateIndex).toBeLessThan(displayNameIndex)
+    expect(templateIndex).toBe(0) // Template is the very first field
+  })
+
+  it('renders Combobox (not Select) for template selection when templates exist', () => {
+    render(<CreateDeploymentPage />)
+    // The Combobox mock renders a <select> with data-testid="template-select".
+    // A native Select component would not carry this test id.
+    const combobox = screen.getByTestId('template-select')
+    expect(combobox).toBeInTheDocument()
+    // Verify it contains the template options from setupMocks
+    expect(screen.getByText('web-app')).toBeInTheDocument()
+    expect(screen.getByText('worker-tmpl')).toBeInTheDocument()
+  })
+
+  it('renders "No templates available" fallback as the first field when templates list is empty', () => {
+    setupMocks(vi.fn(), [])
+    render(<CreateDeploymentPage />)
+    // The fallback text and link should render
+    expect(screen.getByText(/no templates available/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /create a template/i }),
+    ).toBeInTheDocument()
+    // The fallback should still appear before Display Name in DOM order
+    const labels = screen.getAllByText(
+      /^(template|display name|name \(slug\)|description|image|tag|port)$/i,
+    )
+    const templateIndex = labels.findIndex(
+      (el) => el.textContent === 'Template',
+    )
+    const displayNameIndex = labels.findIndex((el) =>
+      /display name/i.test(el.textContent ?? ''),
+    )
+    expect(templateIndex).toBeGreaterThanOrEqual(0)
+    expect(displayNameIndex).toBeGreaterThanOrEqual(0)
+    expect(templateIndex).toBeLessThan(displayNameIndex)
+    expect(templateIndex).toBe(0)
+  })
+
+  // --- End field-ordering regression tests ---
+
   it('passes command and args to mutateAsync', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-api' })
     setupMocks(mutateAsync)
