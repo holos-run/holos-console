@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -42,7 +42,6 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import {
   useListTemplates,
   useGetTemplate,
-  useCreateTemplate,
   useUpdateTemplate,
   useCloneTemplate,
   useRenderTemplate,
@@ -83,10 +82,6 @@ function setupListMocks(userRole = Role.OWNER) {
     data: { name: 'test-org', userRole },
     isPending: false,
     error: null,
-  })
-  ;(useCreateTemplate as Mock).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({}),
-    isPending: false,
   })
 }
 
@@ -148,7 +143,6 @@ describe('OrgTemplatesListPage', () => {
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
@@ -172,7 +166,6 @@ describe('OrgTemplatesListPage', () => {
       error: null,
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     // Should not crash; skeleton elements rendered
     expect(screen.queryByText('reference-grant')).not.toBeInTheDocument()
@@ -185,7 +178,6 @@ describe('OrgTemplatesListPage', () => {
       error: new Error('Failed to load templates'),
     })
     ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
-    ;(useCreateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.getByText('Failed to load templates')).toBeInTheDocument()
   })
