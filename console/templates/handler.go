@@ -504,7 +504,7 @@ func (h *Handler) RenderTemplate(
 // back to the org-only ListOrgTemplateSourcesForRender for backwards
 // compatibility.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
-	if len(msg.LinkedTemplates) == 0 || h.k8s == nil {
+	if h.k8s == nil {
 		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
