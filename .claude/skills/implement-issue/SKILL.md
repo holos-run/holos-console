@@ -116,16 +116,7 @@ Run the relevant test commands to verify your implementation:
 
 #### When to run `make test-e2e` locally
 
-Before opening the PR, assess whether your changes warrant a local E2E test run. Use the E2E relevance decision table in the `implement-plan` skill (Step 6a) to decide. In short, E2E tests are relevant when your changes touch:
-
-- Existing frontend routes, components, or lib code (`frontend/src/routes/`, `frontend/src/components/`, `frontend/src/lib/`)
-- OIDC or auth code (`console/oidc/`)
-- Existing RPC handlers in `console/rpc/`
-- Server setup or route registration (`console/console.go`)
-- E2E test files themselves (`frontend/e2e/`)
-- Frontend package deps or TypeScript config (`frontend/package.json`, `frontend/tsconfig*.json`)
-
-E2E tests are NOT relevant for changes limited to: new proto definitions, generated code, new Go packages/handlers, docs, test-only files, `.claude/` or `.github/` config, or Makefile/markdown files.
+Before opening the PR, assess whether your changes warrant a local E2E test run. Use the E2E relevance decision table in the `implement-plan` skill (Step 6a) to decide -- that table is the single source of truth for which file patterns are E2E-relevant.
 
 **Local E2E is optional and best-effort.** Running `make test-e2e` requires `make certs` and a k3d cluster. If the environment does not support E2E (e.g., no cluster available), skip the local run and note this in the PR description so the CI E2E check covers it. Example:
 
