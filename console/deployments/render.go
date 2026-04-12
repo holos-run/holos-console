@@ -693,6 +693,9 @@ func walkNamespacedResources(namespacedValue cue.Value, fieldPath string) ([]uns
 	}
 	for nsIter.Next() {
 		nsKey := nsIter.Selector().Unquoted()
+		if nsKey == "" {
+			return nil, fmt.Errorf("%s: empty namespace key is not allowed", fieldPath)
+		}
 		kindIter, err := nsIter.Value().Fields()
 		if err != nil {
 			return nil, fmt.Errorf("iterating Kind keys under %s/%s: %w", fieldPath, nsKey, err)

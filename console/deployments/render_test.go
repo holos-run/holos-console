@@ -272,6 +272,38 @@ platformResources: {
 }
 `
 
+// emptyNamespaceKeyTemplate uses an empty string as the namespace struct key.
+// This must be rejected because namespaced resources require a non-empty namespace.
+const emptyNamespaceKeyTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+projectResources: {
+	namespacedResources: "": {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: ""
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
+		}
+	}
+	clusterResources: {}
+}
+`
+
 // structKeyMismatchTemplate has a struct key that does not match
 // metadata.namespace — the struct key is "wrong-ns" but metadata.namespace is
 // the project namespace. This must still be rejected by the struct-key/metadata
@@ -3011,6 +3043,17 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "does not match struct key") {
 			t.Errorf("expected 'does not match struct key' error, got: %v", err)
+		}
+	})
+
+	t.Run("empty namespace key rejected", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), emptyNamespaceKeyTemplate,
+			defaultPlatform(namespace), defaultProject())
+		if err == nil {
+			t.Fatal("expected error for empty namespace key")
+		}
+		if !strings.Contains(err.Error(), "empty namespace key") {
+			t.Errorf("expected 'empty namespace key' error, got: %v", err)
 		}
 	})
 
