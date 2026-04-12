@@ -76,11 +76,13 @@ type AncestorWalker interface {
 // OrgTemplateProvider resolves platform template CUE sources for render (ADR 019).
 // The effective set at render time is:
 //
-//	(mandatory AND enabled) UNION (enabled AND name IN linkedNames)
+//	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
 //
 // Disabled templates are never included even when explicitly listed.
+// Linked refs carry version constraints; the provider uses them to resolve
+// versioned release sources via ResolveVersionedSource (ADR 024).
 type OrgTemplateProvider interface {
-	ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedNames []string) ([]string, error)
+	ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -144,14 +146,15 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 // renderResources renders deployment resources, unifying with platform
 // templates when an OrgProvider and OrgTemplateProvider are configured.
 //
-// linkedNames contains the explicit linking list from the deployment template
-// annotation (console.holos.run/linked-org-templates). The effective template
-// set at render time is the union of mandatory+enabled templates and the
-// explicitly linked enabled templates (ADR 019).
+// linkedRefs contains the explicit linking list from the deployment template
+// annotation (console.holos.run/linked-templates). Each ref carries a version
+// constraint so the provider can resolve versioned release sources (ADR 024).
+// The effective template set at render time is the union of mandatory+enabled
+// templates and the explicitly linked enabled templates (ADR 019).
 //
 // If neither OrgProvider nor OrgTemplateProvider is configured, falls back to
 // Render (deployment template only, no platform template unification).
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedNames []string) ([]unstructured.Unstructured, error) {
+func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
 	if h.orgProvider == nil || h.orgTemplateProvider == nil {
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
@@ -169,7 +172,7 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 		return h.renderer.Render(ctx, cueSource, platform, projectInput)
 	}
 
-	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)
+	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)
 	if err != nil {
 		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
 			slog.String("project", project),
@@ -313,16 +316,16 @@ func (h *Handler) CreateDeployment(
 	}
 
 	// Validate that the referenced template exists and get its CUE source
-	// along with the explicit linking list (ADR 019).
+	// along with the explicit linking list (ADR 019, ADR 024).
 	var cueSource string
-	var linkedOrgTemplates []string
+	var linkedOrgTemplates []*consolev1.LinkedTemplateRef
 	if h.templateResolver != nil {
 		tmplCM, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", req.Msg.Template, project))
 		}
 		cueSource = tmplCM.Data[cueTemplateKey]
-		linkedOrgTemplates = linkedTemplateNamesFromAnnotation(tmplCM)
+		linkedOrgTemplates = linkedTemplateRefsFromAnnotation(tmplCM)
 	}
 
 	envInputs, err := validateEnvVars(req.Msg.Env)
@@ -458,7 +461,7 @@ func (h *Handler) UpdateDeployment(
 		tag := updated.Data[TagKey]
 
 		var cueSource string
-		var linkedOrgTemplatesUpdate []string
+		var linkedOrgTemplatesUpdate []*consolev1.LinkedTemplateRef
 		if h.templateResolver != nil && templateName != "" {
 			tmplCM, tmplErr := h.templateResolver.GetTemplate(ctx, project, templateName)
 			if tmplErr != nil {
@@ -469,7 +472,7 @@ func (h *Handler) UpdateDeployment(
 				)
 			} else {
 				cueSource = tmplCM.Data[cueTemplateKey]
-				linkedOrgTemplatesUpdate = linkedTemplateNamesFromAnnotation(tmplCM)
+				linkedOrgTemplatesUpdate = linkedTemplateRefsFromAnnotation(tmplCM)
 			}
 		}
 
@@ -701,7 +704,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
-	linkedOrgTemplatesPreview := linkedTemplateNamesFromAnnotation(tmplCM)
+	linkedOrgTemplatesPreview := linkedTemplateRefsFromAnnotation(tmplCM)
 
 	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
@@ -994,25 +997,25 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 	return pi
 }
 
-// linkedTemplateNamesFromAnnotation reads the linked template names from a
+// linkedTemplateRefsFromAnnotation reads the linked template refs from a
 // deployment template ConfigMap. It prefers the v1alpha2
 // console.holos.run/linked-templates annotation (JSON array of
-// {scope, scope_name, name} objects) and falls back to the legacy
-// console.holos.run/linked-org-templates annotation (JSON array of strings).
-// Returns only the template names (for compatibility with OrgTemplateProvider
-// which expects names, not full refs). Returns nil if no annotation is present
-// or if parsing fails.
-func linkedTemplateNamesFromAnnotation(cm *corev1.ConfigMap) []string {
+// {scope, scope_name, name, version_constraint} objects) and falls back to the
+// legacy console.holos.run/linked-org-templates annotation (JSON array of bare
+// name strings, converted to org-scope refs with no version constraint).
+// Returns nil if no annotation is present or if parsing fails.
+func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedTemplateRef {
 	if cm == nil || cm.Annotations == nil {
 		return nil
 	}
 
-	// v1alpha2: console.holos.run/linked-templates — JSON array of {scope, scope_name, name}
+	// v1alpha2: console.holos.run/linked-templates — JSON array of {scope, scope_name, name, version_constraint}
 	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
 		var refs []struct {
-			Scope     string `json:"scope"`
-			ScopeName string `json:"scope_name"`
-			Name      string `json:"name"`
+			Scope             string `json:"scope"`
+			ScopeName         string `json:"scope_name"`
+			Name              string `json:"name"`
+			VersionConstraint string `json:"version_constraint,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(raw), &refs); err != nil {
 			slog.Warn("failed to parse linked-templates annotation",
@@ -1021,17 +1024,23 @@ func linkedTemplateNamesFromAnnotation(cm *corev1.ConfigMap) []string {
 				slog.Any("error", err),
 			)
 		} else {
-			names := make([]string, 0, len(refs))
+			result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
 			for _, ref := range refs {
 				if ref.Name != "" {
-					names = append(names, ref.Name)
+					result = append(result, &consolev1.LinkedTemplateRef{
+						Scope:             scopeFromLabel(ref.Scope),
+						ScopeName:         ref.ScopeName,
+						Name:              ref.Name,
+						VersionConstraint: ref.VersionConstraint,
+					})
 				}
 			}
-			return names
+			return result
 		}
 	}
 
 	// Legacy v1alpha2: console.holos.run/linked-org-templates — JSON array of strings.
+	// Convert to LinkedTemplateRef with organization scope and no version constraint.
 	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedOrgTemplates]; ok && raw != "" {
 		var names []string
 		if err := json.Unmarshal([]byte(raw), &names); err != nil {
@@ -1042,7 +1051,14 @@ func linkedTemplateNamesFromAnnotation(cm *corev1.ConfigMap) []string {
 			)
 			return nil
 		}
-		return names
+		result := make([]*consolev1.LinkedTemplateRef, 0, len(names))
+		for _, n := range names {
+			result = append(result, &consolev1.LinkedTemplateRef{
+				Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				Name:  n,
+			})
+		}
+		return result
 	}
 
 	return nil
@@ -1059,6 +1075,20 @@ func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
 		return nil
 	}
 	return result
+}
+
+// scopeFromLabel converts a label string back to a TemplateScope enum value.
+func scopeFromLabel(label string) consolev1.TemplateScope {
+	switch label {
+	case v1alpha2.TemplateScopeOrganization:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+	case v1alpha2.TemplateScopeFolder:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+	case v1alpha2.TemplateScopeProject:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+	default:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+	}
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

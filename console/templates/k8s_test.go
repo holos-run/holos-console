@@ -459,6 +459,17 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 	})
 }
 
+// orgLinkedRefWithConstraint is a helper to build an org-scope LinkedTemplateRef
+// with a version constraint for tests.
+func orgLinkedRefWithConstraint(org, name, constraint string) *consolev1.LinkedTemplateRef {
+	return &consolev1.LinkedTemplateRef{
+		Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		ScopeName:         org,
+		Name:              name,
+		VersionConstraint: constraint,
+	}
+}
+
 func TestListOrgTemplateSourcesForRender(t *testing.T) {
 	t.Run("mandatory+enabled template always included without linking", func(t *testing.T) {
 		ns := orgNS("my-org")
@@ -499,7 +510,8 @@ func TestListOrgTemplateSourcesForRender(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"archetype"})
+		refs := []*consolev1.LinkedTemplateRef{orgLinkedRef("my-org", "archetype")}
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -514,12 +526,115 @@ func TestListOrgTemplateSourcesForRender(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", []string{"disabled"})
+		refs := []*consolev1.LinkedTemplateRef{orgLinkedRef("my-org", "disabled")}
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(sources) != 0 {
 			t.Fatalf("expected 0 sources, got %d", len(sources))
+		}
+	})
+
+	t.Run("linked template resolved from release when version constraint provided", func(t *testing.T) {
+		ns := orgNS("my-org")
+		liveCue := "// live source"
+		releaseCue := "// release 1.0.0 source"
+		cm := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", liveCue, false, true)
+		// Create a release ConfigMap for version 1.0.0.
+		v, _ := ParseVersion("1.0.0")
+		releaseCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ReleaseConfigMapName("httproute", v),
+				Namespace: "org-my-org",
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
+					v1alpha2.LabelReleaseOf:     "httproute",
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationTemplateVersion: "1.0.0",
+				},
+			},
+			Data: map[string]string{
+				CueTemplateKey: releaseCue,
+			},
+		}
+		fakeClient := fake.NewClientset(ns, cm, releaseCM)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		refs := []*consolev1.LinkedTemplateRef{orgLinkedRefWithConstraint("my-org", "httproute", ">=1.0.0")}
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source, got %d", len(sources))
+		}
+		if sources[0] != releaseCue {
+			t.Errorf("expected release CUE source %q, got %q", releaseCue, sources[0])
+		}
+	})
+
+	t.Run("linked template falls back to live source when no releases exist", func(t *testing.T) {
+		ns := orgNS("my-org")
+		liveCue := "// live source no releases"
+		cm := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", liveCue, false, true)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		refs := []*consolev1.LinkedTemplateRef{orgLinkedRefWithConstraint("my-org", "httproute", ">=1.0.0")}
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source, got %d", len(sources))
+		}
+		if sources[0] != liveCue {
+			t.Errorf("expected live CUE source %q, got %q", liveCue, sources[0])
+		}
+	})
+
+	t.Run("mandatory template uses live source not versioned resolution", func(t *testing.T) {
+		ns := orgNS("my-org")
+		liveCue := "// mandatory live"
+		releaseCue := "// mandatory release"
+		cm := orgTemplateConfigMap("my-org", "policy", "Policy", "", liveCue, true, true)
+		// Create a release (should be ignored for mandatory non-linked templates).
+		v, _ := ParseVersion("1.0.0")
+		releaseCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ReleaseConfigMapName("policy", v),
+				Namespace: "org-my-org",
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
+					v1alpha2.LabelReleaseOf:     "policy",
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationTemplateVersion: "1.0.0",
+				},
+			},
+			Data: map[string]string{
+				CueTemplateKey: releaseCue,
+			},
+		}
+		fakeClient := fake.NewClientset(ns, cm, releaseCM)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		// No linked refs — mandatory template is included automatically.
+		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 1 {
+			t.Fatalf("expected 1 source, got %d", len(sources))
+		}
+		if sources[0] != liveCue {
+			t.Errorf("expected live CUE source %q for mandatory template, got %q", liveCue, sources[0])
 		}
 	})
 }

@@ -113,7 +113,7 @@ func TestCheckUpdates(t *testing.T) {
 		}
 	})
 
-	t.Run("minor update available within constraint", func(t *testing.T) {
+	t.Run("no compatible update when already on latest matching", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
 			{
@@ -140,20 +140,11 @@ func TestCheckUpdates(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		// With constraint >=1.0.0 <2.0.0 and releases 1.0.0 + 1.1.0,
-		// the current (oldest matching) is 1.0.0 and the latest compatible
-		// is 1.1.0, so a compatible update should be reported.
-		if len(resp.Msg.Updates) != 1 {
-			t.Fatalf("expected 1 update (compatible), got %d", len(resp.Msg.Updates))
-		}
-		update := resp.Msg.Updates[0]
-		if update.CurrentVersion != "1.0.0" {
-			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
-		}
-		if update.LatestCompatibleVersion != "1.1.0" {
-			t.Errorf("expected latest_compatible_version 1.1.0, got %q", update.LatestCompatibleVersion)
-		}
-		if update.BreakingUpdateAvailable {
-			t.Error("expected breaking_update_available=false")
+		// the current version (latest matching) is 1.1.0, which equals the
+		// latest compatible version. No update should be reported because
+		// the resolver already picks the highest matching release.
+		if len(resp.Msg.Updates) != 0 {
+			t.Fatalf("expected 0 updates (already on latest compatible), got %d", len(resp.Msg.Updates))
 		}
 	})
 
@@ -197,12 +188,12 @@ func TestCheckUpdates(t *testing.T) {
 		if update.LatestCompatibleVersion != "1.5.0" {
 			t.Errorf("expected latest_compatible_version 1.5.0, got %q", update.LatestCompatibleVersion)
 		}
-		if update.CurrentVersion != "1.0.0" {
-			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
+		if update.CurrentVersion != "1.5.0" {
+			t.Errorf("expected current_version 1.5.0, got %q", update.CurrentVersion)
 		}
 	})
 
-	t.Run("no constraint reports compatible update when multiple releases exist", func(t *testing.T) {
+	t.Run("no constraint no update when already on latest", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
 			{
@@ -228,20 +219,11 @@ func TestCheckUpdates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		// No constraint: current (oldest) = 1.0.0, latest compatible = 2.0.0.
-		// A compatible update is reported.
-		if len(resp.Msg.Updates) != 1 {
-			t.Fatalf("expected 1 update, got %d", len(resp.Msg.Updates))
-		}
-		update := resp.Msg.Updates[0]
-		if update.CurrentVersion != "1.0.0" {
-			t.Errorf("expected current_version 1.0.0, got %q", update.CurrentVersion)
-		}
-		if update.LatestCompatibleVersion != "2.0.0" {
-			t.Errorf("expected latest_compatible_version 2.0.0, got %q", update.LatestCompatibleVersion)
-		}
-		if update.BreakingUpdateAvailable {
-			t.Error("expected breaking_update_available=false")
+		// No constraint: current (latest matching) = 2.0.0, latest compatible
+		// = 2.0.0. No update is reported because the resolver already picks
+		// the highest matching release.
+		if len(resp.Msg.Updates) != 0 {
+			t.Fatalf("expected 0 updates (already on latest), got %d", len(resp.Msg.Updates))
 		}
 	})
 
