@@ -31,3 +31,4 @@ The `update_linked_templates` flag on `UpdateTemplateRequest` controls whether t
 - [Guardrail: Template Fields](guardrail-template-fields.md) — New fields must be added across the pipeline
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep cue-template-guide.md current
 - [ADR 024](../adrs/024-template-versioning.md) — Version constraints on LinkedTemplateRef
+- [Guardrail: Linking UI](guardrail-linking-ui.md) — UI must always show linking section

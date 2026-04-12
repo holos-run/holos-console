@@ -52,6 +52,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 - [Collection Index Pages](docs/agents/guardrail-collection-index.md) — Every resource collection must have an index/listing page at the root URL; settings live at a `/settings` subroute.
 - [Searchable Collections](docs/agents/guardrail-searchable-collections.md) — All index pages and dynamic-collection combo boxes must include a search/filter input using TanStack Table `globalFilterFn: 'includesString'`.
 - [Template-First Field Ordering](docs/agents/guardrail-template-first-field.md) — Template must be the first form field in Create Deployment; selecting it auto-populates all other fields.
+- [Linking UI](docs/agents/guardrail-linking-ui.md) — Linked templates section must always render on create and edit pages.
 - [CI Check Names](docs/agents/guardrail-ci-check-names.md) — Use actual GitHub Actions names: "Unit Tests", "Lint", "E2E Tests" — not lowercase shorthand.
 
 ## Planning & Execution
