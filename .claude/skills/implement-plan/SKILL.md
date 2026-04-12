@@ -6,7 +6,7 @@ version: 3.0.0
 
 # Implement Plan
 
-Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed in-PR if findings exist, and merged or escalated -- all without human intervention unless critical findings persist. After all sub-issues are processed, the plan re-reads the parent issue for follow-up issues created during review and implements those too. Wall clock timing is tracked per sub-issue and overall.
+Automated implementation cycle for a parent GitHub issue containing sub-issues. Each sub-issue is implemented by an Opus sub-agent, reviewed by the `/review-pr` skill (Codex backend) in a sub-agent, fixed in-PR if findings exist, and merged or escalated -- all without human intervention unless critical or important findings persist. After all sub-issues are processed, the plan re-reads the parent issue for follow-up issues created during review and implements those too. Wall clock timing is tracked per sub-issue and overall.
 
 ## Arguments
 
@@ -254,7 +254,7 @@ Agent(
 
 **If APPROVE (no findings):** Skip to step 9 (merge).
 
-**If any findings exist (any severity):** Proceed to step 8 (fix all findings in-PR).
+**If any findings exist (any severity):** Proceed to step 8 (fix all findings in-PR). Both `[CRITICAL]` and `[IMPORTANT]` findings are merge-blocking; only `[STYLE]` findings are fix-forward.
 
 ### 8. Fix-First Review Loop
 
@@ -309,22 +309,22 @@ Agent(
 Parse the result:
 
 - **If APPROVE (no findings):** Proceed to step 9 (merge).
-- **If non-critical findings only (no CRITICAL):** Proceed to step 9 (merge with follow-up issue).
-- **If critical findings remain:** Proceed to step 8c (escalation).
+- **If style-only findings remain (no CRITICAL or IMPORTANT):** Proceed to step 9 (merge with follow-up issue).
+- **If critical or important findings remain:** Proceed to step 8c (escalation).
 
 #### 8c. Escalation After Round 2
 
-If critical findings remain after round 2:
+If critical or important findings remain after round 2:
 
-1. Post a summary comment on the PR listing the unresolved critical findings:
+1. Post a summary comment on the PR listing the unresolved findings:
 
 ```bash
 gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
-## Unresolved Critical Findings
+## Unresolved Critical/Important Findings
 
-After 2 review rounds, the following critical findings remain unresolved:
+After 2 review rounds, the following critical or important findings remain unresolved:
 
-<list each unresolved critical finding with file, line, and description>
+<list each unresolved critical/important finding with file, line, and description>
 
 This PR requires human review before merge.
 EOF
@@ -342,9 +342,9 @@ gh pr edit $PR_NUMBER --add-label "needs-human-review"
 
 ### 9. Merge the PR
 
-Before merging, handle any remaining non-critical findings from round 2:
+Before merging, handle any remaining style-only findings from round 2:
 
-**If non-critical findings remain after round 2**, create a follow-up issue **attached to the parent issue**:
+**If style-only findings remain after round 2** (no CRITICAL or IMPORTANT), create a follow-up issue **attached to the parent issue**:
 
 ```bash
 FOLLOW_UP=$(gh issue create \
@@ -352,11 +352,11 @@ FOLLOW_UP=$(gh issue create \
   --body "$(cat <<EOF
 ## Context
 
-PR #${PR_NUMBER} was merged with non-critical review findings that remain after round 2 fixes. These should be addressed in a follow-up.
+PR #${PR_NUMBER} was merged with style-only review findings that remain after round 2 fixes. These should be addressed in a follow-up.
 
 ## Findings
 
-<paste remaining non-critical findings from round 2 review output>
+<paste remaining style findings from round 2 review output>
 
 ## Source
 
@@ -471,7 +471,7 @@ No follow-up issues were created during review.
 </if>
 
 <if any escalated>
-**Action required**: Some PRs have the \`needs-human-review\` label and were not merged. Please review the critical findings and merge manually.
+**Action required**: Some PRs have the \`needs-human-review\` label and were not merged. Please review the critical/important findings and merge manually.
 </if>
 EOF
 )"
@@ -495,7 +495,7 @@ Each sub-agent runs in the same working directory but is isolated by purpose:
 |-----------|-------|---------|-------|--------|
 | Implement | Opus | Code the sub-issue | Issue body, codebase | Branch, commits, PR |
 | Review | Default | Run `/review-pr` (Codex) | PR diff, conventions | Review file, GitHub review |
-| Fix | Opus | Fix critical findings | Review file, codebase | Commits, push |
+| Fix | Opus | Fix review findings | Review file, codebase | Commits, push |
 | CI Fix | Opus | Fix CI failures | CI output, codebase | Commits, push |
 
 Using sub-agents preserves the orchestrator's context window. The orchestrator only tracks issue state, PR numbers, and verdicts -- not the full implementation or review details.
@@ -508,8 +508,8 @@ Using sub-agents preserves the orchestrator's context window. The orchestrator o
 |-----------|--------|
 | Clean review (APPROVE, no findings) | Merge immediately |
 | All findings fixed in round 1, clean re-review | Merge after clean re-review |
-| Non-critical findings remain after round 2 | Merge, create follow-up issue attached to parent |
-| Critical findings unresolved after round 2 | Do NOT merge, add `needs-human-review` label |
+| Style-only findings remain after round 2 | Merge, create follow-up issue attached to parent |
+| Critical or important findings unresolved after round 2 | Do NOT merge, add `needs-human-review` label |
 | CI failures unresolved after 1 fix attempt | Add `needs-human-review` label, continue to review |
 
 ### Safety
@@ -517,7 +517,7 @@ Using sub-agents preserves the orchestrator's context window. The orchestrator o
 - **One sub-issue at a time**: Sub-issues are processed sequentially. No parallel PRs.
 - **No force merges**: If a merge fails due to conflicts, rebase and retry once. If it fails again, escalate.
 - **Review isolation**: The Codex review runs in a separate sub-agent process with no influence from the implementing agent. This ensures independent cross-model review.
-- **Fix-first model**: Round 1 fix sub-agents address ALL findings (critical, important, and style) in the PR directly. Follow-up issues are only created for findings that remain after round 2.
+- **Fix-first model**: Round 1 fix sub-agents address ALL findings (critical, important, and style) in the PR directly. Follow-up issues are only created for style-only findings that remain after round 2. Critical and important findings that persist after round 2 trigger escalation.
 - **Follow-up attachment**: Follow-up issues are added to the parent issue's task list so the plan can discover and implement them.
 - **Follow-up sweep**: After all original sub-issues are processed, the plan re-reads the parent issue and implements any follow-up issues that were added during review.
 - **Escalation is permanent**: Once a PR gets `needs-human-review`, the agent does not re-attempt it. A human must intervene.
@@ -551,6 +551,6 @@ The skill will:
 1. Fetch issue #42, find sub-issues #43, #44, #45
 2. Implement #43 -> PR #50 -> review (findings) -> fix all in-PR -> re-review (clean) -> merge
 3. Implement #44 -> PR #51 -> review -> approve -> merge
-4. Implement #45 -> PR #52 -> review (findings) -> fix in-PR -> re-review (non-critical remain) -> merge + follow-up #60
+4. Implement #45 -> PR #52 -> review (findings) -> fix in-PR -> re-review (style-only remain) -> merge + follow-up #60
 5. Re-read #42, find follow-up #60 -> implement #60 -> PR #53 -> review -> merge
 6. Post summary with wall clock timing on #42

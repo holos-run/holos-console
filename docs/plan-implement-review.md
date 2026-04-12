@@ -15,9 +15,9 @@ The development cycle has three phases:
 /plan-issue  →  /implement-issue  →  Codex review (local)
                                           │
                                           ├── clean → merge
-                                          ├── non-critical findings → merge + follow-up issue
-                                          └── critical findings → fix loop (max 2 cycles)
-                                                                    └── escalate if unresolved
+                                          ├── style-only findings → merge + follow-up issue
+                                          └── critical/important findings → fix loop (max 2 cycles)
+                                                                             └── escalate if unresolved
 ```
 
 Each phase is backed by a Claude Code skill. The plan-issue and implement-issue skills already exist. The review step is integrated into implement-issue via a local Codex CLI invocation.
@@ -30,12 +30,12 @@ These constraints shape every design decision in the cycle.
 
 **2. Artifacts on GitHub.** While execution is local, all outputs (issues, PRs, review comments) are posted to GitHub. GitHub is the record of work, not the orchestrator of it. This means anyone on the team can audit what happened after the fact by reading the issue, PR, and review threads.
 
-**3. Good enough, fully automated, fix-forward.** The cycle optimizes for throughput over perfection. As long as there are no critical security vulnerabilities or structural design errors, it is acceptable to merge the PR and fix-forward. Only two categories block progress during review:
+**3. Good enough, fully automated, fix-forward.** The cycle optimizes for throughput over perfection, but requires all critical and important findings to be addressed before merge. Two severity tiers block progress during review:
 
-- **Security** — vulnerabilities that could be exploited (injection, auth bypass, credential exposure)
-- **Reliability** — structural errors that would cause data loss, outages, or cascading failures
+- **Critical** — Security vulnerabilities (injection, auth bypass, credential exposure), reliability issues (data loss, outages, cascading failures), TLS guardrail violations, generated code editing, template field propagation violations
+- **Important** — Acceptance criteria gaps, test coverage gaps, RED-GREEN violations, terminology violations, codegen consistency issues, error handling issues
 
-Everything else — style, naming, minor refactoring opportunities, non-critical edge cases — merges now with a follow-up issue. The goal is an unattended cycle that completes without human intervention. Blocking on cosmetic findings defeats the purpose.
+Only **style** findings (UI conventions, dead code) merge now with a follow-up issue. The goal is an unattended cycle that completes without human intervention unless critical or important findings persist. Blocking on cosmetic style findings defeats the purpose, but substantive quality issues (important findings) must be resolved in-PR.
 
 ## Prerequisites
 
@@ -142,7 +142,7 @@ After CI passes and before merge, the implement-issue skill invokes Codex CLI lo
 1. **Fetch the diff** — `gh pr diff <N>`
 2. **Fetch linked issue** — parse `Closes #M` from PR body, fetch acceptance criteria
 3. **Invoke Codex locally** — run `codex --quiet` with the diff, acceptance criteria, and review instructions
-4. **Classify findings** — each finding is either critical (security/reliability) or non-critical (everything else)
+4. **Classify findings** — each finding is merge-blocking (critical or important) or non-critical (style only)
 5. **Post review** — post findings as a GitHub review via `gh api`
 
 ### Review criteria
@@ -164,20 +164,20 @@ The reviewer does **not** comment on: style preferences, comment formatting, nam
 
 **No findings** — post APPROVE, merge immediately. This is the common case.
 
-**Non-critical findings only** — post a COMMENT review (not REQUEST_CHANGES), merge the PR, and create a follow-up issue linking the review comments. Non-critical findings are not worth blocking the automated cycle.
+**Style-only findings** — post a COMMENT review (not REQUEST_CHANGES), merge the PR, and create a follow-up issue linking the review comments. Style findings are not worth blocking the automated cycle.
 
-**Critical findings (security or reliability)** — enter the fix loop:
+**Critical or important findings** — enter the fix loop:
 
 1. Claude reads the findings, fixes each issue, commits with `fix: address review finding — <summary>`
 2. Push fixes, re-invoke Codex
 3. If clean after re-review, merge
-4. Maximum 2 cycles — after that, unresolved critical findings escalate
+4. Maximum 2 cycles — after that, unresolved critical or important findings escalate
 
-**Escalation** — if critical findings remain after 2 fix cycles, the PR gets a `needs-human-review` label and is not merged. The agent moves to the next sub-issue. This keeps the pipeline moving — one stuck PR doesn't block the entire plan.
+**Escalation** — if critical or important findings remain after 2 fix cycles, the PR gets a `needs-human-review` label and is not merged. The agent moves to the next sub-issue. This keeps the pipeline moving — one stuck PR doesn't block the entire plan.
 
 ### Why 2 cycles
 
-After 2 rounds, if Claude and Codex still disagree on a critical finding, it's almost certainly a judgment call that requires human context — not a clear-cut bug. Continuing to cycle wastes compute without converging.
+After 2 rounds, if Claude and Codex still disagree on a critical or important finding, it's almost certainly a judgment call that requires human context — not a clear-cut bug. Continuing to cycle wastes compute without converging.
 
 ### Why local is better
 
@@ -202,8 +202,8 @@ claude "/implement-issue <master-issue-number>"
 - Master issue closed with all sub-issues checked off
 - One merged PR per sub-issue
 - Review comments on each PR (from Codex)
-- Follow-up issues for any non-critical review findings
-- Any PRs labeled `needs-human-review` if critical findings were unresolved
+- Follow-up issues for any remaining style findings
+- Any PRs labeled `needs-human-review` if critical or important findings were unresolved
 
 ### Dispatch via tmux
 
@@ -220,7 +220,7 @@ This creates a worktree, opens a tmux window, and runs Claude with the implement
 ### Tuning review behavior
 
 The review prompt lives in `.claude/skills/review-pr.md`. Edit it to:
-- Adjust what counts as critical vs. non-critical
+- Adjust what counts as merge-blocking vs. fix-forward
 - Add repo-specific review criteria (e.g., proto backwards compatibility rules)
 - Change the Codex model (`codex-mini` for speed, larger models for depth)
 - Modify the review output format
@@ -242,7 +242,7 @@ Self-review (Claude reviewing its own PRs) produces reviews that confirm the imp
 
 ### Why fix-forward
 
-Blocking the automated cycle on non-critical findings (style, naming, minor edge cases) defeats the purpose of unattended execution. The cost of shipping a naming inconsistency is low; the cost of human-gating every PR is high (breaks the automated cycle, requires synchronous attention). Critical security and reliability issues are the exception because the cost of shipping those bugs is genuinely high.
+Blocking the automated cycle on style findings (UI conventions, dead code) defeats the purpose of unattended execution. The cost of shipping a minor style inconsistency is low; the cost of human-gating every PR is high (breaks the automated cycle, requires synchronous attention). Critical and important findings — security, reliability, acceptance criteria, test coverage, error handling — are the exception because the cost of shipping those issues is genuinely high.
 
 ### Why local execution
 

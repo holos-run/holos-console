@@ -223,10 +223,10 @@ Classify each finding for the fix-forward decision:
 
 | Classification | Criteria | Action |
 |----------------|----------|--------|
-| **Critical (blocks merge)** | Security vulnerabilities, reliability issues (data loss, cascading failures, resource leaks), TLS guardrail violations | Must fix before merge |
-| **Non-critical (fix-forward)** | Test coverage gaps, terminology, code generation consistency, error handling improvements, style issues | Merge now, track in follow-up issue |
+| **Merge-blocking** | Security vulnerabilities, reliability issues, TLS guardrail violations, generated code editing, template field propagation, acceptance criteria gaps, test coverage gaps, RED-GREEN violations, terminology violations, codegen consistency issues, error handling issues | Must fix before merge |
+| **Non-critical (fix-forward)** | UI convention issues, dead code | Merge now, track in follow-up issue |
 
-Findings tagged `[CRITICAL]` by Codex are critical. Findings tagged `[IMPORTANT]` or `[STYLE]` are non-critical.
+Findings tagged `[CRITICAL]` or `[IMPORTANT]` by Codex are merge-blocking. Only findings tagged `[STYLE]` are non-critical.
 
 ### 9. Post GitHub Review
 
@@ -244,7 +244,7 @@ gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
 
 **If findings exist**, build an inline comments array and post a review:
 
-For each finding with a file and line number, create an inline comment. Post as `REQUEST_CHANGES` if any `[CRITICAL]` findings exist, otherwise as `COMMENT`.
+For each finding with a file and line number, create an inline comment. Post as `REQUEST_CHANGES` if any `[CRITICAL]` or `[IMPORTANT]` findings exist, otherwise as `COMMENT`.
 
 ```bash
 # Example: posting a review with inline comments
@@ -255,8 +255,8 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 COMMENTS='[{"path":"console/rpc/auth.go","line":42,"body":"[CRITICAL] ..."}]'
 
 # Determine event type
-EVENT="COMMENT"  # default for non-critical only
-# If any [CRITICAL] findings exist: EVENT="REQUEST_CHANGES"
+EVENT="COMMENT"  # default for style-only findings
+# If any [CRITICAL] or [IMPORTANT] findings exist: EVENT="REQUEST_CHANGES"
 
 gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
   --method POST \
@@ -286,8 +286,8 @@ Then provide guidance based on the classification:
 | Situation | Guidance |
 |-----------|----------|
 | APPROVE (no findings) | "Review is clean. Ready to merge." |
-| Non-critical findings only | "Non-critical findings only. Safe to merge and create a follow-up issue for the findings." |
-| Critical findings exist | "Critical findings must be addressed. Fix and re-run `/review-pr <PR_NUMBER>` (round <N+1>)." |
+| Style findings only (no CRITICAL or IMPORTANT) | "Style findings only. Safe to merge and create a follow-up issue for the findings." |
+| Critical or important findings exist | "Critical/important findings must be addressed. Fix and re-run `/review-pr <PR_NUMBER>` (round <N+1>)." |
 
 ## Fix-Review Loop
 
@@ -305,8 +305,8 @@ When used during implementation (integrated into the implement-plan workflow), t
    e. Re-run /review-pr <PR_NUMBER> (round 2)
 5. After round 2:
    a. If APPROVE -> merge
-   b. If non-critical findings only -> merge, create follow-up issue attached to parent
-   c. If critical findings remain -> escalate (needs-human-review), do NOT merge
+   b. If style-only findings remain (no CRITICAL or IMPORTANT) -> merge, create follow-up issue attached to parent
+   c. If critical or important findings remain -> escalate (needs-human-review), do NOT merge
 6. Follow-up issues created in step 5b are attached to the parent issue
    so implement-plan can pick them up at the end.
 ```
@@ -319,17 +319,17 @@ When used during implementation (integrated into the implement-plan workflow), t
 |-----------|--------|
 | Clean review (no findings) | Merge immediately |
 | All findings fixed in round 1, clean re-review | Merge after clean re-review |
-| Non-critical findings remain after round 2 | Merge, create follow-up issue attached to parent |
-| Critical findings unresolved after round 2 | Do NOT merge. Add `needs-human-review` label |
+| Style-only findings remain after round 2 | Merge, create follow-up issue attached to parent |
+| Critical or important findings unresolved after round 2 | Do NOT merge. Add `needs-human-review` label |
 
 ### Handling Disagreements
 
-When Claude disagrees with a critical Codex finding:
+When Claude disagrees with a critical or important Codex finding:
 1. Reply to the specific review comment on GitHub with a rationale
 2. If the same finding persists after re-review, it counts toward the cycle limit
 3. After 2 rounds, disagreement escalates to human review
 
-For non-critical disagreements after round 2, merge and create the follow-up issue attached to the parent. The human decides at their own pace.
+For style-only disagreements after round 2, merge and create the follow-up issue attached to the parent. The human decides at their own pace.
 
 ### Resetting Review Rounds
 
