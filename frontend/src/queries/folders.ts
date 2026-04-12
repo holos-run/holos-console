@@ -6,8 +6,6 @@ import { FolderService } from '@/gen/holos/console/v1/folders_pb.js'
 import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { useAuth } from '@/lib/auth'
 
-export type { ParentType }
-
 function folderListKey(organization: string, parentType?: number, parentName?: string) {
   return ['folders', 'list', organization, parentType, parentName] as const
 }
@@ -124,4 +122,3 @@ export function useUpdateFolderDefaultSharing(organization: string, name: string
     },
   })
 }
-
