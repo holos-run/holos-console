@@ -306,8 +306,8 @@ while true; do
   fi
   API_ERRORS=0
 
-  TEST_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .bucket' 2>/dev/null)
-  LINT_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "lint") | .bucket' 2>/dev/null)
+  TEST_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "Unit Tests") | .bucket' 2>/dev/null)
+  LINT_BUCKET=$(echo "$CHECKS" | jq -r '.[] | select(.name == "Lint") | .bucket' 2>/dev/null)
 
   is_terminal() { [ "$1" = "pass" ] || [ "$1" = "fail" ] || [ "$1" = "cancel" ] || [ "$1" = "skipping" ]; }
 
