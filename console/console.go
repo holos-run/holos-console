@@ -406,7 +406,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		mux.HandleFunc("/api/dev/token", oidc.HandleTokenExchange(dexState))
 		slog.Info("dev token-exchange endpoint mounted", "path", "/api/dev/token")
 
+		// Debug endpoint for OIDC investigation (insecure Dex mode only)
+		issuer := s.cfg.Issuer
+		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
+			handleDebugOIDC(w, r, issuer, internalClient)
+		})
+
 		slog.Info("embedded OIDC provider mounted", "path", "/dex/", "issuer", s.cfg.Issuer)
+	} else {
+		// When Dex is disabled, register fallback handlers for dev-only API
+		// endpoints so they return a proper 404 JSON error instead of falling
+		// through to the SPA catch-all (which would serve index.html as HTML 200).
+		// See https://github.com/holos-run/holos-console/issues/716.
+		mux.HandleFunc("/api/dev/token", apiNotAvailable("/api/dev/token", "Dex"))
+		mux.HandleFunc("/api/debug/oidc", apiNotAvailable("/api/debug/oidc", "Dex"))
 	}
 
 	// Prepare embedded UI files
@@ -452,14 +465,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		uiHandler.ServeHTTP(w, r)
 	})
-
-	// Debug endpoint for OIDC investigation (insecure Dex mode only)
-	if s.cfg.EnableInsecureDex && s.cfg.Issuer != "" {
-		issuer := s.cfg.Issuer
-		mux.HandleFunc("/api/debug/oidc", func(w http.ResponseWriter, r *http.Request) {
-			handleDebugOIDC(w, r, issuer, internalClient)
-		})
-	}
 
 	// Expose Prometheus metrics at /metrics
 	mux.Handle("/metrics", promhttp.Handler())
@@ -615,6 +620,16 @@ func logRequests(next http.Handler, logHealthChecks bool) http.Handler {
 		)
 		slog.Info(logLine)
 	})
+}
+
+// apiNotAvailable returns an http.HandlerFunc that responds with 404 when a
+// dev-only API endpoint is hit but its backing service (e.g. Dex) is not
+// enabled. This prevents the request from falling through to the SPA catch-all
+// which would incorrectly return index.html as HTML 200.
+func apiNotAvailable(endpoint, service string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, fmt.Sprintf("%s not available (%s not enabled)", endpoint, service), http.StatusNotFound)
+	}
 }
 
 type uiHandler struct {
