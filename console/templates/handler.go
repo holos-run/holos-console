@@ -735,6 +735,307 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
 }
 
+// CreateRelease publishes a new immutable release of a template.
+func (h *Handler) CreateRelease(
+	ctx context.Context,
+	req *connect.Request[consolev1.CreateReleaseRequest],
+) (*connect.Response[consolev1.CreateReleaseResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+	release := req.Msg.GetRelease()
+	if release == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("release is required"))
+	}
+	templateName := release.TemplateName
+	if templateName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("release.template_name is required"))
+	}
+	if release.Version == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("release.version is required"))
+	}
+
+	version, err := ParseVersion(release.Version)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
+		return nil, err
+	}
+
+	// Create the release ConfigMap. K8s returns AlreadyExists if the version
+	// is duplicated (ConfigMap name is deterministic from template+version).
+	cm, err := h.k8s.CreateRelease(ctx, scope, scopeName, templateName, version, release.CueTemplate, release.Defaults, release.Changelog, release.UpgradeAdvice)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "release created",
+		slog.String("action", "release_create"),
+		slog.String("resource_type", "template-release"),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("templateName", templateName),
+		slog.String("version", version.String()),
+		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
+	)
+
+	return connect.NewResponse(&consolev1.CreateReleaseResponse{
+		Release: configMapToRelease(cm, scope, scopeName),
+	}), nil
+}
+
+// ListReleases returns all releases for a template, sorted by version descending.
+func (h *Handler) ListReleases(
+	ctx context.Context,
+	req *connect.Request[consolev1.ListReleasesRequest],
+) (*connect.Response[consolev1.ListReleasesResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+	templateName := req.Msg.TemplateName
+	if templateName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template_name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	cms, err := h.k8s.ListReleases(ctx, scope, scopeName, templateName)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	releases := make([]*consolev1.Release, 0, len(cms))
+	for _, cm := range cms {
+		releases = append(releases, configMapToRelease(&cm, scope, scopeName))
+	}
+
+	slog.InfoContext(ctx, "releases listed",
+		slog.String("action", "releases_list"),
+		slog.String("resource_type", "template-release"),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("templateName", templateName),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(releases)),
+	)
+
+	return connect.NewResponse(&consolev1.ListReleasesResponse{
+		Releases: releases,
+	}), nil
+}
+
+// GetRelease retrieves a single release by template name, scope, and version.
+func (h *Handler) GetRelease(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetReleaseRequest],
+) (*connect.Response[consolev1.GetReleaseResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+	templateName := req.Msg.TemplateName
+	if templateName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template_name is required"))
+	}
+	if req.Msg.Version == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version is required"))
+	}
+
+	version, err := ParseVersion(req.Msg.Version)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	cm, err := h.k8s.GetRelease(ctx, scope, scopeName, templateName, version)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "release read",
+		slog.String("action", "release_read"),
+		slog.String("resource_type", "template-release"),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("templateName", templateName),
+		slog.String("version", version.String()),
+		slog.String("sub", claims.Sub),
+	)
+
+	return connect.NewResponse(&consolev1.GetReleaseResponse{
+		Release: configMapToRelease(cm, scope, scopeName),
+	}), nil
+}
+
+// CheckUpdates computes available version updates for all linked templates
+// of a template (or all templates in a scope).
+func (h *Handler) CheckUpdates(
+	ctx context.Context,
+	req *connect.Request[consolev1.CheckUpdatesRequest],
+) (*connect.Response[consolev1.CheckUpdatesResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	// Collect templates to check. If template_name is specified, check only
+	// that template's linked refs. Otherwise check all templates in scope.
+	var templates []corev1.ConfigMap
+	if req.Msg.TemplateName != "" {
+		cm, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, req.Msg.TemplateName)
+		if getErr != nil {
+			return nil, mapK8sError(getErr)
+		}
+		templates = []corev1.ConfigMap{*cm}
+	} else {
+		cms, listErr := h.k8s.ListTemplates(ctx, scope, scopeName)
+		if listErr != nil {
+			return nil, mapK8sError(listErr)
+		}
+		templates = cms
+	}
+
+	var updates []*consolev1.TemplateUpdate
+	for _, tmpl := range templates {
+		raw, ok := tmpl.Annotations[v1alpha2.AnnotationLinkedTemplates]
+		if !ok || raw == "" {
+			continue
+		}
+		refs, err := unmarshalLinkedTemplates(raw)
+		if err != nil {
+			continue
+		}
+		for _, ref := range refs {
+			update, err := h.checkLinkedUpdate(ctx, ref)
+			if err != nil {
+				slog.WarnContext(ctx, "failed to check update for linked template",
+					slog.String("name", ref.Name),
+					slog.Any("error", err),
+				)
+				continue
+			}
+			if update != nil {
+				updates = append(updates, update)
+			}
+		}
+	}
+
+	slog.InfoContext(ctx, "updates checked",
+		slog.String("action", "check_updates"),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(updates)),
+	)
+
+	return connect.NewResponse(&consolev1.CheckUpdatesResponse{
+		Updates: updates,
+	}), nil
+}
+
+// checkLinkedUpdate computes the update status for a single linked template
+// reference. Returns nil if no updates are available.
+func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef) (*consolev1.TemplateUpdate, error) {
+	refScope := ref.GetScope()
+	refScopeName := ref.ScopeName
+	refName := ref.Name
+	constraintStr := ref.VersionConstraint
+
+	// List all release versions for the linked template.
+	versions, err := h.k8s.ListReleaseVersions(ctx, refScope, refScopeName, refName)
+	if err != nil {
+		return nil, err
+	}
+	if len(versions) == 0 {
+		return nil, nil // no releases means no updates
+	}
+
+	// Parse the constraint from the linked ref.
+	constraint, err := ParseConstraint(constraintStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the current pinned version (the latest that matches the constraint).
+	currentVersion := LatestMatchingVersion(versions, constraint)
+	var currentStr string
+	if currentVersion != nil {
+		currentStr = currentVersion.String()
+	}
+
+	// Find the absolute latest version (no constraint).
+	latestVersion := LatestMatchingVersion(versions, nil)
+	var latestStr string
+	if latestVersion != nil {
+		latestStr = latestVersion.String()
+	}
+
+	// Find the latest compatible version (with constraint).
+	latestCompatible := LatestMatchingVersion(versions, constraint)
+	var latestCompatibleStr string
+	if latestCompatible != nil {
+		latestCompatibleStr = latestCompatible.String()
+	}
+
+	// Determine if a breaking update exists: there is a newer version outside
+	// the constraint range.
+	breakingAvailable := false
+	if latestVersion != nil && constraint != nil {
+		if !MatchesConstraint(latestVersion, constraint) {
+			breakingAvailable = true
+		}
+	}
+
+	// Only report an update if there is something new.
+	hasCompatibleUpdate := latestCompatibleStr != "" && latestCompatibleStr != currentStr
+	if !hasCompatibleUpdate && !breakingAvailable {
+		return nil, nil
+	}
+
+	update := &consolev1.TemplateUpdate{
+		Ref:                     ref,
+		CurrentVersion:          currentStr,
+		LatestCompatibleVersion: latestCompatibleStr,
+		LatestVersion:           latestStr,
+		BreakingUpdateAvailable: breakingAvailable,
+	}
+	return update, nil
+}
+
 // extractScope validates and extracts the scope and scope_name from a TemplateScopeRef.
 func extractScope(ref *consolev1.TemplateScopeRef) (consolev1.TemplateScope, string, error) {
 	if ref == nil {

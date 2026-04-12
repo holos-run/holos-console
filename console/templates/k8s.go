@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/Masterminds/semver/v3"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -471,6 +473,223 @@ func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) err
 		nil,
 	)
 	return err
+}
+
+// CreateRelease creates an immutable Release ConfigMap for a template at a
+// specific semver version. The ConfigMap name follows the pattern
+// {template-name}--v{major}-{minor}-{patch}. Returns AlreadyExists if the
+// version has already been published.
+func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string, version *semver.Version, cueTemplate string, defaults *consolev1.TemplateDefaults, changelog, upgradeAdvice string) (*corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	cmName := ReleaseConfigMapName(templateName, version)
+	slog.DebugContext(ctx, "creating release in kubernetes",
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("namespace", ns),
+		slog.String("templateName", templateName),
+		slog.String("version", version.String()),
+		slog.String("configMapName", cmName),
+	)
+
+	data := map[string]string{
+		CueTemplateKey:         cueTemplate,
+		v1alpha2.ChangelogKey:  changelog,
+		v1alpha2.UpgradeAdviceKey: upgradeAdvice,
+	}
+	if defaults != nil {
+		b, err := json.Marshal(defaults)
+		if err != nil {
+			return nil, fmt.Errorf("serializing release defaults: %w", err)
+		}
+		data[DefaultsKey] = string(b)
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cmName,
+			Namespace: ns,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
+				v1alpha2.LabelReleaseOf:     templateName,
+				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationTemplateVersion: version.String(),
+			},
+		},
+		Data: data,
+	}
+	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
+}
+
+// ListReleases returns all release ConfigMaps for a template, sorted by version
+// descending (newest first).
+func (k *K8sClient) ListReleases(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string) ([]corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
+		v1alpha2.LabelResourceType, v1alpha2.ResourceTypeTemplateRelease,
+		v1alpha2.LabelReleaseOf, templateName,
+	)
+	slog.DebugContext(ctx, "listing releases from kubernetes",
+		slog.String("namespace", ns),
+		slog.String("templateName", templateName),
+		slog.String("labelSelector", labelSelector),
+	)
+	list, err := k.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing releases: %w", err)
+	}
+
+	// Sort by version descending.
+	items := list.Items
+	sortReleaseConfigMapsDesc(items)
+	return items, nil
+}
+
+// GetRelease retrieves a specific release ConfigMap by template name and version.
+func (k *K8sClient) GetRelease(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string, version *semver.Version) (*corev1.ConfigMap, error) {
+	ns, err := k.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
+	cmName := ReleaseConfigMapName(templateName, version)
+	slog.DebugContext(ctx, "getting release from kubernetes",
+		slog.String("namespace", ns),
+		slog.String("templateName", templateName),
+		slog.String("version", version.String()),
+		slog.String("configMapName", cmName),
+	)
+	return k.client.CoreV1().ConfigMaps(ns).Get(ctx, cmName, metav1.GetOptions{})
+}
+
+// sortReleaseConfigMapsDesc sorts release ConfigMaps by their version annotation
+// in descending order (newest first). ConfigMaps with invalid or missing version
+// annotations sort to the end.
+func sortReleaseConfigMapsDesc(items []corev1.ConfigMap) {
+	type versioned struct {
+		idx int
+		ver *semver.Version
+	}
+	entries := make([]versioned, len(items))
+	for i, cm := range items {
+		raw := cm.Annotations[v1alpha2.AnnotationTemplateVersion]
+		v, _ := ParseVersion(raw)
+		entries[i] = versioned{idx: i, ver: v}
+	}
+	// Sort: valid versions descending, then invalid/missing at end.
+	sorted := make([]corev1.ConfigMap, len(items))
+	copy(sorted, items)
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			vi, vj := entries[i].ver, entries[j].ver
+			swap := false
+			if vi == nil && vj != nil {
+				swap = true
+			} else if vi != nil && vj != nil && vj.GreaterThan(vi) {
+				swap = true
+			}
+			if swap {
+				entries[i], entries[j] = entries[j], entries[i]
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+	copy(items, sorted)
+}
+
+// configMapToRelease converts a Kubernetes ConfigMap to a Release protobuf message.
+func configMapToRelease(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.Release {
+	release := &consolev1.Release{
+		TemplateName: cm.Labels[v1alpha2.LabelReleaseOf],
+		ScopeRef: &consolev1.TemplateScopeRef{
+			Scope:     scope,
+			ScopeName: scopeName,
+		},
+		Version:       cm.Annotations[v1alpha2.AnnotationTemplateVersion],
+		Changelog:     cm.Data[v1alpha2.ChangelogKey],
+		UpgradeAdvice: cm.Data[v1alpha2.UpgradeAdviceKey],
+		CueTemplate:   cm.Data[CueTemplateKey],
+		CreatedAt:     timestamppb.New(cm.CreationTimestamp.Time),
+	}
+
+	// Parse defaults from JSON if present.
+	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
+		var defaults consolev1.TemplateDefaults
+		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
+			release.Defaults = &defaults
+		}
+	}
+
+	return release
+}
+
+// ListReleaseVersions returns all parsed semver versions for a template's
+// releases. Releases with invalid version annotations are skipped.
+func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string) ([]*semver.Version, error) {
+	cms, err := k.ListReleases(ctx, scope, scopeName, templateName)
+	if err != nil {
+		return nil, err
+	}
+	var versions []*semver.Version
+	for _, cm := range cms {
+		raw := cm.Annotations[v1alpha2.AnnotationTemplateVersion]
+		v, err := ParseVersion(raw)
+		if err != nil {
+			continue
+		}
+		versions = append(versions, v)
+	}
+	return versions, nil
+}
+
+// ResolveVersionedSource resolves the CUE source for a linked template. If
+// releases exist and a version constraint is provided, it returns the CUE
+// source from the latest matching release. If no releases exist (pre-versioning
+// backwards compatibility), it falls back to the live template ConfigMap's CUE
+// source.
+func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName, versionConstraint string) (string, error) {
+	versions, err := k.ListReleaseVersions(ctx, scope, scopeName, templateName)
+	if err != nil {
+		return "", fmt.Errorf("listing release versions for %s: %w", templateName, err)
+	}
+
+	// No releases exist: fall back to live template ConfigMap.
+	if len(versions) == 0 {
+		cm, err := k.GetTemplate(ctx, scope, scopeName, templateName)
+		if err != nil {
+			return "", fmt.Errorf("getting live template %s: %w", templateName, err)
+		}
+		return cm.Data[CueTemplateKey], nil
+	}
+
+	// Parse the version constraint.
+	constraint, err := ParseConstraint(versionConstraint)
+	if err != nil {
+		return "", err
+	}
+
+	// Find the latest matching version.
+	best := LatestMatchingVersion(versions, constraint)
+	if best == nil {
+		return "", fmt.Errorf("no release of %q matches constraint %q", templateName, versionConstraint)
+	}
+
+	// Fetch the release ConfigMap.
+	cm, err := k.GetRelease(ctx, scope, scopeName, templateName, best)
+	if err != nil {
+		return "", fmt.Errorf("getting release %s@%s: %w", templateName, best.String(), err)
+	}
+
+	return cm.Data[CueTemplateKey], nil
 }
 
 // configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
