@@ -280,6 +280,13 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 \tport:  8080
 }`
 
+  // Build LinkedTemplateRef objects from the currently selected keys for the
+  // preview render so the preview pane shows unified output.
+  const previewLinkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys.map((key) => {
+    const parsed = parseLinkableKey(key)
+    return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name } as LinkedTemplateRef
+  })
+
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
   const renderQuery = useRenderTemplate(
     scope,
@@ -287,6 +294,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     previewCueInput,
     previewOpen,
     previewCuePlatformInput,
+    previewLinkedTemplates,
   )
 
   const handleLoadHttpbinExample = () => {

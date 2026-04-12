@@ -235,6 +235,7 @@ describe('DeploymentTemplateDetailPage', () => {
       expect.any(String),
       false,
       expect.any(String),
+      expect.any(Array), // linkedTemplates
     )
   })
 
@@ -249,6 +250,7 @@ describe('DeploymentTemplateDetailPage', () => {
       expect.any(String),
       true,
       expect.any(String),
+      expect.any(Array), // linkedTemplates
     )
   })
 
@@ -317,6 +319,7 @@ describe('DeploymentTemplateDetailPage', () => {
       'input: { name: "custom" }',
       true,
       expect.any(String),
+      expect.any(Array), // linkedTemplates
     )
   })
 
@@ -708,6 +711,32 @@ describe('DeploymentTemplateDetailPage', () => {
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
       const dialog = screen.getByRole('dialog')
       expect(within(dialog).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    })
+
+    it('useRenderTemplate is called with template linked templates', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
+        { name: 'httproute', scope: 1, scopeName: 'acme' },
+      ] })
+      render(<DeploymentTemplateDetailPage />)
+      const calls = (useRenderTemplate as Mock).mock.calls
+      const lastCall = calls[calls.length - 1]
+      // arg[5] is linkedTemplates
+      expect(lastCall[5]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'httproute', scope: 1, scopeName: 'acme' }),
+        ]),
+      )
+    })
+
+    it('useRenderTemplate receives empty linkedTemplates when template has none', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isSuccess: true })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      const calls = (useRenderTemplate as Mock).mock.calls
+      const lastCall = calls[calls.length - 1]
+      // arg[5] is linkedTemplates
+      expect(lastCall[5]).toEqual([])
     })
 
     it('shows scope badge per template in read-only display', () => {
