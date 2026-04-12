@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Info } from 'lucide-react'
 import { useCreateOrganization } from '@/queries/organizations'
 import { toSlug } from '@/lib/slug'
 
@@ -25,6 +28,7 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
   const [description, setDescription] = useState('')
+  const [populateDefaults, setPopulateDefaults] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const { mutateAsync, isPending } = useCreateOrganization()
@@ -51,10 +55,16 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
     e.preventDefault()
     setError(null)
     try {
-      const response = await mutateAsync({ name, displayName, description })
+      const response = await mutateAsync({
+        name,
+        displayName,
+        description,
+        ...(populateDefaults ? { populateDefaults: true } : {}),
+      })
       setName('')
       setDisplayName('')
       setDescription('')
+      setPopulateDefaults(false)
       setNameEdited(false)
       onCreated?.(response.name)
       onOpenChange(false)
@@ -118,6 +128,26 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Optional description"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="populate-defaults"
+                checked={populateDefaults}
+                onCheckedChange={(checked) => setPopulateDefaults(checked === true)}
+              />
+              <Label htmlFor="populate-defaults" className="text-sm cursor-pointer">
+                Populate with example resources
+              </Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-default" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Creates a default folder and project structure with example templates at each level, including an org-level HTTPRoute platform template and a project-level deployment template.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
           <DialogFooter>
