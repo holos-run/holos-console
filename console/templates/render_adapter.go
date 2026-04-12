@@ -107,8 +107,13 @@ func groupedUnstructuredToRenderResources(grouped *deployments.GroupedResources)
 		return nil, err
 	}
 	return &GroupedRenderResources{
-		Platform: platform,
-		Project:  project,
+		Platform:                    platform,
+		Project:                     project,
+		DefaultsJSON:                grouped.DefaultsJSON,
+		PlatformInputJSON:           grouped.PlatformInputJSON,
+		ProjectInputJSON:            grouped.ProjectInputJSON,
+		PlatformResourcesStructJSON: grouped.PlatformResourcesStructJSON,
+		ProjectResourcesStructJSON:  grouped.ProjectResourcesStructJSON,
 	}, nil
 }
 

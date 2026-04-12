@@ -63,6 +63,13 @@ type RenderResource struct {
 type GroupedRenderResources struct {
 	Platform []RenderResource
 	Project  []RenderResource
+	// Structured CUE evaluation outputs as JSON, propagated from
+	// deployments.GroupedResources. Nil means the section was absent.
+	DefaultsJSON                *string
+	PlatformInputJSON           *string
+	ProjectInputJSON            *string
+	PlatformResourcesStructJSON *string
+	ProjectResourcesStructJSON  *string
 }
 
 // Renderer evaluates a CUE template unified with platform and user CUE input
@@ -487,12 +494,17 @@ func (h *Handler) RenderTemplate(
 	}
 
 	return connect.NewResponse(&consolev1.RenderTemplateResponse{
-		RenderedYaml:          unifiedYAML,
-		RenderedJson:          unifiedJSON,
-		PlatformResourcesYaml: platformYAML,
-		PlatformResourcesJson: platformJSON,
-		ProjectResourcesYaml:  projectYAML,
-		ProjectResourcesJson:  projectJSON,
+		RenderedYaml:                    unifiedYAML,
+		RenderedJson:                    unifiedJSON,
+		PlatformResourcesYaml:          platformYAML,
+		PlatformResourcesJson:          platformJSON,
+		ProjectResourcesYaml:           projectYAML,
+		ProjectResourcesJson:           projectJSON,
+		DefaultsJson:                   grouped.DefaultsJSON,
+		PlatformInputJson:              grouped.PlatformInputJSON,
+		ProjectInputJson:               grouped.ProjectInputJSON,
+		PlatformResourcesStructuredJson: grouped.PlatformResourcesStructJSON,
+		ProjectResourcesStructuredJson:  grouped.ProjectResourcesStructJSON,
 	}), nil
 }
 
