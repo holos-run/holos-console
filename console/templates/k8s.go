@@ -991,3 +991,23 @@ func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScop
 	}
 	return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, ""
 }
+
+// AncestorTemplateResolver adapts K8sClient + a walker into a single-method
+// interface suitable for the deployments package (which cannot import templates
+// directly due to the avoid-import-cycle convention). The walker is closed over
+// at construction time so the caller only needs to pass project namespace and
+// linked refs.
+type AncestorTemplateResolver struct {
+	k8s    *K8sClient
+	walker RenderHierarchyWalker
+}
+
+// NewAncestorTemplateResolver creates an AncestorTemplateResolver.
+func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker) *AncestorTemplateResolver {
+	return &AncestorTemplateResolver{k8s: k8s, walker: walker}
+}
+
+// ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
+func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
+	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, linkedRefs, a.walker)
+}

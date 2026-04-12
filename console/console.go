@@ -336,16 +336,22 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Deployment service with project grant fallback.
 		// templatesK8s satisfies OrgTemplateProvider via ListOrgTemplateSourcesForRender,
 		// implementing the explicit linking model (ADR 019).
+		// ancestorTemplateResolver wraps templatesK8s + nsWalker to satisfy
+		// AncestorTemplateProvider for full ancestor-chain template resolution
+		// (org + folders), extending the org-only model to folder-scoped linked
+		// templates (issue #874).
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
 		var deploymentsApplier deployments.ResourceApplier
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
+		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker)
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithOrgProvider(projectsK8s).
 			WithOrgTemplateProvider(templatesK8s).
-			WithAncestorWalker(projectFolderResolver)
+			WithAncestorWalker(projectFolderResolver).
+			WithAncestorTemplateProvider(ancestorTemplateResolver)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {
