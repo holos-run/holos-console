@@ -309,7 +309,7 @@ export function useRenderTemplate(
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   // Serialize linked templates into the query key so the query refetches when
   // the linked selection changes.
-  const linkedKey = linkedTemplates.map(t => `${t.scope}/${t.scopeName}/${t.name}`).join(',')
+  const linkedKey = linkedTemplates.map(t => `${t.scope}/${t.scopeName}/${t.name}@${t.versionConstraint ?? ''}`).join(',')
   return useQuery({
     queryKey: ['templates', 'render', scope.scope, scope.scopeName, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
     queryFn: async () => {
