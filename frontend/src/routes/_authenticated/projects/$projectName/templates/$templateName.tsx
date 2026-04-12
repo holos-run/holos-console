@@ -21,22 +21,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
-
-/** Build a composite key that uniquely identifies a linkable template across scopes. */
-function linkableKey(scope: number | undefined, scopeName: string | undefined, name: string): string {
-  return `${scope ?? 0}/${scopeName ?? ''}/${name}`
-}
-
-/** Parse a composite key back into its constituent parts. */
-function parseLinkableKey(key: string): { scope: number; scopeName: string; name: string } {
-  const parts = key.split('/')
-  return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
-}
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,

@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info, Lock } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope } from '@/queries/templates'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
@@ -249,7 +249,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [selectedLinkedNames, setSelectedLinkedNames] = useState<string[]>([])
+  const [selectedLinkedKeys, setSelectedLinkedKeys] = useState<string[]>([])
 
   // Group linkable templates by scope for display.
   const orgTemplates = linkableTemplates.filter(
@@ -308,15 +308,12 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     }
     setError(null)
     try {
-      // Build LinkedTemplateRef objects from selected names using scopeRef
-      // from the linkable template list returned by the server.
-      const linkedTemplates: LinkedTemplateRef[] = selectedLinkedNames
-        .map((n) => {
-          const lt = linkableTemplates.find((t) => t.name === n)
-          if (!lt?.scopeRef) return null
-          return { scope: lt.scopeRef.scope, scopeName: lt.scopeRef.scopeName, name: n } as LinkedTemplateRef
+      // Build LinkedTemplateRef objects from scope-qualified keys.
+      const linkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys
+        .map((key) => {
+          const parsed = parseLinkableKey(key)
+          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name } as LinkedTemplateRef
         })
-        .filter((ref): ref is LinkedTemplateRef => ref !== null)
 
       await createMutation.mutateAsync({
         name: name.trim(),
@@ -410,21 +407,23 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                   {orgTemplates.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
-                      {orgTemplates.map((t) => (
-                        <div key={t.name} className="flex items-start gap-2">
+                      {orgTemplates.map((t) => {
+                        const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                        return (
+                        <div key={key} className="flex items-start gap-2">
                           <Checkbox
-                            id={`linked-create-${t.name}`}
-                            checked={t.mandatory || selectedLinkedNames.includes(t.name)}
+                            id={`linked-create-${key}`}
+                            checked={t.mandatory || selectedLinkedKeys.includes(key)}
                             disabled={t.mandatory}
                             onCheckedChange={(checked) => {
                               if (t.mandatory) return
-                              setSelectedLinkedNames((prev) =>
-                                checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                              setSelectedLinkedKeys((prev) =>
+                                checked ? [...prev, key] : prev.filter((k) => k !== key),
                               )
                             }}
                           />
                           <div className="flex flex-col">
-                            <label htmlFor={`linked-create-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                            <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
                               {t.displayName || t.name}
                               {t.mandatory && (
                                 <TooltipProvider>
@@ -444,27 +443,30 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )}
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                   {folderTemplates.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
-                      {folderTemplates.map((t) => (
-                        <div key={t.name} className="flex items-start gap-2">
+                      {folderTemplates.map((t) => {
+                        const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                        return (
+                        <div key={key} className="flex items-start gap-2">
                           <Checkbox
-                            id={`linked-create-${t.name}`}
-                            checked={t.mandatory || selectedLinkedNames.includes(t.name)}
+                            id={`linked-create-${key}`}
+                            checked={t.mandatory || selectedLinkedKeys.includes(key)}
                             disabled={t.mandatory}
                             onCheckedChange={(checked) => {
                               if (t.mandatory) return
-                              setSelectedLinkedNames((prev) =>
-                                checked ? [...prev, t.name] : prev.filter((n) => n !== t.name),
+                              setSelectedLinkedKeys((prev) =>
+                                checked ? [...prev, key] : prev.filter((k) => k !== key),
                               )
                             }}
                           />
                           <div className="flex flex-col">
-                            <label htmlFor={`linked-create-${t.name}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                            <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
                               {t.displayName || t.name}
                               {t.mandatory && (
                                 <TooltipProvider>
@@ -484,14 +486,15 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                             )}
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="space-y-2">
                   {linkableTemplates.filter((t) => t.mandatory).map((t) => (
-                    <div key={t.name} className="flex items-center gap-1 text-sm">
+                    <div key={linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)} className="flex items-center gap-1 text-sm">
                       <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
                       <span>{t.displayName || t.name}</span>
                       <span className="text-muted-foreground">(mandatory, auto-applied)</span>

@@ -16,6 +16,17 @@ import { useAuth } from '@/lib/auth'
 export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release }
 export { TemplateScope }
 
+/** Build a composite key that uniquely identifies a linkable template across scopes. */
+export function linkableKey(scope: number | undefined, scopeName: string | undefined, name: string): string {
+  return `${scope ?? 0}/${scopeName ?? ''}/${name}`
+}
+
+/** Parse a composite key back into its constituent parts. */
+export function parseLinkableKey(key: string): { scope: number; scopeName: string; name: string } {
+  const parts = key.split('/')
+  return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
+}
+
 // makeScope is a helper to build a TemplateScopeRef from scope and scopeName.
 export function makeScope(scope: TemplateScope, scopeName: string): TemplateScopeRef {
   return create(TemplateScopeRefSchema, { scope, scopeName })

@@ -24,6 +24,12 @@ vi.mock('@/queries/templates', () => ({
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [] }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
+  linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>
+    `${scope ?? 0}/${scopeName ?? ''}/${name}`,
+  parseLinkableKey: (key: string) => {
+    const parts = key.split('/')
+    return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
+  },
 }))
 
 vi.mock('@/queries/projects', () => ({
