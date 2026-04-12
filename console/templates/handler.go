@@ -1174,11 +1174,12 @@ func validateCueSyntax(source string) error {
 }
 
 // serializeResources converts a slice of RenderResource into a multi-document
-// YAML string (separated by "---\n") and a JSON array string. Returns empty
-// strings for an empty or nil slice.
+// YAML string (separated by "---\n") and a JSON array string. Returns an empty
+// YAML string and "[]" for an empty or nil slice so that JSON fields are always
+// valid parseable JSON arrays.
 func serializeResources(resources []RenderResource) (yamlStr, jsonStr string, err error) {
 	if len(resources) == 0 {
-		return "", "", nil
+		return "", "[]", nil
 	}
 
 	var buf strings.Builder

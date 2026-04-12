@@ -843,10 +843,11 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 
 // serializeUnstructured converts a slice of unstructured Kubernetes resources
 // into a multi-document YAML string (separated by "---\n") and a JSON array
-// string. Returns empty strings for an empty or nil slice.
+// string. Returns an empty YAML string and "[]" for an empty or nil slice so
+// that JSON fields are always valid parseable JSON arrays.
 func serializeUnstructured(resources []unstructured.Unstructured) (yamlStr, jsonStr string) {
 	if len(resources) == 0 {
-		return "", ""
+		return "", "[]"
 	}
 	var buf strings.Builder
 	objects := make([]map[string]any, 0, len(resources))
