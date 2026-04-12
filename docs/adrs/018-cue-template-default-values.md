@@ -115,6 +115,11 @@ It then marshals `defaultsVal` into a `ProjectInput` struct and maps the fields 
 `ListDeploymentTemplates` responses so the frontend can pre-fill the Create Deployment form
 without making a second render round-trip.
 
+> **Note:** The whole-block marshaling mechanism described here has been superseded by
+> per-field extraction in [ADR 025](025-per-field-defaults-extraction.md). Each field is now
+> marshaled independently so that a non-concrete field does not prevent extraction of concrete
+> siblings. The overall flow (compile CUE, look up `defaults`, map to proto) remains the same.
+
 If the template has no `defaults` block (e.g., legacy templates), the extraction returns
 empty and the frontend falls back to its current zero-value defaults. This preserves
 backwards compatibility.

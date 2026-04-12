@@ -15,7 +15,7 @@ Scope is encoded in the `console.holos.run/template-scope` label (`organization|
 
 ## Deployment Defaults
 
-Templates can carry `DeploymentDefaults` (name, description, image, tag, command, args, env, port) extracted from the `defaults` block in the CUE source (ADR 018) that pre-fill the Create Deployment form.
+Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source (ADR 018). The backend uses per-field extraction (ADR 025) to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The extracted defaults pre-fill the Create Deployment form.
 
 The `RenderDeploymentTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`).
 
@@ -68,6 +68,7 @@ Edit access requires `PERMISSION_TEMPLATES_WRITE`, enforced via the unified `Tem
 - [Guardrail: Template Fields](guardrail-template-fields.md) — New fields must be added across the full pipeline
 - [Guardrail: Template Linking](guardrail-template-linking.md) — Linked templates annotation handling
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep cue-template-guide.md current
+- [Guardrail: Template Defaults Pre-Fill](guardrail-template-defaults.md) — Per-field defaults extraction and frontend pre-fill
 - [Guardrail: Terminology](guardrail-terminology.md) — Use "platform template" not "system template"
 - [Tool Dependencies](tool-dependencies.md) — CUE runtime dependency
 - [ADR 024](../adrs/024-template-versioning.md) — Versioning, releases, and version constraints design

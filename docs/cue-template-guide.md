@@ -756,15 +756,19 @@ fills in a value, that concrete value wins.
 ### How defaults are extracted
 
 When the backend loads a template (in `GetDeploymentTemplate` or `ListDeploymentTemplates`),
-it evaluates the CUE source and reads the `defaults` path. It maps the concrete field values
-to `DeploymentDefaults` in the proto response:
+it evaluates the CUE source and reads the `defaults` path. Each field is extracted
+independently (per-field extraction, [ADR 025](adrs/025-per-field-defaults-extraction.md))
+so that a non-concrete field does not prevent extraction of concrete siblings. The concrete
+field values are mapped to `TemplateDefaults` in the proto response:
 
 ```
-defaults.name        → DeploymentDefaults.name
-defaults.image       → DeploymentDefaults.image
-defaults.tag         → DeploymentDefaults.tag
-defaults.description → DeploymentDefaults.description
-defaults.port        → DeploymentDefaults.port
+defaults.name        → TemplateDefaults.name
+defaults.image       → TemplateDefaults.image
+defaults.tag         → TemplateDefaults.tag
+defaults.description → TemplateDefaults.description
+defaults.port        → TemplateDefaults.port
+defaults.command     → TemplateDefaults.command
+defaults.args        → TemplateDefaults.args
 ```
 
 The frontend receives these fields and uses them to pre-fill the Create Deployment form.
