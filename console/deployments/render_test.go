@@ -71,7 +71,11 @@ projectResources: {
 }
 `
 
-// structuredCrossNamespaceTemplate tries to set metadata.namespace to a different value than the struct key.
+// structuredCrossNamespaceTemplate has a struct-key/metadata mismatch:
+// the struct key uses platform.namespace but metadata.namespace is hardcoded to
+// "other-namespace". This tests that the struct-key/metadata consistency check
+// catches the mismatch (the namespace restriction itself has been removed per
+// ADR 026).
 const structuredCrossNamespaceTemplate = `
 
 input: {
@@ -93,6 +97,238 @@ projectResources: {
 			metadata: {
 				name:      input.name
 				namespace: "other-namespace"
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// multiNamespaceTemplate produces resources in two different namespaces:
+// a Deployment in the project namespace and an HTTPRoute in istio-ingress.
+// After removing the per-resource namespace restriction (ADR 026), this template
+// must render successfully.
+const multiNamespaceTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: {
+	namespacedResources: {
+		(platform.namespace): {
+			Deployment: (input.name): {
+				apiVersion: "apps/v1"
+				kind:       "Deployment"
+				metadata: {
+					name:      input.name
+					namespace: platform.namespace
+					labels:    _labels
+				}
+				spec: {
+					selector: matchLabels: "app.kubernetes.io/name": input.name
+					template: {
+						metadata: labels: _labels
+						spec: containers: [{
+							name:  input.name
+							image: input.image + ":" + input.tag
+						}]
+					}
+				}
+			}
+		}
+		(platform.gatewayNamespace): {
+			HTTPRoute: (input.name): {
+				apiVersion: "gateway.networking.k8s.io/v1"
+				kind:       "HTTPRoute"
+				metadata: {
+					name:      input.name
+					namespace: platform.gatewayNamespace
+					labels:    _labels
+				}
+				spec: {
+					parentRefs: [{
+						group:     "gateway.networking.k8s.io"
+						kind:      "Gateway"
+						namespace: platform.gatewayNamespace
+						name:      "default"
+					}]
+					rules: [{
+						backendRefs: [{
+							name: input.name
+							port: 80
+						}]
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// multiNamespacePlatformTemplate produces platform resources in two different
+// namespaces: a ServiceAccount in the project namespace and an HTTPRoute in
+// istio-ingress. Validates that platformResources also allows multi-namespace.
+const multiNamespacePlatformTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels:    _labels
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: _labels
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+
+platformResources: {
+	namespacedResources: {
+		(platform.namespace): {
+			ServiceAccount: "platform-sa": {
+				apiVersion: "v1"
+				kind:       "ServiceAccount"
+				metadata: {
+					name:      "platform-sa"
+					namespace: platform.namespace
+					labels:    _labels
+				}
+			}
+		}
+		(platform.gatewayNamespace): {
+			HTTPRoute: (input.name + "-route"): {
+				apiVersion: "gateway.networking.k8s.io/v1"
+				kind:       "HTTPRoute"
+				metadata: {
+					name:      input.name + "-route"
+					namespace: platform.gatewayNamespace
+					labels:    _labels
+				}
+				spec: {
+					parentRefs: [{
+						group:     "gateway.networking.k8s.io"
+						kind:      "Gateway"
+						namespace: platform.gatewayNamespace
+						name:      "default"
+					}]
+					rules: [{
+						backendRefs: [{
+							name: input.name
+							port: 80
+						}]
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// emptyNamespaceKeyTemplate uses an empty string as the namespace struct key.
+// This must be rejected because namespaced resources require a non-empty namespace.
+const emptyNamespaceKeyTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+projectResources: {
+	namespacedResources: "": {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: ""
+				labels: "app.kubernetes.io/managed-by": "console.holos.run"
+			}
+			spec: {}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// structKeyMismatchTemplate has a struct key that does not match
+// metadata.namespace — the struct key is "wrong-ns" but metadata.namespace is
+// the project namespace. This must still be rejected by the struct-key/metadata
+// consistency check even after the namespace restriction is removed.
+const structKeyMismatchTemplate = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+projectResources: {
+	namespacedResources: "wrong-ns": {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
 				labels: "app.kubernetes.io/managed-by": "console.holos.run"
 			}
 			spec: {}
@@ -224,7 +460,10 @@ platformResources: {
 }
 `
 
-// crossNamespaceTemplate tries to write into a different namespace using structured output.
+// crossNamespaceTemplate has a struct-key/metadata mismatch: the struct key
+// uses platform.namespace but metadata.namespace is "other-namespace". This
+// tests the struct-key consistency check (the namespace restriction itself was
+// removed per ADR 026).
 const crossNamespaceTemplate = `
 
 input: {
@@ -430,10 +669,13 @@ func TestCueRenderer_Render(t *testing.T) {
 		}
 	})
 
-	t.Run("cross-namespace resource rejected", func(t *testing.T) {
+	t.Run("struct-key metadata namespace mismatch rejected", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), crossNamespaceTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
-			t.Fatal("expected error for cross-namespace resource")
+			t.Fatal("expected error for struct-key/metadata namespace mismatch")
+		}
+		if !strings.Contains(err.Error(), "does not match struct key") {
+			t.Errorf("expected 'does not match struct key' error, got: %v", err)
 		}
 	})
 
@@ -940,13 +1182,16 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 		}
 	})
 
-	t.Run("structured template rejects cross-namespace resources", func(t *testing.T) {
+	t.Run("structured template rejects struct-key metadata namespace mismatch", func(t *testing.T) {
 		_, err := renderer.Render(context.Background(), structuredCrossNamespaceTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
 		if err == nil {
-			t.Fatal("expected error for cross-namespace resource")
+			t.Fatal("expected error for struct-key/metadata namespace mismatch")
+		}
+		if !strings.Contains(err.Error(), "does not match struct key") {
+			t.Errorf("expected 'does not match struct key' error, got: %v", err)
 		}
 	})
 
@@ -2701,6 +2946,174 @@ func TestStructuredJSONExtraction(t *testing.T) {
 			if !json.Valid([]byte(*val)) {
 				t.Errorf("%s is not valid JSON: %s", name, *val)
 			}
+		}
+	})
+}
+
+// TestCueRenderer_MultiNamespaceResources verifies that templates producing
+// resources in multiple namespaces render successfully after the removal of the
+// per-resource namespace restriction (ADR 026). The struct-key/metadata
+// consistency check is preserved.
+func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+
+	t.Run("project resources spanning multiple namespaces render successfully", func(t *testing.T) {
+		platform := v1alpha2.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+		}
+		project := v1alpha2.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		resources, err := renderer.Render(context.Background(), multiNamespaceTemplate, platform, project)
+		if err != nil {
+			t.Fatalf("expected no error for multi-namespace template, got %v", err)
+		}
+		// Expect 2 resources: Deployment in project namespace, HTTPRoute in istio-ingress.
+		if len(resources) != 2 {
+			t.Fatalf("expected 2 resources, got %d: %v", len(resources), resourceKinds(resources))
+		}
+		nsSet := make(map[string]bool)
+		kindSet := make(map[string]bool)
+		for _, r := range resources {
+			nsSet[r.GetNamespace()] = true
+			kindSet[r.GetKind()] = true
+		}
+		if !nsSet[namespace] {
+			t.Errorf("expected resource in namespace %q", namespace)
+		}
+		if !nsSet["istio-ingress"] {
+			t.Error("expected resource in namespace 'istio-ingress'")
+		}
+		if !kindSet["Deployment"] {
+			t.Error("expected Deployment resource")
+		}
+		if !kindSet["HTTPRoute"] {
+			t.Error("expected HTTPRoute resource")
+		}
+	})
+
+	t.Run("platform resources spanning multiple namespaces render successfully", func(t *testing.T) {
+		platform := v1alpha2.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+		}
+		project := v1alpha2.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+			multiNamespacePlatformTemplate,
+			nil,
+			platform, project,
+		)
+		if err != nil {
+			t.Fatalf("expected no error for multi-namespace platform template, got %v", err)
+		}
+		// Expect 3 resources: Deployment in project ns, ServiceAccount in project ns,
+		// HTTPRoute in istio-ingress.
+		if len(resources) != 3 {
+			t.Fatalf("expected 3 resources, got %d: %v", len(resources), resourceKinds(resources))
+		}
+		nsSet := make(map[string]bool)
+		for _, r := range resources {
+			nsSet[r.GetNamespace()] = true
+		}
+		if !nsSet[namespace] {
+			t.Errorf("expected resource in namespace %q", namespace)
+		}
+		if !nsSet["istio-ingress"] {
+			t.Error("expected resource in namespace 'istio-ingress'")
+		}
+	})
+
+	t.Run("struct-key metadata mismatch still rejected", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), structKeyMismatchTemplate,
+			defaultPlatform(namespace), defaultProject())
+		if err == nil {
+			t.Fatal("expected error for struct-key/metadata namespace mismatch")
+		}
+		if !strings.Contains(err.Error(), "does not match struct key") {
+			t.Errorf("expected 'does not match struct key' error, got: %v", err)
+		}
+	})
+
+	t.Run("empty namespace key rejected", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), emptyNamespaceKeyTemplate,
+			defaultPlatform(namespace), defaultProject())
+		if err == nil {
+			t.Fatal("expected error for empty namespace key")
+		}
+		if !strings.Contains(err.Error(), "empty namespace key") {
+			t.Errorf("expected 'empty namespace key' error, got: %v", err)
+		}
+	})
+
+	t.Run("grouped render with multi-namespace project resources", func(t *testing.T) {
+		platform := v1alpha2.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+		}
+		project := v1alpha2.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			multiNamespaceTemplate, platform, project)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Project) != 2 {
+			t.Fatalf("expected 2 project resources, got %d: %v",
+				len(grouped.Project), resourceKinds(grouped.Project))
+		}
+		nsSet := make(map[string]bool)
+		for _, r := range grouped.Project {
+			nsSet[r.GetNamespace()] = true
+		}
+		if !nsSet[namespace] || !nsSet["istio-ingress"] {
+			t.Errorf("expected resources in both %q and 'istio-ingress', got namespaces: %v", namespace, nsSet)
+		}
+	})
+
+	t.Run("grouped render with multi-namespace platform resources", func(t *testing.T) {
+		platform := v1alpha2.PlatformInput{
+			Project:          "my-project",
+			Namespace:        namespace,
+			GatewayNamespace: "istio-ingress",
+		}
+		project := v1alpha2.ProjectInput{
+			Name:  "web-app",
+			Image: "nginx",
+			Tag:   "1.25",
+			Port:  8080,
+		}
+		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+			multiNamespacePlatformTemplate, nil, platform, project)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Platform) != 2 {
+			t.Fatalf("expected 2 platform resources, got %d: %v",
+				len(grouped.Platform), resourceKinds(grouped.Platform))
+		}
+		nsSet := make(map[string]bool)
+		for _, r := range grouped.Platform {
+			nsSet[r.GetNamespace()] = true
+		}
+		if !nsSet[namespace] || !nsSet["istio-ingress"] {
+			t.Errorf("expected platform resources in both %q and 'istio-ingress', got namespaces: %v", namespace, nsSet)
 		}
 	})
 }

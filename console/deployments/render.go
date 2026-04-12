@@ -271,7 +271,7 @@ func evaluateWithOrgTemplates(deploymentCUE string, orgTemplateCUESources []stri
 		return nil, fmt.Errorf("deployment template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructured(unified, platform.Namespace, true)
+	return evaluateStructured(unified, true)
 }
 
 // evaluate performs synchronous CUE template evaluation.
@@ -331,7 +331,7 @@ func evaluate(cueSource string, platform v1alpha2.PlatformInput, project v1alpha
 	}
 
 	// Project-level render: do not read platformResources (ADR 016 Decision 8).
-	return evaluateStructured(unified, platform.Namespace, false)
+	return evaluateStructured(unified, false)
 }
 
 // evaluateWithCueInput performs synchronous CUE template evaluation using a raw
@@ -339,7 +339,6 @@ func evaluate(cueSource string, platform v1alpha2.PlatformInput, project v1alpha
 // "input" (user-provided values) and "platform" (trusted backend values) at the
 // top level.  The template source and input are compiled together so that
 // cross-references (e.g. input.name used in the template) resolve correctly.
-// The expected namespace is derived from platform.namespace in the unified value.
 func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructured, error) {
 	cueCtx := cuecontext.New()
 
@@ -365,18 +364,8 @@ func evaluateWithCueInput(cueSource, cueInput string) ([]unstructured.Unstructur
 		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' or 'platformResources.namespacedResources' (structured output format required)")
 	}
 
-	// Extract the expected namespace from the unified platform value.
-	nsValue := unified.LookupPath(cue.ParsePath("platform.namespace"))
-	if nsValue.Err() != nil || !nsValue.Exists() {
-		return nil, fmt.Errorf("cue_input must provide a 'platform.namespace' field")
-	}
-	expectedNamespace, err := nsValue.String()
-	if err != nil {
-		return nil, fmt.Errorf("platform.namespace must be a concrete string: %w", err)
-	}
-
 	// Preview mode reads both collections (ADR 016 Decision 8).
-	return evaluateStructured(unified, expectedNamespace, true)
+	return evaluateStructured(unified, true)
 }
 
 // evaluateGrouped performs synchronous CUE template evaluation and returns
@@ -425,7 +414,7 @@ func evaluateGrouped(cueSource string, platform v1alpha2.PlatformInput, project 
 	}
 
 	// Project-level render: do not read platformResources (ADR 016 Decision 8).
-	return evaluateStructuredGrouped(unified, platform.Namespace, false)
+	return evaluateStructuredGrouped(unified, false)
 }
 
 // evaluateWithOrgTemplatesGrouped performs synchronous CUE template evaluation
@@ -475,7 +464,7 @@ func evaluateWithOrgTemplatesGrouped(deploymentCUE string, orgTemplateCUESources
 		return nil, fmt.Errorf("deployment template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	return evaluateStructuredGrouped(unified, platform.Namespace, true)
+	return evaluateStructuredGrouped(unified, true)
 }
 
 // evaluateWithCueInputGrouped performs synchronous CUE template evaluation using
@@ -496,17 +485,8 @@ func evaluateWithCueInputGrouped(cueSource, cueInput string) (*GroupedResources,
 		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' or 'platformResources.namespacedResources' (structured output format required)")
 	}
 
-	nsValue := unified.LookupPath(cue.ParsePath("platform.namespace"))
-	if nsValue.Err() != nil || !nsValue.Exists() {
-		return nil, fmt.Errorf("cue_input must provide a 'platform.namespace' field")
-	}
-	expectedNamespace, err := nsValue.String()
-	if err != nil {
-		return nil, fmt.Errorf("platform.namespace must be a concrete string: %w", err)
-	}
-
 	// Preview mode reads both collections (ADR 016 Decision 8).
-	return evaluateStructuredGrouped(unified, expectedNamespace, true)
+	return evaluateStructuredGrouped(unified, true)
 }
 
 // extractCuePathJSON looks up a CUE path in the unified value and returns the
@@ -558,14 +538,18 @@ func populateStructuredJSON(unified cue.Value, gr *GroupedResources) {
 // value and returns validated Kubernetes resources partitioned into Platform and
 // Project groups. The logic mirrors evaluateStructured but collects resources
 // into separate slices instead of a single flat list.
-func evaluateStructuredGrouped(unified cue.Value, expectedNamespace string, readPlatformResources bool) (*GroupedResources, error) {
+//
+// There is no restriction on which namespaces resources may target. The
+// struct-key/metadata consistency check ensures internal consistency within the
+// template (ADR 026).
+func evaluateStructuredGrouped(unified cue.Value, readPlatformResources bool) (*GroupedResources, error) {
 	var projectResources []unstructured.Unstructured
 	var platformResources []unstructured.Unstructured
 
 	// Walk projectResources.namespacedResources: <namespace>.<Kind>.<name>
 	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	if namespacedValue.Err() == nil && namespacedValue.Exists() {
-		resources, err := walkNamespacedResources(namespacedValue, expectedNamespace, "projectResources.namespacedResources")
+		resources, err := walkNamespacedResources(namespacedValue, "projectResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
@@ -594,7 +578,7 @@ func evaluateStructuredGrouped(unified cue.Value, expectedNamespace string, read
 	// Walk platformResources.namespacedResources
 	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
 	if platformNamespacedValue.Err() == nil && platformNamespacedValue.Exists() {
-		resources, err := walkNamespacedResources(platformNamespacedValue, expectedNamespace, "platformResources.namespacedResources")
+		resources, err := walkNamespacedResources(platformNamespacedValue, "platformResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
@@ -637,13 +621,17 @@ func evaluateStructuredGrouped(unified cue.Value, expectedNamespace string, read
 // project template cannot produce platformResources. Organization and folder
 // level paths pass true to read both collections. This is a hard boundary
 // enforced in Go code, not in CUE.
-func evaluateStructured(unified cue.Value, expectedNamespace string, readPlatformResources bool) ([]unstructured.Unstructured, error) {
+//
+// There is no restriction on which namespaces resources may target. The
+// struct-key/metadata consistency check ensures internal consistency within the
+// template (ADR 026).
+func evaluateStructured(unified cue.Value, readPlatformResources bool) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 
 	// Walk projectResources.namespacedResources: <namespace>.<Kind>.<name>
 	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	if namespacedValue.Err() == nil && namespacedValue.Exists() {
-		resources, err := walkNamespacedResources(namespacedValue, expectedNamespace, "projectResources.namespacedResources")
+		resources, err := walkNamespacedResources(namespacedValue, "projectResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
@@ -668,7 +656,7 @@ func evaluateStructured(unified cue.Value, expectedNamespace string, readPlatfor
 	// skipped for project-level rendering).
 	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
 	if platformNamespacedValue.Err() == nil && platformNamespacedValue.Exists() {
-		resources, err := walkNamespacedResources(platformNamespacedValue, expectedNamespace, "platformResources.namespacedResources")
+		resources, err := walkNamespacedResources(platformNamespacedValue, "platformResources.namespacedResources")
 		if err != nil {
 			return nil, err
 		}
@@ -691,8 +679,12 @@ func evaluateStructured(unified cue.Value, expectedNamespace string, readPlatfor
 
 // walkNamespacedResources iterates a namespaced resource map of the form
 // <namespace>.<Kind>.<name> and returns validated Kubernetes resources.
-// All resources must reside in expectedNamespace.
-func walkNamespacedResources(namespacedValue cue.Value, expectedNamespace, fieldPath string) ([]unstructured.Unstructured, error) {
+//
+// The struct-key/metadata consistency check is enforced: metadata.namespace,
+// metadata.name, and kind must match their respective struct keys. There is no
+// restriction on which namespaces may appear — templates may produce resources
+// targeting any namespace (ADR 026).
+func walkNamespacedResources(namespacedValue cue.Value, fieldPath string) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 
 	nsIter, err := namespacedValue.Fields()
@@ -701,6 +693,9 @@ func walkNamespacedResources(namespacedValue cue.Value, expectedNamespace, field
 	}
 	for nsIter.Next() {
 		nsKey := nsIter.Selector().Unquoted()
+		if nsKey == "" {
+			return nil, fmt.Errorf("%s: empty namespace key is not allowed", fieldPath)
+		}
 		kindIter, err := nsIter.Value().Fields()
 		if err != nil {
 			return nil, fmt.Errorf("iterating Kind keys under %s/%s: %w", fieldPath, nsKey, err)
@@ -731,12 +726,6 @@ func walkNamespacedResources(namespacedValue cue.Value, expectedNamespace, field
 				if u.GetName() != nameKey {
 					return nil, fmt.Errorf("%s/%s/%s/%s: metadata.name %q does not match struct key %q",
 						fieldPath, nsKey, kindKey, nameKey, u.GetName(), nameKey)
-				}
-
-				// Enforce project namespace constraint.
-				if u.GetNamespace() != expectedNamespace {
-					return nil, fmt.Errorf("%s resource %s/%s: namespace %q does not match project namespace %q",
-						fieldPath, u.GetKind(), u.GetName(), u.GetNamespace(), expectedNamespace)
 				}
 
 				// Run common resource validations.
