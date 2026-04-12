@@ -78,8 +78,8 @@ export function FolderIndexPage({ folderName: propFolderName }: { folderName?: s
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
-  const { data: childFolders, isPending: foldersLoading } = useListFolders(orgName, ParentType.FOLDER, folderName)
-  const { data: childProjects, isPending: projectsLoading } = useListProjectsByParent(orgName, ParentType.FOLDER, folderName)
+  const { data: childFolders, isPending: foldersLoading, error: foldersError } = useListFolders(orgName, ParentType.FOLDER, folderName)
+  const { data: childProjects, isPending: projectsLoading, error: projectsError } = useListProjectsByParent(orgName, ParentType.FOLDER, folderName)
 
   const [globalFilter, setGlobalFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([{ id: 'displayName', desc: false }])
@@ -239,12 +239,13 @@ export function FolderIndexPage({ folderName: propFolderName }: { folderName?: s
     }
   }
 
-  if (folderError) {
+  const fetchError = folderError ?? foldersError ?? projectsError
+  if (fetchError) {
     return (
       <Card>
         <CardContent className="pt-6">
           <Alert variant="destructive">
-            <AlertDescription>{folderError.message}</AlertDescription>
+            <AlertDescription>{fetchError.message}</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
