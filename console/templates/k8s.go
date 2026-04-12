@@ -348,8 +348,8 @@ func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string,
 }
 
 // ListOrgTemplateSourcesForRender satisfies the deployments.OrgTemplateProvider
-// interface. It returns CUE sources for the effective set of org-level templates
-// using the render set formula:
+// interface. It returns CUE sources for the effective set of organization-scope
+// templates using the render set formula:
 //
 //	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
 //

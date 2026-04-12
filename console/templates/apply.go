@@ -75,7 +75,7 @@ func (a *MandatoryTemplateApplier) ApplyMandatoryOrgTemplates(ctx context.Contex
 			return nil
 		}
 	} else {
-		// No walker: apply org-level only (backward compatible behavior).
+		// No walker configured: apply org-level templates only.
 		orgNs := a.k8s.Resolver.OrgNamespace(org)
 		orgNsObj := &corev1.Namespace{}
 		orgNsObj.Name = orgNs
