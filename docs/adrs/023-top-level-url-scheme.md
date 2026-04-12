@@ -91,7 +91,8 @@ users time to update bookmarks. After that period, they may be removed.
 | Org templates | `/orgs/$org/settings/org-templates/$tpl` | Org sub-page |
 | Org folder list | `/orgs/$org/folders` | Org-scoped navigation |
 | Org project list | `/orgs/$org/projects` | Org-scoped navigation |
-| Folder detail | `/folders/$folder` | Global namespace — top-level |
+| Folder index | `/folders/$folder` | Global namespace — top-level; shows folder contents (child folders and projects) |
+| Folder settings | `/folders/$folder/settings` | Folder sub-page; display name, parent, description, danger zone |
 | Folder templates | `/folders/$folder/templates` | Folder sub-page |
 | Project secrets | `/projects/$project/secrets` | Project sub-page |
 | Project deployments | `/projects/$project/deployments` | Project sub-page |

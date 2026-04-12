@@ -7,9 +7,12 @@
 | URL | Purpose |
 |-----|---------|
 | `/orgs/$orgName/projects` | **Index page** -- lists all projects in the org |
+| `/orgs/$orgName/folders` | **Index page** -- lists top-level folders in the org |
+| `/folders/$folderName` | **Index page** -- lists child folders and projects in the folder |
+| `/folders/$folderName/settings` | **Settings page** -- folder configuration |
+| `/folders/$folderName/templates` | **Index page** -- lists folder-scoped templates |
 | `/projects/$projectName/secrets` | **Index page** -- lists all secrets in the project |
 | `/projects/$projectName/settings` | **Settings page** -- project configuration |
-| `/folders/$folderName/templates` | **Index page** -- lists folder-scoped templates |
 
 The index page is the default view when navigating to a resource collection. Settings always live at a dedicated `/settings` subroute, never at the collection root.
 
