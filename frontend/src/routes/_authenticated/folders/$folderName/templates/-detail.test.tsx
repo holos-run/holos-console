@@ -38,6 +38,10 @@ vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
 
+vi.mock('@/components/template-releases', () => ({
+  TemplateReleases: () => <div data-testid="template-releases">Releases</div>,
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import {
@@ -208,7 +212,7 @@ describe('FolderTemplateDetailPage', () => {
       expect(toggle).toHaveAttribute('data-state', 'unchecked')
     })
 
-    it('clicking toggle calls updateTemplate with new enabled state', async () => {
+    it('clicking toggle calls updateTemplate with new enabled state and preserves all fields', async () => {
       setupMocks(Role.OWNER, { enabled: false })
       const user = userEvent.setup()
       render(
@@ -223,7 +227,13 @@ describe('FolderTemplateDetailPage', () => {
         .mutateAsync
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(
-          expect.objectContaining({ enabled: true }),
+          expect.objectContaining({
+            enabled: true,
+            displayName: mockTemplate.displayName,
+            description: mockTemplate.description,
+            cueTemplate: mockTemplate.cueTemplate,
+            mandatory: mockTemplate.mandatory,
+          }),
         )
       })
     })
@@ -504,8 +514,8 @@ describe('FolderTemplateDetailPage', () => {
     expect(screen.getByText('not found')).toBeInTheDocument()
   })
 
-  it('Save calls useUpdateTemplate with changed CUE template', async () => {
-    setupMocks(Role.OWNER)
+  it('Save calls useUpdateTemplate with changed CUE template and preserves enabled/mandatory', async () => {
+    setupMocks(Role.OWNER, { enabled: true, mandatory: true })
     render(
       <FolderTemplateDetailPage
         folderName="test-folder"
@@ -519,7 +529,11 @@ describe('FolderTemplateDetailPage', () => {
       .mutateAsync
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ cueTemplate: '// new cue content' }),
+        expect.objectContaining({
+          cueTemplate: '// new cue content',
+          enabled: true,
+          mandatory: true,
+        }),
       )
     })
   })
