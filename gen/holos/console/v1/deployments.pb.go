@@ -1787,9 +1787,26 @@ type GetDeploymentRenderPreviewResponse struct {
 	// rendered_yaml is the rendered Kubernetes manifests as multi-document YAML.
 	RenderedYaml string `protobuf:"bytes,4,opt,name=rendered_yaml,json=renderedYaml,proto3" json:"rendered_yaml,omitempty"`
 	// rendered_json is the rendered Kubernetes manifests as a JSON array.
-	RenderedJson  string `protobuf:"bytes,5,opt,name=rendered_json,json=renderedJson,proto3" json:"rendered_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RenderedJson string `protobuf:"bytes,5,opt,name=rendered_json,json=renderedJson,proto3" json:"rendered_json,omitempty"`
+	// platform_resources_yaml contains resources from platformResources
+	// (contributed by organization/folder-level templates) as multi-document YAML
+	// separated by "---\n". Empty when no platform templates are linked or when
+	// the template is rendered without ancestor templates.
+	PlatformResourcesYaml string `protobuf:"bytes,6,opt,name=platform_resources_yaml,json=platformResourcesYaml,proto3" json:"platform_resources_yaml,omitempty"`
+	// platform_resources_json contains resources from platformResources
+	// (contributed by organization/folder-level templates) as a JSON array.
+	// Empty when no platform templates are linked or when the template is
+	// rendered without ancestor templates.
+	PlatformResourcesJson string `protobuf:"bytes,7,opt,name=platform_resources_json,json=platformResourcesJson,proto3" json:"platform_resources_json,omitempty"`
+	// project_resources_yaml contains resources from projectResources
+	// (contributed by the project template) as multi-document YAML separated by
+	// "---\n".
+	ProjectResourcesYaml string `protobuf:"bytes,8,opt,name=project_resources_yaml,json=projectResourcesYaml,proto3" json:"project_resources_yaml,omitempty"`
+	// project_resources_json contains resources from projectResources
+	// (contributed by the project template) as a JSON array.
+	ProjectResourcesJson string `protobuf:"bytes,9,opt,name=project_resources_json,json=projectResourcesJson,proto3" json:"project_resources_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *GetDeploymentRenderPreviewResponse) Reset() {
@@ -1853,6 +1870,34 @@ func (x *GetDeploymentRenderPreviewResponse) GetRenderedYaml() string {
 func (x *GetDeploymentRenderPreviewResponse) GetRenderedJson() string {
 	if x != nil {
 		return x.RenderedJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetPlatformResourcesYaml() string {
+	if x != nil {
+		return x.PlatformResourcesYaml
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetPlatformResourcesJson() string {
+	if x != nil {
+		return x.PlatformResourcesJson
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetProjectResourcesYaml() string {
+	if x != nil {
+		return x.ProjectResourcesYaml
+	}
+	return ""
+}
+
+func (x *GetDeploymentRenderPreviewResponse) GetProjectResourcesJson() string {
+	if x != nil {
+		return x.ProjectResourcesJson
 	}
 	return ""
 }
@@ -1986,13 +2031,17 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"configMaps\"Q\n" +
 	"!GetDeploymentRenderPreviewRequest\x12\x18\n" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xeb\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xc7\x03\n" +
 	"\"GetDeploymentRenderPreviewResponse\x12!\n" +
 	"\fcue_template\x18\x01 \x01(\tR\vcueTemplate\x12,\n" +
 	"\x12cue_platform_input\x18\x02 \x01(\tR\x10cuePlatformInput\x12*\n" +
 	"\x11cue_project_input\x18\x03 \x01(\tR\x0fcueProjectInput\x12#\n" +
 	"\rrendered_yaml\x18\x04 \x01(\tR\frenderedYaml\x12#\n" +
-	"\rrendered_json\x18\x05 \x01(\tR\frenderedJson*\xac\x01\n" +
+	"\rrendered_json\x18\x05 \x01(\tR\frenderedJson\x126\n" +
+	"\x17platform_resources_yaml\x18\x06 \x01(\tR\x15platformResourcesYaml\x126\n" +
+	"\x17platform_resources_json\x18\a \x01(\tR\x15platformResourcesJson\x124\n" +
+	"\x16project_resources_yaml\x18\b \x01(\tR\x14projectResourcesYaml\x124\n" +
+	"\x16project_resources_json\x18\t \x01(\tR\x14projectResourcesJson*\xac\x01\n" +
 	"\x0fDeploymentPhase\x12 \n" +
 	"\x1cDEPLOYMENT_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18DEPLOYMENT_PHASE_PENDING\x10\x01\x12\x1c\n" +

@@ -846,6 +846,43 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
    * @generated from field: string rendered_json = 5;
    */
   renderedJson: string;
+
+  /**
+   * platform_resources_yaml contains resources from platformResources
+   * (contributed by organization/folder-level templates) as multi-document YAML
+   * separated by "---\n". Empty when no platform templates are linked or when
+   * the template is rendered without ancestor templates.
+   *
+   * @generated from field: string platform_resources_yaml = 6;
+   */
+  platformResourcesYaml: string;
+
+  /**
+   * platform_resources_json contains resources from platformResources
+   * (contributed by organization/folder-level templates) as a JSON array.
+   * Empty when no platform templates are linked or when the template is
+   * rendered without ancestor templates.
+   *
+   * @generated from field: string platform_resources_json = 7;
+   */
+  platformResourcesJson: string;
+
+  /**
+   * project_resources_yaml contains resources from projectResources
+   * (contributed by the project template) as multi-document YAML separated by
+   * "---\n".
+   *
+   * @generated from field: string project_resources_yaml = 8;
+   */
+  projectResourcesYaml: string;
+
+  /**
+   * project_resources_json contains resources from projectResources
+   * (contributed by the project template) as a JSON array.
+   *
+   * @generated from field: string project_resources_json = 9;
+   */
+  projectResourcesJson: string;
 };
 
 /**
