@@ -8,6 +8,12 @@
 
 When adding new fields that affect template linking, update `docs/cue-template-guide.md` and the AGENTS.md context map.
 
+## Version Constraints on LinkedTemplateRef
+
+`LinkedTemplateRef` includes a `version_constraint` field (ADR 024 Decision 3) that accepts semver range expressions (e.g. `^1.2.0`, `>=1.0.0 <2.0.0`). When set, the render-time resolver selects the latest Release that satisfies the constraint instead of reading the mutable working copy. An empty constraint means "latest released version."
+
+The `version_constraint` value is stored in the `console.holos.run/linked-templates` annotation alongside the existing `scope`, `scope_name`, and `name` fields. Changes to version constraints follow the same scoped link permission rules as other linked template modifications.
+
 ## Scoped Link Permissions
 
 Modifying linked template references requires scoped link permissions in addition to `PERMISSION_TEMPLATES_WRITE`:
@@ -21,6 +27,7 @@ The `update_linked_templates` flag on `UpdateTemplateRequest` controls whether t
 
 ## Related
 
-- [Template Service](template-service.md) — Explicit linking model and render set formula
+- [Template Service](template-service.md) — Explicit linking model, render set formula, and versioning
 - [Guardrail: Template Fields](guardrail-template-fields.md) — New fields must be added across the pipeline
 - [Guardrail: Template Docs](guardrail-template-docs.md) — Keep cue-template-guide.md current
+- [ADR 024](../adrs/024-template-versioning.md) — Version constraints on LinkedTemplateRef

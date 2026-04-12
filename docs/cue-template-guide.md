@@ -620,6 +620,54 @@ A platform template that should apply universally without any action from
 product engineers must set `mandatory = true`. The platform engineer controls
 the `mandatory` flag via the platform template editor.
 
+### Versioning and Releases
+
+Platform templates can be versioned using semantic versioning (ADR 024). This
+enables consumers to pin to a known-good version and upgrade on their own
+schedule.
+
+**Key concepts:**
+
+- **Version** — a `MAJOR.MINOR.PATCH` string on a template. New templates start
+  at `0.1.0`. The `0.x` series signals pre-stable development.
+- **Release** — an immutable snapshot of a template at a specific version. Once
+  published, a release cannot be modified. Releases are stored as separate
+  ConfigMaps in the same namespace as the parent template.
+- **Version constraint** — a semver range expression on a `LinkedTemplateRef`
+  (e.g. `^1.2.0`, `>=1.0.0 <2.0.0`). The renderer resolves the constraint
+  against available releases and selects the latest matching version.
+
+**Versioning workflow:**
+
+1. A platform engineer authors and iterates on a template (the mutable working
+   copy in the template ConfigMap).
+2. When the template is ready for consumers, the engineer publishes a Release
+   (e.g. `1.0.0`) with a changelog describing what is included.
+3. Product engineers link to the platform template and optionally set a version
+   constraint (e.g. `^1.0.0`) to pin to compatible versions.
+4. When the platform engineer publishes a new MINOR or PATCH release (e.g.
+   `1.1.0`), consumers with `^1.0.0` constraints automatically pick it up at
+   the next render.
+5. When the platform engineer publishes a MAJOR release (e.g. `2.0.0`),
+   consumers must update their constraint to `^2.0.0` to adopt it. The
+   `CheckUpdates` RPC and the UI's "updates available" badge notify consumers
+   that a new version exists.
+
+**Render-time resolution with versioning:**
+
+When a linked template reference includes a `version_constraint`, the render
+pipeline resolves the constraint against the set of Release ConfigMaps for that
+template. The render set formula remains the same:
+
+```
+render_set = (mandatory AND enabled) UNION (enabled AND name IN linked_list)
+```
+
+For each entry in `linked_list` that has a `version_constraint`, the renderer
+uses the CUE source from the matching Release instead of the mutable working
+copy. If no release satisfies the constraint, the render fails with a
+descriptive error.
+
 ### Previewing Your Template
 
 Use the `RenderDeploymentTemplate` RPC to preview a template without creating a
