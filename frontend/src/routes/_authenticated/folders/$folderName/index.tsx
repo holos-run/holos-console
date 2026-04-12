@@ -144,7 +144,6 @@ export function FolderIndexPage({ folderName: propFolderName }: { folderName?: s
           </Badge>
         )
       },
-      enableGlobalFilter: false,
     }),
     columnHelper.accessor('createdAt', {
       header: ({ column }) => {
@@ -240,6 +239,18 @@ export function FolderIndexPage({ folderName: propFolderName }: { folderName?: s
     }
   }
 
+  if (folderError) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Alert variant="destructive">
+            <AlertDescription>{folderError.message}</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+
   const isLoading = folderPending || foldersLoading || projectsLoading
 
   if (isLoading) {
@@ -254,18 +265,6 @@ export function FolderIndexPage({ folderName: propFolderName }: { folderName?: s
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (folderError) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Alert variant="destructive">
-            <AlertDescription>{folderError.message}</AlertDescription>
-          </Alert>
         </CardContent>
       </Card>
     )
