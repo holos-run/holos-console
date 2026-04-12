@@ -43,7 +43,7 @@ Before making changes, review `CONTRIBUTING.md` for commit message requirements.
 ## Guardrails
 
 - [Template Fields](docs/agents/guardrail-template-fields.md) — New proto fields must propagate through types, render pipeline, frontend preview, and defaults extraction.
-- [Template Linking](docs/agents/guardrail-template-linking.md) — Linked templates annotation must use v1alpha2 format and call ListOrgTemplateSourcesForRender.
+- [Template Linking](docs/agents/guardrail-template-linking.md) — Linked templates annotation must use v1alpha2 format; deployments resolve via AncestorTemplateProvider.
 - [Template Docs](docs/agents/guardrail-template-docs.md) — Verify cue-template-guide.md completeness after any template or render change.
 - [TLS Commands](docs/agents/guardrail-tls-commands.md) — Never use `-k`, `--insecure`, or `-plaintext` in any example command.
 - [Terminology](docs/agents/guardrail-terminology.md) — Use "platform template" not "system template" for org/folder-level templates.
