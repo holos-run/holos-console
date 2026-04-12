@@ -539,6 +539,27 @@ func (h *Handler) ListLinkableTemplates(
 			)
 			continue
 		}
+		// Fetch releases for each linkable template and populate the Releases
+		// field, stripping cue_template and defaults to keep the payload small.
+		for _, lt := range infos {
+			cms, relErr := h.k8s.ListReleases(ctx, ancestorScope, ancestorName, lt.Name)
+			if relErr != nil {
+				slog.WarnContext(ctx, "failed to list releases for linkable template",
+					slog.String("template", lt.Name),
+					slog.Any("error", relErr),
+				)
+				continue
+			}
+			releases := make([]*consolev1.Release, 0, len(cms))
+			for _, cm := range cms {
+				r := configMapToRelease(&cm, ancestorScope, ancestorName)
+				// Strip heavy fields the linking UI does not need.
+				r.CueTemplate = ""
+				r.Defaults = nil
+				releases = append(releases, r)
+			}
+			lt.Releases = releases
+		}
 		result = append(result, infos...)
 	}
 
@@ -944,7 +965,7 @@ func (h *Handler) CheckUpdates(
 			continue
 		}
 		for _, ref := range refs {
-			update, err := h.checkLinkedUpdate(ctx, ref)
+			update, err := h.checkLinkedUpdate(ctx, ref, req.Msg.GetIncludeCurrent())
 			if err != nil {
 				slog.WarnContext(ctx, "failed to check update for linked template",
 					slog.String("name", ref.Name),
@@ -972,8 +993,11 @@ func (h *Handler) CheckUpdates(
 }
 
 // checkLinkedUpdate computes the update status for a single linked template
-// reference. Returns nil if no updates are available.
-func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef) (*consolev1.TemplateUpdate, error) {
+// reference. When includeCurrent is false (default), returns nil if no updates
+// are available. When includeCurrent is true, always returns a TemplateUpdate
+// with resolved version information even if the template is already at the
+// latest compatible version.
+func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef, includeCurrent bool) (*consolev1.TemplateUpdate, error) {
 	refScope := ref.GetScope()
 	refScopeName := ref.ScopeName
 	refName := ref.Name
@@ -1028,9 +1052,10 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 		}
 	}
 
-	// Only report an update if there is something new.
+	// Only report an update if there is something new, unless the caller
+	// requested all entries (include_current).
 	hasCompatibleUpdate := latestCompatibleStr != "" && latestCompatibleStr != currentStr
-	if !hasCompatibleUpdate && !breakingAvailable {
+	if !hasCompatibleUpdate && !breakingAvailable && !includeCurrent {
 		return nil, nil
 	}
 
