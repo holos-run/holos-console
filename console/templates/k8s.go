@@ -417,26 +417,6 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 	return result, nil
 }
 
-// SeedDefaultOrgTemplates seeds the built-in HTTPRoute platform template into
-// the org namespace if no templates exist. Called on first List to avoid a
-// separate migration step. The template is seeded as disabled.
-func (k *K8sClient) SeedDefaultOrgTemplates(ctx context.Context, org string) error {
-	_, err := k.CreateTemplate(
-		ctx,
-		consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		org,
-		DefaultReferenceGrantName,
-		"HTTPRoute",
-		"Exposes a deployment's Service via an HTTPRoute through the gateway. Requires a ReferenceGrant in the project namespace (provided by the default deployment template).",
-		DefaultReferenceGrantTemplate,
-		nil,
-		false, // not mandatory
-		false, // disabled: configure the Gateway name before enabling
-		nil,
-	)
-	return err
-}
-
 // SeedOrgTemplate seeds the built-in HTTPRoute platform template as enabled into
 // the org namespace. Used by the populate_defaults flow during org creation.
 func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
