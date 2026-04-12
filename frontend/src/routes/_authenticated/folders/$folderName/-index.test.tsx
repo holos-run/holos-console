@@ -99,6 +99,8 @@ function setupMocks(
     userRole?: Role
     folderLoading?: boolean
     folderError?: Error | null
+    foldersError?: Error | null
+    projectsError?: Error | null
   } = {},
 ) {
   const {
@@ -108,6 +110,8 @@ function setupMocks(
     userRole = Role.OWNER,
     folderLoading = false,
     folderError = null,
+    foldersError = null,
+    projectsError = null,
   } = opts
 
   ;(useGetFolder as Mock).mockReturnValue({
@@ -116,14 +120,14 @@ function setupMocks(
     error: folderError,
   })
   ;(useListFolders as Mock).mockReturnValue({
-    data: childFolders,
+    data: foldersError ? undefined : childFolders,
     isPending: false,
-    error: null,
+    error: foldersError,
   })
   ;(useListProjectsByParent as Mock).mockReturnValue({
-    data: childProjects,
+    data: projectsError ? undefined : childProjects,
     isPending: false,
-    error: null,
+    error: projectsError,
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', userRole },
@@ -257,5 +261,17 @@ describe('FolderIndexPage', () => {
     })
     render(<FolderIndexPage folderName="payments" />)
     expect(screen.getByText('creator@example.com')).toBeInTheDocument()
+  })
+
+  it('renders error alert when child folders fetch fails', () => {
+    setupMocks({ foldersError: new Error('failed to load child folders') })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText(/failed to load child folders/i)).toBeInTheDocument()
+  })
+
+  it('renders error alert when child projects fetch fails', () => {
+    setupMocks({ projectsError: new Error('failed to load child projects') })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(screen.getByText(/failed to load child projects/i)).toBeInTheDocument()
   })
 })
