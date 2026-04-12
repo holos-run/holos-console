@@ -590,9 +590,12 @@ multiple non-overlapping archetypes to coexist in the same organization.
 When creating or editing a deployment template, the form shows a
 "Linked Platform Templates" section listing all enabled ancestor platform
 templates (organization and folder scopes), grouped by scope. Each non-mandatory
-template has a checkbox — check it to include that template in every render of
+template has a checkbox -- check it to include that template in every render of
 this deployment template. Mandatory templates appear pre-checked with a lock
-icon; they are always included and cannot be deselected.
+icon; they are always included and cannot be deselected. When a platform template
+has published releases, a version selector dropdown appears next to the checkbox
+allowing the user to pin to a specific version or select "Latest (auto-update)"
+which tracks the newest release automatically.
 
 **Render set formula**
 
@@ -604,8 +607,10 @@ render_set = (mandatory AND enabled) UNION (enabled AND name IN linked_list)
 
 The `linked_list` is derived from the `console.holos.run/linked-templates`
 annotation on the deployment template ConfigMap (v1alpha2 format: JSON array of
-`{scope, scope_name, name}` objects). Disabled templates are never
-included, even if they appear in the linked list.
+`{scope, scope_name, name, version_constraint}` objects). The
+`version_constraint` field is optional; when present it pins the linked template
+to a semver range (see [Versioning and Releases](#versioning-and-releases)).
+Disabled templates are never included, even if they appear in the linked list.
 
 **Authoring implications**
 

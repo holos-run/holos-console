@@ -2,7 +2,7 @@
 
 **When adding new fields that affect which platform templates are included in a render**, ensure:
 
-1. The linking list is read from the `console.holos.run/linked-templates` annotation on the deployment template ConfigMap (JSON array of `{scope, scope_name, name}` objects — v1alpha2 format).
+1. The linking list is read from the `console.holos.run/linked-templates` annotation on the deployment template ConfigMap (JSON array of `{scope, scope_name, name, version_constraint}` objects -- v1alpha2 format). The `version_constraint` field is optional.
 2. `OrgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedNames)` is called with the resolved linked names (not `ListEnabledOrgTemplateSources` — that method no longer exists).
 3. `docs/cue-template-guide.md` "Linking Platform Templates" section and the render set formula remain accurate.
 
