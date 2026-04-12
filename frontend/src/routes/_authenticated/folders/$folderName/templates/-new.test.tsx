@@ -28,8 +28,6 @@ vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-
 import { useCreateTemplate } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
