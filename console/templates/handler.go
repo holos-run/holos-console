@@ -58,6 +58,13 @@ type RenderResource struct {
 	Object map[string]any
 }
 
+// GroupedRenderResources holds rendered resources partitioned by origin: platform
+// (organization/folder-level templates) and project (project-level templates).
+type GroupedRenderResources struct {
+	Platform []RenderResource
+	Project  []RenderResource
+}
+
 // Renderer evaluates a CUE template unified with platform and user CUE input
 // strings and returns a list of rendered Kubernetes manifests.
 type Renderer interface {
@@ -65,6 +72,11 @@ type Renderer interface {
 	// RenderWithTemplateSources evaluates the template unified with zero or more
 	// ancestor template CUE sources, then with the CUE input.
 	RenderWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) ([]RenderResource, error)
+	// RenderGrouped evaluates the template and returns resources grouped by origin.
+	RenderGrouped(ctx context.Context, cueTemplate string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error)
+	// RenderGroupedWithTemplateSources evaluates the template unified with ancestor
+	// sources and returns resources grouped by origin.
+	RenderGroupedWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error)
 }
 
 // Handler implements the unified TemplateService (ADR 021).
@@ -452,32 +464,87 @@ func (h *Handler) RenderTemplate(
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renderer not configured"))
 	}
 
-	resources, err := h.renderer.Render(ctx, req.Msg.CueTemplate, req.Msg.CuePlatformInput, req.Msg.CueProjectInput)
+	grouped, err := h.renderTemplateGrouped(ctx, req.Msg)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		return nil, err
 	}
 
-	var buf strings.Builder
-	objects := make([]map[string]any, 0, len(resources))
-	for i, r := range resources {
-		if i > 0 {
-			buf.WriteString("---\n")
-		}
-		buf.WriteString(r.YAML)
-		if r.Object != nil {
-			objects = append(objects, r.Object)
-		}
+	// Serialize per-collection resources.
+	platformYAML, platformJSON, err := serializeResources(grouped.Platform)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize platform resources: %w", err))
+	}
+	projectYAML, projectJSON, err := serializeResources(grouped.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize project resources: %w", err))
 	}
 
-	jsonBytes, err := json.MarshalIndent(objects, "", "  ")
+	// Produce the unified output (backwards compatible) by combining both collections.
+	allResources := append(grouped.Platform, grouped.Project...)
+	unifiedYAML, unifiedJSON, err := serializeResources(allResources)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal rendered resources to JSON: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize unified resources: %w", err))
 	}
 
 	return connect.NewResponse(&consolev1.RenderTemplateResponse{
-		RenderedYaml: buf.String(),
-		RenderedJson: string(jsonBytes),
+		RenderedYaml:          unifiedYAML,
+		RenderedJson:          unifiedJSON,
+		PlatformResourcesYaml: platformYAML,
+		PlatformResourcesJson: platformJSON,
+		ProjectResourcesYaml:  projectYAML,
+		ProjectResourcesJson:  projectJSON,
 	}), nil
+}
+
+// renderTemplateGrouped resolves linked template sources (if any) and delegates
+// to the appropriate renderer method. When linked_templates are provided in the
+// request, org-level template CUE sources are resolved and unified with the main
+// template so that platform resources appear in the grouped output.
+func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
+	if len(msg.LinkedTemplates) == 0 || h.k8s == nil {
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	// Derive the org name from the linked template refs. Linked templates are
+	// org-level, so we use the scope_name from the first org-scoped ref.
+	var org string
+	for _, ref := range msg.LinkedTemplates {
+		if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.GetScopeName() != "" {
+			org = ref.GetScopeName()
+			break
+		}
+	}
+	if org == "" {
+		// No org-scoped linked templates; render without ancestor unification.
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	templateSources, err := h.k8s.ListOrgTemplateSourcesForRender(ctx, org, msg.LinkedTemplates)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
+			slog.String("org", org),
+			slog.Any("error", err),
+		)
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+		}
+		return grouped, nil
+	}
+
+	grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
+	}
+	return grouped, nil
 }
 
 // ListLinkableTemplates returns all enabled templates in ancestor scopes that
@@ -1104,6 +1171,33 @@ func validateCueSyntax(source string) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid CUE syntax: %w", err))
 	}
 	return nil
+}
+
+// serializeResources converts a slice of RenderResource into a multi-document
+// YAML string (separated by "---\n") and a JSON array string. Returns empty
+// strings for an empty or nil slice.
+func serializeResources(resources []RenderResource) (yamlStr, jsonStr string, err error) {
+	if len(resources) == 0 {
+		return "", "", nil
+	}
+
+	var buf strings.Builder
+	objects := make([]map[string]any, 0, len(resources))
+	for i, r := range resources {
+		if i > 0 {
+			buf.WriteString("---\n")
+		}
+		buf.WriteString(r.YAML)
+		if r.Object != nil {
+			objects = append(objects, r.Object)
+		}
+	}
+
+	jsonBytes, err := json.MarshalIndent(objects, "", "  ")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal rendered resources to JSON: %w", err)
+	}
+	return buf.String(), string(jsonBytes), nil
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

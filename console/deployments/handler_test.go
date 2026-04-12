@@ -111,6 +111,20 @@ func (s *stubRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, 
 	return s.resources, s.err
 }
 
+func (s *stubRenderer) RenderGrouped(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	s.called = true
+	s.lastPlatform = platform
+	s.lastProject = project
+	return &GroupedResources{Project: s.resources}, s.err
+}
+
+func (s *stubRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	s.called = true
+	s.lastPlatform = platform
+	s.lastProject = project
+	return &GroupedResources{Project: s.resources}, s.err
+}
+
 // stubApplier implements ResourceApplier for tests.
 type stubApplier struct {
 	applyCalled     bool

@@ -42,6 +42,14 @@ func (r *stubRenderer) RenderWithTemplateSources(_ context.Context, _ string, _ 
 	return r.resources, r.err
 }
 
+func (r *stubRenderer) RenderGrouped(_ context.Context, _ string, _ string, _ string) (*GroupedRenderResources, error) {
+	return &GroupedRenderResources{Project: r.resources}, r.err
+}
+
+func (r *stubRenderer) RenderGroupedWithTemplateSources(_ context.Context, _ string, _ []string, _ string, _ string) (*GroupedRenderResources, error) {
+	return &GroupedRenderResources{Project: r.resources}, r.err
+}
+
 func authedCtx(email string, roles []string) context.Context {
 	return rpc.ContextWithClaims(context.Background(), &rpc.Claims{
 		Sub:   "user-123",

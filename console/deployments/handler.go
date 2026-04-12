@@ -57,6 +57,12 @@ type Renderer interface {
 	// folder-level) template CUE sources with the deployment template before
 	// filling in platform and project inputs.
 	RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error)
+	// RenderGrouped evaluates the CUE template and returns resources grouped by
+	// origin (platform vs project). Project-level path: platform group is empty.
+	RenderGrouped(ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error)
+	// RenderGroupedWithAncestorTemplates evaluates the deployment template unified
+	// with ancestor templates and returns resources grouped by origin.
+	RenderGroupedWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error)
 }
 
 // OrgProvider resolves the organization for a project.
@@ -183,6 +189,39 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 	}
 
 	return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
+}
+
+// renderResourcesGrouped mirrors renderResources but returns resources grouped
+// by origin (platform vs project). Used by GetDeploymentRenderPreview to populate
+// the per-collection response fields.
+func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
+	if h.orgProvider == nil || h.orgTemplateProvider == nil {
+		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+	}
+
+	org, err := h.orgProvider.GetProjectOrg(ctx, project)
+	if err != nil {
+		slog.WarnContext(ctx, "could not resolve org for project, skipping platform template unification",
+			slog.String("project", project),
+			slog.Any("error", err),
+		)
+		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+	}
+	if org == "" {
+		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+	}
+
+	orgTemplateSources, err := h.orgTemplateProvider.ListOrgTemplateSourcesForRender(ctx, org, linkedRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
+			slog.String("project", project),
+			slog.String("org", org),
+			slog.Any("error", err),
+		)
+		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+	}
+
+	return h.renderer.RenderGroupedWithAncestorTemplates(ctx, cueSource, orgTemplateSources, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.
@@ -734,11 +773,14 @@ func (h *Handler) GetDeploymentRenderPreview(
 	cueProjectInput := fmt.Sprintf("input: %s", string(projectJSON))
 
 	// Render the template to produce YAML and JSON output, including linked
-	// platform templates (ADR 019). Uses renderResources so the same linking
-	// logic applies at preview time as at deploy time.
+	// platform templates (ADR 019). Uses renderResourcesGrouped so the same
+	// linking logic applies at preview time as at deploy time, and the per-
+	// collection fields are populated.
 	var renderedYAML, renderedJSON string
+	var platformResourcesYAML, platformResourcesJSON string
+	var projectResourcesYAML, projectResourcesJSON string
 	if h.renderer != nil {
-		resources, renderErr := h.renderResources(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -753,26 +795,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 			}), nil
 		}
 
-		var buf strings.Builder
-		objects := make([]map[string]any, 0, len(resources))
-		for i, r := range resources {
-			if i > 0 {
-				buf.WriteString("---\n")
-			}
-			yamlBytes, yamlErr := yaml.Marshal(r.Object)
-			if yamlErr == nil {
-				buf.WriteString(string(yamlBytes))
-			}
-			if r.Object != nil {
-				objects = append(objects, r.Object)
-			}
-		}
-		renderedYAML = buf.String()
+		// Serialize per-collection resources.
+		platformResourcesYAML, platformResourcesJSON = serializeUnstructured(grouped.Platform)
+		projectResourcesYAML, projectResourcesJSON = serializeUnstructured(grouped.Project)
 
-		jsonBytes, jsonErr := json.MarshalIndent(objects, "", "  ")
-		if jsonErr == nil {
-			renderedJSON = string(jsonBytes)
-		}
+		// Produce the unified output (backwards compatible) by combining both collections.
+		allResources := append(grouped.Platform, grouped.Project...)
+		renderedYAML, renderedJSON = serializeUnstructured(allResources)
 	}
 
 	slog.InfoContext(ctx, "deployment render preview",
@@ -784,11 +813,15 @@ func (h *Handler) GetDeploymentRenderPreview(
 	)
 
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
-		CueTemplate:      cueTemplate,
-		CuePlatformInput: cuePlatformInput,
-		CueProjectInput:  cueProjectInput,
-		RenderedYaml:     renderedYAML,
-		RenderedJson:     renderedJSON,
+		CueTemplate:           cueTemplate,
+		CuePlatformInput:      cuePlatformInput,
+		CueProjectInput:       cueProjectInput,
+		RenderedYaml:          renderedYAML,
+		RenderedJson:          renderedJSON,
+		PlatformResourcesYaml: platformResourcesYAML,
+		PlatformResourcesJson: platformResourcesJSON,
+		ProjectResourcesYaml:  projectResourcesYAML,
+		ProjectResourcesJson:  projectResourcesJSON,
 	}), nil
 }
 
@@ -809,6 +842,34 @@ func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, pr
 }
 
 // validateDeploymentName checks that the name is a valid DNS label.
+// serializeUnstructured converts a slice of unstructured Kubernetes resources
+// into a multi-document YAML string (separated by "---\n") and a JSON array
+// string. Returns empty strings for an empty or nil slice.
+func serializeUnstructured(resources []unstructured.Unstructured) (yamlStr, jsonStr string) {
+	if len(resources) == 0 {
+		return "", ""
+	}
+	var buf strings.Builder
+	objects := make([]map[string]any, 0, len(resources))
+	for i, r := range resources {
+		if i > 0 {
+			buf.WriteString("---\n")
+		}
+		yamlBytes, yamlErr := yaml.Marshal(r.Object)
+		if yamlErr == nil {
+			buf.WriteString(string(yamlBytes))
+		}
+		if r.Object != nil {
+			objects = append(objects, r.Object)
+		}
+	}
+	jsonBytes, jsonErr := json.MarshalIndent(objects, "", "  ")
+	if jsonErr == nil {
+		jsonStr = string(jsonBytes)
+	}
+	return buf.String(), jsonStr
+}
+
 func validateDeploymentName(name string) error {
 	if name == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
