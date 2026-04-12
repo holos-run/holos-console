@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -20,29 +20,37 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useCloneTemplate, makeOrgScope } from '@/queries/templates'
-import { useGetOrganization } from '@/queries/organizations'
+import { TemplateScope } from '@/gen/holos/console/v1/templates_pb'
+import { create } from '@bufbuild/protobuf'
+import { TemplateScopeRefSchema } from '@/gen/holos/console/v1/templates_pb'
+import { useGetTemplate, useUpdateTemplate, useCloneTemplate } from '@/queries/templates'
+import { useGetFolder } from '@/queries/folders'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/org-templates/$templateName')({
-  component: OrgTemplateDetailRoute,
+export const Route = createFileRoute(
+  '/_authenticated/folders/$folderName/templates/$templateName',
+)({
+  component: FolderTemplateDetailRoute,
 })
 
-function OrgTemplateDetailRoute() {
-  const { orgName, templateName } = Route.useParams()
-  return <OrgTemplateDetailPage orgName={orgName} templateName={templateName} />
+function FolderTemplateDetailRoute() {
+  const { folderName, templateName } = Route.useParams()
+  return <FolderTemplateDetailPage folderName={folderName} templateName={templateName} />
 }
 
-export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: propTemplateName }: { orgName?: string; templateName?: string } = {}) {
-  let routeParams: { orgName?: string; templateName?: string } = {}
+export function FolderTemplateDetailPage({
+  folderName: propFolderName,
+  templateName: propTemplateName,
+}: { folderName?: string; templateName?: string } = {}) {
+  let routeParams: { folderName?: string; templateName?: string } = {}
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     routeParams = Route.useParams()
   } catch {
     routeParams = {}
   }
-  const orgName = propOrgName ?? routeParams.orgName ?? ''
+  const folderName = propFolderName ?? routeParams.folderName ?? ''
   const templateName = propTemplateName ?? routeParams.templateName ?? ''
 
   let navigate: ReturnType<typeof useNavigate> | undefined
@@ -53,9 +61,14 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     navigate = undefined
   }
 
-  const scope = makeOrgScope(orgName)
+  const { data: folder } = useGetFolder(folderName)
+  const orgName = folder?.organization ?? ''
+
+  const scope = create(TemplateScopeRefSchema, {
+    scope: TemplateScope.FOLDER,
+    scopeName: folderName,
+  })
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
-  const { data: org } = useGetOrganization(orgName)
   const updateMutation = useUpdateTemplate(scope, templateName)
   const cloneMutation = useCloneTemplate(scope)
 
@@ -71,9 +84,8 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     }
   }, [template?.cueTemplate])
 
-  // Only org-level OWNERs can edit platform templates (backend enforces PERMISSION_TEMPLATES_WRITE).
-  // Frontend mirrors this: show Save only for OWNER.
-  const userRole = org?.userRole ?? Role.VIEWER
+  // Folder-level template editing requires OWNER role on the folder's org.
+  const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
   const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
@@ -120,8 +132,8 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
       setCloneOpen(false)
       if (navigate) {
         navigate({
-          to: '/orgs/$orgName/settings/org-templates/$templateName',
-          params: { orgName, templateName: response.name },
+          to: '/folders/$folderName/templates/$templateName',
+          params: { folderName, templateName: response.name },
         })
       }
     } catch (err) {
@@ -158,7 +170,25 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
       <Card>
         <CardContent className="pt-6 space-y-6">
           <div>
-            <p className="text-sm text-muted-foreground">{orgName} / Settings / Platform Templates / {templateName}</p>
+            <p className="text-sm text-muted-foreground">
+              <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+                {orgName}
+              </Link>
+              {' / '}
+              <Link to="/orgs/$orgName/folders" params={{ orgName }} className="hover:underline">
+                Folders
+              </Link>
+              {' / '}
+              <Link to="/folders/$folderName/settings" params={{ folderName }} className="hover:underline">
+                {folderName}
+              </Link>
+              {' / '}
+              <Link to="/folders/$folderName/templates" params={{ folderName }} className="hover:underline">
+                Platform Templates
+              </Link>
+              {' / '}
+              {templateName}
+            </p>
             <div className="flex items-center gap-2 mt-1">
               <h2 className="text-xl font-semibold">{template?.displayName || templateName}</h2>
               {template?.mandatory && (
@@ -212,7 +242,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
             {!canWrite && (
               <Alert>
                 <AlertDescription>
-                  You need org Owner permissions to edit platform templates.
+                  You need folder Owner permissions to edit platform templates.
                 </AlertDescription>
               </Alert>
             )}
