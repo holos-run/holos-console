@@ -237,7 +237,16 @@ describe('UpgradeDialog', () => {
     })
   })
 
-  it('shows confirmation for breaking update', () => {
+  it('requires explicit confirmation for breaking upgrade', async () => {
+    mockMutateAsync.mockResolvedValue({})
+    const linkedTemplates = [
+      {
+        scope: TemplateScope.ORGANIZATION,
+        scopeName: 'test-org',
+        name: 'platform-security',
+        versionConstraint: '>=1.0.0 <2.0.0',
+      },
+    ]
     const updates = [makeUpdate({
       latestCompatibleVersion: '',
       latestVersion: '2.0.0',
@@ -250,11 +259,67 @@ describe('UpgradeDialog', () => {
         updates={updates as any}
         scope={testScope}
         templateName="my-template"
-        linkedTemplates={[]}
+        linkedTemplates={linkedTemplates as any}
       />
     )
-    // The upgrade button for breaking changes should mention "upgrade"
-    expect(screen.getByText(/upgrade/i)).toBeInTheDocument()
+    // Click "Upgrade" — should not call mutation yet
+    fireEvent.click(screen.getByText(/^upgrade$/i))
+    expect(mockMutateAsync).not.toHaveBeenCalled()
+
+    // Confirmation dialog should appear
+    expect(screen.getByText(/confirm breaking upgrade/i)).toBeInTheDocument()
+
+    // Click "Confirm Upgrade" to proceed
+    fireEvent.click(screen.getByText(/confirm upgrade/i))
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ updateLinkedTemplates: true })
+      )
+    })
+  })
+
+  it('selects compatible version when both compatible and breaking are available', async () => {
+    mockMutateAsync.mockResolvedValue({})
+    const linkedTemplates = [
+      {
+        scope: TemplateScope.ORGANIZATION,
+        scopeName: 'test-org',
+        name: 'platform-security',
+        versionConstraint: '>=1.0.0 <2.0.0',
+      },
+    ]
+    // Mixed case: compatible minor update + breaking major available
+    const updates = [makeUpdate({
+      latestCompatibleVersion: '1.3.0',
+      latestVersion: '2.0.0',
+      breakingUpdateAvailable: true,
+    })]
+    render(
+      <UpgradeDialog
+        open={true}
+        onOpenChange={() => {}}
+        updates={updates as any}
+        scope={testScope}
+        templateName="my-template"
+        linkedTemplates={linkedTemplates as any}
+      />
+    )
+    // Should show "Update" (not "Upgrade") since compatible version exists
+    const updateButton = screen.getByText(/^update$/i)
+    fireEvent.click(updateButton)
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          updateLinkedTemplates: true,
+          linkedTemplates: expect.arrayContaining([
+            expect.objectContaining({
+              versionConstraint: '>=1.3.0 <2.0.0',
+            }),
+          ]),
+        })
+      )
+    })
   })
 
   it('renders empty state when no updates', () => {

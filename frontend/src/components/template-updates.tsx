@@ -87,6 +87,7 @@ export function UpgradeDialog({
 }: UpgradeDialogProps) {
   const updateMutation = useUpdateTemplate(scope, templateName)
   const [error, setError] = useState<string | null>(null)
+  const [confirmBreaking, setConfirmBreaking] = useState<TemplateUpdate | null>(null)
 
   const compatibleUpdates = updates.filter(hasCompatibleUpdate)
   const hasMultipleCompatible = compatibleUpdates.length > 1
@@ -114,9 +115,13 @@ export function UpgradeDialog({
   }
 
   // handleUpdateSingle updates one linked template's version constraint.
+  // Uses the same isBreaking classification as the display to pick the right
+  // target version: compatible when available, breaking only when no compatible
+  // update exists.
   async function handleUpdateSingle(update: TemplateUpdate) {
     setError(null)
-    const targetVersion = update.breakingUpdateAvailable
+    const isBreaking = update.breakingUpdateAvailable && !hasCompatibleUpdate(update)
+    const targetVersion = isBreaking
       ? update.latestVersion
       : update.latestCompatibleVersion
     if (!targetVersion) return
@@ -154,6 +159,7 @@ export function UpgradeDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -213,7 +219,7 @@ export function UpgradeDialog({
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleUpdateSingle(update)}
+                          onClick={() => setConfirmBreaking(update)}
                           disabled={updateMutation.isPending}
                         >
                           Upgrade
@@ -253,5 +259,37 @@ export function UpgradeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Breaking upgrade confirmation dialog */}
+    <Dialog open={!!confirmBreaking} onOpenChange={(open) => { if (!open) setConfirmBreaking(null) }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Confirm Breaking Upgrade</DialogTitle>
+          <DialogDescription>
+            Upgrading <strong>{confirmBreaking?.ref?.name}</strong> from{' '}
+            <span className="font-mono">{confirmBreaking?.currentVersion}</span> to{' '}
+            <span className="font-mono">{confirmBreaking?.latestVersion}</span> is a
+            breaking change. This may require changes to your template.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirmBreaking(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={async () => {
+              const update = confirmBreaking
+              setConfirmBreaking(null)
+              await handleUpdateSingle(update!)
+            }}
+            disabled={updateMutation.isPending}
+          >
+            {updateMutation.isPending ? 'Upgrading...' : 'Confirm Upgrade'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
