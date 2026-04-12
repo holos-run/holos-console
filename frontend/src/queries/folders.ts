@@ -3,7 +3,6 @@ import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FolderService } from '@/gen/holos/console/v1/folders_pb.js'
-import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
 import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { useAuth } from '@/lib/auth'
 
@@ -70,8 +69,8 @@ export function useCreateFolder(organization: string) {
       description: string
       parentType: ParentType
       parentName: string
-      userGrants?: ShareGrant[]
-      roleGrants?: ShareGrant[]
+      userGrants?: { principal: string; role: number }[]
+      roleGrants?: { principal: string; role: number }[]
     }) =>
       client.createFolder({ organization, ...params }),
     onSuccess: () => {
@@ -100,8 +99,8 @@ export function useUpdateFolderSharing(organization: string, name: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: {
-      userGrants: ShareGrant[]
-      roleGrants: ShareGrant[]
+      userGrants: { principal: string; role: number }[]
+      roleGrants: { principal: string; role: number }[]
     }) => client.updateFolderSharing({ name, organization, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
@@ -116,8 +115,8 @@ export function useUpdateFolderDefaultSharing(organization: string, name: string
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: {
-      defaultUserGrants: ShareGrant[]
-      defaultRoleGrants: ShareGrant[]
+      defaultUserGrants: { principal: string; role: number }[]
+      defaultRoleGrants: { principal: string; role: number }[]
     }) => client.updateFolderDefaultSharing({ name, organization, ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
