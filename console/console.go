@@ -289,6 +289,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
 
+		// Wire defaults seeder for populate_defaults org creation flow.
+		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
+		orgsHandler.WithDefaultsSeeder(templatesK8s, &projects.ProjectCreatorAdapter{K8s: projectsK8s}, projectPrefix)
+
 		// Mandatory template applier for project creation: walks the project's
 		// ancestor chain (org + folder ancestors) and applies all mandatory+enabled
 		// templates to the project namespace (ADR 021 Decision 3).

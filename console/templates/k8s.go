@@ -435,6 +435,44 @@ func (k *K8sClient) SeedDefaultOrgTemplates(ctx context.Context, org string) err
 	return err
 }
 
+// SeedOrgTemplate seeds the built-in HTTPRoute platform template as enabled into
+// the org namespace. Used by the populate_defaults flow during org creation.
+func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
+	_, err := k.CreateTemplate(
+		ctx,
+		consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		org,
+		DefaultReferenceGrantName,
+		"HTTPRoute",
+		"Exposes a deployment's Service via an HTTPRoute through the gateway. Requires a ReferenceGrant in the project namespace (provided by the default deployment template).",
+		DefaultReferenceGrantTemplate,
+		nil,
+		false, // not mandatory
+		true,  // enabled for populate_defaults flow
+		nil,
+	)
+	return err
+}
+
+// SeedProjectTemplate seeds the example httpbin deployment template into the
+// project namespace. Used by the populate_defaults flow during org creation.
+func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) error {
+	_, err := k.CreateTemplate(
+		ctx,
+		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		project,
+		"example-httpbin",
+		"Example Httpbin",
+		"Example go-httpbin project-level deployment template. Produces ServiceAccount, Deployment, and Service resources.",
+		ExampleHttpbinTemplate,
+		nil,
+		false, // not mandatory
+		true,  // enabled for populate_defaults flow
+		nil,
+	)
+	return err
+}
+
 // configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
 // The scope and scopeName must be provided by the caller since they are encoded
 // in the namespace (which the ConfigMap stores but the proto carries explicitly).

@@ -39,6 +39,21 @@ type FolderLister interface {
 	GetFolder(ctx context.Context, name string) (*corev1.Namespace, error)
 }
 
+// TemplateSeeder seeds default templates into a scope. Used by
+// CreateOrganization to seed example templates when populate_defaults is true.
+type TemplateSeeder interface {
+	SeedOrgTemplate(ctx context.Context, org string) error
+	SeedProjectTemplate(ctx context.Context, project string) error
+}
+
+// ProjectCreator creates a project namespace. Used by CreateOrganization to
+// create a default project when populate_defaults is true, following the same
+// pattern as FolderCreator.
+type ProjectCreator interface {
+	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error
+	NamespaceExists(ctx context.Context, nsName string) (bool, error)
+}
+
 // Handler implements the OrganizationService.
 type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
@@ -47,6 +62,9 @@ type Handler struct {
 	folderCreator   FolderCreator
 	folderLister    FolderLister
 	folderPrefix    string // namespace prefix + folder prefix (e.g. "holos-fld-")
+	templateSeeder  TemplateSeeder
+	projectCreator  ProjectCreator
+	projectPrefix   string // namespace prefix + project prefix (e.g. "holos-prj-")
 	disableCreation bool
 	creatorUsers    []string
 	creatorRoles    []string
@@ -66,6 +84,15 @@ func (h *Handler) WithFolderCreator(fc FolderCreator, fl FolderLister, folderPre
 	h.folderCreator = fc
 	h.folderLister = fl
 	h.folderPrefix = folderPrefix
+	return h
+}
+
+// WithDefaultsSeeder sets the template seeder and project creator used to
+// populate example resources when populate_defaults is true on CreateOrganization.
+func (h *Handler) WithDefaultsSeeder(ts TemplateSeeder, pc ProjectCreator, projectPrefix string) *Handler {
+	h.templateSeeder = ts
+	h.projectCreator = pc
+	h.projectPrefix = projectPrefix
 	return h
 }
 
@@ -243,6 +270,23 @@ func (h *Handler) CreateOrganization(
 		}
 	}
 
+	// Seed example resources when populate_defaults is requested.
+	if req.Msg.GetPopulateDefaults() {
+		if err := h.seedDefaults(ctx, req.Msg.Name, claims.Email, shareUsers, shareRoles); err != nil {
+			slog.ErrorContext(ctx, "populate defaults failed, rolling back org",
+				slog.String("organization", req.Msg.Name),
+				slog.Any("error", err),
+			)
+			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
+				slog.ErrorContext(ctx, "org rollback after seed failure failed",
+					slog.String("organization", req.Msg.Name),
+					slog.Any("error", delErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("seeding default resources: %w", err))
+		}
+	}
+
 	slog.InfoContext(ctx, "organization created",
 		slog.String("action", "organization_create"),
 		slog.String("resource_type", auditResourceType),
@@ -273,6 +317,57 @@ func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName,
 		return "", fmt.Errorf("creating folder namespace: %w", err)
 	}
 	return folderName, nil
+}
+
+// seedDefaults creates example resources for the new organization:
+//  1. An org-level platform template (HTTPRoute, enabled)
+//  2. A default project in the default folder
+//  3. An example project-level deployment template in the new project
+//
+// If any step fails, the caller is responsible for rolling back the org.
+func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	if h.templateSeeder == nil || h.projectCreator == nil {
+		return fmt.Errorf("defaults seeder not configured")
+	}
+
+	// Step 1: Seed org-level platform template (enabled).
+	if err := h.templateSeeder.SeedOrgTemplate(ctx, orgName); err != nil {
+		return fmt.Errorf("seeding org template: %w", err)
+	}
+
+	// Step 2: Create default project in the default folder.
+	// Resolve the default folder namespace from the org's annotation.
+	orgNs, err := h.k8s.GetOrganization(ctx, orgName)
+	if err != nil {
+		return fmt.Errorf("looking up org for default folder: %w", err)
+	}
+	defaultFolder := orgNs.Annotations[v1alpha2.AnnotationDefaultFolder]
+	if defaultFolder == "" {
+		return fmt.Errorf("organization %q has no default folder set", orgName)
+	}
+
+	// Derive the parent namespace from the default folder.
+	parentNs := h.k8s.resolver.FolderNamespace(defaultFolder)
+
+	projectDisplayName := "Default"
+	exists := func(ctx context.Context, nsName string) (bool, error) {
+		return h.projectCreator.NamespaceExists(ctx, nsName)
+	}
+	projectName, err := v1alpha2.GenerateIdentifier(ctx, projectDisplayName, h.projectPrefix, exists)
+	if err != nil {
+		return fmt.Errorf("generating project identifier: %w", err)
+	}
+
+	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, shareUsers, shareRoles); err != nil {
+		return fmt.Errorf("creating default project: %w", err)
+	}
+
+	// Step 3: Seed project-level example deployment template.
+	if err := h.templateSeeder.SeedProjectTemplate(ctx, projectName); err != nil {
+		return fmt.Errorf("seeding project template: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateOrganization updates organization metadata.
