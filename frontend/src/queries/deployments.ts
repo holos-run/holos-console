@@ -86,6 +86,29 @@ function deploymentStatusKey(project: string, name: string) {
   return ['deployments', 'status', project, name] as const
 }
 
+function deploymentStatusSummaryKey(project: string, name: string) {
+  return ['deployments', 'status-summary', project, name] as const
+}
+
+export function useGetDeploymentStatusSummary(
+  project: string,
+  name: string,
+  options?: { refetchInterval?: number },
+) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentStatusSummaryKey(project, name),
+    queryFn: async () => {
+      const response = await client.getDeploymentStatusSummary({ project, name })
+      return response.summary
+    },
+    enabled: isAuthenticated && !!project && !!name,
+    refetchInterval: options?.refetchInterval,
+  })
+}
+
 function deploymentLogsKey(project: string, name: string, container?: string, tailLines?: number, previous?: boolean) {
   return ['deployments', 'logs', project, name, container, tailLines, previous] as const
 }

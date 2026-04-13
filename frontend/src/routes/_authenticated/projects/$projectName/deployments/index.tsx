@@ -3,7 +3,6 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -24,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
+import { PhaseBadge } from '@/components/phase-badge'
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 
@@ -145,7 +144,10 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                     <TableCell className="font-mono text-sm">{deployment.image}</TableCell>
                     <TableCell className="font-mono text-sm">{deployment.tag}</TableCell>
                     <TableCell>
-                      <PhaseBadge phase={deployment.phase} />
+                      <PhaseBadge
+                        summary={deployment.statusSummary}
+                        fallbackPhase={deployment.phase}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       {canDelete && (
@@ -190,17 +192,3 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
   )
 }
 
-function PhaseBadge({ phase }: { phase: DeploymentPhase }) {
-  switch (phase) {
-    case DeploymentPhase.RUNNING:
-      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent">Running</Badge>
-    case DeploymentPhase.PENDING:
-      return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-transparent">Pending</Badge>
-    case DeploymentPhase.FAILED:
-      return <Badge variant="destructive">Failed</Badge>
-    case DeploymentPhase.SUCCEEDED:
-      return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-transparent">Succeeded</Badge>
-    default:
-      return <Badge variant="outline">Unknown</Badge>
-  }
-}

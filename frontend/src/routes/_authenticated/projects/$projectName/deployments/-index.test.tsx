@@ -29,11 +29,34 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
+import { DeploymentPhase, type DeploymentStatusSummary } from '@/gen/holos/console/v1/deployments_pb'
 import { DeploymentsPage } from './index'
 
-function makeDeployment(name: string, image = 'ghcr.io/org/app', tag = 'v1.0.0', phase = DeploymentPhase.RUNNING) {
-  return { name, project: 'test-project', image, tag, template: 'web-app', displayName: '', description: '', phase, message: '' }
+function makeSummary(
+  phase: DeploymentPhase,
+  readyReplicas = 0,
+  desiredReplicas = 0,
+): DeploymentStatusSummary {
+  return {
+    $typeName: 'holos.console.v1.DeploymentStatusSummary',
+    phase,
+    readyReplicas,
+    desiredReplicas,
+    availableReplicas: readyReplicas,
+    updatedReplicas: readyReplicas,
+    observedGeneration: 0n,
+    message: '',
+  }
+}
+
+function makeDeployment(
+  name: string,
+  image = 'ghcr.io/org/app',
+  tag = 'v1.0.0',
+  phase = DeploymentPhase.RUNNING,
+  statusSummary?: DeploymentStatusSummary,
+) {
+  return { name, project: 'test-project', image, tag, template: 'web-app', displayName: '', description: '', phase, message: '', statusSummary }
 }
 
 function setupMocks(
@@ -81,6 +104,56 @@ describe('DeploymentsPage', () => {
     setupMocks([makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', DeploymentPhase.FAILED)])
     render(<DeploymentsPage />)
     expect(screen.getByText(/failed/i)).toBeInTheDocument()
+  })
+
+  it('renders Running badge with ready/desired replicas from status_summary', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', DeploymentPhase.UNSPECIFIED,
+        makeSummary(DeploymentPhase.RUNNING, 2, 3)),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.getByText(/running/i)).toBeInTheDocument()
+    expect(screen.getByText('2/3')).toBeInTheDocument()
+  })
+
+  it('renders Pending badge with replica count from status_summary', () => {
+    setupMocks([
+      makeDeployment('worker', 'ghcr.io/org/wrk', 'latest', DeploymentPhase.UNSPECIFIED,
+        makeSummary(DeploymentPhase.PENDING, 0, 1)),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.getByText(/pending/i)).toBeInTheDocument()
+    expect(screen.getByText('0/1')).toBeInTheDocument()
+  })
+
+  it('renders Failed badge with replica count from status_summary', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', DeploymentPhase.UNSPECIFIED,
+        makeSummary(DeploymentPhase.FAILED, 0, 1)),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.getByText(/failed/i)).toBeInTheDocument()
+    expect(screen.getByText('0/1')).toBeInTheDocument()
+  })
+
+  it('renders Unknown only when status_summary is missing', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', DeploymentPhase.UNSPECIFIED /* no summary */),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.getByText(/unknown/i)).toBeInTheDocument()
+    // No replica count rendered when summary is missing.
+    expect(screen.queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
+  })
+
+  it('omits replica count when desired_replicas is zero', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', DeploymentPhase.UNSPECIFIED,
+        makeSummary(DeploymentPhase.RUNNING, 0, 0)),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.getByText(/running/i)).toBeInTheDocument()
+    expect(screen.queryByText('0/0')).not.toBeInTheDocument()
   })
 
   it('shows empty state when no deployments', () => {
