@@ -572,7 +572,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               {previewOpen ? 'Hide Preview' : 'Preview'}
             </Button>
             {previewOpen && (
-              <div className="mt-2">
+              <div className="mt-2 min-w-0">
                 {renderQuery.isLoading && (
                   <p className="text-sm text-muted-foreground">Rendering...</p>
                 )}
