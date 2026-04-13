@@ -56,13 +56,20 @@ type Cache interface {
 }
 
 // nopCache is returned when no kubernetes.Interface is available (for
-// example, when the console runs in dummy-secret-only mode). Summary always
-// reports a miss so callers degrade to UNSPECIFIED status without panicking.
+// example, when the console runs in dummy-secret-only mode), and also serves
+// as a safe fallback when the real informer cannot be started (missing RBAC,
+// transient API unavailability). Summary always reports a miss so callers
+// degrade to UNSPECIFIED status without panicking.
 type nopCache struct{}
 
 func (nopCache) Summary(string, string) (*consolev1.DeploymentStatusSummary, bool) {
 	return nil, false
 }
+
+// NewNop returns a Cache that always reports misses. It is intended as a
+// fallback when New fails to start a live informer but the console must keep
+// serving.
+func NewNop() Cache { return nopCache{} }
 
 // informerCache is the live implementation, backed by a SharedInformerFactory
 // scoped to console-managed Deployments.
