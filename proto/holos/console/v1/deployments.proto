@@ -41,9 +41,19 @@ message Deployment {
   // description explains the deployment's purpose.
   string description = 7;
   // phase is the current deployment phase.
-  DeploymentPhase phase = 8;
+  //
+  // Deprecated: prefer status_summary.phase. The backend no longer populates
+  // this field after the status cache rollout (#912); it remains only so
+  // older clients deserialize without errors. The field number is retained
+  // to preserve wire compatibility; do not remove or renumber.
+  DeploymentPhase phase = 8 [deprecated = true];
   // message is a human-readable status message.
-  string message = 9;
+  //
+  // Deprecated: prefer status_summary.message. The backend no longer
+  // populates this field after the status cache rollout (#912); it remains
+  // only so older clients deserialize without errors. The field number is
+  // retained to preserve wire compatibility; do not remove or renumber.
+  string message = 9 [deprecated = true];
   // command overrides the container image ENTRYPOINT.
   repeated string command = 10;
   // args overrides the container image CMD.
@@ -53,10 +63,10 @@ message Deployment {
   // port is the container port the application listens on.
   int32 port = 13;
   // status_summary carries a lightweight status snapshot suitable for list
-  // views. Populated by ListDeployments via the cached status summary path;
-  // unset on create/update responses. The legacy `phase` (8) and `message`
-  // (9) fields are retained for backwards compatibility and may be marked
-  // reserved in a future phase.
+  // views. Populated by ListDeployments and GetDeployment via the cached
+  // status summary path; unset on create/update responses. Supersedes the
+  // deprecated `phase` (8) and `message` (9) fields; both are left in place
+  // with [deprecated = true] to preserve wire compatibility.
   DeploymentStatusSummary status_summary = 14;
 }
 
