@@ -572,7 +572,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               {previewOpen ? 'Hide Preview' : 'Preview'}
             </Button>
             {previewOpen && (
-              <div className="mt-2">
+              <div className="mt-2 min-w-0">
                 {renderQuery.isLoading && (
                   <p className="text-sm text-muted-foreground">Rendering...</p>
                 )}
@@ -589,22 +589,22 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                   const hasPerCollection = !!(platformJson || projectJson)
                   if (hasPerCollection) {
                     return (
-                      <div className="space-y-3">
-                        {platformJson && (
-                          <>
-                            <Label>Platform Resources</Label>
-                            <pre
-                              aria-label="Platform Resources JSON"
-                              className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all"
-                            >
-                              {platformJson}
-                            </pre>
-                          </>
+                      <div className="space-y-3 min-w-0">
+                        <Label>Platform Resources</Label>
+                        {platformJson ? (
+                          <pre
+                            aria-label="Platform Resources JSON"
+                            className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
+                          >
+                            {platformJson}
+                          </pre>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No platform resources rendered by this template.</p>
                         )}
-                        <Label>{platformJson ? 'Project Resources' : 'Rendered JSON'}</Label>
+                        <Label>Project Resources</Label>
                         <pre
-                          aria-label={platformJson ? 'Project Resources JSON' : 'Rendered JSON'}
-                          className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all"
+                          aria-label="Project Resources JSON"
+                          className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
                         >
                           {projectJson}
                         </pre>
@@ -613,7 +613,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                   }
                   if (renderQuery.data.renderedJson) {
                     return (
-                      <pre className="font-mono text-sm bg-muted p-3 rounded-md max-h-96 overflow-y-auto whitespace-pre-wrap break-all">
+                      <pre className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full">
                         {renderQuery.data.renderedJson}
                       </pre>
                     )
