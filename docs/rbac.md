@@ -87,7 +87,7 @@ Organization grants have no cascade tables — they never cascade to projects or
 
 ## Metadata Annotations
 
-Metadata annotations are stored on organization and project Namespace resources:
+Metadata annotations are stored on organization, folder, and project Namespace resources:
 
 | Annotation | Resource | Description |
 |---|---|---|
@@ -105,8 +105,8 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 |---|---|---|
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
 | `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
-| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants applied to new projects in the org |
-| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants applied to new projects in the org |
+| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants applied to new folders and projects within the organization (propagated via ancestor walk). Settable on organization or folder namespaces. |
+| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants applied to new folders and projects within the organization (propagated via ancestor walk). Settable on organization or folder namespaces. |
 
 Each grant is a JSON object with:
 
