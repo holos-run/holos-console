@@ -9,11 +9,11 @@ import {
   TemplateScope,
   ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate } from '@/gen/holos/console/v1/templates_pb.js'
+import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults } from '@/gen/holos/console/v1/templates_pb.js'
 import { useAuth } from '@/lib/auth'
 
 // Re-export types used by consumers.
-export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate }
+export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults }
 export { TemplateScope }
 
 /** Build a composite key that uniquely identifies a linkable template across scopes. */
@@ -70,6 +70,36 @@ export function useListTemplates(scope: TemplateScopeRef) {
       return response.templates
     },
     enabled: isAuthenticated && !!scope.scopeName,
+  })
+}
+
+function templateDefaultsKey(scope: TemplateScopeRef, name: string) {
+  return ['templates', 'defaults', scope.scope, scope.scopeName, name] as const
+}
+
+// useGetTemplateDefaults fetches the TemplateDefaults payload for a given
+// template via the explicit TemplateService.GetTemplateDefaults RPC. Per
+// ADR 027, this is the sole source of truth for Create Deployment form
+// pre-fill; callers must not read Template.defaults from the list response.
+//
+// The hook is disabled when name is empty so the RPC is never called
+// eagerly on mount before the user selects a template.
+export function useGetTemplateDefaults(
+  params: { scope: TemplateScopeRef; name: string },
+  options?: { enabled?: boolean },
+) {
+  const { scope, name } = params
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  const callerEnabled = options?.enabled ?? true
+  return useQuery({
+    queryKey: templateDefaultsKey(scope, name),
+    queryFn: async () => {
+      const response = await client.getTemplateDefaults({ scope, name })
+      return response.defaults
+    },
+    enabled: isAuthenticated && !!scope.scopeName && !!name && callerEnabled,
   })
 }
 
