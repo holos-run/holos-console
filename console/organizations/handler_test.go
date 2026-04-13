@@ -1746,6 +1746,73 @@ func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 		}
 	})
 
+	t.Run("seeded default project inherits Owner/Editor/Viewer default role grants", func(t *testing.T) {
+		// Locks in the ordering guarantee from plan #919: because the org
+		// namespace's default-share-roles annotation is written *before*
+		// the default project is created, the seeded default project's
+		// own default-share-roles annotation must contain exactly the
+		// three standard grants (Owner, Editor, Viewer) with empty start
+		// and expiration, inherited via the project resolver's
+		// ancestor-default merge.
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "project-inherits-org",
+			DisplayName:      "Project Inherits Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		pc := handler.projectCreator.(*k8sProjectCreator)
+		projectNsName := pc.resolver.ProjectNamespace(ts.seededProjectName)
+		projectNs, err := pc.client.CoreV1().Namespaces().Get(context.Background(), projectNsName, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected default project namespace %q to exist, got %v", projectNsName, err)
+		}
+
+		raw, ok := projectNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]
+		if !ok {
+			t.Fatalf("expected annotation %q on seeded default project namespace", v1alpha2.AnnotationDefaultShareRoles)
+		}
+		var grants []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(raw), &grants); err != nil {
+			t.Fatalf("parsing default-share-roles annotation on project: %v", err)
+		}
+		if len(grants) != 3 {
+			t.Fatalf("expected 3 default role grants on seeded project, got %d (%v)", len(grants), grants)
+		}
+
+		byRole := make(map[string]secrets.AnnotationGrant, 3)
+		for _, g := range grants {
+			byRole[g.Role] = g
+		}
+		for _, role := range []string{"owner", "editor", "viewer"} {
+			g, ok := byRole[role]
+			if !ok {
+				t.Errorf("expected a default grant for role %q on project namespace, none found", role)
+				continue
+			}
+			if g.Principal != role {
+				t.Errorf("expected principal %q for project default role %q grant, got %q", role, role, g.Principal)
+			}
+			if g.Nbf != nil {
+				t.Errorf("expected no start restriction (nbf) for project default role %q grant, got %v", role, *g.Nbf)
+			}
+			if g.Exp != nil {
+				t.Errorf("expected no expiration (exp) for project default role %q grant, got %v", role, *g.Exp)
+			}
+		}
+	})
+
 	t.Run("default role grants are written before default folder creation", func(t *testing.T) {
 		// Use a FolderCreator that records whether the
 		// default-share-roles annotation was present on the org namespace
