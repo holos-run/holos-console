@@ -138,12 +138,16 @@ func TestGetDeploymentStatus_ReplicaCounts(t *testing.T) {
 	}
 }
 
-func TestGetDeploymentStatus_CacheMissZeroReplicas(t *testing.T) {
+func TestGetDeploymentStatus_CacheMissFallsBackToLiveReplicas(t *testing.T) {
 	const ns = "prj-my-project"
-	dep := k8sDeployment(ns, "my-app", 3, 2, 2, nil)
+	// Live Deployment reports 3 desired / 3 ready / 3 available.
+	dep := k8sDeployment(ns, "my-app", 3, 3, 3, nil)
 
 	fakeClient := fake.NewClientset(dep)
-	// No cache configured → cache miss path.
+	// No cache configured → cache miss path. Even so, the handler must
+	// populate replica scalars from the live apps/v1.Deployment.Status so a
+	// cold informer (right after startup, after the 10s sync timeout, or
+	// without watch RBAC) does not render a healthy deployment as 0/0 ready.
 	h := newStatusHandler(fakeClient)
 
 	ctx := authedCtx("viewer@example.com", nil)
@@ -159,9 +163,14 @@ func TestGetDeploymentStatus_CacheMissZeroReplicas(t *testing.T) {
 	if s.Summary != nil {
 		t.Errorf("summary: got %v, want nil on cache miss", s.Summary)
 	}
-	if s.DesiredReplicas != 0 || s.ReadyReplicas != 0 || s.AvailableReplicas != 0 {
-		t.Errorf("replica counts: got desired=%d ready=%d avail=%d, want all 0 on cache miss",
-			s.DesiredReplicas, s.ReadyReplicas, s.AvailableReplicas)
+	if s.DesiredReplicas != 3 {
+		t.Errorf("desired_replicas: got %d, want 3 (fallback to live dep.Status.Replicas)", s.DesiredReplicas)
+	}
+	if s.ReadyReplicas != 3 {
+		t.Errorf("ready_replicas: got %d, want 3 (fallback to live dep.Status.ReadyReplicas)", s.ReadyReplicas)
+	}
+	if s.AvailableReplicas != 3 {
+		t.Errorf("available_replicas: got %d, want 3 (fallback to live dep.Status.AvailableReplicas)", s.AvailableReplicas)
 	}
 }
 
