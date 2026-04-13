@@ -87,7 +87,7 @@ Organization grants have no cascade tables — they never cascade to projects or
 
 ## Metadata Annotations
 
-Metadata annotations are stored on organization and project Namespace resources:
+Metadata annotations are stored on organization, folder, and project Namespace resources:
 
 | Annotation | Resource | Description |
 |---|---|---|
@@ -105,8 +105,8 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 |---|---|---|
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
 | `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
-| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants applied to new projects in the org |
-| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants applied to new projects in the org |
+| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants applied to new folders and projects within the organization (propagated via ancestor walk). Settable on organization or folder namespaces. |
+| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants applied to new folders and projects within the organization (propagated via ancestor walk). Settable on organization or folder namespaces. |
 
 Each grant is a JSON object with:
 
@@ -149,7 +149,7 @@ Organization creation is controlled by CLI flags (`--disable-org-creation`, `--o
 
 ## Organization Default Sharing
 
-Organizations can define **default sharing grants** that are automatically applied to new projects created within the organization. These defaults are stored as annotations on the organization namespace (`console.holos.run/default-share-users` and `console.holos.run/default-share-roles`) and are copied to the project namespace at creation time. Changing the defaults does not retroactively update existing projects.
+Organizations can define **default sharing grants** that are automatically applied to new folders and projects created within the organization. These defaults are stored as annotations on the organization namespace (`console.holos.run/default-share-users` and `console.holos.run/default-share-roles`) and are merged into descendant namespaces at creation time via the ancestor-default-share cascade. When `CreateOrganization` is called with `populate_defaults: true`, the backend seeds the three standard role grants (Owner, Editor, Viewer) into `console.holos.run/default-share-roles` *before* the default folder or default project is created, so the seeded descendants inherit them. Changing the defaults does not retroactively update existing folders or projects.
 
 ## Example: Organization with Project and Secrets
 

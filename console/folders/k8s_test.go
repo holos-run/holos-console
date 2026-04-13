@@ -33,19 +33,6 @@ func folderNS(name, org, parentNs string) *corev1.Namespace {
 	}
 }
 
-func orgNS(name string) *corev1.Namespace {
-	return &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-org-" + name,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
-				v1alpha2.LabelOrganization: name,
-			},
-		},
-	}
-}
-
 func TestGetFolder_ReturnsFolder(t *testing.T) {
 	ns := folderNS("eng", "acme", "holos-org-acme")
 	fakeClient := fake.NewClientset(ns)
