@@ -14,7 +14,6 @@ This ensures template authors always see new fields in the preview, that the CUE
 ## Related
 
 - [ADR 027: Authoritative Template Defaults Pre-Fill Behavior](../adrs/027-template-defaults-prefill.md) — Inline authority for the defaults extraction and pre-fill rule.
-- [ADR 018](../adrs/018-cue-template-default-values.md) — Superseded by ADR 027; retained for the schema decisions that originally introduced `TemplateDefaults` and `ProjectInput`.
 - [Template Service](template-service.md) — The service these fields belong to
 - [Deployment Service](deployment-service.md) — The rendering pipeline that consumes these fields
 - [Guardrail: Template Defaults Pre-Fill](guardrail-template-defaults.md) — Per-field defaults extraction must cover all form fields
