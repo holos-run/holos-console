@@ -592,18 +592,31 @@ func (h *Handler) DeleteDeployment(
 
 	// Clean up all K8s resources owned by this deployment before removing the record.
 	// Discover all namespaces with owned resources so cross-namespace resources
-	// are cleaned up (not just the project namespace).
+	// are cleaned up (not just the project namespace). On partial discovery
+	// (e.g. optional CRDs not installed), include the project namespace as a
+	// fallback and proceed — best-effort cleanup is preferable to blocking
+	// deletion entirely.
 	if h.applier != nil {
+		ns := h.k8s.Resolver.ProjectNamespace(project)
 		namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
 		if discoverErr != nil {
-			slog.WarnContext(ctx, "namespace discovery failed during delete — aborting to prevent orphaned resources",
+			slog.WarnContext(ctx, "namespace discovery incomplete during delete, proceeding with partial set + project namespace",
 				slog.String("project", project),
 				slog.String("name", name),
 				slog.Any("error", discoverErr),
 			)
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("discovering deployment namespaces: %w", discoverErr))
 		}
-		if cleanupErr := h.applier.Cleanup(ctx, namespaces, project, name); cleanupErr != nil {
+		// Ensure the project namespace is always in the cleanup set.
+		nsSet := make(map[string]struct{}, len(namespaces)+1)
+		for _, n := range namespaces {
+			nsSet[n] = struct{}{}
+		}
+		nsSet[ns] = struct{}{}
+		allNS := make([]string, 0, len(nsSet))
+		for n := range nsSet {
+			allNS = append(allNS, n)
+		}
+		if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),
 				slog.String("name", name),
