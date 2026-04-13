@@ -165,7 +165,6 @@ export function DeploymentDetailPage({
     const tab = validateTab(next)
     setActiveTab(tab)
     // Persist tab in URL so selections are shareable/bookmarkable.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     void (navigate as unknown as (opts: { search: { tab: DeploymentTab }; replace: boolean }) => void)({ search: { tab }, replace: true })
   }
 

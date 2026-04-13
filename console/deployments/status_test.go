@@ -14,9 +14,7 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// ownerRef returns an owner reference pointing to the named deployment ConfigMap
-// for use in pod metadata (mirrors what a real Deployment controller would set,
-// but simplified to just the deployment name via label for these tests).
+// k8sDeployment constructs a fake appsv1.Deployment for testing.
 func k8sDeployment(ns, name string, desired, ready, available int32, conds []appsv1.DeploymentCondition) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
