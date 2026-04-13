@@ -82,12 +82,23 @@ type AncestorTemplateProvider interface {
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
+// Each resource carries its own metadata.namespace; Apply and Reconcile use
+// per-resource namespaces rather than a single namespace parameter.
+// All methods accept a project identifier to scope ownership labels and
+// prevent cross-project collisions in shared namespaces.
 type ResourceApplier interface {
-	Apply(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
+	Apply(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured) error
 	// Reconcile applies desired resources via SSA then deletes owned resources
-	// that are no longer in the desired set (orphan cleanup). Use for updates.
-	Reconcile(ctx context.Context, namespace, deploymentName string, resources []unstructured.Unstructured) error
-	Cleanup(ctx context.Context, namespace, deploymentName string) error
+	// that are no longer in the desired set (orphan cleanup). previousNamespaces
+	// lists namespaces that previously held resources for this deployment so
+	// orphans from namespace moves are cleaned up.
+	Reconcile(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error
+	// Cleanup deletes all owned resources across the given namespaces.
+	Cleanup(ctx context.Context, namespaces []string, project, deploymentName string) error
+	// DiscoverNamespaces scans the cluster for all namespaces that contain
+	// resources owned by the given project and deployment. Returns an error
+	// if discovery is incomplete (some resource kinds could not be listed).
+	DiscoverNamespaces(ctx context.Context, project, deploymentName string) ([]string, error)
 }
 
 // Handler implements the DeploymentService.
@@ -378,7 +389,7 @@ func (h *Handler) CreateDeployment(
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
-		if applyErr := h.applier.Apply(ctx, ns, name, resources); applyErr != nil {
+		if applyErr := h.applier.Apply(ctx, project, name, resources); applyErr != nil {
 			slog.WarnContext(ctx, "apply failed after creating deployment — rolling back",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -409,7 +420,27 @@ func (h *Handler) CreateDeployment(
 //
 // Rollback errors are logged at warn level but do not replace the original error.
 func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) {
-	if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+	// Discover all namespaces with owned resources. Include the project
+	// namespace as a fallback in case label discovery misses partially-applied
+	// resources. During rollback, proceed even if discovery is incomplete.
+	namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+	if discoverErr != nil {
+		slog.WarnContext(ctx, "rollback: namespace discovery incomplete, proceeding with partial set + project namespace",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", discoverErr),
+		)
+	}
+	nsSet := make(map[string]struct{}, len(namespaces)+1)
+	for _, n := range namespaces {
+		nsSet[n] = struct{}{}
+	}
+	nsSet[ns] = struct{}{}
+	allNS := make([]string, 0, len(nsSet))
+	for n := range nsSet {
+		allNS = append(allNS, n)
+	}
+	if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 		slog.WarnContext(ctx, "rollback: cleanup failed",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -504,8 +535,17 @@ func (h *Handler) UpdateDeployment(
 		}
 		// Use Reconcile instead of Apply so orphaned resources from template
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
-		// apply.
-		if reconcileErr := h.applier.Reconcile(ctx, ns, name, resources); reconcileErr != nil {
+		// apply. Pass previously-owned namespaces so orphans from namespace
+		// moves are cleaned up.
+		prevNS, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		if discoverErr != nil {
+			slog.WarnContext(ctx, "namespace discovery incomplete during update, proceeding with partial set",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", discoverErr),
+			)
+		}
+		if reconcileErr := h.applier.Reconcile(ctx, project, name, resources, prevNS...); reconcileErr != nil {
 			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -551,9 +591,32 @@ func (h *Handler) DeleteDeployment(
 	}
 
 	// Clean up all K8s resources owned by this deployment before removing the record.
+	// Discover all namespaces with owned resources so cross-namespace resources
+	// are cleaned up (not just the project namespace). On partial discovery
+	// (e.g. optional CRDs not installed), include the project namespace as a
+	// fallback and proceed — best-effort cleanup is preferable to blocking
+	// deletion entirely.
 	if h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		if cleanupErr := h.applier.Cleanup(ctx, ns, name); cleanupErr != nil {
+		namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		if discoverErr != nil {
+			slog.WarnContext(ctx, "namespace discovery incomplete during delete, proceeding with partial set + project namespace",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", discoverErr),
+			)
+		}
+		// Ensure the project namespace is always in the cleanup set.
+		nsSet := make(map[string]struct{}, len(namespaces)+1)
+		for _, n := range namespaces {
+			nsSet[n] = struct{}{}
+		}
+		nsSet[ns] = struct{}{}
+		allNS := make([]string, 0, len(nsSet))
+		for n := range nsSet {
+			allNS = append(allNS, n)
+		}
+		if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),
 				slog.String("name", name),

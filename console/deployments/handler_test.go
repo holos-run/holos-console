@@ -140,14 +140,18 @@ func (s *stubApplier) Apply(_ context.Context, _, _ string, _ []unstructured.Uns
 	return s.applyErr
 }
 
-func (s *stubApplier) Reconcile(_ context.Context, _, _ string, _ []unstructured.Unstructured) error {
+func (s *stubApplier) Reconcile(_ context.Context, _, _ string, _ []unstructured.Unstructured, _ ...string) error {
 	s.reconcileCalled = true
 	return s.reconcileErr
 }
 
-func (s *stubApplier) Cleanup(_ context.Context, _, _ string) error {
+func (s *stubApplier) Cleanup(_ context.Context, _ []string, _, _ string) error {
 	s.cleanupCalled = true
 	return s.cleanupErr
+}
+
+func (s *stubApplier) DiscoverNamespaces(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
 }
 
 func defaultHandler(fakeClient *fake.Clientset, pr *stubProjectResolver) *Handler {
