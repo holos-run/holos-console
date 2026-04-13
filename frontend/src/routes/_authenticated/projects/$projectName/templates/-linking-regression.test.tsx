@@ -215,6 +215,90 @@ describe('Linking UI regression — CreateTemplatePage', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Create page inline preview tests
+// ---------------------------------------------------------------------------
+
+describe('Create page inline preview — empty state and headings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(useListLinkableTemplates as Mock).mockReturnValue({ data: [], isPending: false })
+    setupCreateMocks(Role.OWNER)
+  })
+
+  it('shows "Platform Resources" heading with empty-state message when platformResourcesJson is empty but projectResourcesJson is non-empty', async () => {
+    const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: {
+        platformResourcesJson: '',
+        projectResourcesJson: '{"kind":"Deployment"}',
+        renderedJson: '',
+      },
+      error: null,
+      isLoading: false,
+      isError: false,
+    })
+    render(<CreateTemplatePage />)
+
+    // Open preview
+    await user.click(screen.getByRole('button', { name: /preview/i }))
+
+    // Both headings should be present
+    expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+    expect(screen.getByText('Project Resources')).toBeInTheDocument()
+    // Empty-state message for platform
+    expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+    // Project resources should be displayed
+    expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('Deployment')
+  })
+
+  it('always shows "Project Resources" heading when per-collection fields are present (not "Rendered JSON")', async () => {
+    const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: {
+        platformResourcesJson: '{"kind":"ReferenceGrant"}',
+        projectResourcesJson: '{"kind":"Deployment"}',
+        renderedJson: '',
+      },
+      error: null,
+      isLoading: false,
+      isError: false,
+    })
+    render(<CreateTemplatePage />)
+
+    await user.click(screen.getByRole('button', { name: /preview/i }))
+
+    expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+    expect(screen.getByText('Project Resources')).toBeInTheDocument()
+    expect(screen.queryByText('Rendered JSON')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Platform Resources JSON')).toHaveTextContent('ReferenceGrant')
+    expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('Deployment')
+  })
+
+  it('shows "Project Resources" heading (not "Rendered JSON") when only project resources exist', async () => {
+    const user = userEvent.setup()
+    ;(useRenderTemplate as Mock).mockReturnValue({
+      data: {
+        platformResourcesJson: '',
+        projectResourcesJson: '{"kind":"ConfigMap"}',
+        renderedJson: '',
+      },
+      error: null,
+      isLoading: false,
+      isError: false,
+    })
+    render(<CreateTemplatePage />)
+
+    await user.click(screen.getByRole('button', { name: /preview/i }))
+
+    expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+    expect(screen.getByText('Project Resources')).toBeInTheDocument()
+    expect(screen.queryByText('Rendered JSON')).not.toBeInTheDocument()
+    expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('ConfigMap')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Detail / edit page regression tests
 // ---------------------------------------------------------------------------
 

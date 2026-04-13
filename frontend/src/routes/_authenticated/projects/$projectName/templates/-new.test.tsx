@@ -475,7 +475,7 @@ describe('CreateTemplatePage', () => {
       expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('Deployment')
     })
 
-    it('shows only project section when platform resources JSON is empty', () => {
+    it('shows empty-state message for platform and Project Resources heading when platform JSON is empty', () => {
       setupMocks(
         vi.fn().mockResolvedValue({}),
         {
@@ -487,9 +487,10 @@ describe('CreateTemplatePage', () => {
       render(<CreateTemplatePage />)
       fireEvent.click(screen.getByRole('button', { name: /preview/i }))
 
-      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
-      expect(screen.getByText('Rendered JSON')).toBeInTheDocument()
-      expect(screen.getByLabelText('Rendered JSON')).toHaveTextContent('Deployment')
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      expect(screen.getByLabelText('Project Resources JSON')).toHaveTextContent('Deployment')
     })
 
     it('falls back to unified renderedJson when no per-collection fields', () => {
