@@ -1,6 +1,10 @@
 # Deployment Service
 
-`DeploymentService` in `console/deployments/` manages Kubernetes Deployments: CRUD, status polling, log streaming, CUE render and apply (structured `projectResources`/`platformResources` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, listing project-namespace Secrets/ConfigMaps for env var references, and `GetDeploymentRenderPreview` (returns the CUE template, platform input, project input, rendered YAML/JSON, and per-collection platform/project resources YAML/JSON for a live deployment).
+`DeploymentService` in `console/deployments/` manages Kubernetes Deployments: CRUD, status polling (including K8s events and per-pod container status), log streaming, CUE render and apply (structured `projectResources`/`platformResources` output), container command/args override, container env vars (literal values, SecretKeyRef, ConfigMapKeyRef), container port configuration, listing project-namespace Secrets/ConfigMaps for env var references, and `GetDeploymentRenderPreview` (returns the CUE template, platform input, project input, rendered YAML/JSON, and per-collection platform/project resources YAML/JSON for a live deployment).
+
+## Status Polling
+
+`GetDeploymentStatus` returns live replica counts, conditions, per-pod status, Kubernetes events, and container status. Events are fetched via field selectors for both the Deployment resource and each pod. Container statuses include init containers and regular containers, mapped to `waiting`, `running`, or `terminated` states with reason, message, and image details. The frontend displays events in a table with warning/normal icons and shows container status inline under each pod with color-coded state badges.
 
 ## CUE Rendering
 
