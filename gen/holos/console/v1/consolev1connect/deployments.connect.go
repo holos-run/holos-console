@@ -51,6 +51,9 @@ const (
 	// DeploymentServiceGetDeploymentStatusProcedure is the fully-qualified name of the
 	// DeploymentService's GetDeploymentStatus RPC.
 	DeploymentServiceGetDeploymentStatusProcedure = "/holos.console.v1.DeploymentService/GetDeploymentStatus"
+	// DeploymentServiceGetDeploymentStatusSummaryProcedure is the fully-qualified name of the
+	// DeploymentService's GetDeploymentStatusSummary RPC.
+	DeploymentServiceGetDeploymentStatusSummaryProcedure = "/holos.console.v1.DeploymentService/GetDeploymentStatusSummary"
 	// DeploymentServiceGetDeploymentLogsProcedure is the fully-qualified name of the
 	// DeploymentService's GetDeploymentLogs RPC.
 	DeploymentServiceGetDeploymentLogsProcedure = "/holos.console.v1.DeploymentService/GetDeploymentLogs"
@@ -74,6 +77,9 @@ type DeploymentServiceClient interface {
 	DeleteDeployment(context.Context, *connect.Request[v1.DeleteDeploymentRequest]) (*connect.Response[v1.DeleteDeploymentResponse], error)
 	// GetDeploymentStatus returns the live status of deployed K8s resources.
 	GetDeploymentStatus(context.Context, *connect.Request[v1.GetDeploymentStatusRequest]) (*connect.Response[v1.GetDeploymentStatusResponse], error)
+	// GetDeploymentStatusSummary returns a lightweight status summary suitable
+	// for list views. Cheaper than GetDeploymentStatus; no pods or events.
+	GetDeploymentStatusSummary(context.Context, *connect.Request[v1.GetDeploymentStatusSummaryRequest]) (*connect.Response[v1.GetDeploymentStatusSummaryResponse], error)
 	// GetDeploymentLogs returns recent container logs.
 	GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error)
 	// ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
@@ -133,6 +139,12 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		getDeploymentStatusSummary: connect.NewClient[v1.GetDeploymentStatusSummaryRequest, v1.GetDeploymentStatusSummaryResponse](
+			httpClient,
+			baseURL+DeploymentServiceGetDeploymentStatusSummaryProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentStatusSummary")),
+			connect.WithClientOptions(opts...),
+		),
 		getDeploymentLogs: connect.NewClient[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse](
 			httpClient,
 			baseURL+DeploymentServiceGetDeploymentLogsProcedure,
@@ -168,6 +180,7 @@ type deploymentServiceClient struct {
 	updateDeployment           *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
 	deleteDeployment           *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
 	getDeploymentStatus        *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
+	getDeploymentStatusSummary *connect.Client[v1.GetDeploymentStatusSummaryRequest, v1.GetDeploymentStatusSummaryResponse]
 	getDeploymentLogs          *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
 	listNamespaceSecrets       *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
 	listNamespaceConfigMaps    *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
@@ -204,6 +217,11 @@ func (c *deploymentServiceClient) GetDeploymentStatus(ctx context.Context, req *
 	return c.getDeploymentStatus.CallUnary(ctx, req)
 }
 
+// GetDeploymentStatusSummary calls holos.console.v1.DeploymentService.GetDeploymentStatusSummary.
+func (c *deploymentServiceClient) GetDeploymentStatusSummary(ctx context.Context, req *connect.Request[v1.GetDeploymentStatusSummaryRequest]) (*connect.Response[v1.GetDeploymentStatusSummaryResponse], error) {
+	return c.getDeploymentStatusSummary.CallUnary(ctx, req)
+}
+
 // GetDeploymentLogs calls holos.console.v1.DeploymentService.GetDeploymentLogs.
 func (c *deploymentServiceClient) GetDeploymentLogs(ctx context.Context, req *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error) {
 	return c.getDeploymentLogs.CallUnary(ctx, req)
@@ -233,6 +251,9 @@ type DeploymentServiceHandler interface {
 	DeleteDeployment(context.Context, *connect.Request[v1.DeleteDeploymentRequest]) (*connect.Response[v1.DeleteDeploymentResponse], error)
 	// GetDeploymentStatus returns the live status of deployed K8s resources.
 	GetDeploymentStatus(context.Context, *connect.Request[v1.GetDeploymentStatusRequest]) (*connect.Response[v1.GetDeploymentStatusResponse], error)
+	// GetDeploymentStatusSummary returns a lightweight status summary suitable
+	// for list views. Cheaper than GetDeploymentStatus; no pods or events.
+	GetDeploymentStatusSummary(context.Context, *connect.Request[v1.GetDeploymentStatusSummaryRequest]) (*connect.Response[v1.GetDeploymentStatusSummaryResponse], error)
 	// GetDeploymentLogs returns recent container logs.
 	GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error)
 	// ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
@@ -288,6 +309,12 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServiceGetDeploymentStatusSummaryHandler := connect.NewUnaryHandler(
+		DeploymentServiceGetDeploymentStatusSummaryProcedure,
+		svc.GetDeploymentStatusSummary,
+		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentStatusSummary")),
+		connect.WithHandlerOptions(opts...),
+	)
 	deploymentServiceGetDeploymentLogsHandler := connect.NewUnaryHandler(
 		DeploymentServiceGetDeploymentLogsProcedure,
 		svc.GetDeploymentLogs,
@@ -326,6 +353,8 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceDeleteDeploymentHandler.ServeHTTP(w, r)
 		case DeploymentServiceGetDeploymentStatusProcedure:
 			deploymentServiceGetDeploymentStatusHandler.ServeHTTP(w, r)
+		case DeploymentServiceGetDeploymentStatusSummaryProcedure:
+			deploymentServiceGetDeploymentStatusSummaryHandler.ServeHTTP(w, r)
 		case DeploymentServiceGetDeploymentLogsProcedure:
 			deploymentServiceGetDeploymentLogsHandler.ServeHTTP(w, r)
 		case DeploymentServiceListNamespaceSecretsProcedure:
@@ -365,6 +394,10 @@ func (UnimplementedDeploymentServiceHandler) DeleteDeployment(context.Context, *
 
 func (UnimplementedDeploymentServiceHandler) GetDeploymentStatus(context.Context, *connect.Request[v1.GetDeploymentStatusRequest]) (*connect.Response[v1.GetDeploymentStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentStatus is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) GetDeploymentStatusSummary(context.Context, *connect.Request[v1.GetDeploymentStatusSummaryRequest]) (*connect.Response[v1.GetDeploymentStatusSummaryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentStatusSummary is not implemented"))
 }
 
 func (UnimplementedDeploymentServiceHandler) GetDeploymentLogs(context.Context, *connect.Request[v1.GetDeploymentLogsRequest]) (*connect.Response[v1.GetDeploymentLogsResponse], error) {

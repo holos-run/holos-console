@@ -102,7 +102,13 @@ type Deployment struct {
 	// env sets container environment variables.
 	Env []*EnvVar `protobuf:"bytes,12,rep,name=env,proto3" json:"env,omitempty"`
 	// port is the container port the application listens on.
-	Port          int32 `protobuf:"varint,13,opt,name=port,proto3" json:"port,omitempty"`
+	Port int32 `protobuf:"varint,13,opt,name=port,proto3" json:"port,omitempty"`
+	// status_summary carries a lightweight status snapshot suitable for list
+	// views. Populated by ListDeployments via the cached status summary path;
+	// unset on create/update responses. The legacy `phase` (8) and `message`
+	// (9) fields are retained for backwards compatibility and may be marked
+	// reserved in a future phase.
+	StatusSummary *DeploymentStatusSummary `protobuf:"bytes,14,opt,name=status_summary,json=statusSummary,proto3" json:"status_summary,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -226,6 +232,13 @@ func (x *Deployment) GetPort() int32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *Deployment) GetStatusSummary() *DeploymentStatusSummary {
+	if x != nil {
+		return x.StatusSummary
+	}
+	return nil
 }
 
 // EnvVar represents a container environment variable.
@@ -1611,6 +1624,204 @@ func (x *GetDeploymentStatusResponse) GetStatus() *DeploymentStatus {
 	return nil
 }
 
+// DeploymentStatusSummary is a lightweight status snapshot derived from the
+// live Deployment resource. Intended for listing contexts where returning
+// full pod and event detail would be too expensive.
+type DeploymentStatusSummary struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// phase is the current deployment phase.
+	Phase DeploymentPhase `protobuf:"varint,1,opt,name=phase,proto3,enum=holos.console.v1.DeploymentPhase" json:"phase,omitempty"`
+	// ready_replicas is the number of pods in Ready state.
+	ReadyReplicas int32 `protobuf:"varint,2,opt,name=ready_replicas,json=readyReplicas,proto3" json:"ready_replicas,omitempty"`
+	// desired_replicas is the target replica count.
+	DesiredReplicas int32 `protobuf:"varint,3,opt,name=desired_replicas,json=desiredReplicas,proto3" json:"desired_replicas,omitempty"`
+	// available_replicas is the number of pods available.
+	AvailableReplicas int32 `protobuf:"varint,4,opt,name=available_replicas,json=availableReplicas,proto3" json:"available_replicas,omitempty"`
+	// updated_replicas is the number of pods updated to the latest spec.
+	UpdatedReplicas int32 `protobuf:"varint,5,opt,name=updated_replicas,json=updatedReplicas,proto3" json:"updated_replicas,omitempty"`
+	// observed_generation is the last generation observed by the controller.
+	ObservedGeneration int64 `protobuf:"varint,6,opt,name=observed_generation,json=observedGeneration,proto3" json:"observed_generation,omitempty"`
+	// message is a human-readable status message.
+	Message       string `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeploymentStatusSummary) Reset() {
+	*x = DeploymentStatusSummary{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentStatusSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentStatusSummary) ProtoMessage() {}
+
+func (x *DeploymentStatusSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentStatusSummary.ProtoReflect.Descriptor instead.
+func (*DeploymentStatusSummary) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *DeploymentStatusSummary) GetPhase() DeploymentPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED
+}
+
+func (x *DeploymentStatusSummary) GetReadyReplicas() int32 {
+	if x != nil {
+		return x.ReadyReplicas
+	}
+	return 0
+}
+
+func (x *DeploymentStatusSummary) GetDesiredReplicas() int32 {
+	if x != nil {
+		return x.DesiredReplicas
+	}
+	return 0
+}
+
+func (x *DeploymentStatusSummary) GetAvailableReplicas() int32 {
+	if x != nil {
+		return x.AvailableReplicas
+	}
+	return 0
+}
+
+func (x *DeploymentStatusSummary) GetUpdatedReplicas() int32 {
+	if x != nil {
+		return x.UpdatedReplicas
+	}
+	return 0
+}
+
+func (x *DeploymentStatusSummary) GetObservedGeneration() int64 {
+	if x != nil {
+		return x.ObservedGeneration
+	}
+	return 0
+}
+
+func (x *DeploymentStatusSummary) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type GetDeploymentStatusSummaryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Project       string                 `protobuf:"bytes,2,opt,name=project,proto3" json:"project,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentStatusSummaryRequest) Reset() {
+	*x = GetDeploymentStatusSummaryRequest{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentStatusSummaryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentStatusSummaryRequest) ProtoMessage() {}
+
+func (x *GetDeploymentStatusSummaryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentStatusSummaryRequest.ProtoReflect.Descriptor instead.
+func (*GetDeploymentStatusSummaryRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetDeploymentStatusSummaryRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GetDeploymentStatusSummaryRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+type GetDeploymentStatusSummaryResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Summary       *DeploymentStatusSummary `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentStatusSummaryResponse) Reset() {
+	*x = GetDeploymentStatusSummaryResponse{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentStatusSummaryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentStatusSummaryResponse) ProtoMessage() {}
+
+func (x *GetDeploymentStatusSummaryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentStatusSummaryResponse.ProtoReflect.Descriptor instead.
+func (*GetDeploymentStatusSummaryResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetDeploymentStatusSummaryResponse) GetSummary() *DeploymentStatusSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
 type GetDeploymentLogsRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1627,7 +1838,7 @@ type GetDeploymentLogsRequest struct {
 
 func (x *GetDeploymentLogsRequest) Reset() {
 	*x = GetDeploymentLogsRequest{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[21]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1850,7 @@ func (x *GetDeploymentLogsRequest) String() string {
 func (*GetDeploymentLogsRequest) ProtoMessage() {}
 
 func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[21]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1863,7 @@ func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{21}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetDeploymentLogsRequest) GetName() string {
@@ -1700,7 +1911,7 @@ type GetDeploymentLogsResponse struct {
 
 func (x *GetDeploymentLogsResponse) Reset() {
 	*x = GetDeploymentLogsResponse{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[22]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1712,7 +1923,7 @@ func (x *GetDeploymentLogsResponse) String() string {
 func (*GetDeploymentLogsResponse) ProtoMessage() {}
 
 func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[22]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1725,7 +1936,7 @@ func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{22}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetDeploymentLogsResponse) GetLogs() string {
@@ -1746,7 +1957,7 @@ type NamespaceResource struct {
 
 func (x *NamespaceResource) Reset() {
 	*x = NamespaceResource{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[23]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1758,7 +1969,7 @@ func (x *NamespaceResource) String() string {
 func (*NamespaceResource) ProtoMessage() {}
 
 func (x *NamespaceResource) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[23]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1771,7 +1982,7 @@ func (x *NamespaceResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespaceResource.ProtoReflect.Descriptor instead.
 func (*NamespaceResource) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{23}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *NamespaceResource) GetName() string {
@@ -1797,7 +2008,7 @@ type ListNamespaceSecretsRequest struct {
 
 func (x *ListNamespaceSecretsRequest) Reset() {
 	*x = ListNamespaceSecretsRequest{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[24]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1809,7 +2020,7 @@ func (x *ListNamespaceSecretsRequest) String() string {
 func (*ListNamespaceSecretsRequest) ProtoMessage() {}
 
 func (x *ListNamespaceSecretsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[24]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1822,7 +2033,7 @@ func (x *ListNamespaceSecretsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceSecretsRequest.ProtoReflect.Descriptor instead.
 func (*ListNamespaceSecretsRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{24}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListNamespaceSecretsRequest) GetProject() string {
@@ -1841,7 +2052,7 @@ type ListNamespaceSecretsResponse struct {
 
 func (x *ListNamespaceSecretsResponse) Reset() {
 	*x = ListNamespaceSecretsResponse{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[25]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1853,7 +2064,7 @@ func (x *ListNamespaceSecretsResponse) String() string {
 func (*ListNamespaceSecretsResponse) ProtoMessage() {}
 
 func (x *ListNamespaceSecretsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[25]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1866,7 +2077,7 @@ func (x *ListNamespaceSecretsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceSecretsResponse.ProtoReflect.Descriptor instead.
 func (*ListNamespaceSecretsResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{25}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListNamespaceSecretsResponse) GetSecrets() []*NamespaceResource {
@@ -1885,7 +2096,7 @@ type ListNamespaceConfigMapsRequest struct {
 
 func (x *ListNamespaceConfigMapsRequest) Reset() {
 	*x = ListNamespaceConfigMapsRequest{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[26]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1897,7 +2108,7 @@ func (x *ListNamespaceConfigMapsRequest) String() string {
 func (*ListNamespaceConfigMapsRequest) ProtoMessage() {}
 
 func (x *ListNamespaceConfigMapsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[26]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1910,7 +2121,7 @@ func (x *ListNamespaceConfigMapsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceConfigMapsRequest.ProtoReflect.Descriptor instead.
 func (*ListNamespaceConfigMapsRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{26}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ListNamespaceConfigMapsRequest) GetProject() string {
@@ -1929,7 +2140,7 @@ type ListNamespaceConfigMapsResponse struct {
 
 func (x *ListNamespaceConfigMapsResponse) Reset() {
 	*x = ListNamespaceConfigMapsResponse{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[27]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1941,7 +2152,7 @@ func (x *ListNamespaceConfigMapsResponse) String() string {
 func (*ListNamespaceConfigMapsResponse) ProtoMessage() {}
 
 func (x *ListNamespaceConfigMapsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[27]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1954,7 +2165,7 @@ func (x *ListNamespaceConfigMapsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceConfigMapsResponse.ProtoReflect.Descriptor instead.
 func (*ListNamespaceConfigMapsResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{27}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListNamespaceConfigMapsResponse) GetConfigMaps() []*NamespaceResource {
@@ -1976,7 +2187,7 @@ type GetDeploymentRenderPreviewRequest struct {
 
 func (x *GetDeploymentRenderPreviewRequest) Reset() {
 	*x = GetDeploymentRenderPreviewRequest{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[28]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1988,7 +2199,7 @@ func (x *GetDeploymentRenderPreviewRequest) String() string {
 func (*GetDeploymentRenderPreviewRequest) ProtoMessage() {}
 
 func (x *GetDeploymentRenderPreviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[28]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2001,7 +2212,7 @@ func (x *GetDeploymentRenderPreviewRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetDeploymentRenderPreviewRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentRenderPreviewRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{28}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetDeploymentRenderPreviewRequest) GetProject() string {
@@ -2086,7 +2297,7 @@ type GetDeploymentRenderPreviewResponse struct {
 
 func (x *GetDeploymentRenderPreviewResponse) Reset() {
 	*x = GetDeploymentRenderPreviewResponse{}
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[29]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2098,7 +2309,7 @@ func (x *GetDeploymentRenderPreviewResponse) String() string {
 func (*GetDeploymentRenderPreviewResponse) ProtoMessage() {}
 
 func (x *GetDeploymentRenderPreviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_deployments_proto_msgTypes[29]
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2111,7 +2322,7 @@ func (x *GetDeploymentRenderPreviewResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetDeploymentRenderPreviewResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentRenderPreviewResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{29}
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetDeploymentRenderPreviewResponse) GetCueTemplate() string {
@@ -2216,7 +2427,7 @@ var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
-	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x84\x03\n" +
+	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x03\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -2232,7 +2443,8 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	" \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\v \x03(\tR\x04args\x12*\n" +
 	"\x03env\x18\f \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
-	"\x04port\x18\r \x01(\x05R\x04port\"\xd8\x01\n" +
+	"\x04port\x18\r \x01(\x05R\x04port\x12P\n" +
+	"\x0estatus_summary\x18\x0e \x01(\v2).holos.console.v1.DeploymentStatusSummaryR\rstatusSummary\"\xd8\x01\n" +
 	"\x06EnvVar\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x05value\x18\x02 \x01(\tH\x00R\x05value\x12F\n" +
@@ -2340,7 +2552,20 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"Y\n" +
 	"\x1bGetDeploymentStatusResponse\x12:\n" +
-	"\x06status\x18\x01 \x01(\v2\".holos.console.v1.DeploymentStatusR\x06status\"\xa1\x01\n" +
+	"\x06status\x18\x01 \x01(\v2\".holos.console.v1.DeploymentStatusR\x06status\"\xc9\x02\n" +
+	"\x17DeploymentStatusSummary\x127\n" +
+	"\x05phase\x18\x01 \x01(\x0e2!.holos.console.v1.DeploymentPhaseR\x05phase\x12%\n" +
+	"\x0eready_replicas\x18\x02 \x01(\x05R\rreadyReplicas\x12)\n" +
+	"\x10desired_replicas\x18\x03 \x01(\x05R\x0fdesiredReplicas\x12-\n" +
+	"\x12available_replicas\x18\x04 \x01(\x05R\x11availableReplicas\x12)\n" +
+	"\x10updated_replicas\x18\x05 \x01(\x05R\x0fupdatedReplicas\x12/\n" +
+	"\x13observed_generation\x18\x06 \x01(\x03R\x12observedGeneration\x12\x18\n" +
+	"\amessage\x18\a \x01(\tR\amessage\"Q\n" +
+	"!GetDeploymentStatusSummaryRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"i\n" +
+	"\"GetDeploymentStatusSummaryResponse\x12C\n" +
+	"\asummary\x18\x01 \x01(\v2).holos.console.v1.DeploymentStatusSummaryR\asummary\"\xa1\x01\n" +
 	"\x18GetDeploymentLogsRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\x12\x1c\n" +
@@ -2391,14 +2616,16 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x18DEPLOYMENT_PHASE_PENDING\x10\x01\x12\x1c\n" +
 	"\x18DEPLOYMENT_PHASE_RUNNING\x10\x02\x12\x1b\n" +
 	"\x17DEPLOYMENT_PHASE_FAILED\x10\x03\x12\x1e\n" +
-	"\x1aDEPLOYMENT_PHASE_SUCCEEDED\x10\x042\x81\t\n" +
+	"\x1aDEPLOYMENT_PHASE_SUCCEEDED\x10\x042\x8b\n" +
+	"\n" +
 	"\x11DeploymentService\x12f\n" +
 	"\x0fListDeployments\x12(.holos.console.v1.ListDeploymentsRequest\x1a).holos.console.v1.ListDeploymentsResponse\x12`\n" +
 	"\rGetDeployment\x12&.holos.console.v1.GetDeploymentRequest\x1a'.holos.console.v1.GetDeploymentResponse\x12i\n" +
 	"\x10CreateDeployment\x12).holos.console.v1.CreateDeploymentRequest\x1a*.holos.console.v1.CreateDeploymentResponse\x12i\n" +
 	"\x10UpdateDeployment\x12).holos.console.v1.UpdateDeploymentRequest\x1a*.holos.console.v1.UpdateDeploymentResponse\x12i\n" +
 	"\x10DeleteDeployment\x12).holos.console.v1.DeleteDeploymentRequest\x1a*.holos.console.v1.DeleteDeploymentResponse\x12r\n" +
-	"\x13GetDeploymentStatus\x12,.holos.console.v1.GetDeploymentStatusRequest\x1a-.holos.console.v1.GetDeploymentStatusResponse\x12l\n" +
+	"\x13GetDeploymentStatus\x12,.holos.console.v1.GetDeploymentStatusRequest\x1a-.holos.console.v1.GetDeploymentStatusResponse\x12\x87\x01\n" +
+	"\x1aGetDeploymentStatusSummary\x123.holos.console.v1.GetDeploymentStatusSummaryRequest\x1a4.holos.console.v1.GetDeploymentStatusSummaryResponse\x12l\n" +
 	"\x11GetDeploymentLogs\x12*.holos.console.v1.GetDeploymentLogsRequest\x1a+.holos.console.v1.GetDeploymentLogsResponse\x12u\n" +
 	"\x14ListNamespaceSecrets\x12-.holos.console.v1.ListNamespaceSecretsRequest\x1a..holos.console.v1.ListNamespaceSecretsResponse\x12~\n" +
 	"\x17ListNamespaceConfigMaps\x120.holos.console.v1.ListNamespaceConfigMapsRequest\x1a1.holos.console.v1.ListNamespaceConfigMapsResponse\x12\x87\x01\n" +
@@ -2417,7 +2644,7 @@ func file_holos_console_v1_deployments_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_deployments_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_deployments_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_holos_console_v1_deployments_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_holos_console_v1_deployments_proto_goTypes = []any{
 	(DeploymentPhase)(0),                       // 0: holos.console.v1.DeploymentPhase
 	(*Deployment)(nil),                         // 1: holos.console.v1.Deployment
@@ -2441,62 +2668,70 @@ var file_holos_console_v1_deployments_proto_goTypes = []any{
 	(*Event)(nil),                              // 19: holos.console.v1.Event
 	(*ContainerStatus)(nil),                    // 20: holos.console.v1.ContainerStatus
 	(*GetDeploymentStatusResponse)(nil),        // 21: holos.console.v1.GetDeploymentStatusResponse
-	(*GetDeploymentLogsRequest)(nil),           // 22: holos.console.v1.GetDeploymentLogsRequest
-	(*GetDeploymentLogsResponse)(nil),          // 23: holos.console.v1.GetDeploymentLogsResponse
-	(*NamespaceResource)(nil),                  // 24: holos.console.v1.NamespaceResource
-	(*ListNamespaceSecretsRequest)(nil),        // 25: holos.console.v1.ListNamespaceSecretsRequest
-	(*ListNamespaceSecretsResponse)(nil),       // 26: holos.console.v1.ListNamespaceSecretsResponse
-	(*ListNamespaceConfigMapsRequest)(nil),     // 27: holos.console.v1.ListNamespaceConfigMapsRequest
-	(*ListNamespaceConfigMapsResponse)(nil),    // 28: holos.console.v1.ListNamespaceConfigMapsResponse
-	(*GetDeploymentRenderPreviewRequest)(nil),  // 29: holos.console.v1.GetDeploymentRenderPreviewRequest
-	(*GetDeploymentRenderPreviewResponse)(nil), // 30: holos.console.v1.GetDeploymentRenderPreviewResponse
-	(*timestamppb.Timestamp)(nil),              // 31: google.protobuf.Timestamp
+	(*DeploymentStatusSummary)(nil),            // 22: holos.console.v1.DeploymentStatusSummary
+	(*GetDeploymentStatusSummaryRequest)(nil),  // 23: holos.console.v1.GetDeploymentStatusSummaryRequest
+	(*GetDeploymentStatusSummaryResponse)(nil), // 24: holos.console.v1.GetDeploymentStatusSummaryResponse
+	(*GetDeploymentLogsRequest)(nil),           // 25: holos.console.v1.GetDeploymentLogsRequest
+	(*GetDeploymentLogsResponse)(nil),          // 26: holos.console.v1.GetDeploymentLogsResponse
+	(*NamespaceResource)(nil),                  // 27: holos.console.v1.NamespaceResource
+	(*ListNamespaceSecretsRequest)(nil),        // 28: holos.console.v1.ListNamespaceSecretsRequest
+	(*ListNamespaceSecretsResponse)(nil),       // 29: holos.console.v1.ListNamespaceSecretsResponse
+	(*ListNamespaceConfigMapsRequest)(nil),     // 30: holos.console.v1.ListNamespaceConfigMapsRequest
+	(*ListNamespaceConfigMapsResponse)(nil),    // 31: holos.console.v1.ListNamespaceConfigMapsResponse
+	(*GetDeploymentRenderPreviewRequest)(nil),  // 32: holos.console.v1.GetDeploymentRenderPreviewRequest
+	(*GetDeploymentRenderPreviewResponse)(nil), // 33: holos.console.v1.GetDeploymentRenderPreviewResponse
+	(*timestamppb.Timestamp)(nil),              // 34: google.protobuf.Timestamp
 }
 var file_holos_console_v1_deployments_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.Deployment.phase:type_name -> holos.console.v1.DeploymentPhase
 	2,  // 1: holos.console.v1.Deployment.env:type_name -> holos.console.v1.EnvVar
-	3,  // 2: holos.console.v1.EnvVar.secret_key_ref:type_name -> holos.console.v1.SecretKeyRef
-	4,  // 3: holos.console.v1.EnvVar.config_map_key_ref:type_name -> holos.console.v1.ConfigMapKeyRef
-	1,  // 4: holos.console.v1.ListDeploymentsResponse.deployments:type_name -> holos.console.v1.Deployment
-	1,  // 5: holos.console.v1.GetDeploymentResponse.deployment:type_name -> holos.console.v1.Deployment
-	2,  // 6: holos.console.v1.CreateDeploymentRequest.env:type_name -> holos.console.v1.EnvVar
-	2,  // 7: holos.console.v1.UpdateDeploymentRequest.env:type_name -> holos.console.v1.EnvVar
-	17, // 8: holos.console.v1.DeploymentStatus.conditions:type_name -> holos.console.v1.DeploymentCondition
-	18, // 9: holos.console.v1.DeploymentStatus.pods:type_name -> holos.console.v1.PodStatus
-	19, // 10: holos.console.v1.DeploymentStatus.events:type_name -> holos.console.v1.Event
-	20, // 11: holos.console.v1.PodStatus.container_statuses:type_name -> holos.console.v1.ContainerStatus
-	19, // 12: holos.console.v1.PodStatus.events:type_name -> holos.console.v1.Event
-	31, // 13: holos.console.v1.Event.first_seen:type_name -> google.protobuf.Timestamp
-	31, // 14: holos.console.v1.Event.last_seen:type_name -> google.protobuf.Timestamp
-	31, // 15: holos.console.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
-	16, // 16: holos.console.v1.GetDeploymentStatusResponse.status:type_name -> holos.console.v1.DeploymentStatus
-	24, // 17: holos.console.v1.ListNamespaceSecretsResponse.secrets:type_name -> holos.console.v1.NamespaceResource
-	24, // 18: holos.console.v1.ListNamespaceConfigMapsResponse.config_maps:type_name -> holos.console.v1.NamespaceResource
-	5,  // 19: holos.console.v1.DeploymentService.ListDeployments:input_type -> holos.console.v1.ListDeploymentsRequest
-	7,  // 20: holos.console.v1.DeploymentService.GetDeployment:input_type -> holos.console.v1.GetDeploymentRequest
-	9,  // 21: holos.console.v1.DeploymentService.CreateDeployment:input_type -> holos.console.v1.CreateDeploymentRequest
-	11, // 22: holos.console.v1.DeploymentService.UpdateDeployment:input_type -> holos.console.v1.UpdateDeploymentRequest
-	13, // 23: holos.console.v1.DeploymentService.DeleteDeployment:input_type -> holos.console.v1.DeleteDeploymentRequest
-	15, // 24: holos.console.v1.DeploymentService.GetDeploymentStatus:input_type -> holos.console.v1.GetDeploymentStatusRequest
-	22, // 25: holos.console.v1.DeploymentService.GetDeploymentLogs:input_type -> holos.console.v1.GetDeploymentLogsRequest
-	25, // 26: holos.console.v1.DeploymentService.ListNamespaceSecrets:input_type -> holos.console.v1.ListNamespaceSecretsRequest
-	27, // 27: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:input_type -> holos.console.v1.ListNamespaceConfigMapsRequest
-	29, // 28: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:input_type -> holos.console.v1.GetDeploymentRenderPreviewRequest
-	6,  // 29: holos.console.v1.DeploymentService.ListDeployments:output_type -> holos.console.v1.ListDeploymentsResponse
-	8,  // 30: holos.console.v1.DeploymentService.GetDeployment:output_type -> holos.console.v1.GetDeploymentResponse
-	10, // 31: holos.console.v1.DeploymentService.CreateDeployment:output_type -> holos.console.v1.CreateDeploymentResponse
-	12, // 32: holos.console.v1.DeploymentService.UpdateDeployment:output_type -> holos.console.v1.UpdateDeploymentResponse
-	14, // 33: holos.console.v1.DeploymentService.DeleteDeployment:output_type -> holos.console.v1.DeleteDeploymentResponse
-	21, // 34: holos.console.v1.DeploymentService.GetDeploymentStatus:output_type -> holos.console.v1.GetDeploymentStatusResponse
-	23, // 35: holos.console.v1.DeploymentService.GetDeploymentLogs:output_type -> holos.console.v1.GetDeploymentLogsResponse
-	26, // 36: holos.console.v1.DeploymentService.ListNamespaceSecrets:output_type -> holos.console.v1.ListNamespaceSecretsResponse
-	28, // 37: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:output_type -> holos.console.v1.ListNamespaceConfigMapsResponse
-	30, // 38: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:output_type -> holos.console.v1.GetDeploymentRenderPreviewResponse
-	29, // [29:39] is the sub-list for method output_type
-	19, // [19:29] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	22, // 2: holos.console.v1.Deployment.status_summary:type_name -> holos.console.v1.DeploymentStatusSummary
+	3,  // 3: holos.console.v1.EnvVar.secret_key_ref:type_name -> holos.console.v1.SecretKeyRef
+	4,  // 4: holos.console.v1.EnvVar.config_map_key_ref:type_name -> holos.console.v1.ConfigMapKeyRef
+	1,  // 5: holos.console.v1.ListDeploymentsResponse.deployments:type_name -> holos.console.v1.Deployment
+	1,  // 6: holos.console.v1.GetDeploymentResponse.deployment:type_name -> holos.console.v1.Deployment
+	2,  // 7: holos.console.v1.CreateDeploymentRequest.env:type_name -> holos.console.v1.EnvVar
+	2,  // 8: holos.console.v1.UpdateDeploymentRequest.env:type_name -> holos.console.v1.EnvVar
+	17, // 9: holos.console.v1.DeploymentStatus.conditions:type_name -> holos.console.v1.DeploymentCondition
+	18, // 10: holos.console.v1.DeploymentStatus.pods:type_name -> holos.console.v1.PodStatus
+	19, // 11: holos.console.v1.DeploymentStatus.events:type_name -> holos.console.v1.Event
+	20, // 12: holos.console.v1.PodStatus.container_statuses:type_name -> holos.console.v1.ContainerStatus
+	19, // 13: holos.console.v1.PodStatus.events:type_name -> holos.console.v1.Event
+	34, // 14: holos.console.v1.Event.first_seen:type_name -> google.protobuf.Timestamp
+	34, // 15: holos.console.v1.Event.last_seen:type_name -> google.protobuf.Timestamp
+	34, // 16: holos.console.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
+	16, // 17: holos.console.v1.GetDeploymentStatusResponse.status:type_name -> holos.console.v1.DeploymentStatus
+	0,  // 18: holos.console.v1.DeploymentStatusSummary.phase:type_name -> holos.console.v1.DeploymentPhase
+	22, // 19: holos.console.v1.GetDeploymentStatusSummaryResponse.summary:type_name -> holos.console.v1.DeploymentStatusSummary
+	27, // 20: holos.console.v1.ListNamespaceSecretsResponse.secrets:type_name -> holos.console.v1.NamespaceResource
+	27, // 21: holos.console.v1.ListNamespaceConfigMapsResponse.config_maps:type_name -> holos.console.v1.NamespaceResource
+	5,  // 22: holos.console.v1.DeploymentService.ListDeployments:input_type -> holos.console.v1.ListDeploymentsRequest
+	7,  // 23: holos.console.v1.DeploymentService.GetDeployment:input_type -> holos.console.v1.GetDeploymentRequest
+	9,  // 24: holos.console.v1.DeploymentService.CreateDeployment:input_type -> holos.console.v1.CreateDeploymentRequest
+	11, // 25: holos.console.v1.DeploymentService.UpdateDeployment:input_type -> holos.console.v1.UpdateDeploymentRequest
+	13, // 26: holos.console.v1.DeploymentService.DeleteDeployment:input_type -> holos.console.v1.DeleteDeploymentRequest
+	15, // 27: holos.console.v1.DeploymentService.GetDeploymentStatus:input_type -> holos.console.v1.GetDeploymentStatusRequest
+	23, // 28: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:input_type -> holos.console.v1.GetDeploymentStatusSummaryRequest
+	25, // 29: holos.console.v1.DeploymentService.GetDeploymentLogs:input_type -> holos.console.v1.GetDeploymentLogsRequest
+	28, // 30: holos.console.v1.DeploymentService.ListNamespaceSecrets:input_type -> holos.console.v1.ListNamespaceSecretsRequest
+	30, // 31: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:input_type -> holos.console.v1.ListNamespaceConfigMapsRequest
+	32, // 32: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:input_type -> holos.console.v1.GetDeploymentRenderPreviewRequest
+	6,  // 33: holos.console.v1.DeploymentService.ListDeployments:output_type -> holos.console.v1.ListDeploymentsResponse
+	8,  // 34: holos.console.v1.DeploymentService.GetDeployment:output_type -> holos.console.v1.GetDeploymentResponse
+	10, // 35: holos.console.v1.DeploymentService.CreateDeployment:output_type -> holos.console.v1.CreateDeploymentResponse
+	12, // 36: holos.console.v1.DeploymentService.UpdateDeployment:output_type -> holos.console.v1.UpdateDeploymentResponse
+	14, // 37: holos.console.v1.DeploymentService.DeleteDeployment:output_type -> holos.console.v1.DeleteDeploymentResponse
+	21, // 38: holos.console.v1.DeploymentService.GetDeploymentStatus:output_type -> holos.console.v1.GetDeploymentStatusResponse
+	24, // 39: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:output_type -> holos.console.v1.GetDeploymentStatusSummaryResponse
+	26, // 40: holos.console.v1.DeploymentService.GetDeploymentLogs:output_type -> holos.console.v1.GetDeploymentLogsResponse
+	29, // 41: holos.console.v1.DeploymentService.ListNamespaceSecrets:output_type -> holos.console.v1.ListNamespaceSecretsResponse
+	31, // 42: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:output_type -> holos.console.v1.ListNamespaceConfigMapsResponse
+	33, // 43: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:output_type -> holos.console.v1.GetDeploymentRenderPreviewResponse
+	33, // [33:44] is the sub-list for method output_type
+	22, // [22:33] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_deployments_proto_init() }
@@ -2512,14 +2747,14 @@ func file_holos_console_v1_deployments_proto_init() {
 	}
 	file_holos_console_v1_deployments_proto_msgTypes[8].OneofWrappers = []any{}
 	file_holos_console_v1_deployments_proto_msgTypes[10].OneofWrappers = []any{}
-	file_holos_console_v1_deployments_proto_msgTypes[29].OneofWrappers = []any{}
+	file_holos_console_v1_deployments_proto_msgTypes[32].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_deployments_proto_rawDesc), len(file_holos_console_v1_deployments_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   30,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -99,6 +99,17 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: int32 port = 13;
    */
   port: number;
+
+  /**
+   * status_summary carries a lightweight status snapshot suitable for list
+   * views. Populated by ListDeployments via the cached status summary path;
+   * unset on create/update responses. The legacy `phase` (8) and `message`
+   * (9) fields are retained for backwards compatibility and may be marked
+   * reserved in a future phase.
+   *
+   * @generated from field: holos.console.v1.DeploymentStatusSummary status_summary = 14;
+   */
+  statusSummary?: DeploymentStatusSummary;
 };
 
 /**
@@ -794,6 +805,107 @@ export declare type GetDeploymentStatusResponse = Message<"holos.console.v1.GetD
 export declare const GetDeploymentStatusResponseSchema: GenMessage<GetDeploymentStatusResponse>;
 
 /**
+ * DeploymentStatusSummary is a lightweight status snapshot derived from the
+ * live Deployment resource. Intended for listing contexts where returning
+ * full pod and event detail would be too expensive.
+ *
+ * @generated from message holos.console.v1.DeploymentStatusSummary
+ */
+export declare type DeploymentStatusSummary = Message<"holos.console.v1.DeploymentStatusSummary"> & {
+  /**
+   * phase is the current deployment phase.
+   *
+   * @generated from field: holos.console.v1.DeploymentPhase phase = 1;
+   */
+  phase: DeploymentPhase;
+
+  /**
+   * ready_replicas is the number of pods in Ready state.
+   *
+   * @generated from field: int32 ready_replicas = 2;
+   */
+  readyReplicas: number;
+
+  /**
+   * desired_replicas is the target replica count.
+   *
+   * @generated from field: int32 desired_replicas = 3;
+   */
+  desiredReplicas: number;
+
+  /**
+   * available_replicas is the number of pods available.
+   *
+   * @generated from field: int32 available_replicas = 4;
+   */
+  availableReplicas: number;
+
+  /**
+   * updated_replicas is the number of pods updated to the latest spec.
+   *
+   * @generated from field: int32 updated_replicas = 5;
+   */
+  updatedReplicas: number;
+
+  /**
+   * observed_generation is the last generation observed by the controller.
+   *
+   * @generated from field: int64 observed_generation = 6;
+   */
+  observedGeneration: bigint;
+
+  /**
+   * message is a human-readable status message.
+   *
+   * @generated from field: string message = 7;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentStatusSummary.
+ * Use `create(DeploymentStatusSummarySchema)` to create a new message.
+ */
+export declare const DeploymentStatusSummarySchema: GenMessage<DeploymentStatusSummary>;
+
+/**
+ * @generated from message holos.console.v1.GetDeploymentStatusSummaryRequest
+ */
+export declare type GetDeploymentStatusSummaryRequest = Message<"holos.console.v1.GetDeploymentStatusSummaryRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string project = 2;
+   */
+  project: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentStatusSummaryRequest.
+ * Use `create(GetDeploymentStatusSummaryRequestSchema)` to create a new message.
+ */
+export declare const GetDeploymentStatusSummaryRequestSchema: GenMessage<GetDeploymentStatusSummaryRequest>;
+
+/**
+ * @generated from message holos.console.v1.GetDeploymentStatusSummaryResponse
+ */
+export declare type GetDeploymentStatusSummaryResponse = Message<"holos.console.v1.GetDeploymentStatusSummaryResponse"> & {
+  /**
+   * @generated from field: holos.console.v1.DeploymentStatusSummary summary = 1;
+   */
+  summary?: DeploymentStatusSummary;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentStatusSummaryResponse.
+ * Use `create(GetDeploymentStatusSummaryResponseSchema)` to create a new message.
+ */
+export declare const GetDeploymentStatusSummaryResponseSchema: GenMessage<GetDeploymentStatusSummaryResponse>;
+
+/**
  * @generated from message holos.console.v1.GetDeploymentLogsRequest
  */
 export declare type GetDeploymentLogsRequest = Message<"holos.console.v1.GetDeploymentLogsRequest"> & {
@@ -1198,6 +1310,17 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof GetDeploymentStatusRequestSchema;
     output: typeof GetDeploymentStatusResponseSchema;
+  },
+  /**
+   * GetDeploymentStatusSummary returns a lightweight status summary suitable
+   * for list views. Cheaper than GetDeploymentStatus; no pods or events.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.GetDeploymentStatusSummary
+   */
+  getDeploymentStatusSummary: {
+    methodKind: "unary";
+    input: typeof GetDeploymentStatusSummaryRequestSchema;
+    output: typeof GetDeploymentStatusSummaryResponseSchema;
   },
   /**
    * GetDeploymentLogs returns recent container logs.

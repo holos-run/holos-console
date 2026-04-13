@@ -13,6 +13,9 @@ service DeploymentService {
   rpc DeleteDeployment(DeleteDeploymentRequest) returns (DeleteDeploymentResponse);
   // GetDeploymentStatus returns the live status of deployed K8s resources.
   rpc GetDeploymentStatus(GetDeploymentStatusRequest) returns (GetDeploymentStatusResponse);
+  // GetDeploymentStatusSummary returns a lightweight status summary suitable
+  // for list views. Cheaper than GetDeploymentStatus; no pods or events.
+  rpc GetDeploymentStatusSummary(GetDeploymentStatusSummaryRequest) returns (GetDeploymentStatusSummaryResponse);
   // GetDeploymentLogs returns recent container logs.
   rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
   // ListNamespaceSecrets lists Kubernetes Secrets available for env var references.
@@ -49,6 +52,12 @@ message Deployment {
   repeated EnvVar env = 12;
   // port is the container port the application listens on.
   int32 port = 13;
+  // status_summary carries a lightweight status snapshot suitable for list
+  // views. Populated by ListDeployments via the cached status summary path;
+  // unset on create/update responses. The legacy `phase` (8) and `message`
+  // (9) fields are retained for backwards compatibility and may be marked
+  // reserved in a future phase.
+  DeploymentStatusSummary status_summary = 14;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.
@@ -238,6 +247,35 @@ message ContainerStatus {
 
 message GetDeploymentStatusResponse {
   DeploymentStatus status = 1;
+}
+
+// DeploymentStatusSummary is a lightweight status snapshot derived from the
+// live Deployment resource. Intended for listing contexts where returning
+// full pod and event detail would be too expensive.
+message DeploymentStatusSummary {
+  // phase is the current deployment phase.
+  DeploymentPhase phase = 1;
+  // ready_replicas is the number of pods in Ready state.
+  int32 ready_replicas = 2;
+  // desired_replicas is the target replica count.
+  int32 desired_replicas = 3;
+  // available_replicas is the number of pods available.
+  int32 available_replicas = 4;
+  // updated_replicas is the number of pods updated to the latest spec.
+  int32 updated_replicas = 5;
+  // observed_generation is the last generation observed by the controller.
+  int64 observed_generation = 6;
+  // message is a human-readable status message.
+  string message = 7;
+}
+
+message GetDeploymentStatusSummaryRequest {
+  string name = 1;
+  string project = 2;
+}
+
+message GetDeploymentStatusSummaryResponse {
+  DeploymentStatusSummary summary = 1;
 }
 
 message GetDeploymentLogsRequest {
