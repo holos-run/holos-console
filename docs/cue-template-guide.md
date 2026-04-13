@@ -857,17 +857,21 @@ input: {
 
 ## Template Defaults
 
-Templates can declare default values for `#ProjectInput` fields using a `defaults` block. The
-backend reads this block to pre-fill the Create Deployment form, so users see sensible starting
-values without having to know which image or port the template expects.
+Templates declare default values for `#ProjectInput` fields using a top-level `defaults`
+block. The Create Deployment form pre-fills from these values via the dedicated
+`TemplateService.GetTemplateDefaults` RPC. See
+[ADR 027](adrs/027-template-defaults-prefill.md) for the authoritative pre-fill protocol
+(pristine tracking, the **Load defaults** button, and the example-template invariant).
 
 ### The `defaults` + `input` pattern
 
-Declare defaults as a concrete `#ProjectInput` value at the top level of your template:
+Declare defaults as a concrete `#ProjectInput` value at the top level, then wire each field
+into `input` using CUE's `*preferred | alternative` syntax:
 
 ```cue
 // defaults declares the template's default values as concrete CUE data.
-// The backend reads this block to pre-fill the Create Deployment form.
+// The backend extracts these values for the GetTemplateDefaults RPC, which the
+// Create Deployment form uses to pre-fill defaultable fields (ADR 027).
 defaults: #ProjectInput & {
     name:        "httpbin"
     image:       "ghcr.io/mccutchen/go-httpbin"
@@ -875,11 +879,7 @@ defaults: #ProjectInput & {
     description: "A simple HTTP Request & Response Service"
     port:        8080
 }
-```
 
-Then wire each default field into `input` using CUE's `*preferred | alternative` syntax:
-
-```cue
 // input wires defaults as overridable. User-supplied values from the form
 // override these defaults at render time via CUE unification.
 input: #ProjectInput & {
@@ -892,48 +892,16 @@ input: #ProjectInput & {
 }
 ```
 
-The `*value | _` syntax makes `value` the CUE default while `_` (top) allows any override. At
-render time, the backend calls `FillPath("input", projectInput)` to unify the form values with
-`input`. If a field is left at its zero value in the form, the CUE default wins. If the user
-fills in a value, that concrete value wins.
+The `*value | _` syntax makes `value` the CUE default while `_` (top) allows any override.
+At render time, the backend calls `FillPath("input", projectInput)` to unify the form values
+with `input`. If a field is left at its zero value in the form, the CUE default wins. If the
+user fills in a value, that concrete value wins.
 
-### How defaults are extracted
-
-When the backend loads a template (in `GetDeploymentTemplate` or `ListDeploymentTemplates`),
-it evaluates the CUE source and reads the `defaults` path. Each field is extracted
-independently (per-field extraction, [ADR 025](adrs/025-per-field-defaults-extraction.md))
-so that a non-concrete field does not prevent extraction of concrete siblings. The concrete
-field values are mapped to `TemplateDefaults` in the proto response:
-
-```
-defaults.name        → TemplateDefaults.name
-defaults.image       → TemplateDefaults.image
-defaults.tag         → TemplateDefaults.tag
-defaults.description → TemplateDefaults.description
-defaults.port        → TemplateDefaults.port
-defaults.command     → TemplateDefaults.command
-defaults.args        → TemplateDefaults.args
-```
-
-The frontend receives these fields and uses them to pre-fill the Create Deployment form.
-
-Templates that do not have a `defaults` block continue to work unchanged. If a template was
-authored before this pattern existed and stored defaults in a ConfigMap annotation (the legacy
-approach), those annotation values are still read as a fallback.
-
-### The `description` field
-
-`description` is an optional field on `#ProjectInput` that holds a short human-readable
-description of the deployment. It appears in the Create Deployment form as a pre-filled
-description that users can change.
-
-```cue
-defaults: #ProjectInput & {
-    // description is displayed in the Create Deployment form.
-    description: "A simple HTTP Request & Response Service"
-    // ... other fields
-}
-```
+**Important:** Inline `*value | _` markers on `input` are NOT extracted for pre-fill. The
+top-level `defaults` block is the single authoring surface — a template that expresses
+defaults only through inline markers will render correctly but produce no pre-fill values.
+This invariant is enforced in [ADR 027 §7](adrs/027-template-defaults-prefill.md) and the
+[Template Defaults Pre-Fill guardrail](agents/guardrail-template-defaults.md).
 
 ## Template Input
 

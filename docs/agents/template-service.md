@@ -15,7 +15,7 @@ Scope is encoded in the `console.holos.run/template-scope` label (`organization|
 
 ## Deployment Defaults
 
-Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source (ADR 018). The backend uses per-field extraction (ADR 025) to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The extracted defaults pre-fill the Create Deployment form.
+Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source. The backend uses per-field extraction to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The Create Deployment form pre-fill behavior is governed by [ADR 027](../adrs/027-template-defaults-prefill.md) — pre-fill is driven exclusively by the explicit `TemplateService.GetTemplateDefaults` RPC, not the embedded `Template.defaults` field on `ListTemplates`/`GetTemplate` responses (which remains for backwards compatibility only).
 
 The `RenderTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`), plus per-collection fields (`platform_resources_yaml`, `platform_resources_json`, `project_resources_yaml`, `project_resources_json`) that partition resources by origin (platform templates vs project templates).
 
@@ -26,7 +26,7 @@ The default template adds a `console.holos.run/deployer-email` annotation to all
 When `CreateOrganization` is called with `populate_defaults: true`, the backend seeds example resources into the new org in the following order (issue #920 / plan #919):
 
 1. The org namespace's `console.holos.run/default-share-roles` annotation is populated with the three standard role grants (Owner, Editor, Viewer — no `nbf`, no `exp`) *before* any folder or project is created. This ensures the seeded default folder and default project pick up the org-level default role grants via the ancestor-default-share merge.
-2. The default folder is created as a direct child of the org, inheriting the org's default role grants as both its active share grants and its own default-share cascade.
+2. The default folder is created as a direct child of the org. The org's seeded default-share grants are merged into the folder's *active* share grants (so users with the role grants immediately see the folder), but the folder is created with `nil` for its own default-share annotations. Descendants continue to resolve the org defaults dynamically via the ancestor walk, which prevents a stale folder snapshot from shadowing later changes to org default sharing.
 3. An org-level platform template (HTTPRoute ReferenceGrant, enabled) via `SeedOrgTemplate`.
 4. A default project in the org's default folder, inheriting the org default role grants.
 5. An example project-level deployment template (go-httpbin) via `SeedProjectTemplate`.

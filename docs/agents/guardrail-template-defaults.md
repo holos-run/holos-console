@@ -57,7 +57,5 @@ Apply this rule when:
 ## Related
 
 - [ADR 027: Authoritative Template Defaults Pre-Fill Behavior](../adrs/027-template-defaults-prefill.md) — this guardrail's authority.
-- [ADR 018: CUE Template Default Values](../adrs/018-cue-template-default-values.md) — superseded for pre-fill behavior; schema decisions still in effect.
-- [ADR 025: Per-Field CUE Defaults Extraction](../adrs/025-per-field-defaults-extraction.md) — superseded for pre-fill behavior; extraction correctness rule still honored.
 - [Template Service](template-service.md)
 - [Guardrail: Template Fields](guardrail-template-fields.md)
