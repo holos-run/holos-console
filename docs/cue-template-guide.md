@@ -631,9 +631,11 @@ platformResources: {
             }
         }
 
-        // ReferenceGrant in the gateway namespace — allows HTTPRoute to reference
-        // Services in the project namespace. This resource lives in a different
-        // namespace than the HTTPRoute above.
+        // ReferenceGrant in the gateway namespace — allows HTTPRoutes from the
+        // project namespace to reference the Gateway in the gateway namespace.
+        // This resource lives in a different namespace than the HTTPRoute above
+        // and is required because the HTTPRoute's parentRef targets a Gateway
+        // in a different namespace (cross-namespace reference).
         (platform.gatewayNamespace): {
             ReferenceGrant: ("allow-" + input.name): {
                 apiVersion: "gateway.networking.k8s.io/v1beta1"
@@ -653,8 +655,8 @@ platformResources: {
                         namespace: platform.namespace
                     }]
                     to: [{
-                        group: ""
-                        kind:  "Service"
+                        group: "gateway.networking.k8s.io"
+                        kind:  "Gateway"
                     }]
                 }
             }

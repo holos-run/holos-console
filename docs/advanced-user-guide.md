@@ -277,9 +277,10 @@ Navigate to **Organizations > my-org > Platform Templates** and click
 | **Mandatory** | unchecked |
 | **Enabled** | unchecked (we will enable after preview) |
 
-Paste the following CUE into the **Template** editor. This is the canonical
-go-httpbin org-level example — an identical version is embedded in the server
-at `console/templates/example_httpbin_platform.cue`.
+Paste the following CUE into the **Template** editor. This example extends
+the canonical go-httpbin org-level template to demonstrate multi-namespace
+platform resources (ADR 026). See `console/templates/example_httpbin_platform.cue`
+for the embedded base version.
 
 ```cue
 // Org-level template — evaluated at organization scope.
@@ -328,8 +329,10 @@ platformResources: {
             }
         }
 
-        // ReferenceGrant in the gateway namespace allows the HTTPRoute to
-        // reference Services in the project namespace.
+        // ReferenceGrant in the gateway namespace allows HTTPRoutes from the
+        // project namespace to reference the Gateway in the gateway namespace.
+        // This is required because the HTTPRoute's parentRef targets a Gateway
+        // in a different namespace (cross-namespace reference).
         (platform.gatewayNamespace): {
             ReferenceGrant: ("allow-" + input.name): {
                 apiVersion: "gateway.networking.k8s.io/v1beta1"
@@ -349,8 +352,8 @@ platformResources: {
                         namespace: platform.namespace
                     }]
                     to: [{
-                        group: ""
-                        kind:  "Service"
+                        group: "gateway.networking.k8s.io"
+                        kind:  "Gateway"
                     }]
                 }
             }
