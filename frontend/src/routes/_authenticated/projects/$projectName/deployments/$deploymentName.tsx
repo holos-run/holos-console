@@ -36,9 +36,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, CheckCircle2, Copy, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
+import type { EnvVar, Event, ContainerStatus } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
@@ -56,6 +56,53 @@ export const Route = createFileRoute('/_authenticated/projects/$projectName/depl
   }),
   component: DeploymentDetailRoute,
 })
+
+/**
+ * Converts a protobuf Timestamp to a human-readable relative age string.
+ * Matches kubectl describe output style: "45s", "3m", "28m", "2h", "3d".
+ */
+function relativeAge(timestamp: { seconds: bigint; nanos: number } | undefined): string {
+  if (!timestamp) return ''
+  const nowMs = Date.now()
+  const thenMs = Number(timestamp.seconds) * 1000
+  const diffS = Math.floor((nowMs - thenMs) / 1000)
+  if (diffS < 0) return '0s'
+  if (diffS < 60) return `${diffS}s`
+  if (diffS < 3600) return `${Math.floor(diffS / 60)}m`
+  if (diffS < 86400) return `${Math.floor(diffS / 3600)}h`
+  return `${Math.floor(diffS / 86400)}d`
+}
+
+/**
+ * Formats the age column for an event, including count if > 1.
+ * Example: "3m (x4 over 28m)" or just "28m" for count=1.
+ */
+function formatEventAge(event: Event): string {
+  const age = relativeAge(event.lastSeen)
+  if (event.count > 1) {
+    const totalSpan = relativeAge(event.firstSeen)
+    return `${age} (x${event.count} over ${totalSpan})`
+  }
+  return age
+}
+
+/** Error reasons for containers in waiting or terminated states. */
+const CONTAINER_ERROR_REASONS = new Set([
+  'ImagePullBackOff',
+  'ErrImagePull',
+  'CrashLoopBackOff',
+  'CreateContainerError',
+  'InvalidImageName',
+  'CreateContainerConfigError',
+  'RunContainerError',
+])
+
+/** Returns true if the container status represents an error condition. */
+function isContainerError(cs: ContainerStatus): boolean {
+  if (cs.state === 'waiting' && cs.reason) return true
+  if (cs.state === 'terminated' && cs.restartCount > 0) return true
+  return CONTAINER_ERROR_REASONS.has(cs.reason)
+}
 
 function DeploymentDetailRoute() {
   const { projectName, deploymentName } = Route.useParams()
@@ -280,13 +327,47 @@ export function DeploymentDetailPage({
                     {status.pods.length > 0 && (
                       <div>
                         <p className="text-sm text-muted-foreground mb-2">Pods</p>
-                        <div className="space-y-1">
+                        <div className="space-y-3">
                           {status.pods.map((pod) => (
-                            <div key={pod.name} className="flex items-center gap-3 text-sm font-mono">
-                              <span>{pod.name}</span>
-                              <Badge variant="outline" className="text-xs">{pod.phase}</Badge>
-                              {pod.ready && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs">Ready</Badge>}
-                              {pod.restartCount > 0 && <span className="text-muted-foreground text-xs">{pod.restartCount} restarts</span>}
+                            <div key={pod.name} className="space-y-1">
+                              <div className="flex items-center gap-3 text-sm font-mono">
+                                <span>{pod.name}</span>
+                                <Badge variant="outline" className="text-xs">{pod.phase}</Badge>
+                                {pod.ready && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs">Ready</Badge>}
+                                {pod.restartCount > 0 && <span className="text-muted-foreground text-xs">{pod.restartCount} restarts</span>}
+                              </div>
+                              {pod.containerStatuses && pod.containerStatuses.length > 0 && (
+                                <div className="ml-4 space-y-1">
+                                  <p className="text-xs text-muted-foreground">Containers:</p>
+                                  {pod.containerStatuses.map((cs) => (
+                                    <div key={cs.name} className="flex items-center gap-2 text-xs font-mono">
+                                      <span className="text-foreground">{cs.name}</span>
+                                      <Badge
+                                        data-testid="container-state-badge"
+                                        className={
+                                          cs.state === 'running'
+                                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs'
+                                            : cs.state === 'waiting'
+                                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-transparent text-xs'
+                                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-transparent text-xs'
+                                        }
+                                      >
+                                        {cs.state}
+                                      </Badge>
+                                      {cs.reason && (
+                                        <span className={isContainerError(cs) ? 'text-yellow-600 dark:text-yellow-500' : 'text-muted-foreground'}>
+                                          {cs.reason}
+                                        </span>
+                                      )}
+                                      {cs.message && (
+                                        <span className="text-muted-foreground truncate max-w-md" title={cs.message}>
+                                          — {cs.message}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -295,6 +376,52 @@ export function DeploymentDetailPage({
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No status available.</p>
+                )}
+              </div>
+
+              {/* Events section — between Pods and Environment Variables */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium">Events</h3>
+                <Separator />
+                {status && status.events && status.events.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Message</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {status.events.map((evt, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="w-8 pr-0">
+                            {evt.type === 'Warning' ? (
+                              <TriangleAlert data-testid="event-warning-icon" className="h-4 w-4 text-yellow-600 dark:text-yellow-500 shrink-0" />
+                            ) : (
+                              <Info data-testid="event-normal-icon" className="h-4 w-4 text-muted-foreground shrink-0" />
+                            )}
+                          </TableCell>
+                          <TableCell className={evt.type === 'Warning' ? 'text-yellow-600 dark:text-yellow-500 font-medium text-sm' : 'text-sm'}>
+                            {evt.reason}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {formatEventAge(evt)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {evt.source}
+                          </TableCell>
+                          <TableCell className="text-sm max-w-md truncate" title={evt.message}>
+                            {evt.message}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No events.</p>
                 )}
               </div>
 
