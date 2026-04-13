@@ -106,18 +106,26 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 type k8sFolderCreator struct {
 	client   *fake.Clientset
 	resolver *resolver.Resolver
-	createFn func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	createFn func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
 }
 
-func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	if f.createFn != nil {
-		return f.createFn(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles)
+		return f.createFn(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	}
 	usersJSON, _ := json.Marshal(shareUsers)
 	rolesJSON, _ := json.Marshal(shareRoles)
 	annotations := map[string]string{
 		v1alpha2.AnnotationShareUsers: string(usersJSON),
 		v1alpha2.AnnotationShareRoles: string(rolesJSON),
+	}
+	if len(defaultShareUsers) > 0 {
+		defaultUsersJSON, _ := json.Marshal(defaultShareUsers)
+		annotations[v1alpha2.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
+	}
+	if len(defaultShareRoles) > 0 {
+		defaultRolesJSON, _ := json.Marshal(defaultShareRoles)
+		annotations[v1alpha2.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
 	}
 	if displayName != "" {
 		annotations[v1alpha2.AnnotationDisplayName] = displayName
@@ -1018,7 +1026,7 @@ func TestCreateOrganization_RollbackOnFolderFailure(t *testing.T) {
 	failFC := &k8sFolderCreator{
 		client:   fakeClient,
 		resolver: r,
-		createFn: func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+		createFn: func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 			return nil, fmt.Errorf("simulated folder creation failure")
 		},
 	}
@@ -1373,6 +1381,57 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		}
 		if len(projectDefaultRoles) != 3 {
 			t.Errorf("expected 3 default role grants copied from org, got %d", len(projectDefaultRoles))
+		}
+
+		// Verify the seeded default folder inherited the org's default role
+		// grants on both share-roles and default-share-roles, analogous to
+		// the project assertions above. This guards against regressions of
+		// the bootstrap path skipping the ancestor-default-share merge.
+		fc := handler.folderCreator.(*k8sFolderCreator)
+		orgNsForFolder, err := handler.k8s.GetOrganization(context.Background(), "seed-org")
+		if err != nil {
+			t.Fatalf("failed to get org namespace: %v", err)
+		}
+		folderName := orgNsForFolder.Annotations[v1alpha2.AnnotationDefaultFolder]
+		if folderName == "" {
+			t.Fatalf("expected default folder annotation on org namespace")
+		}
+		folderNsName := fc.resolver.FolderNamespace(folderName)
+		folderNs, err := fc.client.CoreV1().Namespaces().Get(context.Background(), folderNsName, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("expected default folder namespace %q to exist, got %v", folderNsName, err)
+		}
+
+		folderRolesAnnotation := folderNs.Annotations[v1alpha2.AnnotationShareRoles]
+		if folderRolesAnnotation == "" {
+			t.Fatalf("expected share-roles annotation on folder namespace")
+		}
+		var folderRoles []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(folderRolesAnnotation), &folderRoles); err != nil {
+			t.Fatalf("invalid share-roles annotation on folder: %v", err)
+		}
+		wantFolderRoles := map[string]bool{"owner": false, "editor": false, "viewer": false}
+		for _, g := range folderRoles {
+			if _, ok := wantFolderRoles[g.Role]; ok && g.Principal == g.Role {
+				wantFolderRoles[g.Role] = true
+			}
+		}
+		for role, seen := range wantFolderRoles {
+			if !seen {
+				t.Errorf("expected seeded default folder to inherit org default role grant %q on share-roles", role)
+			}
+		}
+
+		folderDefaultRolesAnnotation := folderNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]
+		if folderDefaultRolesAnnotation == "" {
+			t.Fatalf("expected default-share-roles annotation on folder namespace")
+		}
+		var folderDefaultRoles []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(folderDefaultRolesAnnotation), &folderDefaultRoles); err != nil {
+			t.Fatalf("invalid default-share-roles annotation on folder: %v", err)
+		}
+		if len(folderDefaultRoles) != 3 {
+			t.Errorf("expected 3 default role grants copied from org onto folder, got %d", len(folderDefaultRoles))
 		}
 	})
 
@@ -1735,14 +1794,14 @@ type orderingFolderCreator struct {
 	seenDefaultRolesAnnotation bool
 }
 
-func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	ns, err := o.k8s.GetOrganization(ctx, org)
 	if err == nil && ns.Annotations != nil {
 		if _, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
 			o.seenDefaultRolesAnnotation = true
 		}
 	}
-	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles)
+	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 }
 
 func (o *orderingFolderCreator) DeleteFolder(ctx context.Context, name string) error {

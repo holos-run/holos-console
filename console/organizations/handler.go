@@ -30,8 +30,13 @@ type ProjectLister interface {
 // FolderCreator creates and deletes a folder namespace. Used by CreateOrganization to
 // auto-create the default folder without importing the folders package directly.
 // DeleteFolder is needed for rollback when later steps of org creation fail.
+//
+// CreateFolder accepts both active (shareUsers/shareRoles) and default
+// (defaultShareUsers/defaultShareRoles) grants so that the seeded default folder
+// inherits the org's default role grants via the same merge logic
+// folders.Handler.CreateFolder applies to user-initiated folder creates.
 type FolderCreator interface {
-	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
 	DeleteFolder(ctx context.Context, name string) error
 	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
@@ -340,6 +345,13 @@ func (h *Handler) CreateOrganization(
 // createDefaultFolder generates an identifier from the display name and creates
 // the folder namespace as a direct child of the organization. Returns the folder
 // identifier (slug).
+//
+// When the org carries default-share grants (seeded via seedOrgDefaultSharing
+// when populate_defaults=true), those grants are merged into the folder's
+// active grants and copied as the folder's own default-share grants, mirroring
+// the ancestor-default-share merge that folders.Handler.CreateFolder applies
+// for user-initiated folder creation. This ensures the seeded default folder
+// inherits the org's default Owner/Editor/Viewer role grants.
 func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
 	exists := func(ctx context.Context, nsName string) (bool, error) {
 		return h.folderCreator.NamespaceExists(ctx, nsName)
@@ -349,8 +361,22 @@ func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName,
 		return "", fmt.Errorf("generating folder identifier: %w", err)
 	}
 
+	// Read the org namespace so we can propagate any default-share grants
+	// (seeded earlier via seedOrgDefaultSharing when populate_defaults=true)
+	// into the default folder. When populate_defaults is false the org has
+	// no default-share annotations and these slices will be empty, which
+	// preserves the existing behaviour.
+	orgNs, err := h.k8s.GetOrganization(ctx, orgName)
+	if err != nil {
+		return "", fmt.Errorf("looking up org for default folder: %w", err)
+	}
+	orgDefaultUsers, _ := GetDefaultShareUsers(orgNs)
+	orgDefaultRoles, _ := GetDefaultShareRoles(orgNs)
+	folderShareUsers := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareUsers...), orgDefaultUsers...))
+	folderShareRoles := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareRoles...), orgDefaultRoles...))
+
 	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
-	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, shareUsers, shareRoles); err != nil {
+	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, folderShareUsers, folderShareRoles, orgDefaultUsers, orgDefaultRoles); err != nil {
 		return "", fmt.Errorf("creating folder namespace: %w", err)
 	}
 	return folderName, nil

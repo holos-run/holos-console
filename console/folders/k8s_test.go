@@ -132,7 +132,7 @@ func TestCreateFolder_CreatesNamespaceWithLabels(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
-	result, err := k8s.CreateFolder(context.Background(), "eng", "Engineering", "Eng team", "acme", "holos-org-acme", "alice@example.com", shareUsers, nil)
+	result, err := k8s.CreateFolder(context.Background(), "eng", "Engineering", "Eng team", "acme", "holos-org-acme", "alice@example.com", shareUsers, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
