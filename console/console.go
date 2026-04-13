@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/deployments/statuscache"
 	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
@@ -344,9 +345,26 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
 		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker)
+		// Deployment status informer cache: one shared watch scoped to
+		// console-managed apps/v1.Deployment resources via the managed-by
+		// label. The informer lifecycle is tied to the server context so it
+		// stops cleanly on shutdown. Cache misses are treated as "no data
+		// yet" by the handler, so a failure to start the cache (transient
+		// API latency, missing watch RBAC, etc.) must not block startup:
+		// log and fall through to a no-op cache so the console continues to
+		// serve, just without status summaries until the operator fixes the
+		// underlying problem and restarts.
+		deploymentStatusCache, err := statuscache.New(ctx, k8sClientset)
+		if err != nil {
+			slog.WarnContext(ctx, "deployment status cache unavailable, deployments will report UNSPECIFIED status",
+				slog.Any("error", err),
+			)
+			deploymentStatusCache = statuscache.NewNop()
+		}
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
-			WithAncestorTemplateProvider(ancestorTemplateResolver)
+			WithAncestorTemplateProvider(ancestorTemplateResolver).
+			WithStatusCache(deploymentStatusCache)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {
