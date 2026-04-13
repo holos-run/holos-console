@@ -277,9 +277,10 @@ Navigate to **Organizations > my-org > Platform Templates** and click
 | **Mandatory** | unchecked |
 | **Enabled** | unchecked (we will enable after preview) |
 
-Paste the following CUE into the **Template** editor. This is the canonical
-go-httpbin org-level example — an identical version is embedded in the server
-at `console/templates/example_httpbin_platform.cue`.
+Paste the following CUE into the **Template** editor. This example extends
+the canonical go-httpbin org-level template to demonstrate multi-namespace
+platform resources (ADR 026). See `console/templates/example_httpbin_platform.cue`
+for the embedded base version.
 
 ```cue
 // Org-level template — evaluated at organization scope.
@@ -291,33 +292,70 @@ input: #ProjectInput & {
 platform: #PlatformInput
 
 // ── Platform resources (managed by the platform team) ───────────────────
+//
+// Platform templates may produce resources in multiple namespaces (ADR 026).
+// This template creates an HTTPRoute in the project namespace and a
+// ReferenceGrant in the gateway namespace to allow cross-namespace routing.
 
 platformResources: {
-    namespacedResources: (platform.namespace): {
-        HTTPRoute: (input.name): {
-            apiVersion: "gateway.networking.k8s.io/v1"
-            kind:       "HTTPRoute"
-            metadata: {
-                name:      input.name
-                namespace: platform.namespace
-                labels: {
-                    "app.kubernetes.io/managed-by": "console.holos.run"
-                    "app.kubernetes.io/name":       input.name
+    namespacedResources: {
+        // HTTPRoute in the project namespace routes gateway traffic to the Service.
+        (platform.namespace): {
+            HTTPRoute: (input.name): {
+                apiVersion: "gateway.networking.k8s.io/v1"
+                kind:       "HTTPRoute"
+                metadata: {
+                    name:      input.name
+                    namespace: platform.namespace
+                    labels: {
+                        "app.kubernetes.io/managed-by": "console.holos.run"
+                        "app.kubernetes.io/name":       input.name
+                    }
+                }
+                spec: {
+                    parentRefs: [{
+                        group:     "gateway.networking.k8s.io"
+                        kind:      "Gateway"
+                        namespace: platform.gatewayNamespace
+                        name:      "default"
+                    }]
+                    rules: [{
+                        backendRefs: [{
+                            name: input.name
+                            port: 80
+                        }]
+                    }]
                 }
             }
-            spec: {
-                parentRefs: [{
-                    group:     "gateway.networking.k8s.io"
-                    kind:      "Gateway"
+        }
+
+        // ReferenceGrant in the gateway namespace allows HTTPRoutes from the
+        // project namespace to reference the Gateway in the gateway namespace.
+        // This is required because the HTTPRoute's parentRef targets a Gateway
+        // in a different namespace (cross-namespace reference).
+        (platform.gatewayNamespace): {
+            ReferenceGrant: ("allow-" + input.name): {
+                apiVersion: "gateway.networking.k8s.io/v1beta1"
+                kind:       "ReferenceGrant"
+                metadata: {
+                    name:      "allow-" + input.name
                     namespace: platform.gatewayNamespace
-                    name:      "default"
-                }]
-                rules: [{
-                    backendRefs: [{
-                        name: input.name
-                        port: 80
+                    labels: {
+                        "app.kubernetes.io/managed-by": "console.holos.run"
+                        "app.kubernetes.io/name":       input.name
+                    }
+                }
+                spec: {
+                    from: [{
+                        group:     "gateway.networking.k8s.io"
+                        kind:      "HTTPRoute"
+                        namespace: platform.namespace
                     }]
-                }]
+                    to: [{
+                        group: "gateway.networking.k8s.io"
+                        kind:  "Gateway"
+                    }]
+                }
             }
         }
     }
@@ -522,9 +560,11 @@ projectResources: {
 
 #### Notes on this template
 
-- **No `ReferenceGrant`** — the org-level constraint only allows
-  `Deployment`, `Service`, `ServiceAccount`. The platform team manages
-  cross-namespace gateway permissions via the org-level template instead.
+- **No `ReferenceGrant` in the project template** — the org-level platform
+  template provides the `ReferenceGrant` in the gateway namespace
+  (`istio-ingress`). Platform templates can produce resources in multiple
+  namespaces (ADR 026), so cross-namespace gateway permissions are managed
+  at the org level.
 - **Port flow**: `input.port` (8080) → `containerPort` → `targetPort: "http"`
   → `Service port: 80` → HTTPRoute `backendRef.port: 80`. The container port
   is named `"http"` so the Service can reference it by name rather than
@@ -570,8 +610,9 @@ Click **Create**. The console renders the project template unified with the
 org-level template and applies the result to Kubernetes. The applied resources
 are:
 
-- `ServiceAccount`, `Deployment`, `Service` — from the project template
-- `HTTPRoute` — from the org-level template
+- `ServiceAccount`, `Deployment`, `Service` — from the project template (in the project namespace)
+- `HTTPRoute` — from the org-level template (in the project namespace)
+- `ReferenceGrant` — from the org-level template (in the `istio-ingress` gateway namespace)
 
 #### Verify the Deployment
 

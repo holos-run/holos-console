@@ -295,7 +295,7 @@ port defined above — do not use `input.port` here.
 3. **Always declare `input: #ProjectInput` and `platform: #PlatformInput`** — these are the unification points where the console injects project and platform parameters respectively.
 4. **Always declare `projectResources.namespacedResources` and `projectResources.clusterResources` output fields** — the console requires the structured output format.
 5. **Always include the managed-by label** on every resource or validation will reject the render.
-6. **Set `metadata.namespace` to `platform.namespace`** on every namespaced resource — cross-namespace resources are rejected.
+6. **Set `metadata.namespace` on every namespaced resource** — the namespace is determined by the CUE struct key and must match `metadata.namespace`. Project templates conventionally use `platform.namespace`; platform templates may target other namespaces such as `istio-ingress` (see [Multi-Namespace Templates](#multi-namespace-templates)).
 7. **Match struct keys to metadata** — `projectResources.namespacedResources.<ns>.<Kind>.<name>` must exactly match the resource `metadata.namespace`, `kind`, and `metadata.name`.
 8. **Use helper definitions** (prefixed with `_`) for shared values like labels, env transformation, etc. These are not exported and don't affect the output.
 9. **Never place project or namespace in `input`** — these are platform-provided values available at `platform.project` and `platform.namespace`.
@@ -568,6 +568,145 @@ hardcoded safety net that catches Kinds that slip past Layer 1 (for example,
 when no org-level constraint is defined). Layer 3 is structural: `platformResources`
 is simply not read from project-level templates, so a project template cannot
 contribute platform resources regardless of what it defines.
+
+### Multi-Namespace Templates
+
+Templates may produce resources in any Kubernetes namespace, not just the
+project namespace. The namespace for each resource is determined by the CUE
+struct key under `namespacedResources` and must match the resource's
+`metadata.namespace`. There is no Go-level restriction on which namespaces
+may appear ([ADR 026](adrs/026-remove-namespace-restrictions.md)).
+
+This enables platform templates to produce resources across multiple namespaces
+in a single render pass. For example, an organization-level platform template
+can create an `HTTPRoute` in the project namespace and a `ReferenceGrant` in
+the `istio-ingress` gateway namespace, all applied alongside project resources
+in the same render.
+
+#### Example: Multi-Namespace Platform Template
+
+The following org-level platform template produces resources in two namespaces:
+the project namespace (for the `HTTPRoute`) and `istio-ingress` (for the
+`ReferenceGrant` that allows cross-namespace routing):
+
+```cue
+// Org-level platform template with multi-namespace resources.
+// Produces an HTTPRoute in the project namespace and a ReferenceGrant in the
+// gateway namespace to allow the gateway to reference project Services.
+
+input: #ProjectInput & {
+    port: >0 & <=65535 | *8080
+}
+platform: #PlatformInput
+
+platformResources: {
+    namespacedResources: {
+        // HTTPRoute in the project namespace — routes gateway traffic to the Service.
+        (platform.namespace): {
+            HTTPRoute: (input.name): {
+                apiVersion: "gateway.networking.k8s.io/v1"
+                kind:       "HTTPRoute"
+                metadata: {
+                    name:      input.name
+                    namespace: platform.namespace
+                    labels: {
+                        "app.kubernetes.io/managed-by": "console.holos.run"
+                        "app.kubernetes.io/name":       input.name
+                    }
+                }
+                spec: {
+                    parentRefs: [{
+                        group:     "gateway.networking.k8s.io"
+                        kind:      "Gateway"
+                        namespace: platform.gatewayNamespace
+                        name:      "default"
+                    }]
+                    rules: [{
+                        backendRefs: [{
+                            name: input.name
+                            port: 80
+                        }]
+                    }]
+                }
+            }
+        }
+
+        // ReferenceGrant in the gateway namespace — allows HTTPRoutes from the
+        // project namespace to reference the Gateway in the gateway namespace.
+        // This resource lives in a different namespace than the HTTPRoute above
+        // and is required because the HTTPRoute's parentRef targets a Gateway
+        // in a different namespace (cross-namespace reference).
+        (platform.gatewayNamespace): {
+            ReferenceGrant: ("allow-" + input.name): {
+                apiVersion: "gateway.networking.k8s.io/v1beta1"
+                kind:       "ReferenceGrant"
+                metadata: {
+                    name:      "allow-" + input.name
+                    namespace: platform.gatewayNamespace
+                    labels: {
+                        "app.kubernetes.io/managed-by": "console.holos.run"
+                        "app.kubernetes.io/name":       input.name
+                    }
+                }
+                spec: {
+                    from: [{
+                        group:     "gateway.networking.k8s.io"
+                        kind:      "HTTPRoute"
+                        namespace: platform.namespace
+                    }]
+                    to: [{
+                        group: "gateway.networking.k8s.io"
+                        kind:  "Gateway"
+                    }]
+                }
+            }
+        }
+    }
+    clusterResources: {}
+}
+```
+
+Key points:
+- **Two namespace keys** under `namespacedResources`: `platform.namespace` and
+  `platform.gatewayNamespace`. Each key becomes the namespace where those
+  resources are applied.
+- **`metadata.namespace` must match the struct key.** The
+  `walkNamespacedResources()` function enforces this consistency check.
+- **CUE-first namespace policy.** Platform engineers can restrict which
+  namespaces project templates may target by closing the `projectResources`
+  struct in an organization or folder template. See
+  [ADR 026](adrs/026-remove-namespace-restrictions.md) Decision 3.
+
+#### Restricting Namespaces via CUE Policy
+
+When platform engineers want to restrict which namespaces project templates
+may target, they close the `projectResources` struct at the org or folder level:
+
+```cue
+// Organization template: restrict project resources to only the project namespace.
+projectResources: namespacedResources: (platform.namespace): _
+```
+
+This prevents project templates from producing resources in any other namespace.
+A project template that targets a different namespace gets a CUE evaluation error:
+
+```
+projectResources.namespacedResources."other-namespace": field not allowed
+```
+
+To allow a known set of namespaces:
+
+```cue
+// Organization template: allow project namespace and istio-ingress.
+projectResources: namespacedResources: {
+    (platform.namespace): _
+    "istio-ingress": _
+}
+```
+
+This is standard CUE unification — the same mechanism used for Kind restrictions
+(ADR 016 Decision 9). See [ADR 026](adrs/026-remove-namespace-restrictions.md)
+for full details.
 
 ### Linking Platform Templates
 
@@ -1157,7 +1296,7 @@ Each resource must have:
 - `metadata.name` — non-empty
 
 Namespaced resources additionally require:
-- `metadata.namespace` — must exactly match the struct key and `platform.namespace`
+- `metadata.namespace` — must exactly match the struct key (resources may target any namespace; see [ADR 026](adrs/026-remove-namespace-restrictions.md))
 
 Cluster resources additionally require:
 - `metadata.namespace` — must be absent (cluster-scoped resources have no namespace)
@@ -1226,10 +1365,10 @@ Two render paths exist — one for the deployment service and one for the templa
 | `console/deployments/render.go` | `CueRenderer.RenderWithAncestorTemplates()` — organization/folder-level render path: unifies ancestor (org + folder) template sources with the deployment template before compilation, then calls `evaluateStructured(..., true)` which reads both `projectResources` and `platformResources`. |
 | `console/deployments/render.go` | `CueRenderer.RenderWithCueInput()` — template preview path: concatenates generated schema, CUE source, and a raw CUE input string before compilation so cross-references (e.g. `input.name` used in platform templates) resolve correctly. Extracts `platform.namespace` from the compiled value. Calls `evaluateStructured(..., true)` to read both collections. |
 | `console/deployments/render.go` | `PlatformInput`, `ProjectInput` structs in `api/v1alpha2` — split Go representation of template inputs. `PlatformInput` (project, namespace, gatewayNamespace, organization, folders, claims) is trusted backend context; `ProjectInput` (name, image, tag, etc.) is user-supplied. |
-| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, ns, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which add namespace-match and struct-key consistency checks. |
-| `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, performs server-side apply with field manager `console.holos.run`. |
-| `console/deployments/apply.go` | `Applier.Reconcile()` — calls `Apply()` then deletes owned resources whose (kind, name) is not in the desired set (orphan cleanup). Used by `UpdateDeployment`. Orphan cleanup is skipped if apply fails so the previously working state is preserved. |
-| `console/deployments/apply.go` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector. Used by `DeleteDeployment` (unconditional removal) and `CreateDeployment` rollback. |
+| `console/deployments/render.go` | `validateResource()` — enforces kind allowlist and managed-by label on a single resource. `evaluateStructured(unified, readPlatformResources)` reads `projectResources.*` always and `platformResources.*` only when `readPlatformResources` is true; dispatches to `walkNamespacedResources()` and `walkClusterResources()` which enforce struct-key/metadata consistency (ADR 026 removed the per-resource namespace restriction). |
+| `console/deployments/apply.go` | `Applier.Apply()` — injects ownership label, applies each resource to its own `metadata.namespace` via server-side apply with field manager `console.holos.run` (ADR 026 multi-namespace support). |
+| `console/deployments/apply.go` | `Applier.Reconcile()` — calls `Apply()` then deletes orphaned owned resources across all namespaces that appear in the desired set plus any previously-tracked namespaces. Used by `UpdateDeployment`. Orphan cleanup is skipped if apply fails so the previously working state is preserved. |
+| `console/deployments/apply.go` | `Applier.Cleanup()` — deletes all resources matching the ownership label selector across all provided namespaces. Used by `DeleteDeployment` (unconditional removal) and `CreateDeployment` rollback. |
 
 ### Template Service (unified, ADR 021)
 
