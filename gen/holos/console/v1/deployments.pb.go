@@ -92,8 +92,22 @@ type Deployment struct {
 	// description explains the deployment's purpose.
 	Description string `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
 	// phase is the current deployment phase.
+	//
+	// Deprecated: prefer status_summary.phase. The backend no longer populates
+	// this field after the status cache rollout (#912); it remains only so
+	// older clients deserialize without errors. The field number is retained
+	// to preserve wire compatibility; do not remove or renumber.
+	//
+	// Deprecated: Marked as deprecated in holos/console/v1/deployments.proto.
 	Phase DeploymentPhase `protobuf:"varint,8,opt,name=phase,proto3,enum=holos.console.v1.DeploymentPhase" json:"phase,omitempty"`
 	// message is a human-readable status message.
+	//
+	// Deprecated: prefer status_summary.message. The backend no longer
+	// populates this field after the status cache rollout (#912); it remains
+	// only so older clients deserialize without errors. The field number is
+	// retained to preserve wire compatibility; do not remove or renumber.
+	//
+	// Deprecated: Marked as deprecated in holos/console/v1/deployments.proto.
 	Message string `protobuf:"bytes,9,opt,name=message,proto3" json:"message,omitempty"`
 	// command overrides the container image ENTRYPOINT.
 	Command []string `protobuf:"bytes,10,rep,name=command,proto3" json:"command,omitempty"`
@@ -104,10 +118,10 @@ type Deployment struct {
 	// port is the container port the application listens on.
 	Port int32 `protobuf:"varint,13,opt,name=port,proto3" json:"port,omitempty"`
 	// status_summary carries a lightweight status snapshot suitable for list
-	// views. Populated by ListDeployments via the cached status summary path;
-	// unset on create/update responses. The legacy `phase` (8) and `message`
-	// (9) fields are retained for backwards compatibility and may be marked
-	// reserved in a future phase.
+	// views. Populated by ListDeployments and GetDeployment via the cached
+	// status summary path; unset on create/update responses. Supersedes the
+	// deprecated `phase` (8) and `message` (9) fields; both are left in place
+	// with [deprecated = true] to preserve wire compatibility.
 	StatusSummary *DeploymentStatusSummary `protobuf:"bytes,14,opt,name=status_summary,json=statusSummary,proto3" json:"status_summary,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -192,6 +206,7 @@ func (x *Deployment) GetDescription() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in holos/console/v1/deployments.proto.
 func (x *Deployment) GetPhase() DeploymentPhase {
 	if x != nil {
 		return x.Phase
@@ -199,6 +214,7 @@ func (x *Deployment) GetPhase() DeploymentPhase {
 	return DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED
 }
 
+// Deprecated: Marked as deprecated in holos/console/v1/deployments.proto.
 func (x *Deployment) GetMessage() string {
 	if x != nil {
 		return x.Message
@@ -2439,7 +2455,7 @@ var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
-	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x03\n" +
+	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xde\x03\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -2448,9 +2464,9 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x03tag\x18\x04 \x01(\tR\x03tag\x12\x1a\n" +
 	"\btemplate\x18\x05 \x01(\tR\btemplate\x12!\n" +
 	"\fdisplay_name\x18\x06 \x01(\tR\vdisplayName\x12 \n" +
-	"\vdescription\x18\a \x01(\tR\vdescription\x127\n" +
-	"\x05phase\x18\b \x01(\x0e2!.holos.console.v1.DeploymentPhaseR\x05phase\x12\x18\n" +
-	"\amessage\x18\t \x01(\tR\amessage\x12\x18\n" +
+	"\vdescription\x18\a \x01(\tR\vdescription\x12;\n" +
+	"\x05phase\x18\b \x01(\x0e2!.holos.console.v1.DeploymentPhaseB\x02\x18\x01R\x05phase\x12\x1c\n" +
+	"\amessage\x18\t \x01(\tB\x02\x18\x01R\amessage\x12\x18\n" +
 	"\acommand\x18\n" +
 	" \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\v \x03(\tR\x04args\x12*\n" +

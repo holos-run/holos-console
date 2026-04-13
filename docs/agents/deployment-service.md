@@ -4,7 +4,20 @@
 
 ## Status Polling
 
-`GetDeploymentStatus` returns live replica counts, conditions, per-pod status, Kubernetes events, and container status. Events are fetched via field selectors for both the Deployment resource and each pod. Container statuses include init containers and regular containers, mapped to `waiting`, `running`, or `terminated` states with reason, message, and image details. The frontend displays events in a table with warning/normal icons and shows container status inline under each pod with color-coded state badges.
+Two RPCs expose deployment status:
+
+- `GetDeploymentStatusSummary` returns a lightweight snapshot (phase, replica counts, message) suitable for list views. It reads exclusively from the in-process informer cache in `console/deployments/statuscache/` (see below) and never issues a direct K8s API call. A cache miss returns an empty summary with `DEPLOYMENT_PHASE_UNSPECIFIED` so the frontend renders a stable "Unknown" placeholder instead of branching on a nil summary.
+- `GetDeploymentStatus` returns live replica counts, conditions, per-pod status, Kubernetes events, and container status. Events are fetched via field selectors for both the Deployment resource and each pod. Container statuses include init containers and regular containers, mapped to `waiting`, `running`, or `terminated` states with reason, message, and image details. The phase summary on the detail response is also sourced from the informer cache so all status RPCs share one derivation path; scalar replica fields fall back to the live `apps/v1.Deployment.Status` values when the cache has not yet observed the Deployment. The frontend displays events in a table with warning/normal icons and shows container status inline under each pod with color-coded state badges.
+
+`ListDeployments` and `GetDeployment` also populate `Deployment.status_summary` (field 14) from the same cache so list rendering avoids a second round trip.
+
+### Status Cache
+
+`console/deployments/statuscache/` runs a `SharedInformerFactory` scoped to `apps/v1.Deployment` objects carrying the console-managed label selector. The watch is deliberately narrow: Deployments only, no Pods, no ReplicaSets, and no Events. Detail-page data that requires those (per-pod status, events) still flows through direct API calls in `GetDeploymentStatus`. `statuscache.New` blocks on the initial cache sync (bounded by a timeout) so RPC handlers can read immediately after server startup. When the K8s client is nil (dummy-secret-only mode), `NewNop` returns a cache that always reports misses.
+
+### Deprecated Fields
+
+`Deployment.phase` (field 8) and `Deployment.message` (field 9) are marked `[deprecated = true]` in the proto. The backend stopped populating them when the status cache landed (parent plan #912); new code must read `Deployment.status_summary.phase` and `status_summary.message` instead. The field numbers are retained so older clients continue to deserialize — do not remove or renumber them.
 
 ## CUE Rendering
 
