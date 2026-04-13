@@ -144,10 +144,7 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                     <TableCell className="font-mono text-sm">{deployment.image}</TableCell>
                     <TableCell className="font-mono text-sm">{deployment.tag}</TableCell>
                     <TableCell>
-                      <PhaseBadge
-                        summary={deployment.statusSummary}
-                        fallbackPhase={deployment.phase}
-                      />
+                      <PhaseBadge summary={deployment.statusSummary} />
                     </TableCell>
                     <TableCell className="text-right">
                       {canDelete && (

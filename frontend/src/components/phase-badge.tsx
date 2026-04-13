@@ -8,11 +8,6 @@ import { DeploymentPhase, type DeploymentStatusSummary } from '@/gen/holos/conso
 export interface PhaseBadgeProps {
   /** Lightweight status snapshot, typically from deployment.statusSummary. */
   summary?: DeploymentStatusSummary
-  /**
-   * Fallback phase used only when summary is entirely absent. When provided,
-   * renders a bare badge without replica count. Prefer passing summary.
-   */
-  fallbackPhase?: DeploymentPhase
 }
 
 function phaseBadge(phase: DeploymentPhase) {
@@ -37,12 +32,13 @@ function phaseBadge(phase: DeploymentPhase) {
  *
  * - If summary is provided, phase is taken from summary.phase and the replica
  *   count is shown inline when desired_replicas > 0.
- * - If summary is absent, fallbackPhase is rendered (defaults to the Unknown
- *   branch when both are absent).
+ * - If summary is absent, the Unknown badge is rendered. This happens while
+ *   the informer cache is still warming up or the Deployment has not yet
+ *   been observed.
  */
-export function PhaseBadge({ summary, fallbackPhase }: PhaseBadgeProps) {
+export function PhaseBadge({ summary }: PhaseBadgeProps) {
   if (!summary) {
-    return phaseBadge(fallbackPhase ?? DeploymentPhase.UNSPECIFIED)
+    return phaseBadge(DeploymentPhase.UNSPECIFIED)
   }
   const badge = phaseBadge(summary.phase)
   if (summary.desiredReplicas > 0) {

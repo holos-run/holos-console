@@ -72,14 +72,9 @@ describe('PhaseBadge', () => {
     expect(screen.queryByText('0/0')).not.toBeInTheDocument()
   })
 
-  it('renders Unknown when summary is missing and no fallback', () => {
+  it('renders Unknown when summary is missing', () => {
     render(<PhaseBadge />)
     expect(screen.getByText('Unknown')).toBeInTheDocument()
-  })
-
-  it('renders fallback phase when summary is missing', () => {
-    render(<PhaseBadge fallbackPhase={DeploymentPhase.PENDING} />)
-    expect(screen.getByText('Pending')).toBeInTheDocument()
     // no replica count when there is no summary
     expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument()
   })

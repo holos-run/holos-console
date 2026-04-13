@@ -61,14 +61,26 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
   /**
    * phase is the current deployment phase.
    *
-   * @generated from field: holos.console.v1.DeploymentPhase phase = 8;
+   * Deprecated: prefer status_summary.phase. The backend no longer populates
+   * this field after the status cache rollout (#912); it remains only so
+   * older clients deserialize without errors. The field number is retained
+   * to preserve wire compatibility; do not remove or renumber.
+   *
+   * @generated from field: holos.console.v1.DeploymentPhase phase = 8 [deprecated = true];
+   * @deprecated
    */
   phase: DeploymentPhase;
 
   /**
    * message is a human-readable status message.
    *
-   * @generated from field: string message = 9;
+   * Deprecated: prefer status_summary.message. The backend no longer
+   * populates this field after the status cache rollout (#912); it remains
+   * only so older clients deserialize without errors. The field number is
+   * retained to preserve wire compatibility; do not remove or renumber.
+   *
+   * @generated from field: string message = 9 [deprecated = true];
+   * @deprecated
    */
   message: string;
 
@@ -102,10 +114,10 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
 
   /**
    * status_summary carries a lightweight status snapshot suitable for list
-   * views. Populated by ListDeployments via the cached status summary path;
-   * unset on create/update responses. The legacy `phase` (8) and `message`
-   * (9) fields are retained for backwards compatibility and may be marked
-   * reserved in a future phase.
+   * views. Populated by ListDeployments and GetDeployment via the cached
+   * status summary path; unset on create/update responses. Supersedes the
+   * deprecated `phase` (8) and `message` (9) fields; both are left in place
+   * with [deprecated = true] to preserve wire compatibility.
    *
    * @generated from field: holos.console.v1.DeploymentStatusSummary status_summary = 14;
    */
