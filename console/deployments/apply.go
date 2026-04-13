@@ -248,5 +248,37 @@ func ResourceNamespaces(resources []unstructured.Unstructured) []string {
 	return result
 }
 
+// DiscoverNamespaces scans all allowed resource kinds across the cluster to find
+// namespaces that contain resources owned by the given project and deployment.
+// This is used by Cleanup and rollback paths where the caller does not have the
+// rendered resource set and needs to discover namespaces via label queries.
+func (a *Applier) DiscoverNamespaces(ctx context.Context, project, deploymentName string) []string {
+	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
+		v1alpha2.LabelProject, project,
+		v1alpha2.AnnotationDeployment, deploymentName)
+
+	seen := make(map[string]struct{})
+	for _, gvr := range allowedKinds {
+		// List across all namespaces.
+		list, err := a.client.Resource(gvr).List(ctx, metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		if err != nil {
+			continue
+		}
+		for _, item := range list.Items {
+			if ns := item.GetNamespace(); ns != "" {
+				seen[ns] = struct{}{}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(seen))
+	for ns := range seen {
+		result = append(result, ns)
+	}
+	return result
+}
+
 // boolPtr returns a pointer to the given bool value.
 func boolPtr(b bool) *bool { return &b }

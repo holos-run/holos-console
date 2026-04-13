@@ -95,6 +95,9 @@ type ResourceApplier interface {
 	Reconcile(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error
 	// Cleanup deletes all owned resources across the given namespaces.
 	Cleanup(ctx context.Context, namespaces []string, project, deploymentName string) error
+	// DiscoverNamespaces scans the cluster for all namespaces that contain
+	// resources owned by the given project and deployment.
+	DiscoverNamespaces(ctx context.Context, project, deploymentName string) []string
 }
 
 // Handler implements the DeploymentService.
@@ -416,7 +419,20 @@ func (h *Handler) CreateDeployment(
 //
 // Rollback errors are logged at warn level but do not replace the original error.
 func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) {
-	if cleanupErr := h.applier.Cleanup(ctx, []string{ns}, project, name); cleanupErr != nil {
+	// Discover all namespaces with owned resources. Include the project
+	// namespace as a fallback in case label discovery misses partially-applied
+	// resources.
+	namespaces := h.applier.DiscoverNamespaces(ctx, project, name)
+	nsSet := make(map[string]struct{}, len(namespaces)+1)
+	for _, n := range namespaces {
+		nsSet[n] = struct{}{}
+	}
+	nsSet[ns] = struct{}{}
+	allNS := make([]string, 0, len(nsSet))
+	for n := range nsSet {
+		allNS = append(allNS, n)
+	}
+	if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 		slog.WarnContext(ctx, "rollback: cleanup failed",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -511,8 +527,10 @@ func (h *Handler) UpdateDeployment(
 		}
 		// Use Reconcile instead of Apply so orphaned resources from template
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
-		// apply.
-		if reconcileErr := h.applier.Reconcile(ctx, project, name, resources, ns); reconcileErr != nil {
+		// apply. Pass previously-owned namespaces so orphans from namespace
+		// moves are cleaned up.
+		prevNS := h.applier.DiscoverNamespaces(ctx, project, name)
+		if reconcileErr := h.applier.Reconcile(ctx, project, name, resources, prevNS...); reconcileErr != nil {
 			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -558,9 +576,11 @@ func (h *Handler) DeleteDeployment(
 	}
 
 	// Clean up all K8s resources owned by this deployment before removing the record.
+	// Discover all namespaces with owned resources so cross-namespace resources
+	// are cleaned up (not just the project namespace).
 	if h.applier != nil {
-		ns := h.k8s.Resolver.ProjectNamespace(project)
-		if cleanupErr := h.applier.Cleanup(ctx, []string{ns}, project, name); cleanupErr != nil {
+		namespaces := h.applier.DiscoverNamespaces(ctx, project, name)
+		if cleanupErr := h.applier.Cleanup(ctx, namespaces, project, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),
 				slog.String("name", name),

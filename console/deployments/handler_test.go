@@ -150,6 +150,10 @@ func (s *stubApplier) Cleanup(_ context.Context, _ []string, _, _ string) error 
 	return s.cleanupErr
 }
 
+func (s *stubApplier) DiscoverNamespaces(_ context.Context, _, _ string) []string {
+	return nil
+}
+
 func defaultHandler(fakeClient *fake.Clientset, pr *stubProjectResolver) *Handler {
 	k8s := NewK8sClient(fakeClient, testResolver())
 	return NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{})
