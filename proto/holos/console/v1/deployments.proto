@@ -174,6 +174,8 @@ message DeploymentStatus {
   repeated DeploymentCondition conditions = 4;
   // pods contains per-pod status.
   repeated PodStatus pods = 5;
+  // events contains Kubernetes events associated with the Deployment resource.
+  repeated Event events = 6;
 }
 
 message DeploymentCondition {
@@ -188,6 +190,50 @@ message PodStatus {
   string phase = 2;
   bool ready = 3;
   int32 restart_count = 4;
+  // container_statuses contains the status of each container in the pod.
+  repeated ContainerStatus container_statuses = 5;
+  // events contains Kubernetes events associated with this pod.
+  repeated Event events = 6;
+}
+
+// Event represents a Kubernetes event associated with a resource.
+message Event {
+  // type is Normal or Warning.
+  string type = 1;
+  // reason is a short machine-readable reason (e.g., "Failed", "Pulling", "BackOff").
+  string reason = 2;
+  // message is the human-readable event message.
+  string message = 3;
+  // source is the component that reported the event (e.g., "kubelet", "default-scheduler").
+  string source = 4;
+  // count is the number of times this event has occurred.
+  int32 count = 5;
+  // first_seen is when this event was first recorded.
+  google.protobuf.Timestamp first_seen = 6;
+  // last_seen is when this event was most recently recorded.
+  google.protobuf.Timestamp last_seen = 7;
+  // involved_object_name is the name of the object this event is about (e.g., the pod name).
+  string involved_object_name = 8;
+}
+
+// ContainerStatus represents the status of a container within a pod.
+message ContainerStatus {
+  // name is the container name.
+  string name = 1;
+  // state is the current state: "waiting", "running", or "terminated".
+  string state = 2;
+  // reason is the reason for the current state (e.g., "ImagePullBackOff", "CrashLoopBackOff").
+  string reason = 3;
+  // message is a human-readable message for the current state.
+  string message = 4;
+  // image is the container image.
+  string image = 5;
+  // ready indicates if the container is passing readiness checks.
+  bool ready = 6;
+  // restart_count is the number of times this container has restarted.
+  int32 restart_count = 7;
+  // started_at is when the container last started.
+  google.protobuf.Timestamp started_at = 8;
 }
 
 message GetDeploymentStatusResponse {
