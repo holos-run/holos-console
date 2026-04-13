@@ -553,6 +553,55 @@ func TestGetDeploymentStatus_NoEvents(t *testing.T) {
 	}
 }
 
+func TestGetDeploymentStatus_EventWithZeroTimestamp(t *testing.T) {
+	const ns = "prj-my-project"
+	dep := k8sDeployment(ns, "my-app", 1, 1, 1, nil)
+
+	now := time.Now()
+	// ev1 has timestamps, ev2 has zero timestamps (LastSeen will be nil).
+	ev1 := k8sEvent(ns, "evt-1", "my-app", "Deployment", "Normal", "ScalingReplicaSet", "Scaled up", "deployment-controller", 1, now, now)
+	ev2 := &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{Name: "evt-2", Namespace: ns},
+		InvolvedObject: corev1.ObjectReference{
+			Name: "my-app",
+			Kind: "Deployment",
+		},
+		Type:    "Normal",
+		Reason:  "Scheduled",
+		Message: "Successfully assigned",
+		Source:  corev1.EventSource{Component: "default-scheduler"},
+		Count:   1,
+		// FirstTimestamp and LastTimestamp deliberately left at zero value.
+	}
+
+	fakeClient := fake.NewClientset(dep, ev1, ev2)
+	h := newStatusHandler(fakeClient)
+
+	ctx := authedCtx("viewer@example.com", nil)
+	resp, err := h.GetDeploymentStatus(ctx, connect.NewRequest(&consolev1.GetDeploymentStatusRequest{
+		Name:    "my-app",
+		Project: "my-project",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	events := resp.Msg.Status.Events
+	if len(events) != 2 {
+		t.Fatalf("deployment events: got %d, want 2", len(events))
+	}
+	// Event with timestamp should sort first; event without timestamp sorts last.
+	if events[0].Reason != "ScalingReplicaSet" {
+		t.Errorf("first event reason: got %q, want %q", events[0].Reason, "ScalingReplicaSet")
+	}
+	if events[1].Reason != "Scheduled" {
+		t.Errorf("second event reason: got %q, want %q", events[1].Reason, "Scheduled")
+	}
+	if events[1].LastSeen != nil {
+		t.Errorf("second event last_seen: got non-nil, want nil")
+	}
+}
+
 func TestGetDeploymentStatus_InitContainerStatuses(t *testing.T) {
 	const ns = "prj-my-project"
 	dep := k8sDeployment(ns, "my-app", 1, 0, 0, nil)

@@ -172,11 +172,19 @@ func mapEvents(k8sEvents []corev1.Event) []*consolev1.Event {
 		}
 		events = append(events, protoEvent)
 	}
-	// Sort by last_seen descending (most recent first).
+	// Sort by last_seen descending (most recent first). Events without a
+	// last_seen timestamp sort after events that have one.
 	sort.Slice(events, func(i, j int) bool {
-		ti := events[i].LastSeen.AsTime()
-		tj := events[j].LastSeen.AsTime()
-		return ti.After(tj)
+		switch {
+		case events[i].LastSeen == nil && events[j].LastSeen == nil:
+			return false
+		case events[i].LastSeen == nil:
+			return false
+		case events[j].LastSeen == nil:
+			return true
+		default:
+			return events[i].LastSeen.AsTime().After(events[j].LastSeen.AsTime())
+		}
 	})
 	return events
 }
