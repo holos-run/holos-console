@@ -77,7 +77,86 @@ const mockStatus = {
     { type: 'Progressing', status: 'True', reason: 'NewReplicaSetAvailable', message: '' },
   ],
   pods: [
-    { name: 'api-7d8f9b6c4-xk2m3', phase: 'Running', ready: true, restartCount: 0 },
+    { name: 'api-7d8f9b6c4-xk2m3', phase: 'Running', ready: true, restartCount: 0, containerStatuses: [], events: [] },
+  ],
+  events: [],
+}
+
+/** Creates a Timestamp-like object for protobuf. */
+function ts(isoStr: string) {
+  const ms = new Date(isoStr).getTime()
+  return { seconds: BigInt(Math.floor(ms / 1000)), nanos: 0, toDate: () => new Date(isoStr) }
+}
+
+const mockStatusWithEvents = {
+  ...mockStatus,
+  events: [
+    {
+      type: 'Warning',
+      reason: 'Failed',
+      message: 'Failed to pull image "ghcr.io/org/app:bad": rpc error',
+      source: 'kubelet',
+      count: 4,
+      firstSeen: ts('2025-01-15T10:00:00Z'),
+      lastSeen: ts('2025-01-15T10:28:00Z'),
+      involvedObjectName: 'api-7d8f9b6c4-xk2m3',
+    },
+    {
+      type: 'Normal',
+      reason: 'Scheduled',
+      message: 'Successfully assigned default/api-7d8f9b6c4-xk2m3',
+      source: 'default-scheduler',
+      count: 1,
+      firstSeen: ts('2025-01-15T10:00:00Z'),
+      lastSeen: ts('2025-01-15T10:00:00Z'),
+      involvedObjectName: 'api-7d8f9b6c4-xk2m3',
+    },
+  ],
+  pods: [
+    {
+      name: 'api-7d8f9b6c4-xk2m3',
+      phase: 'Pending',
+      ready: false,
+      restartCount: 2,
+      containerStatuses: [
+        {
+          name: 'app',
+          state: 'waiting',
+          reason: 'ImagePullBackOff',
+          message: 'Failed to pull "ghcr.io/org/app:bad"',
+          image: 'ghcr.io/org/app:bad',
+          ready: false,
+          restartCount: 2,
+          startedAt: undefined,
+        },
+      ],
+      events: [],
+    },
+  ],
+}
+
+const mockStatusWithHealthyContainers = {
+  ...mockStatus,
+  pods: [
+    {
+      name: 'api-7d8f9b6c4-xk2m3',
+      phase: 'Running',
+      ready: true,
+      restartCount: 0,
+      containerStatuses: [
+        {
+          name: 'app',
+          state: 'running',
+          reason: '',
+          message: '',
+          image: 'ghcr.io/org/api:v1.2.3',
+          ready: true,
+          restartCount: 0,
+          startedAt: ts('2025-01-15T10:00:00Z'),
+        },
+      ],
+      events: [],
+    },
   ],
 }
 
@@ -711,6 +790,231 @@ describe('DeploymentDetailPage', () => {
       render(<DeploymentDetailPage />)
       await user.click(screen.getByRole('tab', { name: /logs/i }))
       expect(screen.getByLabelText(/previous/i)).toBeInTheDocument()
+    })
+  })
+
+  // ── Events table tests ──────────────────────────────────────────────────
+
+  describe('Events section', () => {
+    function setupWithEvents() {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatusWithEvents, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+    }
+
+    it('renders events table with correct columns', () => {
+      setupWithEvents()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('Events')).toBeInTheDocument()
+      expect(screen.getByText('Reason')).toBeInTheDocument()
+      expect(screen.getByText('Message')).toBeInTheDocument()
+      expect(screen.getByText('Source')).toBeInTheDocument()
+    })
+
+    it('renders warning events with warning styling', () => {
+      setupWithEvents()
+      render(<DeploymentDetailPage />)
+      // The Warning event row should contain the reason and message
+      expect(screen.getByText('Failed')).toBeInTheDocument()
+      expect(screen.getByText(/Failed to pull image/)).toBeInTheDocument()
+      // Check that the warning icon is present (AlertTriangle / TriangleAlert)
+      const warningRow = screen.getByText('Failed').closest('tr')
+      expect(warningRow).not.toBeNull()
+      // Warning rows should have a distinguishing visual treatment
+      const warningIcon = warningRow!.querySelector('[data-testid="event-warning-icon"]')
+      expect(warningIcon).toBeInTheDocument()
+    })
+
+    it('renders normal events without warning styling', () => {
+      setupWithEvents()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('Scheduled')).toBeInTheDocument()
+      expect(screen.getByText(/Successfully assigned/)).toBeInTheDocument()
+      const normalRow = screen.getByText('Scheduled').closest('tr')
+      expect(normalRow).not.toBeNull()
+      const normalIcon = normalRow!.querySelector('[data-testid="event-normal-icon"]')
+      expect(normalIcon).toBeInTheDocument()
+    })
+
+    it('shows event count for events with count > 1', () => {
+      setupWithEvents()
+      render(<DeploymentDetailPage />)
+      // The warning event has count=4, should show "x4"
+      expect(screen.getByText(/x4/)).toBeInTheDocument()
+    })
+
+    it('shows event source', () => {
+      setupWithEvents()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('kubelet')).toBeInTheDocument()
+      expect(screen.getByText('default-scheduler')).toBeInTheDocument()
+    })
+
+    it('shows "No events" when events array is empty', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText(/no events/i)).toBeInTheDocument()
+    })
+  })
+
+  // ── Container status tests ──────────────────────────────────────────────
+
+  describe('Container status section', () => {
+    function setupWithContainerStatus() {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatusWithEvents, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+    }
+
+    it('renders container name and state', () => {
+      setupWithContainerStatus()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('app')).toBeInTheDocument()
+      expect(screen.getByText(/waiting/i)).toBeInTheDocument()
+    })
+
+    it('renders container reason and message for error state', () => {
+      setupWithContainerStatus()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('ImagePullBackOff')).toBeInTheDocument()
+    })
+
+    it('highlights containers in error state', () => {
+      setupWithContainerStatus()
+      render(<DeploymentDetailPage />)
+      // The container in waiting state with error reason should have error styling
+      const badge = screen.getByText(/waiting/i)
+      // waiting + error reason = yellow/amber badge
+      expect(badge.className).toMatch(/yellow|amber|destructive/)
+    })
+
+    it('renders healthy container state with green badge', () => {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatusWithHealthyContainers, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      const runningBadge = screen.getByText(/running/i, { selector: '[data-testid="container-state-badge"]' })
+      expect(runningBadge.className).toMatch(/green/)
+    })
+
+    it('shows container image', () => {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatusWithEvents, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      // The container's image should be displayed
+      expect(screen.getByText('ghcr.io/org/app:bad')).toBeInTheDocument()
+    })
+
+    it('terminated container with no error reason gets green badge', () => {
+      const terminatedNormalStatus = {
+        ...mockStatus,
+        pods: [
+          {
+            name: 'job-pod-1',
+            phase: 'Succeeded',
+            ready: false,
+            restartCount: 0,
+            containerStatuses: [
+              { name: 'worker', state: 'terminated', reason: 'Completed', message: '', image: 'ghcr.io/org/worker:v1', ready: false, restartCount: 0, startedAt: ts('2025-01-15T10:00:00Z') },
+            ],
+            events: [],
+          },
+        ],
+      }
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: terminatedNormalStatus, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      const terminatedBadge = screen.getByText(/terminated/i, { selector: '[data-testid="container-state-badge"]' })
+      // Completed (normal exit) should get green, not red
+      expect(terminatedBadge.className).toMatch(/green/)
+      expect(terminatedBadge.className).not.toMatch(/red/)
+    })
+
+    it('does not render container section when containerStatuses is empty', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      // With empty containerStatuses, no "Containers:" label should appear
+      expect(screen.queryByText(/containers:/i)).not.toBeInTheDocument()
+    })
+
+    it('renders multiple pods with different container states', () => {
+      const multiPodStatus = {
+        ...mockStatus,
+        events: [],
+        pods: [
+          {
+            name: 'api-pod-1',
+            phase: 'Running',
+            ready: true,
+            restartCount: 0,
+            containerStatuses: [
+              { name: 'app', state: 'running', reason: '', message: '', image: 'ghcr.io/org/api:v1', ready: true, restartCount: 0, startedAt: ts('2025-01-15T10:00:00Z') },
+            ],
+            events: [],
+          },
+          {
+            name: 'api-pod-2',
+            phase: 'Pending',
+            ready: false,
+            restartCount: 3,
+            containerStatuses: [
+              { name: 'app', state: 'waiting', reason: 'CrashLoopBackOff', message: 'back-off', image: 'ghcr.io/org/api:v1', ready: false, restartCount: 3, startedAt: undefined },
+            ],
+            events: [],
+          },
+        ],
+      }
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: multiPodStatus, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText('api-pod-1')).toBeInTheDocument()
+      expect(screen.getByText('api-pod-2')).toBeInTheDocument()
+      expect(screen.getByText('CrashLoopBackOff')).toBeInTheDocument()
     })
   })
 })
