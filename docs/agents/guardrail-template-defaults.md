@@ -1,73 +1,63 @@
 # Guardrail: Template Defaults Pre-Fill
 
-**The backend must extract each `ProjectInput` field independently from the CUE `defaults` block (per-field extraction). The frontend must pre-fill all Create Deployment form fields from the extracted `TemplateDefaults` when a template is selected.** A non-concrete field must not prevent extraction of concrete siblings. All pre-filled fields must update when the user switches templates.
+**Authority:** [ADR 027](../adrs/027-template-defaults-prefill.md) is the single source of truth. This guardrail enforces ADR 027. If this document and ADR 027 disagree, ADR 027 wins and this document must be corrected.
 
-## Rationale
+## Rule
 
-This feature has regressed multiple times. The original implementation (ADR 018) used whole-block `MarshalJSON()` on the entire `defaults` CUE value. If any single field was non-concrete (e.g., `env: _`), the marshal call failed for the entire value and silently dropped all defaults -- even fields like `name`, `image`, and `tag` that were perfectly concrete. ADR 025 replaced this with per-field extraction to eliminate the silent data loss.
+The Create Deployment form pre-fills defaultable fields exclusively via the explicit `TemplateService.GetTemplateDefaults` RPC. It **never** reads from the embedded `Template.defaults` field on `ListTemplates` / `GetTemplate` responses. The form tracks a single `isPristine` boolean, issues `GetTemplateDefaults` on every template selection and every **Load defaults** click, and overwrites fields only when pristine (or when the user clicks Load defaults).
 
-On the frontend side, `handleTemplateChange` in the Create Deployment form must map every `TemplateDefaults` field to its corresponding form field. Missing a field means the form shows stale values from a previously selected template or empty values when the template intended to provide defaults.
+### Pristine Tracking
 
-## Enforcement
+- `isPristine` starts **`true`** on mount.
+- It flips to **`false`** on any user edit of a defaultable field.
+- It is reset to **`true`** by a successful pre-fill on selection and by the **Load defaults** button.
 
-### Backend
+### Selection Rule
 
-`console/templates/defaults_test.go` includes a "mixed concrete and non-concrete fields" test case that verifies concrete fields are extracted while non-concrete fields are silently omitted:
+On every template change, the frontend calls `GetTemplateDefaults`.
 
-```go
-t.Run("mixed concrete and non-concrete fields returns partial defaults", func(t *testing.T) {
-    cueSource := `
-defaults: #ProjectInput & {
-    name:  "httpbin"
-    image: string  // non-concrete — constrained but no value
-    tag:   "2.21.0"
-    port:  8080
-}
-`
-    d, err := ExtractDefaults(cueSource)
-    // ... asserts name="httpbin", image="", tag="2.21.0", port=8080
-})
-```
+- If `isPristine` is `true`, the response overwrites all defaultable form fields.
+- If `isPristine` is `false`, the response is cached and **no fields are overwritten**.
 
-### Frontend
+### Load Defaults Button
 
-`frontend/src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` includes comprehensive defaults pre-fill regression tests (added in issue #853):
+The **Load defaults** button always overwrites all defaultable fields, re-issues the RPC (no stale cache), and resets `isPristine` to `true`.
 
-- `selecting a template with full defaults pre-fills all form fields` -- verifies every field is populated
-- `selecting a different template updates all fields to new defaults` -- verifies switching templates replaces all values
-- `selecting a template with partial defaults leaves other fields at default values` -- verifies missing defaults do not corrupt other fields
+### Defaultable Fields
 
-CI fails if either the backend extraction or the frontend pre-fill regresses.
+The defaultable fields are enumerated in [ADR 027 §6](../adrs/027-template-defaults-prefill.md). The frontend holds the only code-level copy of this list as a constant; do not add a second copy here or anywhere else.
 
-## Common Failure Mode
+### Example-Template Invariant
 
-Reverting `ExtractDefaults()` in `console/templates/defaults.go` to whole-block `MarshalJSON()` on the entire `defaults` value instead of per-field extraction. This causes all defaults to silently disappear when any single field is non-concrete.
+Every shipped example deployment template **MUST** declare a top-level `defaults: #ProjectInput & { ... }` block with concrete values that mirror the inline `input` defaults.
 
-On the frontend, omitting a field from the `handleTemplateChange` callback means that field retains its value from a previously selected template instead of updating to the new template's default.
+**Inline `*value | _` defaults on the `input` field are NOT extracted.** A template that expresses defaults only through inline markers will produce no pre-fill values even though it renders correctly. The `defaults` block is the single authoring surface for form pre-fill. Reviewers must reject any example template that omits `defaults` or drifts its values away from the inline `input` defaults.
 
 ## Triggers
 
 Apply this rule when:
 
-- Editing `console/templates/defaults.go` (backend extraction logic)
-- Editing `frontend/src/routes/_authenticated/projects/$projectName/deployments/new.tsx` (the `handleTemplateChange` callback)
-- Adding new fields to the `TemplateDefaults` proto message in `proto/holos/console/v1/templates.proto`
-- Adding new fields to `ProjectInput` in `api/v1alpha2/types.go` that should have default values
-- Resolving merge conflicts in any of the above files
+- Editing the Create Deployment form (`frontend/src/routes/_authenticated/projects/$projectName/deployments/new.tsx`) or the template-change / load-defaults handlers.
+- Adding or modifying the `GetTemplateDefaults` RPC, the `TemplateDefaults` proto message, or `ProjectInput` fields that should be pre-filled.
+- Authoring or editing an example deployment template (the `defaults` block is required).
+- Editing `console/templates/defaults.go` or the server-side `GetTemplateDefaults` handler.
+- Resolving merge conflicts in any of the above files.
 
 ## Incorrect Patterns
 
 | Pattern | Why it is wrong |
 |---------|-----------------|
-| `defaultsVal.MarshalJSON()` on the whole `defaults` value | One non-concrete field drops all defaults silently |
-| `handleTemplateChange` that does not set every `TemplateDefaults` field | Stale values persist from previously selected template |
-| Removing the "mixed concrete and non-concrete" backend test | The per-field extraction regression guard must stay |
-| Removing the frontend defaults pre-fill regression tests | The form pre-fill regression guard must stay |
-| Using `json.Unmarshal` on the entire defaults block into `ProjectInput` | Same whole-block failure mode as `MarshalJSON()` |
+| Reading `Template.defaults` from a `ListTemplates` / `GetTemplate` response to pre-fill the form | ADR 027 requires the explicit `GetTemplateDefaults` RPC; embedded `Template.defaults` is compat-only |
+| Skipping the `GetTemplateDefaults` call on Load defaults (re-using a cached response) | Load defaults must re-issue the RPC to reflect the template's current authored values |
+| Inferring "user has edited" by diffing form values against defaults | The pristine rule is a single explicit boolean; implicit inference has regressed multiple times |
+| Overwriting fields on template change when `isPristine` is `false` | The selection rule preserves in-progress user edits unless Load defaults is clicked |
+| Shipping an example template that relies on inline `*value | _` markers without a `defaults` block | Inline defaults are not extracted; the form will silently show no pre-fill |
+| Adding a second copy of the defaultable fields list anywhere other than the frontend constant | ADR 027 is the only enumeration; duplicate lists drift silently |
 
 ## Related
 
-- [Template Service](template-service.md) -- Deployment Defaults section describes the extraction mechanism
-- [Guardrail: Template Fields](guardrail-template-fields.md) -- New proto fields must propagate through defaults extraction
-- [ADR 018: CUE Template Default Values](../adrs/018-cue-template-default-values.md) -- Original design for the `defaults` block
-- [ADR 025: Per-Field CUE Defaults Extraction](../adrs/025-per-field-defaults-extraction.md) -- Per-field extraction design replacing whole-block marshaling
+- [ADR 027: Authoritative Template Defaults Pre-Fill Behavior](../adrs/027-template-defaults-prefill.md) — this guardrail's authority.
+- [ADR 018: CUE Template Default Values](../adrs/018-cue-template-default-values.md) — superseded for pre-fill behavior; schema decisions still in effect.
+- [ADR 025: Per-Field CUE Defaults Extraction](../adrs/025-per-field-defaults-extraction.md) — superseded for pre-fill behavior; extraction correctness rule still honored.
+- [Template Service](template-service.md)
+- [Guardrail: Template Fields](guardrail-template-fields.md)

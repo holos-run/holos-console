@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 027](027-template-defaults-prefill.md).
+
+See ADR 027 for the authoritative Create Deployment form pre-fill behavior; the schema decisions below (the `defaults` block, the `input` field wiring, and `ResourceSetSpec.Defaults`) are still in effect.
 
 ## Context
 
