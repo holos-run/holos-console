@@ -14,6 +14,24 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// fakeStatusCache is a test double for statuscache.Cache keyed by (ns, name).
+type fakeStatusCache struct {
+	entries map[string]*consolev1.DeploymentStatusSummary
+}
+
+func newFakeStatusCache() *fakeStatusCache {
+	return &fakeStatusCache{entries: map[string]*consolev1.DeploymentStatusSummary{}}
+}
+
+func (f *fakeStatusCache) set(ns, name string, s *consolev1.DeploymentStatusSummary) {
+	f.entries[ns+"/"+name] = s
+}
+
+func (f *fakeStatusCache) Summary(ns, name string) (*consolev1.DeploymentStatusSummary, bool) {
+	s, ok := f.entries[ns+"/"+name]
+	return s, ok
+}
+
 // k8sDeployment constructs a fake appsv1.Deployment for testing.
 func k8sDeployment(ns, name string, desired, ready, available int32, conds []appsv1.DeploymentCondition) *appsv1.Deployment {
 	return &appsv1.Deployment{
@@ -81,7 +99,14 @@ func TestGetDeploymentStatus_ReplicaCounts(t *testing.T) {
 	pod2 := k8sPod(ns, "my-app-2", "my-app", corev1.PodRunning, false, 1)
 
 	fakeClient := fake.NewClientset(dep, pod1, pod2)
-	h := newStatusHandler(fakeClient)
+	cache := newFakeStatusCache()
+	cache.set(ns, "my-app", &consolev1.DeploymentStatusSummary{
+		Phase:             consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING,
+		DesiredReplicas:   3,
+		ReadyReplicas:     2,
+		AvailableReplicas: 2,
+	})
+	h := newStatusHandler(fakeClient).WithStatusCache(cache)
 
 	ctx := authedCtx("viewer@example.com", nil)
 	resp, err := h.GetDeploymentStatus(ctx, connect.NewRequest(&consolev1.GetDeploymentStatusRequest{
@@ -104,6 +129,48 @@ func TestGetDeploymentStatus_ReplicaCounts(t *testing.T) {
 	}
 	if len(s.Pods) != 2 {
 		t.Errorf("pods: got %d, want 2", len(s.Pods))
+	}
+	if s.Summary == nil {
+		t.Fatal("summary: got nil, want non-nil (handler must populate cached summary)")
+	}
+	if s.Summary.Phase != consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING {
+		t.Errorf("summary.phase: got %v, want PENDING", s.Summary.Phase)
+	}
+}
+
+func TestGetDeploymentStatus_CacheMissFallsBackToLiveReplicas(t *testing.T) {
+	const ns = "prj-my-project"
+	// Live Deployment reports 3 desired / 3 ready / 3 available.
+	dep := k8sDeployment(ns, "my-app", 3, 3, 3, nil)
+
+	fakeClient := fake.NewClientset(dep)
+	// No cache configured → cache miss path. Even so, the handler must
+	// populate replica scalars from the live apps/v1.Deployment.Status so a
+	// cold informer (right after startup, after the 10s sync timeout, or
+	// without watch RBAC) does not render a healthy deployment as 0/0 ready.
+	h := newStatusHandler(fakeClient)
+
+	ctx := authedCtx("viewer@example.com", nil)
+	resp, err := h.GetDeploymentStatus(ctx, connect.NewRequest(&consolev1.GetDeploymentStatusRequest{
+		Name:    "my-app",
+		Project: "my-project",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	s := resp.Msg.Status
+	if s.Summary != nil {
+		t.Errorf("summary: got %v, want nil on cache miss", s.Summary)
+	}
+	if s.DesiredReplicas != 3 {
+		t.Errorf("desired_replicas: got %d, want 3 (fallback to live dep.Status.Replicas)", s.DesiredReplicas)
+	}
+	if s.ReadyReplicas != 3 {
+		t.Errorf("ready_replicas: got %d, want 3 (fallback to live dep.Status.ReadyReplicas)", s.ReadyReplicas)
+	}
+	if s.AvailableReplicas != 3 {
+		t.Errorf("available_replicas: got %d, want 3 (fallback to live dep.Status.AvailableReplicas)", s.AvailableReplicas)
 	}
 }
 
@@ -669,5 +736,104 @@ func TestGetDeploymentStatus_InitContainerStatuses(t *testing.T) {
 	}
 	if cs[1].Name != "app" {
 		t.Errorf("second container name: got %q, want %q", cs[1].Name, "app")
+	}
+}
+
+func TestGetDeploymentStatusSummary(t *testing.T) {
+	const (
+		ns      = "prj-my-project"
+		project = "my-project"
+		name    = "my-app"
+	)
+
+	type tc struct {
+		desc       string
+		ctx        context.Context
+		cachedSum  *consolev1.DeploymentStatusSummary
+		req        *consolev1.GetDeploymentStatusSummaryRequest
+		wantCode   connect.Code // zero means no error expected
+		wantPhase  consolev1.DeploymentPhase
+		wantReady  int32
+	}
+	cases := []tc{
+		{
+			desc: "populated summary (RUNNING)",
+			ctx:  authedCtx("viewer@example.com", nil),
+			cachedSum: &consolev1.DeploymentStatusSummary{
+				Phase:           consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+				ReadyReplicas:   3,
+				DesiredReplicas: 3,
+			},
+			req:       &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+			wantReady: 3,
+		},
+		{
+			desc:      "cache miss returns UNSPECIFIED",
+			ctx:       authedCtx("viewer@example.com", nil),
+			cachedSum: nil,
+			req:       &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
+		},
+		{
+			desc:     "unauthenticated is rejected",
+			ctx:      context.Background(),
+			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
+			wantCode: connect.CodeUnauthenticated,
+		},
+		{
+			desc:     "unauthorized user is denied",
+			ctx:      authedCtx("nobody@example.com", nil),
+			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
+			wantCode: connect.CodePermissionDenied,
+		},
+		{
+			desc:     "empty project is rejected",
+			ctx:      authedCtx("viewer@example.com", nil),
+			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: "", Name: name},
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			desc:     "empty name is rejected",
+			ctx:      authedCtx("viewer@example.com", nil),
+			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: ""},
+			wantCode: connect.CodeInvalidArgument,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			fakeClient := fake.NewClientset()
+			h := newStatusHandler(fakeClient)
+			if c.cachedSum != nil {
+				cache := newFakeStatusCache()
+				cache.set(ns, name, c.cachedSum)
+				h = h.WithStatusCache(cache)
+			}
+
+			resp, err := h.GetDeploymentStatusSummary(c.ctx, connect.NewRequest(c.req))
+			if c.wantCode != 0 {
+				if err == nil {
+					t.Fatalf("expected error with code %v, got nil", c.wantCode)
+				}
+				if connect.CodeOf(err) != c.wantCode {
+					t.Errorf("code: got %v, want %v", connect.CodeOf(err), c.wantCode)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := resp.Msg.Summary
+			if got == nil {
+				t.Fatal("summary: got nil, want non-nil (miss must still return a summary)")
+			}
+			if got.Phase != c.wantPhase {
+				t.Errorf("phase: got %v, want %v", got.Phase, c.wantPhase)
+			}
+			if got.ReadyReplicas != c.wantReady {
+				t.Errorf("ready_replicas: got %d, want %d", got.ReadyReplicas, c.wantReady)
+			}
+		})
 	}
 }

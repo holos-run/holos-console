@@ -9,7 +9,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -224,6 +226,74 @@ func TestHandler_ListDeployments(t *testing.T) {
 		}
 		if connect.CodeOf(err) != connect.CodeInvalidArgument {
 			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("populates status_summary from cache", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		// Fail on any unexpected live Deployment/Pod/Event list or get — status
+		// must come purely from the cache on the listing hot path.
+		fakeClient.PrependReactor("*", "deployments", func(action ktesting.Action) (bool, runtime.Object, error) {
+			return true, nil, fmt.Errorf("unexpected live deployments action on list path: %s %s", action.GetVerb(), action.GetResource().Resource)
+		})
+		fakeClient.PrependReactor("*", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+			return true, nil, fmt.Errorf("unexpected live pods action on list path: %s", action.GetVerb())
+		})
+		fakeClient.PrependReactor("*", "events", func(action ktesting.Action) (bool, runtime.Object, error) {
+			return true, nil, fmt.Errorf("unexpected live events action on list path: %s", action.GetVerb())
+		})
+
+		cache := newFakeStatusCache()
+		cache.set("prj-my-project", "web-app", &consolev1.DeploymentStatusSummary{
+			Phase:           consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+			ReadyReplicas:   3,
+			DesiredReplicas: 3,
+		})
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
+		resp, err := handler.ListDeployments(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Msg.Deployments) != 1 {
+			t.Fatalf("expected 1 deployment, got %d", len(resp.Msg.Deployments))
+		}
+		got := resp.Msg.Deployments[0].StatusSummary
+		if got == nil {
+			t.Fatal("status_summary: got nil, want populated from cache")
+		}
+		if got.Phase != consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING {
+			t.Errorf("phase: got %v, want RUNNING", got.Phase)
+		}
+		if got.ReadyReplicas != 3 || got.DesiredReplicas != 3 {
+			t.Errorf("replicas: got %d/%d, want 3/3", got.ReadyReplicas, got.DesiredReplicas)
+		}
+	})
+
+	t.Run("cache miss leaves status_summary nil", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache() // no entries
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
+		resp, err := handler.ListDeployments(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Msg.Deployments) != 1 {
+			t.Fatalf("expected 1 deployment, got %d", len(resp.Msg.Deployments))
+		}
+		if resp.Msg.Deployments[0].StatusSummary != nil {
+			t.Errorf("status_summary: got %v, want nil on cache miss", resp.Msg.Deployments[0].StatusSummary)
 		}
 	})
 }

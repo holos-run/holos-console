@@ -185,6 +185,11 @@ message DeploymentStatus {
   repeated PodStatus pods = 5;
   // events contains Kubernetes events associated with the Deployment resource.
   repeated Event events = 6;
+  // summary carries the lightweight status snapshot (phase, replica counts,
+  // message) derived from the cached apps/v1.Deployment. Populated from the
+  // same in-process informer cache used by ListDeployments and
+  // GetDeploymentStatusSummary so all status RPCs share one derivation path.
+  DeploymentStatusSummary summary = 7;
 }
 
 message DeploymentCondition {
