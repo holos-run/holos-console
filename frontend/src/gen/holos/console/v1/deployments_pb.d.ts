@@ -4,6 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file holos/console/v1/deployments.proto.
@@ -547,6 +548,13 @@ export declare type DeploymentStatus = Message<"holos.console.v1.DeploymentStatu
    * @generated from field: repeated holos.console.v1.PodStatus pods = 5;
    */
   pods: PodStatus[];
+
+  /**
+   * events contains Kubernetes events associated with the Deployment resource.
+   *
+   * @generated from field: repeated holos.console.v1.Event events = 6;
+   */
+  events: Event[];
 };
 
 /**
@@ -609,6 +617,20 @@ export declare type PodStatus = Message<"holos.console.v1.PodStatus"> & {
    * @generated from field: int32 restart_count = 4;
    */
   restartCount: number;
+
+  /**
+   * container_statuses contains the status of each container in the pod.
+   *
+   * @generated from field: repeated holos.console.v1.ContainerStatus container_statuses = 5;
+   */
+  containerStatuses: ContainerStatus[];
+
+  /**
+   * events contains Kubernetes events associated with this pod.
+   *
+   * @generated from field: repeated holos.console.v1.Event events = 6;
+   */
+  events: Event[];
 };
 
 /**
@@ -616,6 +638,144 @@ export declare type PodStatus = Message<"holos.console.v1.PodStatus"> & {
  * Use `create(PodStatusSchema)` to create a new message.
  */
 export declare const PodStatusSchema: GenMessage<PodStatus>;
+
+/**
+ * Event represents a Kubernetes event associated with a resource.
+ *
+ * @generated from message holos.console.v1.Event
+ */
+export declare type Event = Message<"holos.console.v1.Event"> & {
+  /**
+   * type is Normal or Warning.
+   *
+   * @generated from field: string type = 1;
+   */
+  type: string;
+
+  /**
+   * reason is a short machine-readable reason (e.g., "Failed", "Pulling", "BackOff").
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+
+  /**
+   * message is the human-readable event message.
+   *
+   * @generated from field: string message = 3;
+   */
+  message: string;
+
+  /**
+   * source is the component that reported the event (e.g., "kubelet", "default-scheduler").
+   *
+   * @generated from field: string source = 4;
+   */
+  source: string;
+
+  /**
+   * count is the number of times this event has occurred.
+   *
+   * @generated from field: int32 count = 5;
+   */
+  count: number;
+
+  /**
+   * first_seen is when this event was first recorded.
+   *
+   * @generated from field: google.protobuf.Timestamp first_seen = 6;
+   */
+  firstSeen?: Timestamp;
+
+  /**
+   * last_seen is when this event was most recently recorded.
+   *
+   * @generated from field: google.protobuf.Timestamp last_seen = 7;
+   */
+  lastSeen?: Timestamp;
+
+  /**
+   * involved_object_name is the name of the object this event is about (e.g., the pod name).
+   *
+   * @generated from field: string involved_object_name = 8;
+   */
+  involvedObjectName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.Event.
+ * Use `create(EventSchema)` to create a new message.
+ */
+export declare const EventSchema: GenMessage<Event>;
+
+/**
+ * ContainerStatus represents the status of a container within a pod.
+ *
+ * @generated from message holos.console.v1.ContainerStatus
+ */
+export declare type ContainerStatus = Message<"holos.console.v1.ContainerStatus"> & {
+  /**
+   * name is the container name.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * state is the current state: "waiting", "running", or "terminated".
+   *
+   * @generated from field: string state = 2;
+   */
+  state: string;
+
+  /**
+   * reason is the reason for the current state (e.g., "ImagePullBackOff", "CrashLoopBackOff").
+   *
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+
+  /**
+   * message is a human-readable message for the current state.
+   *
+   * @generated from field: string message = 4;
+   */
+  message: string;
+
+  /**
+   * image is the container image.
+   *
+   * @generated from field: string image = 5;
+   */
+  image: string;
+
+  /**
+   * ready indicates if the container is passing readiness checks.
+   *
+   * @generated from field: bool ready = 6;
+   */
+  ready: boolean;
+
+  /**
+   * restart_count is the number of times this container has restarted.
+   *
+   * @generated from field: int32 restart_count = 7;
+   */
+  restartCount: number;
+
+  /**
+   * started_at is when the container last started.
+   *
+   * @generated from field: google.protobuf.Timestamp started_at = 8;
+   */
+  startedAt?: Timestamp;
+};
+
+/**
+ * Describes the message holos.console.v1.ContainerStatus.
+ * Use `create(ContainerStatusSchema)` to create a new message.
+ */
+export declare const ContainerStatusSchema: GenMessage<ContainerStatus>;
 
 /**
  * @generated from message holos.console.v1.GetDeploymentStatusResponse
