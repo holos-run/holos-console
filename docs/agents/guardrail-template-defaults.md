@@ -25,7 +25,7 @@ The **Load defaults** button always overwrites all defaultable fields, re-issues
 
 ### Defaultable Fields
 
-The defaultable fields are enumerated in [ADR 027 §6](../adrs/027-template-defaults-prefill.md): `displayName`, `name` (slug), `description`, `image`, `tag`, `port`, `command`, `args`, `env`. The frontend holds the only code-level copy of this list as a constant; reference the ADR list rather than adding a second copy elsewhere.
+The defaultable fields are enumerated in [ADR 027 §6](../adrs/027-template-defaults-prefill.md). The frontend holds the only code-level copy of this list as a constant; do not add a second copy here or anywhere else.
 
 ### Example-Template Invariant
 
