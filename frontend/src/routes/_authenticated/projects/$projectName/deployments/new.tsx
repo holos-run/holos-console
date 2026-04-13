@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +10,12 @@ import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
 import { useCreateDeployment } from '@/queries/deployments'
-import { useListTemplates, makeProjectScope } from '@/queries/templates'
+import {
+  useListTemplates,
+  useGetTemplateDefaults,
+  makeProjectScope,
+  type TemplateDefaults,
+} from '@/queries/templates'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/new')({
   component: CreateDeploymentRoute,
@@ -20,6 +25,23 @@ function CreateDeploymentRoute() {
   const { projectName } = Route.useParams()
   return <CreateDeploymentPage projectName={projectName} />
 }
+
+/**
+ * Defaultable form fields per ADR 027 §6. This is the single code-level copy
+ * of the list; the ADR is the authoritative enumeration. Keep in sync if the
+ * ADR adds or removes fields.
+ */
+export const DEFAULTABLE_FIELDS = [
+  'displayName',
+  'name',
+  'description',
+  'image',
+  'tag',
+  'port',
+  'command',
+  'args',
+  'env',
+] as const
 
 export function CreateDeploymentPage({ projectName: propProjectName }: { projectName?: string } = {}) {
   let routeProjectName: string | undefined
@@ -33,7 +55,8 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
 
   const navigate = useNavigate()
   const createMutation = useCreateDeployment(projectName)
-  const { data: templates = [] } = useListTemplates(makeProjectScope(projectName))
+  const scope = makeProjectScope(projectName)
+  const { data: templates = [] } = useListTemplates(scope)
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
@@ -47,32 +70,133 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   const [env, setEnv] = useState<EnvVar[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // ADR 027 §3: track a single isPristine boolean. Starts true; flips to false
+  // on any user edit of a defaultable field; resets to true on a successful
+  // selection pre-fill or a Load defaults click.
+  const [isPristine, setIsPristine] = useState(true)
+
+  // ADR 027 §1: the explicit GetTemplateDefaults RPC is the sole source of
+  // pre-fill data. We intentionally ignore the embedded Template.defaults
+  // field on ListTemplates responses.
+  const defaultsQuery = useGetTemplateDefaults({ scope, name: template })
+  const { data: fetchedDefaults, refetch: refetchDefaults, isFetching: defaultsFetching } = defaultsQuery
+
   const slugify = (val: string) =>
     val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+
+  /**
+   * Apply a TemplateDefaults payload to the form. Per ADR 027, this is the
+   * one place that knows how each field maps. The port rule preserves the
+   * current value when the response carries zero so a user-friendly default
+   * (8080) is not clobbered by an unset proto int32.
+   */
+  const applyDefaults = (d: TemplateDefaults | undefined) => {
+    if (!d) {
+      // Reset all defaultable fields to initial empty state so switching to a
+      // template with no authored defaults does not leak the previous
+      // template's values onto the form.
+      setDisplayName('')
+      setName('')
+      setDescription('')
+      setImage('')
+      setTag('')
+      setCommand([])
+      setArgs([])
+      setEnv([])
+      return
+    }
+    if (d.name) {
+      setDisplayName(d.name)
+      setName(slugify(d.name))
+    } else {
+      setDisplayName('')
+      setName('')
+    }
+    setDescription(d.description ?? '')
+    setImage(d.image ?? '')
+    setTag(d.tag ?? '')
+    // Per acceptance criteria: only pre-fill port when response carries a
+    // nonzero value, otherwise keep the current form value.
+    if (d.port) {
+      setPort(d.port)
+    }
+    setCommand(d.command ?? [])
+    setArgs(d.args ?? [])
+    setEnv(d.env ?? [])
+  }
+
+  // Track the last template name we applied defaults for (pristine path) so
+  // we apply exactly once per successful fetch per template, and do not
+  // re-apply after the user dirties the form.
+  const lastAppliedTemplateRef = useRef<string>('')
+
+  // Track the pending "Load defaults" click so the refetch's resolved data
+  // is applied unconditionally (even when the form is dirty).
+  const loadDefaultsPendingRef = useRef(false)
+
+  // ADR 027 §4: on every template change the selection hook refetches
+  // automatically (the query key includes the template name). When the
+  // response lands AND the form is pristine, overwrite all defaultable
+  // fields. Otherwise leave the in-progress edits alone.
+  useEffect(() => {
+    if (!template) {
+      lastAppliedTemplateRef.current = ''
+      return
+    }
+    if (defaultsFetching) return
+    // Only react to fresh data for the current template.
+    if (lastAppliedTemplateRef.current === template) return
+    // Wait until the query has actually resolved for this template (data
+    // defined OR isSuccess). React Query leaves stale data from previous
+    // query keys in `data` until the next fetch resolves, so we gate on the
+    // non-fetching boundary above and apply whatever the resolved data is.
+    if (loadDefaultsPendingRef.current) {
+      // Load defaults path handles its own overwrite below.
+      return
+    }
+    if (isPristine) {
+      applyDefaults(fetchedDefaults)
+      // Pre-fill is programmatic; keep the form pristine per ADR 027 §3.
+      setIsPristine(true)
+    }
+    lastAppliedTemplateRef.current = template
+    // applyDefaults is stable (closes over setters). We intentionally depend
+    // only on the data we care about here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template, fetchedDefaults, defaultsFetching, isPristine])
+
+  const handleTemplateChange = (templateName: string) => {
+    setTemplate(templateName)
+    // Clear the applied marker so the effect applies the new template's
+    // defaults when the RPC resolves.
+    lastAppliedTemplateRef.current = ''
+  }
+
+  const handleLoadDefaults = async () => {
+    if (!template) return
+    loadDefaultsPendingRef.current = true
+    try {
+      const result = await refetchDefaults()
+      // ADR 027 §5: always overwrite, regardless of isPristine.
+      applyDefaults(result.data)
+      setIsPristine(true)
+      lastAppliedTemplateRef.current = template
+    } finally {
+      loadDefaultsPendingRef.current = false
+    }
+  }
+
+  // Wrap each defaultable-field setter so user edits flip isPristine to false
+  // per ADR 027 §3. Pre-fill writes call the raw setters directly.
+  const dirty = <T,>(setter: (val: T) => void) => (val: T) => {
+    setter(val)
+    setIsPristine(false)
+  }
 
   const handleDisplayNameChange = (val: string) => {
     setDisplayName(val)
     setName(slugify(val))
-  }
-
-  const handleTemplateChange = (templateName: string) => {
-    setTemplate(templateName)
-    const selected = templates.find((t) => t.name === templateName)
-    const defaults = selected?.defaults
-    // Pre-fill form fields from CUE-extracted defaults (ADR 018 design, ADR 025 per-field extraction).
-    if (defaults?.name) {
-      setDisplayName(defaults.name)
-      setName(slugify(defaults.name))
-    }
-    if (defaults?.description) {
-      setDescription(defaults.description)
-    }
-    setImage(defaults?.image ?? '')
-    setTag(defaults?.tag ?? '')
-    setPort(defaults?.port || 8080)
-    setCommand(defaults?.command ?? [])
-    setArgs(defaults?.args ?? [])
-    setEnv(defaults?.env ?? [])
+    setIsPristine(false)
   }
 
   const handleCreate = async () => {
@@ -143,15 +267,27 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
                 first.
               </p>
             ) : (
-              <Combobox
-                aria-label="Template"
-                items={templates.map((t) => ({ value: t.name, label: t.name }))}
-                value={template}
-                onValueChange={handleTemplateChange}
-                placeholder="Select a template..."
-                searchPlaceholder="Search templates..."
-                emptyMessage="No templates found."
-              />
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Combobox
+                    aria-label="Template"
+                    items={templates.map((t) => ({ value: t.name, label: t.name }))}
+                    value={template}
+                    onValueChange={handleTemplateChange}
+                    placeholder="Select a template..."
+                    searchPlaceholder="Search templates..."
+                    emptyMessage="No templates found."
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleLoadDefaults}
+                  disabled={!template || defaultsFetching}
+                >
+                  Load defaults
+                </Button>
+              </div>
             )}
           </div>
           <div>
@@ -170,7 +306,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
             <Input
               aria-label="Name slug"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => dirty(setName)(e.target.value)}
               placeholder="my-api"
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -183,7 +319,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               id="deployment-description"
               aria-label="Description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => dirty(setDescription)(e.target.value)}
               placeholder="What does this deployment serve?"
             />
           </div>
@@ -193,7 +329,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               id="deployment-image"
               aria-label="Image"
               value={image}
-              onChange={(e) => setImage(e.target.value)}
+              onChange={(e) => dirty(setImage)(e.target.value)}
               placeholder="ghcr.io/org/app"
             />
           </div>
@@ -203,7 +339,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               id="deployment-tag"
               aria-label="Tag"
               value={tag}
-              onChange={(e) => setTag(e.target.value)}
+              onChange={(e) => dirty(setTag)(e.target.value)}
               placeholder="v1.0.0"
             />
           </div>
@@ -216,7 +352,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               min={1}
               max={65535}
               value={port}
-              onChange={(e) => setPort(parseInt(e.target.value, 10))}
+              onChange={(e) => dirty(setPort)(parseInt(e.target.value, 10))}
               placeholder="8080"
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -228,7 +364,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
             <p className="text-xs text-muted-foreground mb-1">Override container ENTRYPOINT (optional)</p>
             <StringListInput
               value={command}
-              onChange={setCommand}
+              onChange={dirty(setCommand)}
               placeholder="command entry"
               addLabel="Add command"
             />
@@ -238,7 +374,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
             <p className="text-xs text-muted-foreground mb-1">Override container CMD (optional)</p>
             <StringListInput
               value={args}
-              onChange={setArgs}
+              onChange={dirty(setArgs)}
               placeholder="args entry"
               addLabel="Add args"
             />
@@ -249,7 +385,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
             <EnvVarEditor
               project={projectName}
               value={env}
-              onChange={setEnv}
+              onChange={dirty(setEnv)}
             />
           </div>
           {error && (
