@@ -69,6 +69,19 @@ service TemplateService {
   // CheckUpdates returns available version updates for linked templates in a
   // given scope, comparing current pinned versions against published releases.
   rpc CheckUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
+
+  // GetTemplateDefaults returns the defaults a template provides for deployment
+  // form fields. The handler evaluates the template's `defaults` CUE block via
+  // ExtractDefaults and returns the same TemplateDefaults message that
+  // Template.defaults would carry on GetTemplate. Inline `*` defaults declared
+  // on `input` fields are NOT read — only the top-level `defaults` CUE block is
+  // considered. References ADR 027.
+  //
+  // This RPC gives the Create Deployment form an explicit, testable hook to
+  // call on template selection and on the "Load defaults" action. It is
+  // complementary to Template.defaults on list/get responses, which is retained
+  // for backwards compatibility.
+  rpc GetTemplateDefaults(GetTemplateDefaultsRequest) returns (GetTemplateDefaultsResponse);
 }
 
 // TemplateScope identifies the hierarchy level at which a template is stored.
@@ -129,6 +142,24 @@ message TemplateDefaults {
   string name = 7;
   // description is a short human-readable description of the deployment.
   string description = 8;
+}
+
+// GetTemplateDefaultsRequest requests the defaults block for a template.
+message GetTemplateDefaultsRequest {
+  // scope identifies the owning scope of the template. Only
+  // TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
+  // preserved for symmetry with other template RPCs and future use.
+  TemplateScopeRef scope = 1;
+  // name is the template's DNS label slug.
+  string name = 2;
+}
+
+// GetTemplateDefaultsResponse carries the evaluated template defaults.
+message GetTemplateDefaultsResponse {
+  // defaults is the TemplateDefaults message extracted from the template's
+  // top-level `defaults` CUE block (see ADR 027). Optional: an unset or empty
+  // message means the template provides no defaults.
+  TemplateDefaults defaults = 1;
 }
 
 // Template is a CUE template that produces Kubernetes resource manifests.

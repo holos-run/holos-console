@@ -72,6 +72,9 @@ const (
 	// TemplateServiceCheckUpdatesProcedure is the fully-qualified name of the TemplateService's
 	// CheckUpdates RPC.
 	TemplateServiceCheckUpdatesProcedure = "/holos.console.v1.TemplateService/CheckUpdates"
+	// TemplateServiceGetTemplateDefaultsProcedure is the fully-qualified name of the TemplateService's
+	// GetTemplateDefaults RPC.
+	TemplateServiceGetTemplateDefaultsProcedure = "/holos.console.v1.TemplateService/GetTemplateDefaults"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -116,6 +119,18 @@ type TemplateServiceClient interface {
 	// CheckUpdates returns available version updates for linked templates in a
 	// given scope, comparing current pinned versions against published releases.
 	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
+	// GetTemplateDefaults returns the defaults a template provides for deployment
+	// form fields. The handler evaluates the template's `defaults` CUE block via
+	// ExtractDefaults and returns the same TemplateDefaults message that
+	// Template.defaults would carry on GetTemplate. Inline `*` defaults declared
+	// on `input` fields are NOT read — only the top-level `defaults` CUE block is
+	// considered. References ADR 027.
+	//
+	// This RPC gives the Create Deployment form an explicit, testable hook to
+	// call on template selection and on the "Load defaults" action. It is
+	// complementary to Template.defaults on list/get responses, which is retained
+	// for backwards compatibility.
+	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -207,6 +222,12 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
 			connect.WithClientOptions(opts...),
 		),
+		getTemplateDefaults: connect.NewClient[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse](
+			httpClient,
+			baseURL+TemplateServiceGetTemplateDefaultsProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("GetTemplateDefaults")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -225,6 +246,7 @@ type templateServiceClient struct {
 	listReleases          *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
 	getRelease            *connect.Client[v1.GetReleaseRequest, v1.GetReleaseResponse]
 	checkUpdates          *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
+	getTemplateDefaults   *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -292,6 +314,11 @@ func (c *templateServiceClient) CheckUpdates(ctx context.Context, req *connect.R
 	return c.checkUpdates.CallUnary(ctx, req)
 }
 
+// GetTemplateDefaults calls holos.console.v1.TemplateService.GetTemplateDefaults.
+func (c *templateServiceClient) GetTemplateDefaults(ctx context.Context, req *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error) {
+	return c.getTemplateDefaults.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
 	// ListTemplates returns all templates the user can see in the given scope.
@@ -334,6 +361,18 @@ type TemplateServiceHandler interface {
 	// CheckUpdates returns available version updates for linked templates in a
 	// given scope, comparing current pinned versions against published releases.
 	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
+	// GetTemplateDefaults returns the defaults a template provides for deployment
+	// form fields. The handler evaluates the template's `defaults` CUE block via
+	// ExtractDefaults and returns the same TemplateDefaults message that
+	// Template.defaults would carry on GetTemplate. Inline `*` defaults declared
+	// on `input` fields are NOT read — only the top-level `defaults` CUE block is
+	// considered. References ADR 027.
+	//
+	// This RPC gives the Create Deployment form an explicit, testable hook to
+	// call on template selection and on the "Load defaults" action. It is
+	// complementary to Template.defaults on list/get responses, which is retained
+	// for backwards compatibility.
+	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -421,6 +460,12 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceGetTemplateDefaultsHandler := connect.NewUnaryHandler(
+		TemplateServiceGetTemplateDefaultsProcedure,
+		svc.GetTemplateDefaults,
+		connect.WithSchema(templateServiceMethods.ByName("GetTemplateDefaults")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -449,6 +494,8 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceGetReleaseHandler.ServeHTTP(w, r)
 		case TemplateServiceCheckUpdatesProcedure:
 			templateServiceCheckUpdatesHandler.ServeHTTP(w, r)
+		case TemplateServiceGetTemplateDefaultsProcedure:
+			templateServiceGetTemplateDefaultsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -508,4 +555,8 @@ func (UnimplementedTemplateServiceHandler) GetRelease(context.Context, *connect.
 
 func (UnimplementedTemplateServiceHandler) CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.CheckUpdates is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetTemplateDefaults is not implemented"))
 }

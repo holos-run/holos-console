@@ -324,6 +324,111 @@ func (x *TemplateDefaults) GetDescription() string {
 	return ""
 }
 
+// GetTemplateDefaultsRequest requests the defaults block for a template.
+type GetTemplateDefaultsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// scope identifies the owning scope of the template. Only
+	// TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
+	// preserved for symmetry with other template RPCs and future use.
+	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// name is the template's DNS label slug.
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTemplateDefaultsRequest) Reset() {
+	*x = GetTemplateDefaultsRequest{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTemplateDefaultsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTemplateDefaultsRequest) ProtoMessage() {}
+
+func (x *GetTemplateDefaultsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTemplateDefaultsRequest.ProtoReflect.Descriptor instead.
+func (*GetTemplateDefaultsRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetTemplateDefaultsRequest) GetScope() *TemplateScopeRef {
+	if x != nil {
+		return x.Scope
+	}
+	return nil
+}
+
+func (x *GetTemplateDefaultsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// GetTemplateDefaultsResponse carries the evaluated template defaults.
+type GetTemplateDefaultsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// defaults is the TemplateDefaults message extracted from the template's
+	// top-level `defaults` CUE block (see ADR 027). Optional: an unset or empty
+	// message means the template provides no defaults.
+	Defaults      *TemplateDefaults `protobuf:"bytes,1,opt,name=defaults,proto3" json:"defaults,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTemplateDefaultsResponse) Reset() {
+	*x = GetTemplateDefaultsResponse{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTemplateDefaultsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTemplateDefaultsResponse) ProtoMessage() {}
+
+func (x *GetTemplateDefaultsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTemplateDefaultsResponse.ProtoReflect.Descriptor instead.
+func (*GetTemplateDefaultsResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetTemplateDefaultsResponse) GetDefaults() *TemplateDefaults {
+	if x != nil {
+		return x.Defaults
+	}
+	return nil
+}
+
 // Template is a CUE template that produces Kubernetes resource manifests.
 // It is stored as a Kubernetes ConfigMap in the namespace of its owning scope.
 // (ADR 021 Decision 4)
@@ -361,7 +466,7 @@ type Template struct {
 
 func (x *Template) Reset() {
 	*x = Template{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[3]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -373,7 +478,7 @@ func (x *Template) String() string {
 func (*Template) ProtoMessage() {}
 
 func (x *Template) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[3]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -386,7 +491,7 @@ func (x *Template) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Template.ProtoReflect.Descriptor instead.
 func (*Template) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{3}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Template) GetName() string {
@@ -469,7 +574,7 @@ type ListTemplatesRequest struct {
 
 func (x *ListTemplatesRequest) Reset() {
 	*x = ListTemplatesRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[4]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -481,7 +586,7 @@ func (x *ListTemplatesRequest) String() string {
 func (*ListTemplatesRequest) ProtoMessage() {}
 
 func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[4]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -494,7 +599,7 @@ func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{4}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListTemplatesRequest) GetScope() *TemplateScopeRef {
@@ -514,7 +619,7 @@ type ListTemplatesResponse struct {
 
 func (x *ListTemplatesResponse) Reset() {
 	*x = ListTemplatesResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[5]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -526,7 +631,7 @@ func (x *ListTemplatesResponse) String() string {
 func (*ListTemplatesResponse) ProtoMessage() {}
 
 func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[5]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -539,7 +644,7 @@ func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{5}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListTemplatesResponse) GetTemplates() []*Template {
@@ -560,7 +665,7 @@ type GetTemplateRequest struct {
 
 func (x *GetTemplateRequest) Reset() {
 	*x = GetTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[6]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -572,7 +677,7 @@ func (x *GetTemplateRequest) String() string {
 func (*GetTemplateRequest) ProtoMessage() {}
 
 func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[6]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -585,7 +690,7 @@ func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{6}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetTemplateRequest) GetScope() *TemplateScopeRef {
@@ -612,7 +717,7 @@ type GetTemplateResponse struct {
 
 func (x *GetTemplateResponse) Reset() {
 	*x = GetTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[7]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -624,7 +729,7 @@ func (x *GetTemplateResponse) String() string {
 func (*GetTemplateResponse) ProtoMessage() {}
 
 func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[7]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -637,7 +742,7 @@ func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateResponse.ProtoReflect.Descriptor instead.
 func (*GetTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{7}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetTemplateResponse) GetTemplate() *Template {
@@ -658,7 +763,7 @@ type CreateTemplateRequest struct {
 
 func (x *CreateTemplateRequest) Reset() {
 	*x = CreateTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[8]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -670,7 +775,7 @@ func (x *CreateTemplateRequest) String() string {
 func (*CreateTemplateRequest) ProtoMessage() {}
 
 func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[8]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -683,7 +788,7 @@ func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CreateTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{8}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateTemplateRequest) GetScope() *TemplateScopeRef {
@@ -710,7 +815,7 @@ type CreateTemplateResponse struct {
 
 func (x *CreateTemplateResponse) Reset() {
 	*x = CreateTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[9]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +827,7 @@ func (x *CreateTemplateResponse) String() string {
 func (*CreateTemplateResponse) ProtoMessage() {}
 
 func (x *CreateTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[9]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +840,7 @@ func (x *CreateTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplateResponse.ProtoReflect.Descriptor instead.
 func (*CreateTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{9}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreateTemplateResponse) GetName() string {
@@ -762,7 +867,7 @@ type UpdateTemplateRequest struct {
 
 func (x *UpdateTemplateRequest) Reset() {
 	*x = UpdateTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[10]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -774,7 +879,7 @@ func (x *UpdateTemplateRequest) String() string {
 func (*UpdateTemplateRequest) ProtoMessage() {}
 
 func (x *UpdateTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[10]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -787,7 +892,7 @@ func (x *UpdateTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTemplateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{10}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateTemplateRequest) GetScope() *TemplateScopeRef {
@@ -820,7 +925,7 @@ type UpdateTemplateResponse struct {
 
 func (x *UpdateTemplateResponse) Reset() {
 	*x = UpdateTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +937,7 @@ func (x *UpdateTemplateResponse) String() string {
 func (*UpdateTemplateResponse) ProtoMessage() {}
 
 func (x *UpdateTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[11]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +950,7 @@ func (x *UpdateTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTemplateResponse.ProtoReflect.Descriptor instead.
 func (*UpdateTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{11}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{13}
 }
 
 // DeleteTemplateRequest deletes a template.
@@ -859,7 +964,7 @@ type DeleteTemplateRequest struct {
 
 func (x *DeleteTemplateRequest) Reset() {
 	*x = DeleteTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -871,7 +976,7 @@ func (x *DeleteTemplateRequest) String() string {
 func (*DeleteTemplateRequest) ProtoMessage() {}
 
 func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[12]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -884,7 +989,7 @@ func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{12}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeleteTemplateRequest) GetScope() *TemplateScopeRef {
@@ -910,7 +1015,7 @@ type DeleteTemplateResponse struct {
 
 func (x *DeleteTemplateResponse) Reset() {
 	*x = DeleteTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[13]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -922,7 +1027,7 @@ func (x *DeleteTemplateResponse) String() string {
 func (*DeleteTemplateResponse) ProtoMessage() {}
 
 func (x *DeleteTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[13]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -935,7 +1040,7 @@ func (x *DeleteTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplateResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{13}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{15}
 }
 
 // RenderTemplateRequest evaluates a CUE template unified with inputs and
@@ -966,7 +1071,7 @@ type RenderTemplateRequest struct {
 
 func (x *RenderTemplateRequest) Reset() {
 	*x = RenderTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[14]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -978,7 +1083,7 @@ func (x *RenderTemplateRequest) String() string {
 func (*RenderTemplateRequest) ProtoMessage() {}
 
 func (x *RenderTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[14]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -991,7 +1096,7 @@ func (x *RenderTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderTemplateRequest.ProtoReflect.Descriptor instead.
 func (*RenderTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{14}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RenderTemplateRequest) GetScope() *TemplateScopeRef {
@@ -1091,7 +1196,7 @@ type RenderTemplateResponse struct {
 
 func (x *RenderTemplateResponse) Reset() {
 	*x = RenderTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[15]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1103,7 +1208,7 @@ func (x *RenderTemplateResponse) String() string {
 func (*RenderTemplateResponse) ProtoMessage() {}
 
 func (x *RenderTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[15]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1116,7 +1221,7 @@ func (x *RenderTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderTemplateResponse.ProtoReflect.Descriptor instead.
 func (*RenderTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{15}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RenderTemplateResponse) GetRenderedYaml() string {
@@ -1213,7 +1318,7 @@ type CloneTemplateRequest struct {
 
 func (x *CloneTemplateRequest) Reset() {
 	*x = CloneTemplateRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[16]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1330,7 @@ func (x *CloneTemplateRequest) String() string {
 func (*CloneTemplateRequest) ProtoMessage() {}
 
 func (x *CloneTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[16]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1343,7 @@ func (x *CloneTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CloneTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{16}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CloneTemplateRequest) GetScope() *TemplateScopeRef {
@@ -1279,7 +1384,7 @@ type CloneTemplateResponse struct {
 
 func (x *CloneTemplateResponse) Reset() {
 	*x = CloneTemplateResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[17]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1291,7 +1396,7 @@ func (x *CloneTemplateResponse) String() string {
 func (*CloneTemplateResponse) ProtoMessage() {}
 
 func (x *CloneTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[17]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1304,7 +1409,7 @@ func (x *CloneTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneTemplateResponse.ProtoReflect.Descriptor instead.
 func (*CloneTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{17}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CloneTemplateResponse) GetName() string {
@@ -1327,7 +1432,7 @@ type ListLinkableTemplatesRequest struct {
 
 func (x *ListLinkableTemplatesRequest) Reset() {
 	*x = ListLinkableTemplatesRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[18]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1339,7 +1444,7 @@ func (x *ListLinkableTemplatesRequest) String() string {
 func (*ListLinkableTemplatesRequest) ProtoMessage() {}
 
 func (x *ListLinkableTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[18]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1352,7 +1457,7 @@ func (x *ListLinkableTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLinkableTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListLinkableTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{18}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListLinkableTemplatesRequest) GetScope() *TemplateScopeRef {
@@ -1386,7 +1491,7 @@ type LinkableTemplate struct {
 
 func (x *LinkableTemplate) Reset() {
 	*x = LinkableTemplate{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[19]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1398,7 +1503,7 @@ func (x *LinkableTemplate) String() string {
 func (*LinkableTemplate) ProtoMessage() {}
 
 func (x *LinkableTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[19]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1411,7 +1516,7 @@ func (x *LinkableTemplate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkableTemplate.ProtoReflect.Descriptor instead.
 func (*LinkableTemplate) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{19}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *LinkableTemplate) GetScopeRef() *TemplateScopeRef {
@@ -1466,7 +1571,7 @@ type ListLinkableTemplatesResponse struct {
 
 func (x *ListLinkableTemplatesResponse) Reset() {
 	*x = ListLinkableTemplatesResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[20]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1478,7 +1583,7 @@ func (x *ListLinkableTemplatesResponse) String() string {
 func (*ListLinkableTemplatesResponse) ProtoMessage() {}
 
 func (x *ListLinkableTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[20]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1491,7 +1596,7 @@ func (x *ListLinkableTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLinkableTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListLinkableTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{20}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListLinkableTemplatesResponse) GetTemplates() []*LinkableTemplate {
@@ -1512,7 +1617,7 @@ type ListAncestorTemplatesRequest struct {
 
 func (x *ListAncestorTemplatesRequest) Reset() {
 	*x = ListAncestorTemplatesRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[21]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1524,7 +1629,7 @@ func (x *ListAncestorTemplatesRequest) String() string {
 func (*ListAncestorTemplatesRequest) ProtoMessage() {}
 
 func (x *ListAncestorTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[21]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1537,7 +1642,7 @@ func (x *ListAncestorTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAncestorTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListAncestorTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{21}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListAncestorTemplatesRequest) GetScope() *TemplateScopeRef {
@@ -1557,7 +1662,7 @@ type ListAncestorTemplatesResponse struct {
 
 func (x *ListAncestorTemplatesResponse) Reset() {
 	*x = ListAncestorTemplatesResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[22]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1569,7 +1674,7 @@ func (x *ListAncestorTemplatesResponse) String() string {
 func (*ListAncestorTemplatesResponse) ProtoMessage() {}
 
 func (x *ListAncestorTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[22]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1582,7 +1687,7 @@ func (x *ListAncestorTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAncestorTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListAncestorTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{22}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListAncestorTemplatesResponse) GetTemplates() []*Template {
@@ -1620,7 +1725,7 @@ type Release struct {
 
 func (x *Release) Reset() {
 	*x = Release{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[23]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1632,7 +1737,7 @@ func (x *Release) String() string {
 func (*Release) ProtoMessage() {}
 
 func (x *Release) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[23]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1645,7 +1750,7 @@ func (x *Release) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Release.ProtoReflect.Descriptor instead.
 func (*Release) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{23}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Release) GetTemplateName() string {
@@ -1726,7 +1831,7 @@ type TemplateUpdate struct {
 
 func (x *TemplateUpdate) Reset() {
 	*x = TemplateUpdate{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[24]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1738,7 +1843,7 @@ func (x *TemplateUpdate) String() string {
 func (*TemplateUpdate) ProtoMessage() {}
 
 func (x *TemplateUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[24]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1751,7 +1856,7 @@ func (x *TemplateUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemplateUpdate.ProtoReflect.Descriptor instead.
 func (*TemplateUpdate) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{24}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *TemplateUpdate) GetRef() *LinkedTemplateRef {
@@ -1803,7 +1908,7 @@ type CreateReleaseRequest struct {
 
 func (x *CreateReleaseRequest) Reset() {
 	*x = CreateReleaseRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[25]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1815,7 +1920,7 @@ func (x *CreateReleaseRequest) String() string {
 func (*CreateReleaseRequest) ProtoMessage() {}
 
 func (x *CreateReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[25]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1828,7 +1933,7 @@ func (x *CreateReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateReleaseRequest.ProtoReflect.Descriptor instead.
 func (*CreateReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{25}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CreateReleaseRequest) GetScope() *TemplateScopeRef {
@@ -1855,7 +1960,7 @@ type CreateReleaseResponse struct {
 
 func (x *CreateReleaseResponse) Reset() {
 	*x = CreateReleaseResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[26]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1867,7 +1972,7 @@ func (x *CreateReleaseResponse) String() string {
 func (*CreateReleaseResponse) ProtoMessage() {}
 
 func (x *CreateReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[26]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1880,7 +1985,7 @@ func (x *CreateReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateReleaseResponse.ProtoReflect.Descriptor instead.
 func (*CreateReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{26}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreateReleaseResponse) GetRelease() *Release {
@@ -1903,7 +2008,7 @@ type ListReleasesRequest struct {
 
 func (x *ListReleasesRequest) Reset() {
 	*x = ListReleasesRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[27]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1915,7 +2020,7 @@ func (x *ListReleasesRequest) String() string {
 func (*ListReleasesRequest) ProtoMessage() {}
 
 func (x *ListReleasesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[27]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1928,7 +2033,7 @@ func (x *ListReleasesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReleasesRequest.ProtoReflect.Descriptor instead.
 func (*ListReleasesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{27}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ListReleasesRequest) GetScope() *TemplateScopeRef {
@@ -1955,7 +2060,7 @@ type ListReleasesResponse struct {
 
 func (x *ListReleasesResponse) Reset() {
 	*x = ListReleasesResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[28]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1967,7 +2072,7 @@ func (x *ListReleasesResponse) String() string {
 func (*ListReleasesResponse) ProtoMessage() {}
 
 func (x *ListReleasesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[28]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1980,7 +2085,7 @@ func (x *ListReleasesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReleasesResponse.ProtoReflect.Descriptor instead.
 func (*ListReleasesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{28}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListReleasesResponse) GetReleases() []*Release {
@@ -2005,7 +2110,7 @@ type GetReleaseRequest struct {
 
 func (x *GetReleaseRequest) Reset() {
 	*x = GetReleaseRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[29]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2017,7 +2122,7 @@ func (x *GetReleaseRequest) String() string {
 func (*GetReleaseRequest) ProtoMessage() {}
 
 func (x *GetReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[29]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2030,7 +2135,7 @@ func (x *GetReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReleaseRequest.ProtoReflect.Descriptor instead.
 func (*GetReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{29}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetReleaseRequest) GetScope() *TemplateScopeRef {
@@ -2064,7 +2169,7 @@ type GetReleaseResponse struct {
 
 func (x *GetReleaseResponse) Reset() {
 	*x = GetReleaseResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[30]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2076,7 +2181,7 @@ func (x *GetReleaseResponse) String() string {
 func (*GetReleaseResponse) ProtoMessage() {}
 
 func (x *GetReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[30]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2089,7 +2194,7 @@ func (x *GetReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReleaseResponse.ProtoReflect.Descriptor instead.
 func (*GetReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{30}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetReleaseResponse) GetRelease() *Release {
@@ -2119,7 +2224,7 @@ type CheckUpdatesRequest struct {
 
 func (x *CheckUpdatesRequest) Reset() {
 	*x = CheckUpdatesRequest{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[31]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2131,7 +2236,7 @@ func (x *CheckUpdatesRequest) String() string {
 func (*CheckUpdatesRequest) ProtoMessage() {}
 
 func (x *CheckUpdatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[31]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2144,7 +2249,7 @@ func (x *CheckUpdatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckUpdatesRequest.ProtoReflect.Descriptor instead.
 func (*CheckUpdatesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{31}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *CheckUpdatesRequest) GetScope() *TemplateScopeRef {
@@ -2179,7 +2284,7 @@ type CheckUpdatesResponse struct {
 
 func (x *CheckUpdatesResponse) Reset() {
 	*x = CheckUpdatesResponse{}
-	mi := &file_holos_console_v1_templates_proto_msgTypes[32]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2191,7 +2296,7 @@ func (x *CheckUpdatesResponse) String() string {
 func (*CheckUpdatesResponse) ProtoMessage() {}
 
 func (x *CheckUpdatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_templates_proto_msgTypes[32]
+	mi := &file_holos_console_v1_templates_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2204,7 +2309,7 @@ func (x *CheckUpdatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckUpdatesResponse.ProtoReflect.Descriptor instead.
 func (*CheckUpdatesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{32}
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CheckUpdatesResponse) GetUpdates() []*TemplateUpdate {
@@ -2237,7 +2342,12 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
 	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x12\n" +
 	"\x04name\x18\a \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\b \x01(\tR\vdescription\"\xa9\x03\n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\"j\n" +
+	"\x1aGetTemplateDefaultsRequest\x128\n" +
+	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"]\n" +
+	"\x1bGetTemplateDefaultsResponse\x12>\n" +
+	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\xa9\x03\n" +
 	"\bTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
 	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12!\n" +
@@ -2362,8 +2472,7 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x1aTEMPLATE_SCOPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bTEMPLATE_SCOPE_ORGANIZATION\x10\x01\x12\x19\n" +
 	"\x15TEMPLATE_SCOPE_FOLDER\x10\x02\x12\x1a\n" +
-	"\x16TEMPLATE_SCOPE_PROJECT\x10\x032\xb2\n" +
-	"\n" +
+	"\x16TEMPLATE_SCOPE_PROJECT\x10\x032\xa6\v\n" +
 	"\x0fTemplateService\x12`\n" +
 	"\rListTemplates\x12&.holos.console.v1.ListTemplatesRequest\x1a'.holos.console.v1.ListTemplatesResponse\x12Z\n" +
 	"\vGetTemplate\x12$.holos.console.v1.GetTemplateRequest\x1a%.holos.console.v1.GetTemplateResponse\x12c\n" +
@@ -2378,7 +2487,8 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\fListReleases\x12%.holos.console.v1.ListReleasesRequest\x1a&.holos.console.v1.ListReleasesResponse\x12W\n" +
 	"\n" +
 	"GetRelease\x12#.holos.console.v1.GetReleaseRequest\x1a$.holos.console.v1.GetReleaseResponse\x12]\n" +
-	"\fCheckUpdates\x12%.holos.console.v1.CheckUpdatesRequest\x1a&.holos.console.v1.CheckUpdatesResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\fCheckUpdates\x12%.holos.console.v1.CheckUpdatesRequest\x1a&.holos.console.v1.CheckUpdatesResponse\x12r\n" +
+	"\x13GetTemplateDefaults\x12,.holos.console.v1.GetTemplateDefaultsRequest\x1a-.holos.console.v1.GetTemplateDefaultsResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_templates_proto_rawDescOnce sync.Once
@@ -2393,114 +2503,120 @@ func file_holos_console_v1_templates_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_templates_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_holos_console_v1_templates_proto_goTypes = []any{
 	(TemplateScope)(0),                    // 0: holos.console.v1.TemplateScope
 	(*TemplateScopeRef)(nil),              // 1: holos.console.v1.TemplateScopeRef
 	(*LinkedTemplateRef)(nil),             // 2: holos.console.v1.LinkedTemplateRef
 	(*TemplateDefaults)(nil),              // 3: holos.console.v1.TemplateDefaults
-	(*Template)(nil),                      // 4: holos.console.v1.Template
-	(*ListTemplatesRequest)(nil),          // 5: holos.console.v1.ListTemplatesRequest
-	(*ListTemplatesResponse)(nil),         // 6: holos.console.v1.ListTemplatesResponse
-	(*GetTemplateRequest)(nil),            // 7: holos.console.v1.GetTemplateRequest
-	(*GetTemplateResponse)(nil),           // 8: holos.console.v1.GetTemplateResponse
-	(*CreateTemplateRequest)(nil),         // 9: holos.console.v1.CreateTemplateRequest
-	(*CreateTemplateResponse)(nil),        // 10: holos.console.v1.CreateTemplateResponse
-	(*UpdateTemplateRequest)(nil),         // 11: holos.console.v1.UpdateTemplateRequest
-	(*UpdateTemplateResponse)(nil),        // 12: holos.console.v1.UpdateTemplateResponse
-	(*DeleteTemplateRequest)(nil),         // 13: holos.console.v1.DeleteTemplateRequest
-	(*DeleteTemplateResponse)(nil),        // 14: holos.console.v1.DeleteTemplateResponse
-	(*RenderTemplateRequest)(nil),         // 15: holos.console.v1.RenderTemplateRequest
-	(*RenderTemplateResponse)(nil),        // 16: holos.console.v1.RenderTemplateResponse
-	(*CloneTemplateRequest)(nil),          // 17: holos.console.v1.CloneTemplateRequest
-	(*CloneTemplateResponse)(nil),         // 18: holos.console.v1.CloneTemplateResponse
-	(*ListLinkableTemplatesRequest)(nil),  // 19: holos.console.v1.ListLinkableTemplatesRequest
-	(*LinkableTemplate)(nil),              // 20: holos.console.v1.LinkableTemplate
-	(*ListLinkableTemplatesResponse)(nil), // 21: holos.console.v1.ListLinkableTemplatesResponse
-	(*ListAncestorTemplatesRequest)(nil),  // 22: holos.console.v1.ListAncestorTemplatesRequest
-	(*ListAncestorTemplatesResponse)(nil), // 23: holos.console.v1.ListAncestorTemplatesResponse
-	(*Release)(nil),                       // 24: holos.console.v1.Release
-	(*TemplateUpdate)(nil),                // 25: holos.console.v1.TemplateUpdate
-	(*CreateReleaseRequest)(nil),          // 26: holos.console.v1.CreateReleaseRequest
-	(*CreateReleaseResponse)(nil),         // 27: holos.console.v1.CreateReleaseResponse
-	(*ListReleasesRequest)(nil),           // 28: holos.console.v1.ListReleasesRequest
-	(*ListReleasesResponse)(nil),          // 29: holos.console.v1.ListReleasesResponse
-	(*GetReleaseRequest)(nil),             // 30: holos.console.v1.GetReleaseRequest
-	(*GetReleaseResponse)(nil),            // 31: holos.console.v1.GetReleaseResponse
-	(*CheckUpdatesRequest)(nil),           // 32: holos.console.v1.CheckUpdatesRequest
-	(*CheckUpdatesResponse)(nil),          // 33: holos.console.v1.CheckUpdatesResponse
-	(*EnvVar)(nil),                        // 34: holos.console.v1.EnvVar
-	(*timestamppb.Timestamp)(nil),         // 35: google.protobuf.Timestamp
+	(*GetTemplateDefaultsRequest)(nil),    // 4: holos.console.v1.GetTemplateDefaultsRequest
+	(*GetTemplateDefaultsResponse)(nil),   // 5: holos.console.v1.GetTemplateDefaultsResponse
+	(*Template)(nil),                      // 6: holos.console.v1.Template
+	(*ListTemplatesRequest)(nil),          // 7: holos.console.v1.ListTemplatesRequest
+	(*ListTemplatesResponse)(nil),         // 8: holos.console.v1.ListTemplatesResponse
+	(*GetTemplateRequest)(nil),            // 9: holos.console.v1.GetTemplateRequest
+	(*GetTemplateResponse)(nil),           // 10: holos.console.v1.GetTemplateResponse
+	(*CreateTemplateRequest)(nil),         // 11: holos.console.v1.CreateTemplateRequest
+	(*CreateTemplateResponse)(nil),        // 12: holos.console.v1.CreateTemplateResponse
+	(*UpdateTemplateRequest)(nil),         // 13: holos.console.v1.UpdateTemplateRequest
+	(*UpdateTemplateResponse)(nil),        // 14: holos.console.v1.UpdateTemplateResponse
+	(*DeleteTemplateRequest)(nil),         // 15: holos.console.v1.DeleteTemplateRequest
+	(*DeleteTemplateResponse)(nil),        // 16: holos.console.v1.DeleteTemplateResponse
+	(*RenderTemplateRequest)(nil),         // 17: holos.console.v1.RenderTemplateRequest
+	(*RenderTemplateResponse)(nil),        // 18: holos.console.v1.RenderTemplateResponse
+	(*CloneTemplateRequest)(nil),          // 19: holos.console.v1.CloneTemplateRequest
+	(*CloneTemplateResponse)(nil),         // 20: holos.console.v1.CloneTemplateResponse
+	(*ListLinkableTemplatesRequest)(nil),  // 21: holos.console.v1.ListLinkableTemplatesRequest
+	(*LinkableTemplate)(nil),              // 22: holos.console.v1.LinkableTemplate
+	(*ListLinkableTemplatesResponse)(nil), // 23: holos.console.v1.ListLinkableTemplatesResponse
+	(*ListAncestorTemplatesRequest)(nil),  // 24: holos.console.v1.ListAncestorTemplatesRequest
+	(*ListAncestorTemplatesResponse)(nil), // 25: holos.console.v1.ListAncestorTemplatesResponse
+	(*Release)(nil),                       // 26: holos.console.v1.Release
+	(*TemplateUpdate)(nil),                // 27: holos.console.v1.TemplateUpdate
+	(*CreateReleaseRequest)(nil),          // 28: holos.console.v1.CreateReleaseRequest
+	(*CreateReleaseResponse)(nil),         // 29: holos.console.v1.CreateReleaseResponse
+	(*ListReleasesRequest)(nil),           // 30: holos.console.v1.ListReleasesRequest
+	(*ListReleasesResponse)(nil),          // 31: holos.console.v1.ListReleasesResponse
+	(*GetReleaseRequest)(nil),             // 32: holos.console.v1.GetReleaseRequest
+	(*GetReleaseResponse)(nil),            // 33: holos.console.v1.GetReleaseResponse
+	(*CheckUpdatesRequest)(nil),           // 34: holos.console.v1.CheckUpdatesRequest
+	(*CheckUpdatesResponse)(nil),          // 35: holos.console.v1.CheckUpdatesResponse
+	(*EnvVar)(nil),                        // 36: holos.console.v1.EnvVar
+	(*timestamppb.Timestamp)(nil),         // 37: google.protobuf.Timestamp
 }
 var file_holos_console_v1_templates_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.TemplateScopeRef.scope:type_name -> holos.console.v1.TemplateScope
 	0,  // 1: holos.console.v1.LinkedTemplateRef.scope:type_name -> holos.console.v1.TemplateScope
-	34, // 2: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
-	1,  // 3: holos.console.v1.Template.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 4: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
-	2,  // 5: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
-	1,  // 6: holos.console.v1.ListTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 7: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	1,  // 8: holos.console.v1.GetTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 9: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
-	1,  // 10: holos.console.v1.CreateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 11: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
-	1,  // 12: holos.console.v1.UpdateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 13: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
-	1,  // 14: holos.console.v1.DeleteTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	1,  // 15: holos.console.v1.RenderTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 16: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
-	1,  // 17: holos.console.v1.CloneTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	1,  // 18: holos.console.v1.ListLinkableTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	1,  // 19: holos.console.v1.LinkableTemplate.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 20: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
-	20, // 21: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
-	1,  // 22: holos.console.v1.ListAncestorTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 23: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	1,  // 24: holos.console.v1.Release.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 25: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
-	35, // 26: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
-	2,  // 27: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
-	1,  // 28: holos.console.v1.CreateReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 29: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
-	24, // 30: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
-	1,  // 31: holos.console.v1.ListReleasesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 32: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
-	1,  // 33: holos.console.v1.GetReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 34: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
-	1,  // 35: holos.console.v1.CheckUpdatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	25, // 36: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
-	5,  // 37: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
-	7,  // 38: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
-	9,  // 39: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
-	11, // 40: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
-	13, // 41: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
-	15, // 42: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
-	17, // 43: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
-	19, // 44: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
-	22, // 45: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
-	26, // 46: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
-	28, // 47: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
-	30, // 48: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
-	32, // 49: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
-	6,  // 50: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
-	8,  // 51: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
-	10, // 52: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
-	12, // 53: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
-	14, // 54: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
-	16, // 55: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
-	18, // 56: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
-	21, // 57: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
-	23, // 58: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
-	27, // 59: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
-	29, // 60: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
-	31, // 61: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
-	33, // 62: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
-	50, // [50:63] is the sub-list for method output_type
-	37, // [37:50] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	36, // 2: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
+	1,  // 3: holos.console.v1.GetTemplateDefaultsRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 4: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
+	1,  // 5: holos.console.v1.Template.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 6: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
+	2,  // 7: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	1,  // 8: holos.console.v1.ListTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	6,  // 9: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	1,  // 10: holos.console.v1.GetTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	6,  // 11: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
+	1,  // 12: holos.console.v1.CreateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	6,  // 13: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
+	1,  // 14: holos.console.v1.UpdateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	6,  // 15: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
+	1,  // 16: holos.console.v1.DeleteTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	1,  // 17: holos.console.v1.RenderTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	2,  // 18: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	1,  // 19: holos.console.v1.CloneTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	1,  // 20: holos.console.v1.ListLinkableTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	1,  // 21: holos.console.v1.LinkableTemplate.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	26, // 22: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
+	22, // 23: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
+	1,  // 24: holos.console.v1.ListAncestorTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	6,  // 25: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	1,  // 26: holos.console.v1.Release.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 27: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
+	37, // 28: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
+	2,  // 29: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
+	1,  // 30: holos.console.v1.CreateReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	26, // 31: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
+	26, // 32: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
+	1,  // 33: holos.console.v1.ListReleasesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	26, // 34: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
+	1,  // 35: holos.console.v1.GetReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	26, // 36: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
+	1,  // 37: holos.console.v1.CheckUpdatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	27, // 38: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
+	7,  // 39: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
+	9,  // 40: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
+	11, // 41: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
+	13, // 42: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
+	15, // 43: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
+	17, // 44: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
+	19, // 45: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
+	21, // 46: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
+	24, // 47: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
+	28, // 48: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
+	30, // 49: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
+	32, // 50: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
+	34, // 51: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
+	4,  // 52: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
+	8,  // 53: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
+	10, // 54: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
+	12, // 55: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
+	14, // 56: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
+	16, // 57: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
+	18, // 58: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
+	20, // 59: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
+	23, // 60: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
+	25, // 61: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
+	29, // 62: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
+	31, // 63: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
+	33, // 64: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
+	35, // 65: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
+	5,  // 66: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
+	53, // [53:67] is the sub-list for method output_type
+	39, // [39:53] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_templates_proto_init() }
@@ -2510,14 +2626,14 @@ func file_holos_console_v1_templates_proto_init() {
 	}
 	file_holos_console_v1_deployments_proto_init()
 	file_holos_console_v1_rbac_proto_init()
-	file_holos_console_v1_templates_proto_msgTypes[15].OneofWrappers = []any{}
+	file_holos_console_v1_templates_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_templates_proto_rawDesc), len(file_holos_console_v1_templates_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   33,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
