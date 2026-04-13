@@ -350,18 +350,14 @@ func (s *Server) Serve(ctx context.Context) error {
 		// console-managed apps/v1.Deployment resources via the managed-by
 		// label. The informer lifecycle is tied to the server context so it
 		// stops cleanly on shutdown. Cache misses are treated as "no data
-		// yet" by the handler, so a failure to start the cache (transient
-		// API latency, missing watch RBAC, etc.) must not block startup:
-		// log and fall through to a no-op cache so the console continues to
-		// serve, just without status summaries until the operator fixes the
-		// underlying problem and restarts.
-		deploymentStatusCache, err := statuscache.New(ctx, k8sClientset)
-		if err != nil {
-			slog.WarnContext(ctx, "deployment status cache unavailable, deployments will report UNSPECIFIED status",
-				slog.Any("error", err),
-			)
-			deploymentStatusCache = statuscache.NewNop()
-		}
+		// yet" by the handler. New is non-blocking: it starts the informer
+		// in the background and reports misses until the initial sync
+		// completes, so a transiently unreachable API server or a missing
+		// watch RBAC rule never delays startup. If the initial sync does
+		// not complete within statuscache's internal timeout, the package
+		// itself cancels the reflector to avoid leaking LIST/WATCH retry
+		// goroutines and logs a warning.
+		deploymentStatusCache := statuscache.New(ctx, k8sClientset)
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
