@@ -1522,6 +1522,194 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 	})
 }
 
+// TestCreateOrganization_SeedsDefaultRoleGrants verifies the org namespace's
+// AnnotationDefaultShareRoles is populated with the three standard role
+// grants (Owner, Editor, Viewer) *before* the default folder and default
+// project are created when populate_defaults=true.
+func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
+	t.Run("populate_defaults=true writes Owner/Editor/Viewer default role grants", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "seeded-org",
+			DisplayName:      "Seeded Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		// Read the org namespace back and inspect the default-share-roles annotation.
+		ns, err := handler.k8s.GetOrganization(context.Background(), "seeded-org")
+		if err != nil {
+			t.Fatalf("fetching org namespace: %v", err)
+		}
+		raw, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]
+		if !ok {
+			t.Fatalf("expected annotation %q to be set", v1alpha2.AnnotationDefaultShareRoles)
+		}
+		var grants []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(raw), &grants); err != nil {
+			t.Fatalf("parsing default-share-roles annotation: %v", err)
+		}
+		if len(grants) != 3 {
+			t.Fatalf("expected 3 grants, got %d (%v)", len(grants), grants)
+		}
+
+		byRole := make(map[string]secrets.AnnotationGrant, 3)
+		for _, g := range grants {
+			byRole[g.Role] = g
+		}
+		for _, role := range []string{"owner", "editor", "viewer"} {
+			g, ok := byRole[role]
+			if !ok {
+				t.Errorf("expected a grant for role %q, none found", role)
+				continue
+			}
+			if g.Principal != role {
+				t.Errorf("expected principal %q for role %q grant, got %q", role, role, g.Principal)
+			}
+			if g.Nbf != nil {
+				t.Errorf("expected no start restriction (nbf) for role %q grant, got %v", role, *g.Nbf)
+			}
+			if g.Exp != nil {
+				t.Errorf("expected no expiration (exp) for role %q grant, got %v", role, *g.Exp)
+			}
+		}
+
+		// Also verify default-share-users was NOT set (spec: role grants only).
+		if _, userDefaultsSet := ns.Annotations[v1alpha2.AnnotationDefaultShareUsers]; userDefaultsSet {
+			t.Errorf("expected annotation %q to be unset, but it was present", v1alpha2.AnnotationDefaultShareUsers)
+		}
+	})
+
+	t.Run("populate_defaults=false does not seed default role grants", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := false
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "no-seed-defaults-org",
+			DisplayName:      "No Seed Defaults Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		ns, err := handler.k8s.GetOrganization(context.Background(), "no-seed-defaults-org")
+		if err != nil {
+			t.Fatalf("fetching org namespace: %v", err)
+		}
+		if v, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
+			t.Errorf("expected annotation %q to be unset when populate_defaults=false, got %q", v1alpha2.AnnotationDefaultShareRoles, v)
+		}
+	})
+
+	t.Run("populate_defaults unset does not seed default role grants", func(t *testing.T) {
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		ctx := contextWithClaims("alice@example.com")
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:        "unset-defaults-org",
+			DisplayName: "Unset Defaults Org",
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		ns, err := handler.k8s.GetOrganization(context.Background(), "unset-defaults-org")
+		if err != nil {
+			t.Fatalf("fetching org namespace: %v", err)
+		}
+		if v, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
+			t.Errorf("expected annotation %q to be unset when populate_defaults is unset, got %q", v1alpha2.AnnotationDefaultShareRoles, v)
+		}
+	})
+
+	t.Run("default role grants are written before default folder creation", func(t *testing.T) {
+		// Use a FolderCreator that records whether the
+		// default-share-roles annotation was present on the org namespace
+		// at the moment CreateFolder was invoked. This verifies the
+		// ordering guarantee (annotation-before-folder) described in the
+		// spec: "annotations must be visible on the org namespace
+		// *before* any folder/project creation call runs".
+		ts := &mockTemplateSeeder{}
+		handler := newTestHandlerWithOpts(testHandlerOpts{
+			withFolderCreator:  true,
+			withDefaultsSeeder: true,
+			templateSeeder:     ts,
+		})
+		fc := handler.folderCreator.(*k8sFolderCreator)
+
+		orderingProbe := &orderingFolderCreator{inner: fc, k8s: handler.k8s}
+		// Swap in the probe as the FolderCreator (leaving FolderLister intact).
+		folderPrefix := handler.folderPrefix
+		handler.WithFolderCreator(orderingProbe, fc, folderPrefix)
+
+		ctx := contextWithClaims("alice@example.com")
+		populateDefaults := true
+
+		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
+			Name:             "ordering-org",
+			DisplayName:      "Ordering Org",
+			PopulateDefaults: &populateDefaults,
+		}))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if !orderingProbe.seenDefaultRolesAnnotation {
+			t.Errorf("expected default-share-roles annotation to be visible on the org namespace before CreateFolder was called")
+		}
+	})
+}
+
+// orderingFolderCreator wraps a FolderCreator and records, at the moment
+// CreateFolder is invoked, whether the org namespace already carries the
+// default-share-roles annotation. Used to assert the ordering invariant
+// from issue #920.
+type orderingFolderCreator struct {
+	inner                      FolderCreator
+	k8s                        *K8sClient
+	seenDefaultRolesAnnotation bool
+}
+
+func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	ns, err := o.k8s.GetOrganization(ctx, org)
+	if err == nil && ns.Annotations != nil {
+		if _, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
+			o.seenDefaultRolesAnnotation = true
+		}
+	}
+	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles)
+}
+
+func (o *orderingFolderCreator) DeleteFolder(ctx context.Context, name string) error {
+	return o.inner.DeleteFolder(ctx, name)
+}
+
+func (o *orderingFolderCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	return o.inner.NamespaceExists(ctx, nsName)
+}
+
 // ---- Helpers ----
 
 func assertUnauthenticated(t *testing.T, err error) {

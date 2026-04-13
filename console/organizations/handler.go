@@ -233,6 +233,26 @@ func (h *Handler) CreateOrganization(
 		return nil, mapK8sError(err)
 	}
 
+	// Seed org default role grants (Owner, Editor, Viewer) onto the org
+	// namespace *before* creating the default folder or project. This ensures
+	// the default folder and default project inherit the correct org-level
+	// default role grants via GetOrgDefaultGrants().
+	if req.Msg.GetPopulateDefaults() {
+		if err := h.seedOrgDefaultSharing(ctx, req.Msg.Name); err != nil {
+			slog.ErrorContext(ctx, "seeding org default role grants failed, rolling back org",
+				slog.String("organization", req.Msg.Name),
+				slog.Any("error", err),
+			)
+			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
+				slog.ErrorContext(ctx, "org rollback after default-sharing seed failure failed",
+					slog.String("organization", req.Msg.Name),
+					slog.Any("error", delErr),
+				)
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("seeding org default role grants: %w", err))
+		}
+	}
+
 	// Auto-create the default folder as an immediate child of the org.
 	// folderName is hoisted so the seed-defaults rollback can also delete
 	// the folder namespace (Kubernetes namespaces are flat — deleting the
@@ -348,6 +368,38 @@ func (h *Handler) rollbackFolder(ctx context.Context, folderName string) {
 			slog.Any("error", delErr),
 		)
 	}
+}
+
+// defaultOrgRoleGrants returns the standard three-role default grant list
+// (Owner, Editor, Viewer) with no start restriction and no expiration. The
+// principal for each grant is the lowercase role name (e.g. "owner") — role
+// grants treat the role string as both the principal and the role. These are
+// seeded onto new organizations when populate_defaults=true so that the
+// default folder and default project inherit sensible org-level defaults via
+// GetOrgDefaultGrants() in projects/resolver.go.
+func defaultOrgRoleGrants() []secrets.AnnotationGrant {
+	return []secrets.AnnotationGrant{
+		{Principal: roleAnnotationString(rbac.RoleOwner), Role: roleAnnotationString(rbac.RoleOwner)},
+		{Principal: roleAnnotationString(rbac.RoleEditor), Role: roleAnnotationString(rbac.RoleEditor)},
+		{Principal: roleAnnotationString(rbac.RoleViewer), Role: roleAnnotationString(rbac.RoleViewer)},
+	}
+}
+
+// seedOrgDefaultSharing patches the org namespace with the standard default
+// role grants (Owner, Editor, Viewer). It writes only the
+// AnnotationDefaultShareRoles annotation — default user grants are left
+// untouched so the non-populate_defaults path is preserved.
+func (h *Handler) seedOrgDefaultSharing(ctx context.Context, orgName string) error {
+	if _, err := h.k8s.UpdateOrganizationDefaultRoleGrants(ctx, orgName, defaultOrgRoleGrants()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// roleAnnotationString converts a proto Role enum to the lowercase annotation
+// string (e.g. ROLE_OWNER -> "owner") used by secrets.AnnotationGrant.Role.
+func roleAnnotationString(r rbac.Role) string {
+	return strings.ToLower(strings.TrimPrefix(r.String(), "ROLE_"))
 }
 
 // seedDefaults creates example resources for the new organization:
