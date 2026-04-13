@@ -107,6 +107,17 @@ func TestCacheSummary(t *testing.T) {
 			wantReady: 0,
 		},
 		{
+			name: "running: scaled to zero is a steady state",
+			dep: buildDeployment("p-alpha", "idle", 0, 0, 0, 0, 1, []appsv1.DeploymentCondition{
+				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
+			}, ""),
+			ns:        "p-alpha",
+			lookup:    "idle",
+			wantFound: true,
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+			wantReady: 0,
+		},
+		{
 			name:      "miss: unknown deployment",
 			dep:       buildDeployment("p-alpha", "web", 1, 1, 1, 1, 1, nil, ""),
 			ns:        "p-alpha",

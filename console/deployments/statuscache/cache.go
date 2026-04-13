@@ -18,6 +18,7 @@ package statuscache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +30,16 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
+
+// initialSyncTimeout bounds how long New will wait for the initial informer
+// LIST/WATCH to complete before returning an error. Without this bound, a
+// missing RBAC rule or a transiently unavailable API server would hang
+// console startup until the server context is cancelled, preventing the HTTP
+// listener from ever opening. The bound is deliberately short: status data
+// is non-essential for console startup and the cache returns (nil, false) on
+// misses anyway, so callers are free to fall back to UNSPECIFIED until the
+// cache catches up.
+const initialSyncTimeout = 10 * time.Second
 
 // managedByLabelSelector limits the watch to Deployments labeled as managed
 // by the console, matching the labels the deployments renderer applies to
@@ -83,9 +94,18 @@ func New(ctx context.Context, client kubernetes.Interface) (Cache, error) {
 	_ = depInformer.Informer()
 
 	factory.Start(ctx.Done())
-	synced := factory.WaitForCacheSync(ctx.Done())
+
+	// Bound the initial sync with a derived context so startup fails fast if
+	// the watch never establishes (missing RBAC, unreachable API server, etc.)
+	// rather than hanging until the server context is cancelled.
+	syncCtx, syncCancel := context.WithTimeout(ctx, initialSyncTimeout)
+	defer syncCancel()
+	synced := factory.WaitForCacheSync(syncCtx.Done())
 	for informerType, ok := range synced {
 		if !ok {
+			if err := syncCtx.Err(); err != nil {
+				return nil, fmt.Errorf("statuscache: informer %v did not sync within %s: %w", informerType, initialSyncTimeout, err)
+			}
 			return nil, fmt.Errorf("statuscache: informer %v failed to sync", informerType)
 		}
 	}
@@ -147,11 +167,14 @@ func summaryFromDeployment(dep *appsv1.Deployment) *consolev1.DeploymentStatusSu
 		}
 	}
 
+	// A deployment with desired==0 that Kubernetes marks Available=True is a
+	// legitimate steady state (e.g. intentionally scaled to zero): do not
+	// penalize it by forcing PENDING.
 	phase := consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING
 	switch {
 	case replicaFailure, progressingFalse:
 		phase = consolev1.DeploymentPhase_DEPLOYMENT_PHASE_FAILED
-	case available && ready == desired && desired > 0:
+	case available && ready == desired:
 		phase = consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING
 	}
 
