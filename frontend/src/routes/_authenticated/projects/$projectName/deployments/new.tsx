@@ -79,7 +79,14 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   // pre-fill data. We intentionally ignore the embedded Template.defaults
   // field on ListTemplates responses.
   const defaultsQuery = useGetTemplateDefaults({ scope, name: template })
-  const { data: fetchedDefaults, refetch: refetchDefaults, isFetching: defaultsFetching } = defaultsQuery
+  const {
+    data: fetchedDefaults,
+    refetch: refetchDefaults,
+    isFetching: defaultsFetching,
+    isSuccess: defaultsSuccess,
+    isError: defaultsIsError,
+    error: defaultsError,
+  } = defaultsQuery
 
   const slugify = (val: string) =>
     val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -146,14 +153,17 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     if (defaultsFetching) return
     // Only react to fresh data for the current template.
     if (lastAppliedTemplateRef.current === template) return
-    // Wait until the query has actually resolved for this template (data
-    // defined OR isSuccess). React Query leaves stale data from previous
-    // query keys in `data` until the next fetch resolves, so we gate on the
-    // non-fetching boundary above and apply whatever the resolved data is.
     if (loadDefaultsPendingRef.current) {
       // Load defaults path handles its own overwrite below.
       return
     }
+    // Only apply defaults when the RPC actually succeeded. On error, leave
+    // the form as-is and surface the failure via defaultsIsError rather than
+    // silently clearing defaultable fields (which would happen if we treated
+    // undefined data as "no defaults"). Do not mark the template as applied
+    // on failure, so a manual retry (Load defaults) or template change can
+    // try again.
+    if (!defaultsSuccess) return
     if (isPristine) {
       applyDefaults(fetchedDefaults)
       // Pre-fill is programmatic; keep the form pristine per ADR 027 §3.
@@ -163,7 +173,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     // applyDefaults is stable (closes over setters). We intentionally depend
     // only on the data we care about here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [template, fetchedDefaults, defaultsFetching, isPristine])
+  }, [template, fetchedDefaults, defaultsFetching, defaultsSuccess, isPristine])
 
   const handleTemplateChange = (templateName: string) => {
     setTemplate(templateName)
@@ -177,6 +187,17 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     loadDefaultsPendingRef.current = true
     try {
       const result = await refetchDefaults()
+      // refetch() resolves to a query result even when the RPC errors.
+      // Only apply defaults and reset pristine on success; on failure,
+      // leave the user's edits intact and surface the error.
+      if (result.status === 'error') {
+        setError(
+          result.error instanceof Error
+            ? `Failed to load defaults: ${result.error.message}`
+            : 'Failed to load defaults',
+        )
+        return
+      }
       // ADR 027 §5: always overwrite, regardless of isPristine.
       applyDefaults(result.data)
       setIsPristine(true)
@@ -388,6 +409,16 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               onChange={dirty(setEnv)}
             />
           </div>
+          {defaultsIsError && (
+            <Alert variant="destructive" role="alert" aria-label="Template defaults error">
+              <AlertDescription>
+                Failed to load template defaults
+                {defaultsError instanceof Error ? `: ${defaultsError.message}` : ''}.
+                Fields were not pre-filled; you can edit them manually or click
+                Load defaults to retry.
+              </AlertDescription>
+            </Alert>
+          )}
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>

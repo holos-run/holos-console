@@ -91,12 +91,16 @@ function installDefaultsMock(defaultsByName: Record<string, Defaults | undefined
     // is a close proxy that the component consumers can assert on.
     rpcSpy(params.name)
     const d = params.name ? defaultsByName[params.name] : undefined
+    const hasResolved = !!params.name
     return {
       data: d,
       isFetching: false,
+      isSuccess: hasResolved,
+      isError: false,
+      error: null,
       refetch: async () => {
         refetchSpy(params.name)
-        return { data: defaultsByName[params.name] }
+        return { status: 'success', data: defaultsByName[params.name] }
       },
     }
   })
