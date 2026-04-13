@@ -130,12 +130,23 @@ func (c *informerCache) Summary(ns, name string) (*consolev1.DeploymentStatusSum
 }
 
 // summaryFromDeployment projects an apps/v1.Deployment into the lightweight
-// DeploymentStatusSummary proto. Phase derivation rules (see issue #914):
+// DeploymentStatusSummary proto. Phase derivation rules (see issue #914 and
+// follow-up #941):
 //
-//   - Available=True and ready == desired           -> RUNNING
 //   - ReplicaFailure=True or Progressing=False      -> FAILED
-//   - ready < desired (and none of the above)       -> PENDING
-//   - otherwise                                     -> PENDING (still settling)
+//   - Available=True, ready == desired, rollout converged  -> RUNNING
+//   - otherwise                                     -> PENDING (reconciling)
+//
+// "rollout converged" means both:
+//
+//   - observedGeneration >= metadata.generation (controller has seen the
+//     current spec), and
+//   - updatedReplicas >= desired (every pod belongs to the latest ReplicaSet).
+//
+// Without these guards Kubernetes can satisfy Available=True and
+// ready==desired from the previous ReplicaSet while a new rollout is still
+// in progress, which would otherwise falsely render RUNNING for deployments
+// that have not converged on the newly desired template.
 //
 // message is populated from the first FAILED-signaling condition so callers
 // can surface a terse cause (e.g. "quota exceeded"). When no such condition
@@ -144,6 +155,9 @@ func summaryFromDeployment(dep *appsv1.Deployment) *consolev1.DeploymentStatusSu
 	status := dep.Status
 	desired := status.Replicas
 	ready := status.ReadyReplicas
+	updated := status.UpdatedReplicas
+	observedGen := status.ObservedGeneration
+	specGen := dep.Generation
 
 	var (
 		available        bool
@@ -177,11 +191,12 @@ func summaryFromDeployment(dep *appsv1.Deployment) *consolev1.DeploymentStatusSu
 	// A deployment with desired==0 that Kubernetes marks Available=True is a
 	// legitimate steady state (e.g. intentionally scaled to zero): do not
 	// penalize it by forcing PENDING.
+	converged := observedGen >= specGen && updated >= desired
 	phase := consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING
 	switch {
 	case replicaFailure, progressingFalse:
 		phase = consolev1.DeploymentPhase_DEPLOYMENT_PHASE_FAILED
-	case available && ready == desired:
+	case available && ready == desired && converged:
 		phase = consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING
 	}
 

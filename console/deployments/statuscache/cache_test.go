@@ -14,14 +14,16 @@ import (
 )
 
 // buildDeployment returns an apps/v1 Deployment with the given status fields
-// and conditions wired up for test table entries.
-func buildDeployment(ns, name string, desired, ready, available, updated int32, generation int64, conditions []appsv1.DeploymentCondition, message string) *appsv1.Deployment {
+// and conditions wired up for test table entries. metaGeneration sets
+// ObjectMeta.Generation; observedGeneration sets Status.ObservedGeneration.
+// Tests that do not care about rollout progress pass the same value for both.
+func buildDeployment(ns, name string, desired, ready, available, updated int32, metaGeneration, observedGeneration int64, conditions []appsv1.DeploymentCondition, message string) *appsv1.Deployment {
 	_ = message // message is derived from conditions by Summary()
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
 			Namespace:  ns,
-			Generation: generation,
+			Generation: metaGeneration,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "console.holos.run",
 			},
@@ -31,7 +33,7 @@ func buildDeployment(ns, name string, desired, ready, available, updated int32, 
 			ReadyReplicas:      ready,
 			AvailableReplicas:  available,
 			UpdatedReplicas:    updated,
-			ObservedGeneration: generation,
+			ObservedGeneration: observedGeneration,
 			Conditions:         conditions,
 		},
 	}
@@ -53,7 +55,7 @@ func TestCacheSummary(t *testing.T) {
 	}{
 		{
 			name: "running: Available=True and ready==desired",
-			dep: buildDeployment("p-alpha", "web", 3, 3, 3, 3, 1, []appsv1.DeploymentCondition{
+			dep: buildDeployment("p-alpha", "web", 3, 3, 3, 3, 1, 1, []appsv1.DeploymentCondition{
 				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
 				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "NewReplicaSetAvailable", "done"),
 			}, ""),
@@ -65,7 +67,7 @@ func TestCacheSummary(t *testing.T) {
 		},
 		{
 			name: "failed: ReplicaFailure=True",
-			dep: buildDeployment("p-alpha", "broken", 3, 0, 0, 0, 1, []appsv1.DeploymentCondition{
+			dep: buildDeployment("p-alpha", "broken", 3, 0, 0, 0, 1, 1, []appsv1.DeploymentCondition{
 				cond(appsv1.DeploymentReplicaFailure, corev1.ConditionTrue, "FailedCreate", "quota exceeded"),
 				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "ReplicaSetUpdated", "progress"),
 			}, ""),
@@ -77,7 +79,7 @@ func TestCacheSummary(t *testing.T) {
 		},
 		{
 			name: "failed: Progressing=False",
-			dep: buildDeployment("p-alpha", "stalled", 3, 0, 0, 0, 1, []appsv1.DeploymentCondition{
+			dep: buildDeployment("p-alpha", "stalled", 3, 0, 0, 0, 1, 1, []appsv1.DeploymentCondition{
 				cond(appsv1.DeploymentProgressing, corev1.ConditionFalse, "ProgressDeadlineExceeded", "timed out"),
 			}, ""),
 			ns:        "p-alpha",
@@ -88,7 +90,7 @@ func TestCacheSummary(t *testing.T) {
 		},
 		{
 			name: "pending: ready<desired and progressing",
-			dep: buildDeployment("p-alpha", "starting", 3, 1, 1, 2, 1, []appsv1.DeploymentCondition{
+			dep: buildDeployment("p-alpha", "starting", 3, 1, 1, 2, 1, 1, []appsv1.DeploymentCondition{
 				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "ReplicaSetUpdated", "progress"),
 			}, ""),
 			ns:        "p-alpha",
@@ -99,7 +101,7 @@ func TestCacheSummary(t *testing.T) {
 		},
 		{
 			name: "pending: no conditions yet, ready<desired",
-			dep: buildDeployment("p-alpha", "fresh", 2, 0, 0, 0, 1, nil, ""),
+			dep: buildDeployment("p-alpha", "fresh", 2, 0, 0, 0, 1, 1, nil, ""),
 			ns:        "p-alpha",
 			lookup:    "fresh",
 			wantFound: true,
@@ -108,7 +110,7 @@ func TestCacheSummary(t *testing.T) {
 		},
 		{
 			name: "running: scaled to zero is a steady state",
-			dep: buildDeployment("p-alpha", "idle", 0, 0, 0, 0, 1, []appsv1.DeploymentCondition{
+			dep: buildDeployment("p-alpha", "idle", 0, 0, 0, 0, 1, 1, []appsv1.DeploymentCondition{
 				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
 			}, ""),
 			ns:        "p-alpha",
@@ -118,8 +120,43 @@ func TestCacheSummary(t *testing.T) {
 			wantReady: 0,
 		},
 		{
+			// Rollout just started: spec generation advanced (2) but the
+			// controller has not yet observed it (observedGeneration=1).
+			// Available=True and ready==desired can remain true from the
+			// previous ReplicaSet, but the new rollout has not converged.
+			// Treat as PENDING rather than falsely reporting RUNNING.
+			name: "pending: observedGeneration < metadata.generation during rollout",
+			dep: buildDeployment("p-alpha", "rolling", 3, 3, 3, 3, 2, 1, []appsv1.DeploymentCondition{
+				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
+				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "ReplicaSetUpdated", "progress"),
+			}, ""),
+			ns:        "p-alpha",
+			lookup:    "rolling",
+			wantFound: true,
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING,
+			wantReady: 3,
+		},
+		{
+			// Rollout in progress: updatedReplicas < desired means some
+			// pods still belong to the old ReplicaSet. Kubernetes may mark
+			// Available=True (old pods satisfy minAvailable) while the new
+			// version is still rolling out. Treat as PENDING so callers do
+			// not report RUNNING for deployments that have not converged
+			// on the newly desired template.
+			name: "pending: updatedReplicas < desired during rollout",
+			dep: buildDeployment("p-alpha", "updating", 3, 3, 3, 1, 2, 2, []appsv1.DeploymentCondition{
+				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
+				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "ReplicaSetUpdated", "progress"),
+			}, ""),
+			ns:        "p-alpha",
+			lookup:    "updating",
+			wantFound: true,
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING,
+			wantReady: 3,
+		},
+		{
 			name:      "miss: unknown deployment",
-			dep:       buildDeployment("p-alpha", "web", 1, 1, 1, 1, 1, nil, ""),
+			dep:       buildDeployment("p-alpha", "web", 1, 1, 1, 1, 1, 1, nil, ""),
 			ns:        "p-alpha",
 			lookup:    "does-not-exist",
 			wantFound: false,

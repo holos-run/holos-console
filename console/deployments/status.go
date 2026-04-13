@@ -188,28 +188,22 @@ func (h *Handler) GetDeploymentStatus(
 		slog.String("sub", claims.Sub),
 	)
 
-	// Source phase-summary from the informer cache so all status RPCs share
-	// one derivation path. On a cache miss, summary is nil but the scalar
-	// replica fields still fall back to the live apps/v1.Deployment.Status
-	// values we already fetched above — otherwise a cold informer (right
-	// after startup, after the initial sync timeout, or without watch RBAC)
-	// would render healthy deployments as 0/0 ready even though the detail
-	// page has real pod data to show alongside.
+	// Replica scalars always come from the live apps/v1.Deployment.Status we
+	// fetched above: this RPC has the freshest data, and the informer cache
+	// is eventually consistent (it lags during rollouts and immediately
+	// after updates). The cached summary is still surfaced for derived
+	// phase/message display so the detail page shares the same status
+	// derivation path as the listing RPC; on a cache miss the summary is
+	// nil and callers render UNSPECIFIED for phase.
 	summary, _ := h.summaryFromCache(ns, name)
 	status := &consolev1.DeploymentStatus{
-		Conditions: conditions,
-		Pods:       pods,
-		Events:     depEvents,
-		Summary:    summary,
-	}
-	if summary != nil {
-		status.ReadyReplicas = summary.ReadyReplicas
-		status.DesiredReplicas = summary.DesiredReplicas
-		status.AvailableReplicas = summary.AvailableReplicas
-	} else {
-		status.ReadyReplicas = dep.Status.ReadyReplicas
-		status.DesiredReplicas = dep.Status.Replicas
-		status.AvailableReplicas = dep.Status.AvailableReplicas
+		Conditions:        conditions,
+		Pods:              pods,
+		Events:            depEvents,
+		Summary:           summary,
+		ReadyReplicas:     dep.Status.ReadyReplicas,
+		DesiredReplicas:   dep.Status.Replicas,
+		AvailableReplicas: dep.Status.AvailableReplicas,
 	}
 
 	return connect.NewResponse(&consolev1.GetDeploymentStatusResponse{

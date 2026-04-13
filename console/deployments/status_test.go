@@ -174,6 +174,64 @@ func TestGetDeploymentStatus_CacheMissFallsBackToLiveReplicas(t *testing.T) {
 	}
 }
 
+// TestGetDeploymentStatus_LiveReplicaCountsPreferredOverCache ensures that
+// GetDeploymentStatus always reports replica scalars from the live
+// apps/v1.Deployment.Status, never from the eventually-consistent informer
+// cache. The detail-page RPC already does a direct GET on the Deployment, so
+// those numbers are the freshest available. The cached summary must still be
+// returned for derived phase/message display, but must never override live
+// replica counts during rollouts or immediately after an update.
+func TestGetDeploymentStatus_LiveReplicaCountsPreferredOverCache(t *testing.T) {
+	const ns = "prj-my-project"
+	// Live Deployment is mid-rollout: 5 desired, 4 ready, 4 available.
+	dep := k8sDeployment(ns, "my-app", 5, 4, 4, nil)
+
+	fakeClient := fake.NewClientset(dep)
+	// Cache is stale — it still reflects the pre-update steady state of
+	// 3/3/3. Without this patch the handler would overwrite live replica
+	// counts with these stale values.
+	cache := newFakeStatusCache()
+	cache.set(ns, "my-app", &consolev1.DeploymentStatusSummary{
+		Phase:             consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING,
+		DesiredReplicas:   3,
+		ReadyReplicas:     3,
+		AvailableReplicas: 3,
+		Message:           "rolling out",
+	})
+	h := newStatusHandler(fakeClient).WithStatusCache(cache)
+
+	ctx := authedCtx("viewer@example.com", nil)
+	resp, err := h.GetDeploymentStatus(ctx, connect.NewRequest(&consolev1.GetDeploymentStatusRequest{
+		Name:    "my-app",
+		Project: "my-project",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	s := resp.Msg.Status
+	// Scalar replica fields must come from the live Deployment, not the cache.
+	if s.DesiredReplicas != 5 {
+		t.Errorf("desired_replicas: got %d, want 5 (live dep.Status.Replicas, not cached 3)", s.DesiredReplicas)
+	}
+	if s.ReadyReplicas != 4 {
+		t.Errorf("ready_replicas: got %d, want 4 (live dep.Status.ReadyReplicas, not cached 3)", s.ReadyReplicas)
+	}
+	if s.AvailableReplicas != 4 {
+		t.Errorf("available_replicas: got %d, want 4 (live dep.Status.AvailableReplicas, not cached 3)", s.AvailableReplicas)
+	}
+	// Summary must still be populated for derived phase/message display.
+	if s.Summary == nil {
+		t.Fatal("summary: got nil, want non-nil (cache hit should still populate derived phase/message)")
+	}
+	if s.Summary.Phase != consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING {
+		t.Errorf("summary.phase: got %v, want PENDING", s.Summary.Phase)
+	}
+	if s.Summary.Message != "rolling out" {
+		t.Errorf("summary.message: got %q, want %q", s.Summary.Message, "rolling out")
+	}
+}
+
 func TestGetDeploymentStatus_Conditions(t *testing.T) {
 	const ns = "prj-my-project"
 	dep := k8sDeployment(ns, "my-app", 1, 1, 1, []appsv1.DeploymentCondition{
