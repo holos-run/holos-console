@@ -86,7 +86,11 @@ function formatEventAge(event: Event): string {
   return age
 }
 
-/** Error reasons for containers in waiting or terminated states. */
+/**
+ * Known error reasons for containers in waiting or terminated states.
+ * Normal transient reasons like ContainerCreating and PodInitializing are
+ * excluded so they are not visually highlighted as errors during startup.
+ */
 const CONTAINER_ERROR_REASONS = new Set([
   'ImagePullBackOff',
   'ErrImagePull',
@@ -95,13 +99,14 @@ const CONTAINER_ERROR_REASONS = new Set([
   'InvalidImageName',
   'CreateContainerConfigError',
   'RunContainerError',
+  'OOMKilled',
 ])
 
 /** Returns true if the container status represents an error condition. */
 function isContainerError(cs: ContainerStatus): boolean {
-  if (cs.state === 'waiting' && cs.reason) return true
+  if (CONTAINER_ERROR_REASONS.has(cs.reason)) return true
   if (cs.state === 'terminated' && cs.restartCount > 0) return true
-  return CONTAINER_ERROR_REASONS.has(cs.reason)
+  return false
 }
 
 function DeploymentDetailRoute() {
