@@ -80,24 +80,16 @@ func (h *Handler) GetDeploymentStatus(
 		return nil, mapK8sError(err)
 	}
 
-	// Fetch all events in the namespace. The fake K8s client does not filter by
-	// field selector, so we fetch all events and filter in memory. In production,
-	// the real API server would honour the field selector, but this approach is
-	// correct in both environments.
-	allEvents, err := h.k8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+	// Fetch deployment-level events using field selectors. In production the API
+	// server filters server-side. The fake K8s client ignores field selectors and
+	// returns all events, so tests seed only relevant events for correctness.
+	depEventList, err := h.k8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + name + ",involvedObject.kind=Deployment",
+	})
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
-	// Index events by involved object name+kind for efficient lookup.
-	eventsByObject := make(map[string][]corev1.Event)
-	for _, ev := range allEvents.Items {
-		key := ev.InvolvedObject.Kind + "/" + ev.InvolvedObject.Name
-		eventsByObject[key] = append(eventsByObject[key], ev)
-	}
-
-	// Map deployment-level events.
-	depEvents := mapEvents(eventsByObject["Deployment/"+name])
+	depEvents := mapEvents(depEventList.Items)
 
 	pods := make([]*consolev1.PodStatus, 0, len(podList.Items))
 	for _, pod := range podList.Items {
@@ -117,8 +109,14 @@ func (h *Handler) GetDeploymentStatus(
 		containerStatuses := mapContainerStatuses(pod.Status.InitContainerStatuses)
 		containerStatuses = append(containerStatuses, mapContainerStatuses(pod.Status.ContainerStatuses)...)
 
-		// Map pod-level events.
-		podEvents := mapEvents(eventsByObject["Pod/"+pod.Name])
+		// Fetch pod-level events using field selectors.
+		podEventList, err := h.k8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+			FieldSelector: "involvedObject.name=" + pod.Name + ",involvedObject.kind=Pod",
+		})
+		if err != nil {
+			return nil, mapK8sError(err)
+		}
+		podEvents := mapEvents(podEventList.Items)
 
 		pods = append(pods, &consolev1.PodStatus{
 			Name:              pod.Name,
