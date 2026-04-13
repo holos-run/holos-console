@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -1012,6 +1013,261 @@ func TestRenderTemplateStructuredJSON(t *testing.T) {
 		}
 		if resp.Msg.PlatformInputJson != nil {
 			t.Errorf("expected PlatformInputJson to be nil, got %q", *resp.Msg.PlatformInputJson)
+		}
+	})
+}
+
+// TestGetTemplateDefaults covers the handler behavior required by ADR 027 and
+// the acceptance criteria on issue #928: RBAC parity with GetTemplate, empty
+// responses for missing-defaults and non-project scopes, and CodeNotFound for
+// missing templates.
+func TestGetTemplateDefaults(t *testing.T) {
+	const project = "my-project"
+	const org = "acme"
+	const ownerEmail = "platform@localhost"
+	const strangerEmail = "stranger@localhost"
+
+	httpbinCue := `
+defaults: #ProjectInput & {
+    name:        "httpbin"
+    image:       "ghcr.io/mccutchen/go-httpbin"
+    tag:         "2.21.0"
+    port:        8080
+    description: "A simple HTTP Request & Response Service"
+}
+input: #ProjectInput & {
+    name:  *defaults.name | (string & =~"^[a-z][a-z0-9-]*$")
+    image: *defaults.image | _
+    tag:   *defaults.tag | _
+    port:  *defaults.port | (>0 & <=65535)
+}
+`
+	bareCue := `
+input: #ProjectInput & {
+    name: string
+}
+`
+
+	type want struct {
+		wantErr  bool
+		wantCode connect.Code
+		// expected concrete fields on a success response; zero values mean
+		// "assert this field is zero" (empty response).
+		expectName        string
+		expectImage       string
+		expectTag         string
+		expectPort        int32
+		expectDescription string
+	}
+
+	tests := []struct {
+		name        string
+		email       string
+		scope       *consolev1.TemplateScopeRef
+		tmplName    string
+		cueTemplate string // if non-empty, seeded as a project-scope template with this name
+		orgTmpl     string // if non-empty, seeded as an org-scope template with tmplName in org namespace
+		want        want
+	}{
+		{
+			name:        "project-scope template with defaults block returns populated TemplateDefaults",
+			email:       ownerEmail,
+			scope:       projectScopeRef(project),
+			tmplName:    "httpbin",
+			cueTemplate: httpbinCue,
+			want: want{
+				expectName:        "httpbin",
+				expectImage:       "ghcr.io/mccutchen/go-httpbin",
+				expectTag:         "2.21.0",
+				expectPort:        8080,
+				expectDescription: "A simple HTTP Request & Response Service",
+			},
+		},
+		{
+			name:        "project-scope template without defaults block returns empty TemplateDefaults",
+			email:       ownerEmail,
+			scope:       projectScopeRef(project),
+			tmplName:    "bare",
+			cueTemplate: bareCue,
+			want:        want{}, // all zero values — empty TemplateDefaults, no error
+		},
+		{
+			name:     "missing project-scope template returns CodeNotFound",
+			email:    ownerEmail,
+			scope:    projectScopeRef(project),
+			tmplName: "does-not-exist",
+			want: want{
+				wantErr:  true,
+				wantCode: connect.CodeNotFound,
+			},
+		},
+		{
+			name:     "org-scope template returns empty TemplateDefaults (defaults are project-scope only)",
+			email:    ownerEmail,
+			scope:    orgScopeRef(org),
+			tmplName: "org-tmpl",
+			orgTmpl:  httpbinCue, // even with a defaults block, org scope returns empty
+			want:     want{},
+		},
+		{
+			name:        "caller without permission returns CodePermissionDenied",
+			email:       strangerEmail,
+			scope:       projectScopeRef(project),
+			tmplName:    "httpbin",
+			cueTemplate: httpbinCue,
+			want: want{
+				wantErr:  true,
+				wantCode: connect.CodePermissionDenied,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Seed namespaces for both project and org scopes so handlers can
+			// resolve either hierarchy.
+			objs := []runtime.Object{
+				&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project}},
+				&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "org-" + org}},
+			}
+			if tt.cueTemplate != "" {
+				objs = append(objs, &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      tt.tmplName,
+						Namespace: "prj-" + project,
+						Labels: map[string]string{
+							v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
+						},
+					},
+					Data: map[string]string{
+						CueTemplateKey: tt.cueTemplate,
+					},
+				})
+			}
+			if tt.orgTmpl != "" {
+				objs = append(objs, &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      tt.tmplName,
+						Namespace: "org-" + org,
+						Labels: map[string]string{
+							v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+						},
+					},
+					Data: map[string]string{
+						CueTemplateKey: tt.orgTmpl,
+					},
+				})
+			}
+			fakeClient := fake.NewClientset(objs...)
+
+			// Owner has read/write on both scopes; stranger has no grants.
+			shareUsers := map[string]string{ownerEmail: "owner"}
+
+			r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+			k8s := NewK8sClient(fakeClient, r)
+			handler := NewHandler(k8s, r, &stubRenderer{})
+			handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
+			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
+
+			ctx := authedCtx(tt.email, nil)
+			resp, err := handler.GetTemplateDefaults(ctx, connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
+				Scope: tt.scope,
+				Name:  tt.tmplName,
+			}))
+
+			if tt.want.wantErr {
+				if err == nil {
+					t.Fatalf("expected error with code %v, got nil", tt.want.wantCode)
+				}
+				if connect.CodeOf(err) != tt.want.wantCode {
+					t.Fatalf("expected code %v, got %v (%v)", tt.want.wantCode, connect.CodeOf(err), err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if resp == nil || resp.Msg == nil {
+				t.Fatal("expected non-nil response")
+			}
+			if resp.Msg.Defaults == nil {
+				t.Fatal("expected non-nil Defaults on response (empty message, never nil pointer)")
+			}
+			d := resp.Msg.Defaults
+			if d.Name != tt.want.expectName {
+				t.Errorf("Name: expected %q, got %q", tt.want.expectName, d.Name)
+			}
+			if d.Image != tt.want.expectImage {
+				t.Errorf("Image: expected %q, got %q", tt.want.expectImage, d.Image)
+			}
+			if d.Tag != tt.want.expectTag {
+				t.Errorf("Tag: expected %q, got %q", tt.want.expectTag, d.Tag)
+			}
+			if d.Port != tt.want.expectPort {
+				t.Errorf("Port: expected %d, got %d", tt.want.expectPort, d.Port)
+			}
+			if d.Description != tt.want.expectDescription {
+				t.Errorf("Description: expected %q, got %q", tt.want.expectDescription, d.Description)
+			}
+		})
+	}
+}
+
+// TestGetTemplateDefaultsValidation verifies request-level input validation
+// that is independent of RBAC or storage state.
+func TestGetTemplateDefaultsValidation(t *testing.T) {
+	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+	k8s := NewK8sClient(fake.NewClientset(), r)
+	handler := NewHandler(k8s, r, &stubRenderer{})
+	handler.WithProjectGrantResolver(&stubProjectGrantResolver{})
+	handler.WithOrgGrantResolver(&stubOrgGrantResolver{})
+
+	t.Run("empty name returns CodeInvalidArgument", func(t *testing.T) {
+		_, err := handler.GetTemplateDefaults(
+			authedCtx("anyone@localhost", nil),
+			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
+				Scope: projectScopeRef("p"),
+				Name:  "",
+			}),
+		)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("missing claims returns CodeUnauthenticated", func(t *testing.T) {
+		_, err := handler.GetTemplateDefaults(
+			context.Background(),
+			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
+				Scope: projectScopeRef("p"),
+				Name:  "foo",
+			}),
+		)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("expected CodeUnauthenticated, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("missing scope returns CodeInvalidArgument", func(t *testing.T) {
+		_, err := handler.GetTemplateDefaults(
+			authedCtx("anyone@localhost", nil),
+			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
+				Scope: nil,
+				Name:  "foo",
+			}),
+		)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
 		}
 	})
 }

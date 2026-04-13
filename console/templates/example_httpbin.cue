@@ -7,11 +7,25 @@
 
 // Use generated type definitions from api/v1alpha2 (prepended by renderer).
 // Additional CUE constraints narrow the generated types for this template.
+
+// defaults declares the template's default values as concrete CUE data.
+// The backend reads this block (via ExtractDefaults) to pre-fill the Create
+// Deployment form. See ADR 027 for the authoritative pre-fill behavior.
+// NOTE: `command` and `args` are intentionally unset so the frontend's
+// empty-slice handling path stays exercised by this example.
+defaults: #ProjectInput & {
+	name:        "httpbin"
+	image:       "ghcr.io/mccutchen/go-httpbin"
+	tag:         "2.21.0"
+	port:        8080
+	description: "A simple HTTP Request & Response Service"
+}
+
 input: #ProjectInput & {
-	name:  =~"^[a-z][a-z0-9-]*$" // DNS label
-	image: string | *"ghcr.io/mccutchen/go-httpbin"
-	tag:   string | *"2.21.0"
-	port:  >0 & <=65535 | *8080
+	name:  *defaults.name | (string & =~"^[a-z][a-z0-9-]*$") // DNS label
+	image: *defaults.image | _
+	tag:   *defaults.tag | _
+	port:  *defaults.port | (>0 & <=65535)
 }
 platform: #PlatformInput
 

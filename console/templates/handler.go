@@ -213,6 +213,84 @@ func (h *Handler) GetTemplate(
 	}), nil
 }
 
+// GetTemplateDefaults returns the defaults block evaluated from a template's
+// CUE source. It is the single authoritative source for Create Deployment form
+// pre-fill (see ADR 027). Inline `*` defaults declared on `input` fields are
+// NOT read — only the top-level `defaults` CUE block is considered.
+//
+// Behavior:
+//   - For non-project scopes the response is an empty TemplateDefaults message
+//     (defaults are a project-scope concept per ADR 027). Returning an empty
+//     message rather than an error lets the UI call this RPC uniformly.
+//   - For project-scope templates without a `defaults` block (or with all
+//     non-concrete fields) the response is an empty TemplateDefaults message.
+//   - Missing templates return CodeNotFound; callers lacking read permission
+//     on the scope receive CodePermissionDenied (mirrors GetTemplate).
+func (h *Handler) GetTemplateDefaults(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetTemplateDefaultsRequest],
+) (*connect.Response[consolev1.GetTemplateDefaultsResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+	name := req.Msg.GetName()
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	// Defaults are a project-scope concept (ADR 027). For org/folder scopes,
+	// return an empty TemplateDefaults so the UI can call uniformly without
+	// special-casing scope.
+	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return connect.NewResponse(&consolev1.GetTemplateDefaultsResponse{
+			Defaults: &consolev1.TemplateDefaults{},
+		}), nil
+	}
+
+	cm, err := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	cueSource := cm.Data[CueTemplateKey]
+	extracted, err := ExtractDefaults(cueSource)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to extract template defaults",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to extract template defaults: %w", err))
+	}
+	if extracted == nil {
+		extracted = &consolev1.TemplateDefaults{}
+	}
+
+	slog.InfoContext(ctx, "template defaults read",
+		slog.String("action", "template_defaults_read"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("scope", scope.String()),
+		slog.String("scopeName", scopeName),
+		slog.String("name", name),
+		slog.String("sub", claims.Sub),
+	)
+
+	return connect.NewResponse(&consolev1.GetTemplateDefaultsResponse{
+		Defaults: extracted,
+	}), nil
+}
+
 // CreateTemplate creates a new template at the given scope.
 func (h *Handler) CreateTemplate(
 	ctx context.Context,
