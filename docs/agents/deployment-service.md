@@ -13,7 +13,7 @@ Two RPCs expose deployment status:
 
 ### Status Cache
 
-`console/deployments/statuscache/` runs a `SharedInformerFactory` scoped to `apps/v1.Deployment` objects carrying the console-managed label selector. The watch is deliberately narrow: Deployments only, no Pods, no ReplicaSets, and no Events. Detail-page data that requires those (per-pod status, events) still flows through direct API calls in `GetDeploymentStatus`. `statuscache.New` blocks on the initial cache sync (bounded by a timeout) so RPC handlers can read immediately after server startup. When the K8s client is nil (dummy-secret-only mode), `NewNop` returns a cache that always reports misses.
+`console/deployments/statuscache/` runs a `SharedInformerFactory` scoped to `apps/v1.Deployment` objects carrying the console-managed label selector. The watch is deliberately narrow: Deployments only, no Pods, no ReplicaSets, and no Events. Detail-page data that requires those (per-pod status, events) still flows through direct API calls in `GetDeploymentStatus`. `statuscache.New` is non-blocking: it starts the informer in the background on a cancellable child context and returns immediately so server startup is never delayed by an optional feature. Until the initial LIST/WATCH sync completes the cache reports misses, and callers degrade to UNSPECIFIED. If the initial sync does not complete within `initialSyncTimeout` (currently 10s), `statuscache` cancels the child context to stop the reflector goroutines so they do not leak background LIST/WATCH retries for the lifetime of the process; the cache will keep reporting misses until the console is restarted. When the K8s client is nil (dummy-secret-only mode), `New` returns a no-op cache that always reports misses.
 
 ### Deprecated Fields
 

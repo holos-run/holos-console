@@ -2,16 +2,38 @@ package statuscache
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
+
+// waitForSummary polls cache.Summary until ok matches wantOK or the deadline
+// expires. New is non-blocking, so tests must wait for the informer to
+// observe the seeded objects before asserting on Summary results.
+func waitForSummary(t *testing.T, cache Cache, ns, name string, wantOK bool) (*consolev1.DeploymentStatusSummary, bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got, ok := cache.Summary(ns, name)
+		if ok == wantOK {
+			return got, ok
+		}
+		if time.Now().After(deadline) {
+			return got, ok
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
 
 // buildDeployment returns an apps/v1 Deployment with the given status fields
 // and conditions wired up for test table entries. metaGeneration sets
@@ -100,8 +122,8 @@ func TestCacheSummary(t *testing.T) {
 			wantReady: 1,
 		},
 		{
-			name: "pending: no conditions yet, ready<desired",
-			dep: buildDeployment("p-alpha", "fresh", 2, 0, 0, 0, 1, 1, nil, ""),
+			name:      "pending: no conditions yet, ready<desired",
+			dep:       buildDeployment("p-alpha", "fresh", 2, 0, 0, 0, 1, 1, nil, ""),
 			ns:        "p-alpha",
 			lookup:    "fresh",
 			wantFound: true,
@@ -169,12 +191,9 @@ func TestCacheSummary(t *testing.T) {
 			defer cancel()
 
 			client := fake.NewClientset(tc.dep)
-			cache, err := New(ctx, client)
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
+			cache := New(ctx, client)
 
-			got, ok := cache.Summary(tc.ns, tc.lookup)
+			got, ok := waitForSummary(t, cache, tc.ns, tc.lookup, tc.wantFound)
 			if ok != tc.wantFound {
 				t.Fatalf("Summary(%q,%q) found=%v, want %v", tc.ns, tc.lookup, ok, tc.wantFound)
 			}
@@ -210,12 +229,80 @@ func TestCacheNilClient(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	cache, err := New(ctx, nil)
-	if err != nil {
-		t.Fatalf("New(nil): %v", err)
-	}
+	cache := New(ctx, nil)
 	got, ok := cache.Summary("any", "thing")
 	if ok || got != nil {
 		t.Fatalf("expected (nil, false) for nil-client cache, got (%v, %v)", got, ok)
+	}
+}
+
+// TestNewDoesNotBlockOnFailingWatch is a regression test for codex review
+// finding round-1 #1: New must return immediately even when the underlying
+// LIST/WATCH cannot establish (for example, missing list/watch RBAC or a
+// temporarily unavailable API server). Blocking up to initialSyncTimeout
+// would turn an explicitly optional feature into a guaranteed multi-second
+// startup delay in exactly the failure modes the fallback is meant to
+// tolerate.
+func TestNewDoesNotBlockOnFailingWatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client := fake.NewClientset()
+	// Simulate a permanently failing LIST so the informer never syncs.
+	client.PrependReactor("list", "deployments", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden: missing list/watch on deployments")
+	})
+
+	start := time.Now()
+	cache := New(ctx, client)
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("New blocked for %s, expected immediate return", elapsed)
+	}
+
+	// While the informer is failing to sync, Summary must report misses
+	// rather than panic or block.
+	if got, ok := cache.Summary("any", "thing"); ok || got != nil {
+		t.Fatalf("expected (nil, false) before sync, got (%v, %v)", got, ok)
+	}
+}
+
+// TestNewCancelsReflectorOnSyncTimeout is a regression test for codex
+// review finding round-1 #2: when the initial sync does not complete within
+// initialSyncTimeout, the package must cancel the child context driving the
+// informer factory so the reflector goroutines stop retrying LIST/WATCH for
+// the lifetime of the process. We assert this by counting LIST attempts
+// observed after the timeout has elapsed and verifying the count plateaus.
+func TestNewCancelsReflectorOnSyncTimeout(t *testing.T) {
+	// Shrink the timeout to keep the test fast. We swap initialSyncTimeout
+	// out via the package-level variable below.
+	prev := initialSyncTimeoutForTest
+	initialSyncTimeoutForTest = 200 * time.Millisecond
+	t.Cleanup(func() { initialSyncTimeoutForTest = prev })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var listCount atomic.Int64
+	client := fake.NewClientset()
+	client.PrependReactor("list", "deployments", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+		listCount.Add(1)
+		return true, nil, errors.New("forbidden")
+	})
+
+	_ = New(ctx, client)
+
+	// Wait long enough for the timeout to fire and cancellation to
+	// propagate to the reflector.
+	time.Sleep(600 * time.Millisecond)
+	countAfterCancel := listCount.Load()
+
+	// Wait again. If the reflector were still running it would continue
+	// retrying LIST under the client-go retry backoff (sub-second after a
+	// failed list with the fake client). The count must not grow.
+	time.Sleep(1 * time.Second)
+	countLater := listCount.Load()
+
+	if countLater > countAfterCancel {
+		t.Fatalf("reflector kept retrying LIST after sync timeout: count grew from %d to %d", countAfterCancel, countLater)
 	}
 }
