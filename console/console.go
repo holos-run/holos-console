@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/deployments/statuscache"
 	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
@@ -344,9 +345,18 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
 		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker)
+		// Deployment status informer cache: one shared watch per managed
+		// namespace (filtered by the managed-by label). The informer lifecycle
+		// is tied to the server context so it stops cleanly on shutdown. Cache
+		// misses are treated as "no data yet" by the handler.
+		deploymentStatusCache, err := statuscache.New(ctx, k8sClientset)
+		if err != nil {
+			return fmt.Errorf("failed to start deployment status cache: %w", err)
+		}
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
-			WithAncestorTemplateProvider(ancestorTemplateResolver)
+			WithAncestorTemplateProvider(ancestorTemplateResolver).
+			WithStatusCache(deploymentStatusCache)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

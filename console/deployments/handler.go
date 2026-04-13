@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/deployments/statuscache"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -113,6 +114,7 @@ type Handler struct {
 	logReader                LogReader
 	ancestorWalker           AncestorWalker
 	ancestorTemplateProvider AncestorTemplateProvider
+	statusCache              statuscache.Cache
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -140,6 +142,16 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 // the full ancestor chain (org + folders) at render time.
 func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Handler {
 	h.ancestorTemplateProvider = atp
+	return h
+}
+
+// WithStatusCache configures the handler with a shared-informer-backed cache
+// of apps/v1 Deployment status. When set, the listing hot path and
+// GetDeploymentStatusSummary RPC read from the local cache instead of issuing
+// direct API calls. A nil cache means the handler falls back to UNSPECIFIED
+// status summaries (no data yet).
+func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
+	h.statusCache = c
 	return h
 }
 
