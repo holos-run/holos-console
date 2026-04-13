@@ -237,6 +237,29 @@ func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, erro
 	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareRoles)
 }
 
+// UpdateOrganizationDefaultRoleGrants writes only the
+// AnnotationDefaultShareRoles annotation on an organization namespace,
+// leaving AnnotationDefaultShareUsers untouched. Used when seeding the
+// default role grants (Owner/Editor/Viewer) at org-create time.
+func (c *K8sClient) UpdateOrganizationDefaultRoleGrants(ctx context.Context, name string, defaultRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	slog.DebugContext(ctx, "updating organization default role grants in kubernetes",
+		slog.String("name", name),
+	)
+	ns, err := c.GetOrganization(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	rolesJSON, err := json.Marshal(defaultRoles)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
+	}
+	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+}
+
 // UpdateOrganizationDefaultSharing updates the default sharing annotations on an organization namespace.
 func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name string, defaultUsers, defaultRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating organization default sharing in kubernetes",

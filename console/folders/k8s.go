@@ -114,10 +114,16 @@ func (c *K8sClient) NamespaceExists(ctx context.Context, nsName string) (bool, e
 // CreateFolder creates a new namespace with folder labels and annotations.
 // parentNs is the Kubernetes namespace name of the immediate parent (org or folder).
 // org is the root organization name.
+//
+// defaultShareUsers and defaultShareRoles, when non-empty, are written as the
+// folder's default-share-users/default-share-roles annotations so the cascade
+// continues to descendants. They are ordinarily empty; the seeded default
+// folder flow in organizations.Handler.CreateOrganization populates them when
+// populate_defaults=true.
 func (c *K8sClient) CreateFolder(
 	ctx context.Context,
 	name, displayName, description, org, parentNs, creatorEmail string,
-	shareUsers, shareRoles []secrets.AnnotationGrant,
+	shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant,
 ) (*corev1.Namespace, error) {
 	nsName := c.Resolver.FolderNamespace(name)
 	slog.DebugContext(ctx, "creating folder in kubernetes",
@@ -137,6 +143,20 @@ func (c *K8sClient) CreateFolder(
 	annotations := map[string]string{
 		v1alpha2.AnnotationShareUsers: string(usersJSON),
 		v1alpha2.AnnotationShareRoles: string(rolesJSON),
+	}
+	if len(defaultShareUsers) > 0 {
+		defaultUsersJSON, err := json.Marshal(defaultShareUsers)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling default-share-users: %w", err)
+		}
+		annotations[v1alpha2.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
+	}
+	if len(defaultShareRoles) > 0 {
+		defaultRolesJSON, err := json.Marshal(defaultShareRoles)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
+		}
+		annotations[v1alpha2.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
 	}
 	if displayName != "" {
 		annotations[v1alpha2.AnnotationDisplayName] = displayName
@@ -335,6 +355,39 @@ func GetDefaultShareUsers(ns *corev1.Namespace) ([]secrets.AnnotationGrant, erro
 // GetDefaultShareRoles parses the default-share-roles annotation from a namespace.
 func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, error) {
 	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareRoles)
+}
+
+// FolderCreatorAdapter adapts the folders K8sClient to satisfy the
+// organizations.FolderCreator interface. It mirrors
+// projects.ProjectCreatorAdapter so that the organizations package can create
+// the seeded default folder through the folders package without importing the
+// folders Handler directly.
+type FolderCreatorAdapter struct {
+	K8s *K8sClient
+}
+
+// CreateFolder creates a folder namespace, forwarding both active and default
+// share grants so that the seeded default folder inherits the org's default
+// role grants and propagates them as its own default-share cascade (matching
+// the ancestor-default-share merge done by folders.Handler.CreateFolder).
+func (a *FolderCreatorAdapter) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	return a.K8s.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+}
+
+// DeleteFolder delegates to the K8sClient.
+func (a *FolderCreatorAdapter) DeleteFolder(ctx context.Context, name string) error {
+	return a.K8s.DeleteFolder(ctx, name)
+}
+
+// NamespaceExists delegates to the K8sClient.
+func (a *FolderCreatorAdapter) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
+	return a.K8s.NamespaceExists(ctx, nsName)
+}
+
+// GetFolder delegates to the K8sClient so the adapter can also satisfy
+// organizations.FolderLister in test and production wiring.
+func (a *FolderCreatorAdapter) GetFolder(ctx context.Context, name string) (*corev1.Namespace, error) {
+	return a.K8s.GetFolder(ctx, name)
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {

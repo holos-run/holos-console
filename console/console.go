@@ -264,8 +264,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		orgGrantResolver := organizations.NewOrgGrantResolver(orgsK8s)
 		projectsK8s := projects.NewK8sClient(k8sClientset, nsResolver)
 		folderPrefix := nsResolver.NamespacePrefix + nsResolver.FolderPrefix
+		foldersAdapter := &folders.FolderCreatorAdapter{K8s: foldersK8s}
 		orgsHandler := organizations.NewHandler(orgsK8s, projectsK8s, s.cfg.DisableOrgCreation, s.cfg.OrgCreatorUsers, s.cfg.OrgCreatorRoles).
-			WithFolderCreator(foldersK8s, foldersK8s, folderPrefix)
+			WithFolderCreator(foldersAdapter, foldersK8s, folderPrefix)
 		orgsPath, orgsHTTPHandler := consolev1connect.NewOrganizationServiceHandler(orgsHandler, protectedInterceptors)
 		mux.Handle(orgsPath, orgsHTTPHandler)
 

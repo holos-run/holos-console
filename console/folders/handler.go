@@ -240,7 +240,7 @@ func (h *Handler) CreateFolder(
 	const maxCreateRetries = 3
 	for attempt := range maxCreateRetries + 1 {
 		_, err = h.k8s.CreateFolder(ctx, name, req.Msg.DisplayName, req.Msg.Description,
-			req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles)
+			req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, nil, nil)
 		if err == nil {
 			break
 		}

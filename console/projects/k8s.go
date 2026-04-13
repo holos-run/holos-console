@@ -373,16 +373,16 @@ func (c *K8sClient) UpdateProjectDefaultSharing(ctx context.Context, name string
 }
 
 // ProjectCreatorAdapter adapts the projects K8sClient to satisfy the
-// organizations.ProjectCreator interface. The adapter drops the
-// defaultShareUsers/defaultShareRoles parameters that are not needed for
-// the populate_defaults seeding flow.
+// organizations.ProjectCreator interface.
 type ProjectCreatorAdapter struct {
 	K8s *K8sClient
 }
 
-// CreateProject creates a project namespace without default sharing grants.
-func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
-	_, err := a.K8s.CreateProject(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, nil, nil)
+// CreateProject creates a project namespace, forwarding default sharing grants
+// so that seeded default projects inherit org-level defaults, mirroring the
+// production path in projects.Handler.CreateProject.
+func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
+	_, err := a.K8s.CreateProject(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	return err
 }
 
