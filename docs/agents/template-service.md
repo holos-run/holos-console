@@ -15,7 +15,7 @@ Scope is encoded in the `console.holos.run/template-scope` label (`organization|
 
 ## Deployment Defaults
 
-Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source (ADR 018). The backend uses per-field extraction (ADR 025) to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The extracted defaults pre-fill the Create Deployment form.
+Templates can carry `TemplateDefaults` (name, description, image, tag, command, args, port) extracted from the `defaults` block in the CUE source. The backend uses per-field extraction to read each field independently, so a non-concrete field does not prevent extraction of concrete siblings. The Create Deployment form pre-fill behavior is governed by [ADR 027](../adrs/027-template-defaults-prefill.md) — pre-fill is driven exclusively by the explicit `TemplateService.GetTemplateDefaults` RPC, not the embedded `Template.defaults` field on `ListTemplates`/`GetTemplate` responses (which remains for backwards compatibility only).
 
 The `RenderTemplate` RPC returns rendered resources as both YAML (`rendered_yaml`) and JSON (`rendered_json`), plus per-collection fields (`platform_resources_yaml`, `platform_resources_json`, `project_resources_yaml`, `project_resources_json`) that partition resources by origin (platform templates vs project templates).
 
