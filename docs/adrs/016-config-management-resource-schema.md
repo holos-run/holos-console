@@ -243,6 +243,15 @@ user impact.
 
 ### 6. Output is split into platformResources and projectResources.
 
+> **Note:** The Go-level namespace enforcement originally described in this
+> decision has been revoked by [ADR 026](026-remove-namespace-restrictions.md).
+> Resources in both `platformResources` and `projectResources` may now target
+> any namespace. The `walkNamespacedResources()` function no longer enforces
+> `metadata.namespace == expectedNamespace`. CUE unification (closed structs
+> and constraints at the organization or folder level) is the primary mechanism
+> for restricting which namespaces a template may target. See ADR 026 for the
+> replacement policy model.
+
 Resource collections are segregated by who controls them and where they are
 applied:
 
