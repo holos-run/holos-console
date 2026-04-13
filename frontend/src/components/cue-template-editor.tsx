@@ -66,6 +66,20 @@ function RenderStatusIndicator({ isStale, isRendering, hasError }: RenderStatusI
   )
 }
 
+/**
+ * prettyPrintJson attempts to parse the input as JSON and returns it
+ * pretty-printed with 2-space indent. If parsing fails (e.g. CUE syntax),
+ * the original string is returned unchanged.
+ */
+function prettyPrintJson(value: string): string {
+  if (!value) return value
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
 export interface CueTemplateEditorProps {
   /** Current CUE template source */
   cueTemplate: string
@@ -104,8 +118,8 @@ export function CueTemplateEditor({
   linkedTemplates = [],
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
-  const [cuePlatformInput, setCuePlatformInput] = useState(defaultPlatformInput)
-  const [cueInput, setCueInput] = useState(defaultProjectInput)
+  const [cuePlatformInput, setCuePlatformInput] = useState(() => prettyPrintJson(defaultPlatformInput))
+  const [cueInput, setCueInput] = useState(() => prettyPrintJson(defaultProjectInput))
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
   const debouncedCuePlatformInput = useDebouncedValue(cuePlatformInput, 500)
@@ -160,8 +174,8 @@ export function CueTemplateEditor({
           </div>
         )}
       </TabsContent>
-      <TabsContent value="preview" className="mt-4 space-y-4">
-        <div className="space-y-2">
+      <TabsContent value="preview" className="mt-4 space-y-4 min-w-0">
+        <div className="space-y-2 min-w-0">
           <Label htmlFor="cue-platform-input-editor">Platform Input</Label>
           <p className="text-xs text-muted-foreground">
             These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
@@ -172,10 +186,10 @@ export function CueTemplateEditor({
             value={cuePlatformInput}
             onChange={(e) => setCuePlatformInput(e.target.value)}
             rows={10}
-            className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto"
+            className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto overflow-x-auto"
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <Label htmlFor="cue-input-editor">Project Input (deployment parameters)</Label>
           <Textarea
             id="cue-input-editor"
@@ -183,12 +197,12 @@ export function CueTemplateEditor({
             value={cueInput}
             onChange={(e) => setCueInput(e.target.value)}
             rows={6}
-            className="font-mono text-sm field-sizing-normal max-h-48 overflow-y-auto"
+            className="font-mono text-sm field-sizing-normal max-h-48 overflow-y-auto overflow-x-auto"
           />
         </div>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label>{hasPerCollectionFields && platformResourcesYaml ? 'Platform Resources' : 'Rendered YAML'}</Label>
+            <Label>{hasPerCollectionFields ? 'Platform Resources' : 'Rendered YAML'}</Label>
             <RenderStatusIndicator isStale={isStale} isRendering={isRendering} hasError={!!renderError} />
           </div>
           {renderError ? (
@@ -197,22 +211,22 @@ export function CueTemplateEditor({
             </Alert>
           ) : hasPerCollectionFields ? (
             <>
-              {platformResourcesYaml && (
+              {platformResourcesYaml ? (
                 <pre
                   aria-label="Platform Resources YAML"
-                  className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+                  className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
                 >
                   {platformResourcesYaml}
                 </pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">No platform resources rendered by this template.</p>
               )}
-              {platformResourcesYaml && (
-                <div className="flex items-center gap-2 pt-2">
-                  <Label>Project Resources</Label>
-                </div>
-              )}
+              <div className="flex items-center gap-2 pt-2">
+                <Label>Project Resources</Label>
+              </div>
               <pre
-                aria-label={platformResourcesYaml ? 'Project Resources YAML' : 'Rendered YAML'}
-                className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+                aria-label="Project Resources YAML"
+                className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
               >
                 {projectResourcesYaml}
               </pre>
@@ -220,7 +234,7 @@ export function CueTemplateEditor({
           ) : (
             <pre
               aria-label="Rendered YAML"
-              className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre"
+              className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
             >
               {renderedYaml ?? ''}
             </pre>

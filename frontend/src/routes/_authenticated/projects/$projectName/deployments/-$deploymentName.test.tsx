@@ -645,7 +645,7 @@ describe('DeploymentDetailPage', () => {
       expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Deployment')
     })
 
-    it('shows only project section when platform resources are empty', async () => {
+    it('shows empty-state message when platform resources are empty but project resources exist', async () => {
       const user = userEvent.setup()
       setupMocks()
       ;(useRenderTemplate as Mock).mockReturnValue({
@@ -664,8 +664,10 @@ describe('DeploymentDetailPage', () => {
       await user.click(screen.getByRole('tab', { name: /template/i }))
       await user.click(screen.getByRole('tab', { name: /preview/i }))
 
-      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
-      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Service')
     })
 
     it('falls back to unified renderedYaml when no per-collection fields present', async () => {
