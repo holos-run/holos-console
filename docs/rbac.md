@@ -105,8 +105,8 @@ Grants are stored as JSON annotations on Namespace and Secret resources:
 |---|---|---|
 | `console.holos.run/share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Per-user grants |
 | `console.holos.run/share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Per-role grants |
-| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants inherited by descendants via ancestor walk. Settable on organization, folder, or project namespaces. On org/folder namespaces, they seed `share-users` on newly created folders and projects, and also cascade into `share-users` on secrets created inside descendant projects (merged by `ProjectGrantResolver.GetDefaultGrants` which walks project → folders → org). On project namespaces, they are inherited by secrets created within the project. |
-| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants inherited by descendants via ancestor walk. Settable on organization, folder, or project namespaces. On org/folder namespaces, they seed `share-roles` on newly created folders and projects, and also cascade into `share-roles` on secrets created inside descendant projects (merged by `ProjectGrantResolver.GetDefaultGrants` which walks project → folders → org). On project namespaces, they are inherited by secrets created within the project. |
+| `console.holos.run/default-share-users` | `[{"principal":"email","role":"role","nbf":ts,"exp":ts}]` | Default per-user grants. Settable on organization, folder, or project namespaces. See the Default Sharing section below for the per-scope cascade into new folders, projects, and secrets. |
+| `console.holos.run/default-share-roles` | `[{"principal":"role","role":"role","nbf":ts,"exp":ts}]` | Default per-role grants. Settable on organization, folder, or project namespaces. See the Default Sharing section below for the per-scope cascade into new folders, projects, and secrets. |
 
 Each grant is a JSON object with:
 
@@ -151,10 +151,11 @@ Organization creation is controlled by CLI flags (`--disable-org-creation`, `--o
 
 Organizations, folders, and projects can each define **default sharing grants** that are automatically inherited by descendants. These defaults are stored as annotations on the namespace (`console.holos.run/default-share-users` and `console.holos.run/default-share-roles`) and are merged into descendant namespaces at creation time via the ancestor-default-share cascade.
 
-Scope semantics:
+Scope semantics (each scope cascades differently because the creation paths for folders, projects, and secrets merge ancestor defaults independently):
 
-- **Organization / folder namespaces**: defaults seed `share-users` / `share-roles` on newly created folders and projects beneath them, and also cascade into secrets created inside any descendant project. When a secret is created, `ProjectGrantResolver.GetDefaultGrants` walks project → folders → org and merges `default-share-users` / `default-share-roles` from every level, so org- and folder-level defaults reach new secrets in addition to new folders and projects.
-- **Project namespaces**: defaults are inherited by secrets created within the project (see `UpdateProjectDefaultSharing`). These project-level defaults participate in the same ancestor merge, so secrets receive the union of project, folder, and organization defaults at creation time.
+- **Organization namespaces**: defaults seed `share-users` / `share-roles` on newly created folders (via `folders.Handler.collectAncestorDefaultShares`) and newly created projects (via `projects.Handler.CreateProject`, which calls `GetOrgDefaultGrants` on the associated org). They also reach secrets created inside descendant projects, because `ProjectGrantResolver.GetDefaultGrants` walks project → folders → org and merges defaults from every level at secret-create time.
+- **Folder namespaces**: defaults seed `share-users` / `share-roles` on newly created child folders (again via `collectAncestorDefaultShares`, which walks the parent chain up to the org). They do **not** seed `share-*` on new projects created under the folder — project creation only consults the organization's defaults, not the parent folder's. They **do** reach secrets created inside descendant projects through the same `ProjectGrantResolver.GetDefaultGrants` ancestor walk used for org-level defaults.
+- **Project namespaces**: defaults are inherited by secrets created within the project (see `UpdateProjectDefaultSharing`). Secrets receive the union of project, folder, and organization defaults via the `ProjectGrantResolver.GetDefaultGrants` ancestor walk.
 
 When `CreateOrganization` is called with `populate_defaults: true`, the backend seeds the three standard role grants (Owner, Editor, Viewer) into `console.holos.run/default-share-roles` *before* the default folder or default project is created, so the seeded descendants inherit them. Changing the defaults does not retroactively update existing descendants.
 
