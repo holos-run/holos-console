@@ -252,18 +252,22 @@ func ResourceNamespaces(resources []unstructured.Unstructured) []string {
 // namespaces that contain resources owned by the given project and deployment.
 // This is used by Cleanup and rollback paths where the caller does not have the
 // rendered resource set and needs to discover namespaces via label queries.
-func (a *Applier) DiscoverNamespaces(ctx context.Context, project, deploymentName string) []string {
+// Returns an error if any List call fails, so callers can decide whether to
+// proceed with a partial set or abort.
+func (a *Applier) DiscoverNamespaces(ctx context.Context, project, deploymentName string) ([]string, error) {
 	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
 		v1alpha2.LabelProject, project,
 		v1alpha2.AnnotationDeployment, deploymentName)
 
 	seen := make(map[string]struct{})
-	for _, gvr := range allowedKinds {
+	var listErrors []error
+	for kind, gvr := range allowedKinds {
 		// List across all namespaces.
 		list, err := a.client.Resource(gvr).List(ctx, metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
 		if err != nil {
+			listErrors = append(listErrors, fmt.Errorf("listing %s: %w", kind, err))
 			continue
 		}
 		for _, item := range list.Items {
@@ -277,7 +281,11 @@ func (a *Applier) DiscoverNamespaces(ctx context.Context, project, deploymentNam
 	for ns := range seen {
 		result = append(result, ns)
 	}
-	return result
+	if len(listErrors) > 0 {
+		return result, fmt.Errorf("namespace discovery incomplete (%d/%d kinds failed): %w",
+			len(listErrors), len(allowedKinds), listErrors[0])
+	}
+	return result, nil
 }
 
 // boolPtr returns a pointer to the given bool value.

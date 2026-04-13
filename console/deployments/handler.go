@@ -96,8 +96,9 @@ type ResourceApplier interface {
 	// Cleanup deletes all owned resources across the given namespaces.
 	Cleanup(ctx context.Context, namespaces []string, project, deploymentName string) error
 	// DiscoverNamespaces scans the cluster for all namespaces that contain
-	// resources owned by the given project and deployment.
-	DiscoverNamespaces(ctx context.Context, project, deploymentName string) []string
+	// resources owned by the given project and deployment. Returns an error
+	// if discovery is incomplete (some resource kinds could not be listed).
+	DiscoverNamespaces(ctx context.Context, project, deploymentName string) ([]string, error)
 }
 
 // Handler implements the DeploymentService.
@@ -421,8 +422,15 @@ func (h *Handler) CreateDeployment(
 func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) {
 	// Discover all namespaces with owned resources. Include the project
 	// namespace as a fallback in case label discovery misses partially-applied
-	// resources.
-	namespaces := h.applier.DiscoverNamespaces(ctx, project, name)
+	// resources. During rollback, proceed even if discovery is incomplete.
+	namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+	if discoverErr != nil {
+		slog.WarnContext(ctx, "rollback: namespace discovery incomplete, proceeding with partial set + project namespace",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", discoverErr),
+		)
+	}
 	nsSet := make(map[string]struct{}, len(namespaces)+1)
 	for _, n := range namespaces {
 		nsSet[n] = struct{}{}
@@ -529,7 +537,14 @@ func (h *Handler) UpdateDeployment(
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
 		// apply. Pass previously-owned namespaces so orphans from namespace
 		// moves are cleaned up.
-		prevNS := h.applier.DiscoverNamespaces(ctx, project, name)
+		prevNS, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		if discoverErr != nil {
+			slog.WarnContext(ctx, "namespace discovery incomplete during update, proceeding with partial set",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", discoverErr),
+			)
+		}
 		if reconcileErr := h.applier.Reconcile(ctx, project, name, resources, prevNS...); reconcileErr != nil {
 			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
@@ -579,7 +594,15 @@ func (h *Handler) DeleteDeployment(
 	// Discover all namespaces with owned resources so cross-namespace resources
 	// are cleaned up (not just the project namespace).
 	if h.applier != nil {
-		namespaces := h.applier.DiscoverNamespaces(ctx, project, name)
+		namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		if discoverErr != nil {
+			slog.WarnContext(ctx, "namespace discovery failed during delete — aborting to prevent orphaned resources",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", discoverErr),
+			)
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("discovering deployment namespaces: %w", discoverErr))
+		}
 		if cleanupErr := h.applier.Cleanup(ctx, namespaces, project, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),

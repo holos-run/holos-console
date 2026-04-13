@@ -150,8 +150,8 @@ func (s *stubApplier) Cleanup(_ context.Context, _ []string, _, _ string) error 
 	return s.cleanupErr
 }
 
-func (s *stubApplier) DiscoverNamespaces(_ context.Context, _, _ string) []string {
-	return nil
+func (s *stubApplier) DiscoverNamespaces(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
 }
 
 func defaultHandler(fakeClient *fake.Clientset, pr *stubProjectResolver) *Handler {
