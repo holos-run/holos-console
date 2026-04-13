@@ -1422,16 +1422,15 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			}
 		}
 
-		folderDefaultRolesAnnotation := folderNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]
-		if folderDefaultRolesAnnotation == "" {
-			t.Fatalf("expected default-share-roles annotation on folder namespace")
+		// The seeded default folder must NOT carry its own default-share-*
+		// annotations. Descendants pick up the current org defaults dynamically
+		// via the ancestor walk, so persisting a snapshot on the folder would
+		// shadow later org-level changes. See issue #933.
+		if v, ok := folderNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
+			t.Errorf("expected no %q annotation on seeded default folder, got %q", v1alpha2.AnnotationDefaultShareRoles, v)
 		}
-		var folderDefaultRoles []secrets.AnnotationGrant
-		if err := json.Unmarshal([]byte(folderDefaultRolesAnnotation), &folderDefaultRoles); err != nil {
-			t.Fatalf("invalid default-share-roles annotation on folder: %v", err)
-		}
-		if len(folderDefaultRoles) != 3 {
-			t.Errorf("expected 3 default role grants copied from org onto folder, got %d", len(folderDefaultRoles))
+		if v, ok := folderNs.Annotations[v1alpha2.AnnotationDefaultShareUsers]; ok {
+			t.Errorf("expected no %q annotation on seeded default folder, got %q", v1alpha2.AnnotationDefaultShareUsers, v)
 		}
 	})
 
