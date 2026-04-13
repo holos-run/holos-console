@@ -566,6 +566,16 @@ export declare type DeploymentStatus = Message<"holos.console.v1.DeploymentStatu
    * @generated from field: repeated holos.console.v1.Event events = 6;
    */
   events: Event[];
+
+  /**
+   * summary carries the lightweight status snapshot (phase, replica counts,
+   * message) derived from the cached apps/v1.Deployment. Populated from the
+   * same in-process informer cache used by ListDeployments and
+   * GetDeploymentStatusSummary so all status RPCs share one derivation path.
+   *
+   * @generated from field: holos.console.v1.DeploymentStatusSummary summary = 7;
+   */
+  summary?: DeploymentStatusSummary;
 };
 
 /**

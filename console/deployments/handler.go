@@ -238,9 +238,14 @@ func (h *Handler) ListDeployments(
 		return nil, mapK8sError(err)
 	}
 
+	ns := h.k8s.Resolver.ProjectNamespace(project)
 	deployments := make([]*consolev1.Deployment, 0, len(cms))
 	for _, cm := range cms {
-		deployments = append(deployments, configMapToDeployment(&cm, project))
+		dep := configMapToDeployment(&cm, project)
+		if summary, ok := h.summaryFromCache(ns, cm.Name); ok {
+			dep.StatusSummary = summary
+		}
+		deployments = append(deployments, dep)
 	}
 
 	slog.InfoContext(ctx, "deployments listed",
@@ -292,8 +297,14 @@ func (h *Handler) GetDeployment(
 		slog.String("sub", claims.Sub),
 	)
 
+	deployment := configMapToDeployment(cm, project)
+	ns := h.k8s.Resolver.ProjectNamespace(project)
+	if summary, ok := h.summaryFromCache(ns, cm.Name); ok {
+		deployment.StatusSummary = summary
+	}
+
 	return connect.NewResponse(&consolev1.GetDeploymentResponse{
-		Deployment: configMapToDeployment(cm, project),
+		Deployment: deployment,
 	}), nil
 }
 

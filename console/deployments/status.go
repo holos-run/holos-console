@@ -16,6 +16,58 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// summaryFromCache returns the cached DeploymentStatusSummary for the given
+// (namespace, name) if a status cache has been configured and the informer
+// knows about the Deployment. Returns (nil, false) on a cache miss or when no
+// cache is configured so callers can degrade to UNSPECIFIED without failing.
+func (h *Handler) summaryFromCache(ns, name string) (*consolev1.DeploymentStatusSummary, bool) {
+	if h.statusCache == nil {
+		return nil, false
+	}
+	return h.statusCache.Summary(ns, name)
+}
+
+// GetDeploymentStatusSummary returns the lightweight cached status summary for
+// a single deployment. It reads from the in-process informer cache only, never
+// issuing a direct K8s API call. A cache miss (informer still catching up or
+// no data for this deployment) is returned as a summary with phase
+// DEPLOYMENT_PHASE_UNSPECIFIED and zero replica counts so callers can render a
+// stable placeholder without branching on a nil summary.
+func (h *Handler) GetDeploymentStatusSummary(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetDeploymentStatusSummaryRequest],
+) (*connect.Response[consolev1.GetDeploymentStatusSummaryResponse], error) {
+	project := req.Msg.Project
+	name := req.Msg.Name
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	ns := h.k8s.Resolver.ProjectNamespace(project)
+	summary, ok := h.summaryFromCache(ns, name)
+	if !ok {
+		summary = &consolev1.DeploymentStatusSummary{
+			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
+		}
+	}
+
+	return connect.NewResponse(&consolev1.GetDeploymentStatusSummaryResponse{
+		Summary: summary,
+	}), nil
+}
+
 // GetDeploymentStatus returns the live status of the K8s Deployment and its pods.
 func (h *Handler) GetDeploymentStatus(
 	ctx context.Context,
@@ -136,15 +188,25 @@ func (h *Handler) GetDeploymentStatus(
 		slog.String("sub", claims.Sub),
 	)
 
+	// Source replica counts and phase-summary from the informer cache so all
+	// status RPCs share one derivation path. On a cache miss, summary is nil
+	// and the scalar replica fields fall back to zero — callers treat this as
+	// "no data yet" (UNSPECIFIED phase).
+	summary, _ := h.summaryFromCache(ns, name)
+	status := &consolev1.DeploymentStatus{
+		Conditions: conditions,
+		Pods:       pods,
+		Events:     depEvents,
+		Summary:    summary,
+	}
+	if summary != nil {
+		status.ReadyReplicas = summary.ReadyReplicas
+		status.DesiredReplicas = summary.DesiredReplicas
+		status.AvailableReplicas = summary.AvailableReplicas
+	}
+
 	return connect.NewResponse(&consolev1.GetDeploymentStatusResponse{
-		Status: &consolev1.DeploymentStatus{
-			ReadyReplicas:     dep.Status.ReadyReplicas,
-			DesiredReplicas:   dep.Status.Replicas,
-			AvailableReplicas: dep.Status.AvailableReplicas,
-			Conditions:        conditions,
-			Pods:              pods,
-			Events:            depEvents,
-		},
+		Status: status,
 	}), nil
 }
 
