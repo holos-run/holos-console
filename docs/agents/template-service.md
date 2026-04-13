@@ -26,7 +26,7 @@ The default template adds a `console.holos.run/deployer-email` annotation to all
 When `CreateOrganization` is called with `populate_defaults: true`, the backend seeds example resources into the new org in the following order (issue #920 / plan #919):
 
 1. The org namespace's `console.holos.run/default-share-roles` annotation is populated with the three standard role grants (Owner, Editor, Viewer — no `nbf`, no `exp`) *before* any folder or project is created. This ensures the seeded default folder and default project pick up the org-level default role grants via the ancestor-default-share merge.
-2. The default folder is created as a direct child of the org, inheriting the org's default role grants as both its active share grants and its own default-share cascade.
+2. The default folder is created as a direct child of the org. The org's seeded default-share grants are merged into the folder's *active* share grants (so users with the role grants immediately see the folder), but the folder is created with `nil` for its own default-share annotations. Descendants continue to resolve the org defaults dynamically via the ancestor walk, which prevents a stale folder snapshot from shadowing later changes to org default sharing.
 3. An org-level platform template (HTTPRoute ReferenceGrant, enabled) via `SeedOrgTemplate`.
 4. A default project in the org's default folder, inheriting the org default role grants.
 5. An example project-level deployment template (go-httpbin) via `SeedProjectTemplate`.
