@@ -599,6 +599,98 @@ describe('CreateDeploymentPage', () => {
     expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/custom/again')
   })
 
+  it('Load defaults: stale response for previous template does not overwrite new selection', async () => {
+    // Build a deferred refetch so we can resolve it *after* the user has
+    // already switched templates. This simulates the race where the user
+    // clicks Load defaults for template-a, then switches to template-b
+    // before the RPC resolves.
+    let resolveRefetch: ((value: { status: 'success'; data: Defaults | undefined }) => void) | null = null
+    const deferred = new Promise<{ status: 'success'; data: Defaults | undefined }>((resolve) => {
+      resolveRefetch = resolve
+    })
+
+    const defaultsByName: Record<string, Defaults | undefined> = {
+      'template-a': {
+        name: 'alpha-svc', description: 'Alpha service',
+        image: 'ghcr.io/org/alpha', tag: '1.0.0', port: 3000,
+        command: ['/alpha'], args: ['--a'],
+      },
+      'template-b': {
+        name: 'beta-svc', description: 'Beta service',
+        image: 'ghcr.io/org/beta', tag: '2.0.0', port: 4000,
+        command: ['/beta'], args: ['--b'],
+      },
+    }
+
+    ;(useCreateDeployment as Mock).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      reset: vi.fn(),
+    })
+    ;(useListTemplates as Mock).mockReturnValue({
+      data: [makeTemplate('template-a'), makeTemplate('template-b')],
+      isLoading: false,
+    })
+    ;(useGetTemplateDefaults as Mock).mockImplementation((params: { scope: unknown; name: string }) => {
+      const d = params.name ? defaultsByName[params.name] : undefined
+      return {
+        data: d,
+        isFetching: false,
+        isSuccess: !!params.name,
+        isError: false,
+        error: null,
+        // For template-a, return the deferred promise so the test can resolve
+        // it at will. For any other template, resolve synchronously.
+        refetch: async () => {
+          if (params.name === 'template-a') {
+            return deferred
+          }
+          return { status: 'success' as const, data: defaultsByName[params.name] }
+        },
+      }
+    })
+
+    render(<CreateDeploymentPage />)
+
+    // Select template-a on a pristine form. The hook's `data` path will apply
+    // template-a's defaults synchronously (mock returns data immediately).
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-a' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/alpha')
+    })
+
+    // User dirties the form so the pristine-selection path will not fire on
+    // subsequent template change — we want to isolate the Load-defaults race.
+    fireEvent.change(screen.getByLabelText(/^image$/i), { target: { value: 'ghcr.io/custom/image' } })
+
+    // Click Load defaults while template-a is selected. refetch is deferred.
+    fireEvent.click(screen.getByRole('button', { name: /load defaults/i }))
+
+    // Before the refetch resolves, switch to template-b.
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-b' } })
+    // Let any effects from the template change settle.
+    await act(async () => { await Promise.resolve() })
+
+    // Form is dirty, so switching does not auto-apply template-b's defaults;
+    // user's custom image should still be present.
+    expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/custom/image')
+
+    // Now resolve the stale Load-defaults promise for template-a.
+    await act(async () => {
+      resolveRefetch!({ status: 'success', data: defaultsByName['template-a'] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // The stale result MUST be dropped: the user's dirtied image must be
+    // preserved (Load defaults would have overwritten it to template-a's
+    // value if the stale response were applied).
+    expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/custom/image')
+    expect(screen.getByLabelText(/^image$/i)).not.toHaveValue('ghcr.io/org/alpha')
+    // No error surfaced for the silently-dropped stale response.
+    expect(screen.queryByText(/failed to load defaults/i)).not.toBeInTheDocument()
+  })
+
   it('Load defaults button is disabled when no template is selected', () => {
     setupMocks()
     render(<CreateDeploymentPage />)

@@ -141,6 +141,14 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   // is applied unconditionally (even when the form is dirty).
   const loadDefaultsPendingRef = useRef(false)
 
+  // Mirror the current template selection in a ref so handleLoadDefaults can
+  // compare its click-time captured value against the *latest* selection when
+  // the refetch resolves, without depending on a stale closure.
+  const templateRef = useRef(template)
+  useEffect(() => {
+    templateRef.current = template
+  }, [template])
+
   // ADR 027 §4: on every template change the selection hook refetches
   // automatically (the query key includes the template name). When the
   // response lands AND the form is pristine, overwrite all defaultable
@@ -184,9 +192,20 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
 
   const handleLoadDefaults = async () => {
     if (!template) return
+    // Capture the template selected at click time. If the user changes the
+    // selection before the refetch resolves, we must silently drop this
+    // stale response rather than apply template A's defaults onto a form
+    // that now reflects template B.
+    const requestedTemplate = template
     loadDefaultsPendingRef.current = true
     try {
       const result = await refetchDefaults()
+      // Stale-response guard: the selection changed while the request was
+      // in flight. Drop the result without touching form state, pristine,
+      // or error state — the new selection's own fetch will handle pre-fill.
+      if (requestedTemplate !== templateRef.current) {
+        return
+      }
       // refetch() resolves to a query result even when the RPC errors.
       // Only apply defaults and reset pristine on success; on failure,
       // leave the user's edits intact and surface the error.
@@ -201,7 +220,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
       // ADR 027 §5: always overwrite, regardless of isPristine.
       applyDefaults(result.data)
       setIsPristine(true)
-      lastAppliedTemplateRef.current = template
+      lastAppliedTemplateRef.current = requestedTemplate
     } finally {
       loadDefaultsPendingRef.current = false
     }
