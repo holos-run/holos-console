@@ -41,7 +41,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -88,7 +88,17 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
       - name: Install Playwright browsers
-        run: cd frontend && npx playwright install --with-deps chromium
+        run: |
+          cd frontend
+          # Retry up to 3 times in case apt mirrors are slow or flaky.
+          for i in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "playwright install attempt $i failed, retrying..."
+            sleep 10
+          done
+          exit 1
 
       - name: Run E2E tests
         run: make test-e2e
