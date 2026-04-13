@@ -199,7 +199,9 @@ func (c *informerCache) Summary(ns, name string) (*consolev1.DeploymentStatusSum
 //
 //   - observedGeneration >= metadata.generation (controller has seen the
 //     current spec), and
-//   - updatedReplicas >= desired (every pod belongs to the latest ReplicaSet).
+//   - updatedReplicas >= desired (every pod belongs to the latest ReplicaSet),
+//     where desired is taken from spec.replicas (not status.replicas) so that
+//     scale-ups before any new pod is created are not reported as RUNNING.
 //
 // Without these guards Kubernetes can satisfy Available=True and
 // ready==desired from the previous ReplicaSet while a new rollout is still
@@ -211,7 +213,14 @@ func (c *informerCache) Summary(ns, name string) (*consolev1.DeploymentStatusSum
 // exists, message is empty.
 func summaryFromDeployment(dep *appsv1.Deployment) *consolev1.DeploymentStatusSummary {
 	status := dep.Status
-	desired := status.Replicas
+	// Derive desired from spec.replicas (Kubernetes defaults to 1 when nil) so
+	// that in-progress rollouts and scale-ups are not reported as RUNNING. Using
+	// status.Replicas would reflect the current ReplicaSet's pod count, which on
+	// a scale-up before new pods exist still matches the old target.
+	var desired int32 = 1
+	if dep.Spec.Replicas != nil {
+		desired = *dep.Spec.Replicas
+	}
 	ready := status.ReadyReplicas
 	updated := status.UpdatedReplicas
 	observedGen := status.ObservedGeneration

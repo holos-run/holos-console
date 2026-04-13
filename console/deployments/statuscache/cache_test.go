@@ -41,6 +41,14 @@ func waitForSummary(t *testing.T, cache Cache, ns, name string, wantOK bool) (*c
 // Tests that do not care about rollout progress pass the same value for both.
 func buildDeployment(ns, name string, desired, ready, available, updated int32, metaGeneration, observedGeneration int64, conditions []appsv1.DeploymentCondition, message string) *appsv1.Deployment {
 	_ = message // message is derived from conditions by Summary()
+	return buildDeploymentSpec(ns, name, desired, desired, ready, available, updated, metaGeneration, observedGeneration, conditions)
+}
+
+// buildDeploymentSpec is like buildDeployment but lets tests set spec.replicas
+// independently of status.replicas so rollout/scale-up scenarios can be
+// exercised (spec advances before status reflects the new ReplicaSet).
+func buildDeploymentSpec(ns, name string, specReplicas, statusReplicas, ready, available, updated int32, metaGeneration, observedGeneration int64, conditions []appsv1.DeploymentCondition) *appsv1.Deployment {
+	replicas := specReplicas
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
@@ -50,8 +58,11 @@ func buildDeployment(ns, name string, desired, ready, available, updated int32, 
 				"app.kubernetes.io/managed-by": "console.holos.run",
 			},
 		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+		},
 		Status: appsv1.DeploymentStatus{
-			Replicas:           desired,
+			Replicas:           statusReplicas,
 			ReadyReplicas:      ready,
 			AvailableReplicas:  available,
 			UpdatedReplicas:    updated,
@@ -177,6 +188,24 @@ func TestCacheSummary(t *testing.T) {
 			wantReady: 3,
 		},
 		{
+			// Scale-up in progress: spec.replicas advanced from 3 to 5, the
+			// controller has observed the new generation, but no new pods
+			// have been created yet. status.replicas still reflects the old
+			// ReplicaSet (3). Deriving desired from status.replicas would
+			// falsely report RUNNING/3 of 3; deriving from spec.replicas
+			// correctly reports PENDING/3 of 5.
+			name: "pending: scale-up rollout observed but new replicas not yet created",
+			dep: buildDeploymentSpec("p-alpha", "scaling", 5, 3, 3, 3, 3, 2, 2, []appsv1.DeploymentCondition{
+				cond(appsv1.DeploymentAvailable, corev1.ConditionTrue, "MinimumReplicasAvailable", "ok"),
+				cond(appsv1.DeploymentProgressing, corev1.ConditionTrue, "ReplicaSetUpdated", "progress"),
+			}),
+			ns:        "p-alpha",
+			lookup:    "scaling",
+			wantFound: true,
+			wantPhase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_PENDING,
+			wantReady: 3,
+		},
+		{
 			name:      "miss: unknown deployment",
 			dep:       buildDeployment("p-alpha", "web", 1, 1, 1, 1, 1, 1, nil, ""),
 			ns:        "p-alpha",
@@ -209,8 +238,12 @@ func TestCacheSummary(t *testing.T) {
 			if got.ReadyReplicas != tc.wantReady {
 				t.Errorf("readyReplicas = %d, want %d", got.ReadyReplicas, tc.wantReady)
 			}
-			if got.DesiredReplicas != tc.dep.Status.Replicas {
-				t.Errorf("desiredReplicas = %d, want %d", got.DesiredReplicas, tc.dep.Status.Replicas)
+			wantDesired := int32(1)
+			if tc.dep.Spec.Replicas != nil {
+				wantDesired = *tc.dep.Spec.Replicas
+			}
+			if got.DesiredReplicas != wantDesired {
+				t.Errorf("desiredReplicas = %d, want %d", got.DesiredReplicas, wantDesired)
 			}
 			if got.AvailableReplicas != tc.dep.Status.AvailableReplicas {
 				t.Errorf("availableReplicas = %d, want %d", got.AvailableReplicas, tc.dep.Status.AvailableReplicas)
