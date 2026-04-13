@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 027](027-template-defaults-prefill.md).
+
+See ADR 027 for the authoritative Create Deployment form pre-fill behavior; the per-field extraction correctness rule below is still honored by the backend extractor.
 
 ## Context
 
