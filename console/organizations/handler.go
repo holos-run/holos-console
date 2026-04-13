@@ -348,10 +348,13 @@ func (h *Handler) CreateOrganization(
 //
 // When the org carries default-share grants (seeded via seedOrgDefaultSharing
 // when populate_defaults=true), those grants are merged into the folder's
-// active grants and copied as the folder's own default-share grants, mirroring
-// the ancestor-default-share merge that folders.Handler.CreateFolder applies
-// for user-initiated folder creation. This ensures the seeded default folder
-// inherits the org's default Owner/Editor/Viewer role grants.
+// active grants only. The folder is NOT given its own default-share
+// annotations — descendants created under this folder pick up the current org
+// defaults dynamically via the ancestor walk performed by
+// folders.Handler.collectAncestorDefaultShares and
+// projects.ProjectGrantResolver.GetDefaultGrants. Persisting a snapshot on the
+// folder itself would cause later changes to org default sharing to be
+// shadowed by stale folder defaults.
 func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
 	exists := func(ctx context.Context, nsName string) (bool, error) {
 		return h.folderCreator.NamespaceExists(ctx, nsName)
@@ -376,7 +379,10 @@ func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName,
 	folderShareRoles := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareRoles...), orgDefaultRoles...))
 
 	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
-	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, folderShareUsers, folderShareRoles, orgDefaultUsers, orgDefaultRoles); err != nil {
+	// Pass nil for the folder's own default-share grants. Descendants resolve
+	// the org defaults dynamically via the ancestor walk, so persisting a copy
+	// here would cause stale defaults to shadow future org changes.
+	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, folderShareUsers, folderShareRoles, nil, nil); err != nil {
 		return "", fmt.Errorf("creating folder namespace: %w", err)
 	}
 	return folderName, nil
