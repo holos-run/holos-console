@@ -139,7 +139,14 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
 
   // Track the pending "Load defaults" click so the refetch's resolved data
   // is applied unconditionally (even when the form is dirty).
-  const loadDefaultsPendingRef = useRef(false)
+  //
+  // This is React state (not a ref) so that clearing it triggers a re-render
+  // and the pristine-prefill effect re-runs. Without that re-render, a user
+  // who switches templates while a Load defaults refetch is in flight could
+  // have the new template's query resolve during the pending window, bail
+  // out of pristine pre-fill, and then never re-run after the pending flag
+  // was cleared — leaving the new template's defaults unapplied.
+  const [loadDefaultsPending, setLoadDefaultsPending] = useState(false)
 
   // Mirror the current template selection in a ref so handleLoadDefaults can
   // compare its click-time captured value against the *latest* selection when
@@ -161,8 +168,11 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     if (defaultsFetching) return
     // Only react to fresh data for the current template.
     if (lastAppliedTemplateRef.current === template) return
-    if (loadDefaultsPendingRef.current) {
-      // Load defaults path handles its own overwrite below.
+    if (loadDefaultsPending) {
+      // Load defaults path handles its own overwrite below. Because this is
+      // state (not a ref), clearing it re-runs this effect so a template
+      // switch mid-flight still gets pristine pre-fill when the new query
+      // resolves.
       return
     }
     // Only apply defaults when the RPC actually succeeded. On error, leave
@@ -181,7 +191,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     // applyDefaults is stable (closes over setters). We intentionally depend
     // only on the data we care about here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [template, fetchedDefaults, defaultsFetching, defaultsSuccess, isPristine])
+  }, [template, fetchedDefaults, defaultsFetching, defaultsSuccess, isPristine, loadDefaultsPending])
 
   const handleTemplateChange = (templateName: string) => {
     setTemplate(templateName)
@@ -197,7 +207,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
     // stale response rather than apply template A's defaults onto a form
     // that now reflects template B.
     const requestedTemplate = template
-    loadDefaultsPendingRef.current = true
+    setLoadDefaultsPending(true)
     try {
       const result = await refetchDefaults()
       // Stale-response guard: the selection changed while the request was
@@ -222,7 +232,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
       setIsPristine(true)
       lastAppliedTemplateRef.current = requestedTemplate
     } finally {
-      loadDefaultsPendingRef.current = false
+      setLoadDefaultsPending(false)
     }
   }
 

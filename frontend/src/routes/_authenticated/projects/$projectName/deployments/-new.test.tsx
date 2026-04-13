@@ -691,6 +691,89 @@ describe('CreateDeploymentPage', () => {
     expect(screen.queryByText(/failed to load defaults/i)).not.toBeInTheDocument()
   })
 
+  it('Load defaults: switching template mid-flight still auto-prefills new template on pristine form', async () => {
+    // Regression test for the secondary race: when Load defaults is pending
+    // for template-a and the user switches to template-b on a pristine form,
+    // the stale response for template-a must be dropped AND the new template's
+    // defaults must auto-prefill once the pending flag clears.
+    let resolveRefetch: ((value: { status: 'success'; data: Defaults | undefined }) => void) | null = null
+    const deferred = new Promise<{ status: 'success'; data: Defaults | undefined }>((resolve) => {
+      resolveRefetch = resolve
+    })
+
+    const defaultsByName: Record<string, Defaults | undefined> = {
+      'template-a': {
+        name: 'alpha-svc', description: 'Alpha service',
+        image: 'ghcr.io/org/alpha', tag: '1.0.0', port: 3000,
+        command: ['/alpha'], args: ['--a'],
+      },
+      'template-b': {
+        name: 'beta-svc', description: 'Beta service',
+        image: 'ghcr.io/org/beta', tag: '2.0.0', port: 4000,
+        command: ['/beta'], args: ['--b'],
+      },
+    }
+
+    ;(useCreateDeployment as Mock).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      reset: vi.fn(),
+    })
+    ;(useListTemplates as Mock).mockReturnValue({
+      data: [makeTemplate('template-a'), makeTemplate('template-b')],
+      isLoading: false,
+    })
+    ;(useGetTemplateDefaults as Mock).mockImplementation((params: { scope: unknown; name: string }) => {
+      const d = params.name ? defaultsByName[params.name] : undefined
+      return {
+        data: d,
+        isFetching: false,
+        isSuccess: !!params.name,
+        isError: false,
+        error: null,
+        refetch: async () => {
+          if (params.name === 'template-a') {
+            return deferred
+          }
+          return { status: 'success' as const, data: defaultsByName[params.name] }
+        },
+      }
+    })
+
+    render(<CreateDeploymentPage />)
+
+    // Pristine form: select template-a. The synchronous `data` path applies
+    // alpha's defaults on render.
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-a' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/alpha')
+    })
+
+    // Click Load defaults (refetch is deferred). Form stays pristine since
+    // pre-fill writes do not dirty the form.
+    fireEvent.click(screen.getByRole('button', { name: /load defaults/i }))
+
+    // Switch to template-b BEFORE the in-flight refetch resolves. The pristine
+    // pre-fill effect sees loadDefaultsPending=true and must bail for now...
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 'template-b' } })
+    await act(async () => { await Promise.resolve() })
+
+    // ...but once the stale refetch resolves and pending flips false, the
+    // pristine effect must re-run and apply template-b's defaults.
+    await act(async () => {
+      resolveRefetch!({ status: 'success', data: defaultsByName['template-a'] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^image$/i)).toHaveValue('ghcr.io/org/beta')
+      expect(screen.getByLabelText(/^tag$/i)).toHaveValue('2.0.0')
+      expect(screen.getByLabelText(/^port$/i)).toHaveValue(4000)
+      expect(screen.getByLabelText(/display name/i)).toHaveValue('beta-svc')
+    })
+  })
+
   it('Load defaults button is disabled when no template is selected', () => {
     setupMocks()
     render(<CreateDeploymentPage />)
