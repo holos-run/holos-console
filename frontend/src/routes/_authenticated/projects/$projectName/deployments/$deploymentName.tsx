@@ -344,19 +344,22 @@ export function DeploymentDetailPage({
                               {pod.containerStatuses && pod.containerStatuses.length > 0 && (
                                 <div className="ml-4 space-y-1">
                                   <p className="text-xs text-muted-foreground">Containers:</p>
-                                  {pod.containerStatuses.map((cs) => (
-                                    <div key={cs.name} className="flex items-center gap-2 text-xs font-mono">
+                                  {pod.containerStatuses.map((cs) => {
+                                    // Terminated containers are green for normal completion (no error reason),
+                                    // red only when an error reason is present or restarts indicate failure.
+                                    const terminatedIsError = cs.state === 'terminated' && isContainerError(cs)
+                                    const badgeClass =
+                                      cs.state === 'running'
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs'
+                                        : cs.state === 'waiting'
+                                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-transparent text-xs'
+                                          : terminatedIsError
+                                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-transparent text-xs'
+                                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs'
+                                    return (
+                                    <div key={cs.name} className="flex items-center gap-2 text-xs font-mono flex-wrap">
                                       <span className="text-foreground">{cs.name}</span>
-                                      <Badge
-                                        data-testid="container-state-badge"
-                                        className={
-                                          cs.state === 'running'
-                                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent text-xs'
-                                            : cs.state === 'waiting'
-                                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-transparent text-xs'
-                                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-transparent text-xs'
-                                        }
-                                      >
+                                      <Badge data-testid="container-state-badge" className={badgeClass}>
                                         {cs.state}
                                       </Badge>
                                       {cs.reason && (
@@ -369,8 +372,14 @@ export function DeploymentDetailPage({
                                           — {cs.message}
                                         </span>
                                       )}
+                                      {cs.image && (
+                                        <span className="text-muted-foreground truncate max-w-sm" title={cs.image}>
+                                          {cs.image}
+                                        </span>
+                                      )}
                                     </div>
-                                  ))}
+                                    )
+                                  })}
                                 </div>
                               )}
                             </div>

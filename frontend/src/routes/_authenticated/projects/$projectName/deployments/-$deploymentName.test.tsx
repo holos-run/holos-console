@@ -918,6 +918,55 @@ describe('DeploymentDetailPage', () => {
       expect(runningBadge.className).toMatch(/green/)
     })
 
+    it('shows container image', () => {
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatusWithEvents, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      // The container's image should be displayed
+      expect(screen.getByText('ghcr.io/org/app:bad')).toBeInTheDocument()
+    })
+
+    it('terminated container with no error reason gets green badge', () => {
+      const terminatedNormalStatus = {
+        ...mockStatus,
+        pods: [
+          {
+            name: 'job-pod-1',
+            phase: 'Succeeded',
+            ready: false,
+            restartCount: 0,
+            containerStatuses: [
+              { name: 'worker', state: 'terminated', reason: 'Completed', message: '', image: 'ghcr.io/org/worker:v1', ready: false, restartCount: 0, startedAt: ts('2025-01-15T10:00:00Z') },
+            ],
+            events: [],
+          },
+        ],
+      }
+      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
+      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: terminatedNormalStatus, isPending: false, error: null })
+      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
+      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, reset: vi.fn() })
+      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
+      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+      render(<DeploymentDetailPage />)
+      const terminatedBadge = screen.getByText(/terminated/i, { selector: '[data-testid="container-state-badge"]' })
+      // Completed (normal exit) should get green, not red
+      expect(terminatedBadge.className).toMatch(/green/)
+      expect(terminatedBadge.className).not.toMatch(/red/)
+    })
+
     it('does not render container section when containerStatuses is empty', () => {
       setupMocks()
       render(<DeploymentDetailPage />)
