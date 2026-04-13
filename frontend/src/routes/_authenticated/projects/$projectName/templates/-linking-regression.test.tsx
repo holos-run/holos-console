@@ -102,7 +102,9 @@ const mockTemplate = {
   displayName: 'Web App',
   description: 'Standard web application',
   cueTemplate: '// cue template content',
-  linkedTemplates: [] as Array<{ name: string; scope: number; scopeName: string }>,
+  mandatory: true,
+  enabled: true,
+  linkedTemplates: [] as Array<{ name: string; scope: number; scopeName: string; versionConstraint?: string }>,
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +285,130 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
           expect.objectContaining({ name: 'reference-grant', scope: 1, scopeName: 'default' }),
         ]),
       )
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Partial-update regression tests
+//
+// These tests ensure that each save handler passes ALL current field values to
+// the mutation, preventing any field from being silently zeroed out.
+// See https://github.com/holos-run/holos-console/issues/895
+// ---------------------------------------------------------------------------
+
+describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  describe('handleSaveLinkedTemplates preserves all fields', () => {
+    it('passes cueTemplate, displayName, description, mandatory, and enabled alongside linkedTemplates', async () => {
+      const user = userEvent.setup()
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
+      setupDetailMocks(Role.OWNER, {
+        cueTemplate: '// existing content',
+        displayName: 'My Template',
+        description: 'My description',
+        mandatory: true,
+        enabled: true,
+      })
+      ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
+
+      render(<DeploymentTemplateDetailPage />)
+
+      // Open the linked templates dialog
+      await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
+      const dialog = screen.getByRole('dialog')
+
+      // Toggle a non-mandatory template
+      const httpbinCheckbox = within(dialog).getByRole('checkbox', { name: /httpbin platform/i })
+      await user.click(httpbinCheckbox)
+
+      // Click Save
+      await user.click(within(dialog).getByRole('button', { name: /save/i }))
+
+      expect(mutateAsync).toHaveBeenCalledTimes(1)
+      const callArgs = mutateAsync.mock.calls[0][0]
+      // Must include CUE template content (not empty string)
+      expect(callArgs.cueTemplate).toBe('// existing content')
+      expect(callArgs.displayName).toBe('My Template')
+      expect(callArgs.description).toBe('My description')
+      expect(callArgs.mandatory).toBe(true)
+      expect(callArgs.enabled).toBe(true)
+      // Must still include linkedTemplates and updateLinkedTemplates
+      expect(callArgs.updateLinkedTemplates).toBe(true)
+      expect(callArgs.linkedTemplates).toBeDefined()
+    })
+  })
+
+  describe('handleSaveDescription preserves all fields', () => {
+    it('passes cueTemplate, displayName, mandatory, and enabled alongside description', async () => {
+      const user = userEvent.setup()
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
+      setupDetailMocks(Role.OWNER, {
+        cueTemplate: '// existing content',
+        displayName: 'My Template',
+        description: 'Original description',
+        mandatory: true,
+        enabled: true,
+      })
+      ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
+
+      render(<DeploymentTemplateDetailPage />)
+
+      // Open the description edit dialog
+      await user.click(screen.getByRole('button', { name: /edit description/i }))
+      const dialog = screen.getByRole('dialog')
+
+      // Change description text
+      const textarea = within(dialog).getByRole('textbox', { name: /description/i })
+      await user.clear(textarea)
+      await user.type(textarea, 'Updated description')
+
+      // Click Save
+      await user.click(within(dialog).getByRole('button', { name: /save/i }))
+
+      expect(mutateAsync).toHaveBeenCalledTimes(1)
+      const callArgs = mutateAsync.mock.calls[0][0]
+      // Must include CUE template content (not empty string)
+      expect(callArgs.cueTemplate).toBe('// existing content')
+      expect(callArgs.displayName).toBe('My Template')
+      expect(callArgs.description).toBe('Updated description')
+      expect(callArgs.mandatory).toBe(true)
+      expect(callArgs.enabled).toBe(true)
+    })
+  })
+
+  describe('handleSave preserves all fields', () => {
+    it('passes mandatory and enabled alongside cueTemplate, displayName, and description', async () => {
+      const user = userEvent.setup()
+      const mutateAsync = vi.fn().mockResolvedValue({})
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
+      setupDetailMocks(Role.OWNER, {
+        cueTemplate: '// existing content',
+        displayName: 'My Template',
+        description: 'My description',
+        mandatory: true,
+        enabled: true,
+      })
+      ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
+
+      render(<DeploymentTemplateDetailPage />)
+
+      // The Save button is inside the CueTemplateEditor — click it
+      const saveButton = screen.getByRole('button', { name: /^save$/i })
+      await user.click(saveButton)
+
+      expect(mutateAsync).toHaveBeenCalledTimes(1)
+      const callArgs = mutateAsync.mock.calls[0][0]
+      expect(callArgs.cueTemplate).toBe('// existing content')
+      expect(callArgs.displayName).toBe('My Template')
+      expect(callArgs.description).toBe('My description')
+      expect(callArgs.mandatory).toBe(true)
+      expect(callArgs.enabled).toBe(true)
     })
   })
 })

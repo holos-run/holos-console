@@ -99,6 +99,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         displayName: template?.displayName,
         description: template?.description,
         cueTemplate,
+        mandatory: template?.mandatory,
+        enabled: template?.enabled,
       })
       toast.success('Saved')
     } catch (err) {
@@ -122,7 +124,13 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const handleSaveDescription = async () => {
     try {
-      await updateMutation.mutateAsync({ description: draftDescription })
+      await updateMutation.mutateAsync({
+        description: draftDescription,
+        cueTemplate,
+        displayName: template?.displayName,
+        mandatory: template?.mandatory,
+        enabled: template?.enabled,
+      })
       toast.success('Saved')
       setDescEditOpen(false)
     } catch (err) {
@@ -150,7 +158,15 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           const vc = draftVersionConstraints.get(key) ?? ''
           return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
         })
-      await updateMutation.mutateAsync({ linkedTemplates, updateLinkedTemplates: true })
+      await updateMutation.mutateAsync({
+        linkedTemplates,
+        updateLinkedTemplates: true,
+        cueTemplate,
+        displayName: template?.displayName,
+        description: template?.description,
+        mandatory: template?.mandatory,
+        enabled: template?.enabled,
+      })
       toast.success('Saved')
       setLinkedEditOpen(false)
     } catch (err) {
