@@ -158,6 +158,57 @@ export declare type TemplateDefaults = Message<"holos.console.v1.TemplateDefault
 export declare const TemplateDefaultsSchema: GenMessage<TemplateDefaults>;
 
 /**
+ * GetTemplateDefaultsRequest requests the defaults block for a template.
+ *
+ * @generated from message holos.console.v1.GetTemplateDefaultsRequest
+ */
+export declare type GetTemplateDefaultsRequest = Message<"holos.console.v1.GetTemplateDefaultsRequest"> & {
+  /**
+   * scope identifies the owning scope of the template. Only
+   * TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
+   * preserved for symmetry with other template RPCs and future use.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * name is the template's DNS label slug.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetTemplateDefaultsRequest.
+ * Use `create(GetTemplateDefaultsRequestSchema)` to create a new message.
+ */
+export declare const GetTemplateDefaultsRequestSchema: GenMessage<GetTemplateDefaultsRequest>;
+
+/**
+ * GetTemplateDefaultsResponse carries the evaluated template defaults.
+ *
+ * @generated from message holos.console.v1.GetTemplateDefaultsResponse
+ */
+export declare type GetTemplateDefaultsResponse = Message<"holos.console.v1.GetTemplateDefaultsResponse"> & {
+  /**
+   * defaults is the TemplateDefaults message extracted from the template's
+   * top-level `defaults` CUE block (see ADR 027). Optional: an unset or empty
+   * message means the template provides no defaults.
+   *
+   * @generated from field: holos.console.v1.TemplateDefaults defaults = 1;
+   */
+  defaults?: TemplateDefaults;
+};
+
+/**
+ * Describes the message holos.console.v1.GetTemplateDefaultsResponse.
+ * Use `create(GetTemplateDefaultsResponseSchema)` to create a new message.
+ */
+export declare const GetTemplateDefaultsResponseSchema: GenMessage<GetTemplateDefaultsResponse>;
+
+/**
  * Template is a CUE template that produces Kubernetes resource manifests.
  * It is stored as a Kubernetes ConfigMap in the namespace of its owning scope.
  * (ADR 021 Decision 4)
@@ -1344,6 +1395,26 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof CheckUpdatesRequestSchema;
     output: typeof CheckUpdatesResponseSchema;
+  },
+  /**
+   * GetTemplateDefaults returns the defaults a template provides for deployment
+   * form fields. The handler evaluates the template's `defaults` CUE block via
+   * ExtractDefaults and returns the same TemplateDefaults message that
+   * Template.defaults would carry on GetTemplate. Inline `*` defaults declared
+   * on `input` fields are NOT read — only the top-level `defaults` CUE block is
+   * considered. References ADR 027.
+   *
+   * This RPC gives the Create Deployment form an explicit, testable hook to
+   * call on template selection and on the "Load defaults" action. It is
+   * complementary to Template.defaults on list/get responses, which is retained
+   * for backwards compatibility.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.GetTemplateDefaults
+   */
+  getTemplateDefaults: {
+    methodKind: "unary";
+    input: typeof GetTemplateDefaultsRequestSchema;
+    output: typeof GetTemplateDefaultsResponseSchema;
   },
 }>;
 
