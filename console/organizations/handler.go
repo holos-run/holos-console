@@ -53,7 +53,7 @@ type TemplateSeeder interface {
 // pattern as FolderCreator. DeleteProject is needed for rollback when later
 // seeding steps fail.
 type ProjectCreator interface {
-	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error
+	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error
 	DeleteProject(ctx context.Context, name string) error
 	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
@@ -442,7 +442,16 @@ func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail string
 		return fmt.Errorf("generating project identifier: %w", err)
 	}
 
-	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, shareUsers, shareRoles); err != nil {
+	// Read the org's default sharing grants (seeded earlier via
+	// seedOrgDefaultSharing) and merge them into the project's grants, mirroring
+	// the production path in projects.Handler.CreateProject. Also copy them as
+	// the project's default sharing so new secrets inherit them.
+	orgDefaultUsers, _ := GetDefaultShareUsers(orgNs)
+	orgDefaultRoles, _ := GetDefaultShareRoles(orgNs)
+	projectShareUsers := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareUsers...), orgDefaultUsers...))
+	projectShareRoles := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareRoles...), orgDefaultRoles...))
+
+	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, projectShareUsers, projectShareRoles, orgDefaultUsers, orgDefaultRoles); err != nil {
 		return fmt.Errorf("creating default project: %w", err)
 	}
 

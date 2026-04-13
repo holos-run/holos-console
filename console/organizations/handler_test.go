@@ -1242,7 +1242,7 @@ type k8sProjectCreator struct {
 	createErr error
 }
 
-func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
 	if p.createErr != nil {
 		return p.createErr
 	}
@@ -1251,6 +1251,14 @@ func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName
 	annotations := map[string]string{
 		v1alpha2.AnnotationShareUsers: string(usersJSON),
 		v1alpha2.AnnotationShareRoles: string(rolesJSON),
+	}
+	if len(defaultShareUsers) > 0 {
+		defaultUsersJSON, _ := json.Marshal(defaultShareUsers)
+		annotations[v1alpha2.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
+	}
+	if len(defaultShareRoles) > 0 {
+		defaultRolesJSON, _ := json.Marshal(defaultShareRoles)
+		annotations[v1alpha2.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
 	}
 	if displayName != "" {
 		annotations[v1alpha2.AnnotationDisplayName] = displayName
@@ -1327,9 +1335,44 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		// Verify the default project was created (check that at least one project namespace exists).
 		pc := handler.projectCreator.(*k8sProjectCreator)
 		projectNsName := pc.resolver.ProjectNamespace(ts.seededProjectName)
-		_, err = pc.client.CoreV1().Namespaces().Get(context.Background(), projectNsName, metav1.GetOptions{})
+		projectNs, err := pc.client.CoreV1().Namespaces().Get(context.Background(), projectNsName, metav1.GetOptions{})
 		if err != nil {
 			t.Fatalf("expected default project namespace %q to exist, got %v", projectNsName, err)
+		}
+
+		// Verify the seeded project inherited the org's default role grants
+		// (Owner, Editor, Viewer) both as its active role grants and as its
+		// own default role grants, mirroring projects.Handler.CreateProject.
+		rolesAnnotation := projectNs.Annotations[v1alpha2.AnnotationShareRoles]
+		if rolesAnnotation == "" {
+			t.Fatalf("expected share-roles annotation on project namespace")
+		}
+		var projectRoles []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(rolesAnnotation), &projectRoles); err != nil {
+			t.Fatalf("invalid share-roles annotation: %v", err)
+		}
+		wantRoles := map[string]bool{"owner": false, "editor": false, "viewer": false}
+		for _, g := range projectRoles {
+			if _, ok := wantRoles[g.Role]; ok && g.Principal == g.Role {
+				wantRoles[g.Role] = true
+			}
+		}
+		for role, seen := range wantRoles {
+			if !seen {
+				t.Errorf("expected seeded project to inherit org default role grant %q", role)
+			}
+		}
+
+		defaultRolesAnnotation := projectNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]
+		if defaultRolesAnnotation == "" {
+			t.Fatalf("expected default-share-roles annotation on project namespace")
+		}
+		var projectDefaultRoles []secrets.AnnotationGrant
+		if err := json.Unmarshal([]byte(defaultRolesAnnotation), &projectDefaultRoles); err != nil {
+			t.Fatalf("invalid default-share-roles annotation: %v", err)
+		}
+		if len(projectDefaultRoles) != 3 {
+			t.Errorf("expected 3 default role grants copied from org, got %d", len(projectDefaultRoles))
 		}
 	})
 
