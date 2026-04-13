@@ -222,7 +222,7 @@ describe('CueTemplateEditor', () => {
       expect(screen.queryByText('all-resources')).not.toBeInTheDocument()
     })
 
-    it('renders only project section when platform resources are empty', async () => {
+    it('shows empty-state message when platform resources are empty but project resources exist', async () => {
       const user = userEvent.setup()
       ;(useRenderTemplate as Mock).mockReturnValue({
         data: {
@@ -245,14 +245,93 @@ describe('CueTemplateEditor', () => {
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
 
-      // Should not show "Platform Resources" heading
-      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
-      // Should not show "Project Resources" heading (just shows "Rendered YAML")
-      expect(screen.queryByText('Project Resources')).not.toBeInTheDocument()
-      // Should show the label as "Rendered YAML"
-      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
-      // The content should be from projectResourcesYaml
-      expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('Deployment')
+      // Both headings should be shown
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      // Empty-state message replaces the platform YAML block
+      expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+      // Project resources should be displayed
+      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Deployment')
+    })
+
+    it('shows both Platform Resources and Project Resources headings when only project resources exist', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: {
+          renderedYaml: '',
+          renderedJson: '',
+          platformResourcesYaml: '',
+          platformResourcesJson: '',
+          projectResourcesYaml: 'apiVersion: v1\nkind: ConfigMap',
+          projectResourcesJson: '',
+        },
+        error: null,
+        isFetching: false,
+      })
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      // Both headings must always be present when hasPerCollectionFields is true
+      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
+      expect(screen.getByText('Project Resources')).toBeInTheDocument()
+      // Empty-state message for platform
+      expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
+      // Project content is shown
+      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('ConfigMap')
+    })
+
+    it('pretty-prints JSON default inputs in textareas', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: undefined,
+        error: null,
+        isFetching: false,
+      })
+      const compactJson = '{"name":"test","replicas":3}'
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          defaultPlatformInput={compactJson}
+          defaultProjectInput={compactJson}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      const expectedPretty = JSON.stringify(JSON.parse(compactJson), null, 2)
+      expect(screen.getByRole('textbox', { name: /platform input/i })).toHaveValue(expectedPretty)
+      expect(screen.getByRole('textbox', { name: /project input/i })).toHaveValue(expectedPretty)
+    })
+
+    it('passes CUE default inputs through unchanged', async () => {
+      const user = userEvent.setup()
+      ;(useRenderTemplate as Mock).mockReturnValue({
+        data: undefined,
+        error: null,
+        isFetching: false,
+      })
+      const cueInput = 'name: "test"\nreplicas: 3'
+      render(
+        <CueTemplateEditor
+          cueTemplate="content"
+          onChange={vi.fn()}
+          defaultPlatformInput={cueInput}
+          defaultProjectInput={cueInput}
+          scope={testScope}
+        />
+      )
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      // CUE is not valid JSON, so it should pass through unchanged
+      expect(screen.getByRole('textbox', { name: /platform input/i })).toHaveValue(cueInput)
+      expect(screen.getByRole('textbox', { name: /project input/i })).toHaveValue(cueInput)
     })
 
     it('falls back to unified renderedYaml when no per-collection fields are present', async () => {
