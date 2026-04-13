@@ -579,9 +579,9 @@ may appear ([ADR 026](adrs/026-remove-namespace-restrictions.md)).
 
 This enables platform templates to produce resources across multiple namespaces
 in a single render pass. For example, an organization-level platform template
-can create an `HTTPRoute` in the `istio-ingress` namespace and a
-`ReferenceGrant` in the gateway namespace alongside project resources in the
-project namespace.
+can create an `HTTPRoute` in the project namespace and a `ReferenceGrant` in
+the `istio-ingress` gateway namespace, all applied alongside project resources
+in the same render.
 
 #### Example: Multi-Namespace Platform Template
 
