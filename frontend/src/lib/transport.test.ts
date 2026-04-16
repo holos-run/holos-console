@@ -18,7 +18,7 @@ function makeMockRequest(headers?: Record<string, string>): MockRequest {
   return { header: h } as unknown as MockRequest
 }
 
-function makeMockResponse(token?: string): MockResponse {
+function makeMockResponse(): MockResponse {
   return {} as unknown as MockResponse
 }
 
@@ -52,28 +52,35 @@ describe('readStoredToken', () => {
     expect(readStoredToken()).toBeNull()
   })
 
-  it('returns the access_token from a valid oidc.user entry', () => {
+  it('returns the id_token from a valid oidc.user entry', () => {
     const futureExp = Math.floor(Date.now() / 1000) + 3600
     sessionStorage.setItem(
       'oidc.user:https://localhost:8443/dex:holos-console',
-      JSON.stringify({ access_token: 'valid-token-abc', expires_at: futureExp }),
+      JSON.stringify({
+        id_token: 'valid-id-token-abc',
+        access_token: 'valid-access-token-xyz',
+        expires_at: futureExp,
+      }),
     )
-    expect(readStoredToken()).toBe('valid-token-abc')
+    expect(readStoredToken()).toBe('valid-id-token-abc')
   })
 
   it('returns null when the stored token is expired', () => {
     const pastExp = Math.floor(Date.now() / 1000) - 60
     sessionStorage.setItem(
       'oidc.user:https://localhost:8443/dex:holos-console',
-      JSON.stringify({ access_token: 'expired-token', expires_at: pastExp }),
+      JSON.stringify({ id_token: 'expired-token', expires_at: pastExp }),
     )
     expect(readStoredToken()).toBeNull()
   })
 
-  it('returns null when access_token is missing from the stored entry', () => {
+  it('returns null when id_token is missing from the stored entry', () => {
     sessionStorage.setItem(
       'oidc.user:https://localhost:8443/dex:holos-console',
-      JSON.stringify({ expires_at: Math.floor(Date.now() / 1000) + 3600 }),
+      JSON.stringify({
+        access_token: 'only-access',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
     )
     expect(readStoredToken()).toBeNull()
   })
@@ -106,6 +113,33 @@ describe('createAuthInterceptor', () => {
     expect(next).toHaveBeenCalledTimes(1)
   })
 
+  it('attaches id_token (not access_token) as Bearer when sessionStorage has both', async () => {
+    // Seed sessionStorage with both an id_token and a different access_token,
+    // then pick up what readStoredToken selects. The Bearer header must carry
+    // the ID token, because the backend verifies aud == client_id (an
+    // ID-token property) and would reject the access token.
+    sessionStorage.setItem(
+      'oidc.user:https://localhost:8443/dex:holos-console',
+      JSON.stringify({
+        id_token: 'the-id-token',
+        access_token: 'the-access-token',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+    try {
+      tokenRef.current = readStoredToken()
+      const interceptor = createAuthInterceptor()
+      const req = makeMockRequest()
+      const next = vi.fn().mockResolvedValue(makeMockResponse())
+
+      await interceptor(next)(req)
+
+      expect(req.header.get('Authorization')).toBe('Bearer the-id-token')
+    } finally {
+      sessionStorage.clear()
+    }
+  })
+
   it('does not set Authorization header when tokenRef is null', async () => {
     tokenRef.current = null
     const interceptor = createAuthInterceptor()
@@ -121,7 +155,7 @@ describe('createAuthInterceptor', () => {
   it('retries request after successful signinSilent on 401', async () => {
     tokenRef.current = 'old-token'
     const freshToken = 'fresh-token'
-    const mockSigninSilent = vi.fn().mockResolvedValue({ access_token: freshToken })
+    const mockSigninSilent = vi.fn().mockResolvedValue({ id_token: freshToken })
     vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
 
     const interceptor = createAuthInterceptor()
@@ -143,6 +177,30 @@ describe('createAuthInterceptor', () => {
     expect(tokenRef.current).toBe(freshToken)
     // The retried request must carry the fresh token.
     expect(req.header.get('Authorization')).toBe(`Bearer ${freshToken}`)
+  })
+
+  it('renewToken refreshes the ID token on 401 (not the access token)', async () => {
+    // When signinSilent returns a fresh User with both tokens, the retry
+    // must carry the id_token, matching what the backend verifier expects.
+    tokenRef.current = 'old-token'
+    const mockSigninSilent = vi
+      .fn()
+      .mockResolvedValue({ id_token: 'new-id', access_token: 'new-access' })
+    vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
+
+    const interceptor = createAuthInterceptor()
+    const req = makeMockRequest()
+    const response = makeMockResponse()
+
+    const next = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectError('unauthenticated', Code.Unauthenticated))
+      .mockResolvedValueOnce(response)
+
+    await interceptor(next)(req)
+
+    expect(tokenRef.current).toBe('new-id')
+    expect(req.header.get('Authorization')).toBe('Bearer new-id')
   })
 
   it('propagates renewal error when signinSilent fails', async () => {
@@ -167,7 +225,7 @@ describe('createAuthInterceptor', () => {
   it('does not retry a second 401 (prevents retry loops)', async () => {
     tokenRef.current = 'old-token'
     const freshToken = 'fresh-token'
-    const mockSigninSilent = vi.fn().mockResolvedValue({ access_token: freshToken })
+    const mockSigninSilent = vi.fn().mockResolvedValue({ id_token: freshToken })
     vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
 
     const interceptor = createAuthInterceptor()
@@ -207,7 +265,7 @@ describe('createAuthInterceptor', () => {
     // signinSilent returns a promise that resolves after a tick so concurrent
     // calls overlap.
     const mockSigninSilent = vi.fn().mockImplementation(
-      () => new Promise<{ access_token: string }>((resolve) => setTimeout(() => resolve({ access_token: freshToken }), 0))
+      () => new Promise<{ id_token: string }>((resolve) => setTimeout(() => resolve({ id_token: freshToken }), 0))
     )
     vi.mocked(getUserManager).mockReturnValue({ signinSilent: mockSigninSilent } as never)
 

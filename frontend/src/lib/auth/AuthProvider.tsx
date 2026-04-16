@@ -17,7 +17,6 @@ export interface AuthContextValue {
   isAuthenticated: boolean
   login: (returnTo?: string) => Promise<void>
   logout: () => Promise<void>
-  getAccessToken: () => string | null
   refreshTokens: () => Promise<void>
   lastRefreshStatus: 'idle' | 'success' | 'error'
   lastRefreshTime: Date | null
@@ -82,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userManager])
 
   useEffect(() => {
-    tokenRef.current = user?.access_token ?? null
+    tokenRef.current = user?.id_token ?? null
   }, [user])
 
   const login = useCallback(
@@ -111,8 +110,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [userManager])
 
-  const getAccessToken = useCallback(() => user?.access_token ?? null, [user])
-
   const refreshTokens = useCallback(async () => {
     try {
       setLastRefreshStatus('idle')
@@ -140,13 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!user && !user.expired,
       login,
       logout,
-      getAccessToken,
       refreshTokens,
       lastRefreshStatus,
       lastRefreshTime,
       lastRefreshError,
     }),
-    [user, isLoading, error, login, logout, getAccessToken, refreshTokens, lastRefreshStatus, lastRefreshTime, lastRefreshError],
+    [user, isLoading, error, login, logout, refreshTokens, lastRefreshStatus, lastRefreshTime, lastRefreshError],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
