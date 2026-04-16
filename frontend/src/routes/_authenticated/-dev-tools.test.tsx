@@ -49,7 +49,6 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),
-    getAccessToken: vi.fn(),
     refreshTokens: vi.fn(),
     lastRefreshStatus: 'idle' as const,
     lastRefreshTime: null,

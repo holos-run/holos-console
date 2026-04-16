@@ -18,7 +18,7 @@ function makeMockRequest(headers?: Record<string, string>): MockRequest {
   return { header: h } as unknown as MockRequest
 }
 
-function makeMockResponse(token?: string): MockResponse {
+function makeMockResponse(): MockResponse {
   return {} as unknown as MockResponse
 }
 
