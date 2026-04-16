@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userManager])
 
   useEffect(() => {
-    tokenRef.current = user?.access_token ?? null
+    tokenRef.current = user?.id_token ?? null
   }, [user])
 
   const login = useCallback(

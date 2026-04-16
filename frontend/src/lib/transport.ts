@@ -2,8 +2,11 @@ import { createConnectTransport } from '@connectrpc/connect-web'
 import { ConnectError, Code, type Interceptor } from '@connectrpc/connect'
 import { getUserManager } from '@/lib/auth/userManager'
 
-// readStoredToken reads the access token from sessionStorage synchronously at
-// module load time. oidc-client-ts stores the user object under a key matching
+// readStoredToken reads the ID token from sessionStorage synchronously at
+// module load time. The backend's OIDC verifier authenticates the end user by
+// their ID token (aud == client_id); access tokens are not accepted because
+// some IdPs (e.g. Keycloak) mint them with a different audience.
+// oidc-client-ts stores the user object under a key matching
 // "oidc.user:<authority>:<client_id>". Reading it here ensures tokenRef is
 // populated before any React effect runs, eliminating the timing race where
 // child query hooks fire before AuthProvider's useEffect sets the token.
@@ -13,17 +16,17 @@ export function readStoredToken(): string | null {
     if (!key) return null
     const raw = sessionStorage.getItem(key)
     if (!raw) return null
-    const data = JSON.parse(raw) as { access_token?: string; expires_at?: number }
-    if (!data?.access_token) return null
+    const data = JSON.parse(raw) as { id_token?: string; expires_at?: number }
+    if (!data?.id_token) return null
     // Treat expired tokens as absent; silent renew in AuthProvider will fix them.
     if (data.expires_at && data.expires_at * 1000 < Date.now()) return null
-    return data.access_token
+    return data.id_token
   } catch {
     return null
   }
 }
 
-// Shared mutable ref for the current access token.
+// Shared mutable ref for the current ID token.
 // Initialized synchronously from sessionStorage so that the very first RPC
 // request (before any React effect runs) already carries the correct token for
 // returning authenticated users. AuthProvider keeps this current on
@@ -43,11 +46,11 @@ async function renewToken(): Promise<string> {
   renewalPromise = (async () => {
     const userManager = getUserManager()
     const user = await userManager.signinSilent()
-    if (!user?.access_token) {
-      throw new Error('signinSilent returned no access token')
+    if (!user?.id_token) {
+      throw new Error('signinSilent returned no id token')
     }
-    tokenRef.current = user.access_token
-    return user.access_token
+    tokenRef.current = user.id_token
+    return user.id_token
   })()
   try {
     return await renewalPromise
