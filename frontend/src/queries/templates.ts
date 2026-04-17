@@ -127,10 +127,6 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       displayName: string
       description: string
       cueTemplate: string
-      // `mandatory` is accepted for backwards compatibility with existing
-      // call sites but ignored. HOL-555 removed the proto field; the
-      // TemplatePolicy UI (HOL-558) will take over this concept.
-      mandatory?: boolean
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
     }) =>
@@ -161,10 +157,6 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       displayName?: string
       description?: string
       cueTemplate?: string
-      // `mandatory` is accepted for backwards compatibility with existing
-      // call sites but ignored. HOL-555 removed the proto field; the
-      // TemplatePolicy UI (HOL-558) will take over this concept.
-      mandatory?: boolean
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
       updateLinkedTemplates?: boolean

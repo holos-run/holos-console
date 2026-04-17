@@ -128,11 +128,35 @@ describe('CreateOrgTemplatePage', () => {
           name: 'my-template',
           displayName: 'My Template',
           description: 'A description',
-          mandatory: false,
           enabled: false,
         }),
       )
     })
+  })
+
+  // HOL-555 removed the Mandatory proto field; HOL-558 shifts the concept to
+  // TemplatePolicy REQUIRE rules. The Mandatory toggle must not render on the
+  // org-template create form and the mutation payload must not carry a
+  // mandatory field.
+  it('does not render a Mandatory toggle (removed in HOL-555)', () => {
+    render(<CreateOrgTemplatePage orgName="test-org" />)
+    expect(screen.queryByRole('switch', { name: /mandatory/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/mandatory/i)).not.toBeInTheDocument()
+  })
+
+  it('does not pass mandatory in the mutation payload', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({})
+    setupMocks(mutateAsync)
+    render(<CreateOrgTemplatePage orgName="test-org" />)
+
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalled()
+    })
+    const payload = mutateAsync.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('mandatory')
   })
 
   it('navigates to template detail page after successful creation', async () => {

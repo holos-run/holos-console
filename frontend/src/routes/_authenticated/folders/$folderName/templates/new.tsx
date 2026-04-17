@@ -114,7 +114,6 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
         displayName: displayName.trim(),
         description: description.trim(),
         cueTemplate,
-        mandatory: false,
         enabled,
       })
       await navigate({

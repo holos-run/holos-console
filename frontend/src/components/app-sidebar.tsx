@@ -10,6 +10,7 @@ import {
   Layers,
   Plus,
   Settings,
+  Shield,
   User,
   Wrench,
   ChevronsUpDown,
@@ -90,6 +91,16 @@ export function AppSidebar() {
           to: '/orgs/$orgName/projects' as const,
           params: { orgName: selectedOrg },
           icon: FolderKanban,
+        },
+        // Template Policies is an org- and folder-scoped concept (HOL-558);
+        // there is deliberately no project-scoped equivalent. Policies are
+        // surfaced here under the org nav and via in-page links from folder
+        // detail routes. They must NOT appear under projectNavItems.
+        {
+          label: 'Template Policies',
+          to: '/orgs/$orgName/template-policies' as const,
+          params: { orgName: selectedOrg },
+          icon: Shield,
         },
         {
           label: 'Org Settings',

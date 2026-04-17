@@ -153,7 +153,6 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
         displayName: displayName.trim(),
         description: description.trim(),
         cueTemplate,
-        mandatory: false,
         enabled,
       })
       await navigate({

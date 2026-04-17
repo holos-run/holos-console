@@ -102,4 +102,59 @@ describe('AppSidebar', () => {
 
     expect(labels.indexOf('Folders')).toBeLessThan(labels.indexOf('Projects'))
   })
+
+  // HOL-558 sidebar visibility guarantee: Template Policies appears under the
+  // org nav on folder and org detail routes but NEVER under the project nav.
+  // Policies are a folder/org-only concept and must not look authorable from
+  // within a project.
+  describe('Template Policies sidebar visibility (HOL-558)', () => {
+    it('renders a Template Policies entry under the org nav when an org is selected', () => {
+      ;(useOrg as Mock).mockReturnValue({
+        selectedOrg: 'test-org',
+        organizations: [{ name: 'test-org', displayName: 'Test Org' }],
+        setSelectedOrg: vi.fn(),
+        isLoading: false,
+      })
+      ;(useProject as Mock).mockReturnValue({
+        projects: [],
+        selectedProject: null,
+        setSelectedProject: vi.fn(),
+        isLoading: false,
+      })
+
+      render(<AppSidebar />)
+      const link = screen.getByText('Template Policies')
+      expect(link).toBeInTheDocument()
+    })
+
+    it('does NOT render Template Policies under the project nav (folder/org-only)', () => {
+      ;(useOrg as Mock).mockReturnValue({
+        selectedOrg: 'test-org',
+        organizations: [{ name: 'test-org', displayName: 'Test Org' }],
+        setSelectedOrg: vi.fn(),
+        isLoading: false,
+      })
+      ;(useProject as Mock).mockReturnValue({
+        projects: [{ name: 'test-project', displayName: 'Test Project' }],
+        selectedProject: 'test-project',
+        setSelectedProject: vi.fn(),
+        isLoading: false,
+      })
+
+      render(<AppSidebar />)
+
+      // The project nav is the second SidebarMenu under SidebarContent.
+      const sidebarMenus = screen.getAllByTestId('sidebar-menu')
+      // There are at least 2 menus: org nav + project nav. The project nav is
+      // always the last sidebar menu inside SidebarContent in the current
+      // layout (the footer menu is rendered outside SidebarContent).
+      const projectMenu = sidebarMenus[1]
+      expect(projectMenu).toBeDefined()
+
+      const projectLabels = Array.from(projectMenu.querySelectorAll('li')).map(
+        (li) => li.textContent,
+      )
+      expect(projectLabels).not.toContain('Template Policies')
+    })
+  })
 })
