@@ -127,10 +127,16 @@ func (r *policyRequireRuleResolver) ResolveRequiredTemplates(ctx context.Context
 			continue
 		}
 		seen[key] = struct{}{}
+		// Preserve the policy-author-declared version constraint so
+		// applyMatch pins the required template to the rule's version
+		// band at render time (HOL-571 review round 3 P2). Dropping it
+		// would silently render whichever template version happens to
+		// be live, bypassing the explicit pin.
 		matches = append(matches, RequireRuleMatch{
-			Scope:        tmpl.GetScope(),
-			ScopeName:    tmpl.GetScopeName(),
-			TemplateName: tmpl.GetName(),
+			Scope:             tmpl.GetScope(),
+			ScopeName:         tmpl.GetScopeName(),
+			TemplateName:      tmpl.GetName(),
+			VersionConstraint: tmpl.GetVersionConstraint(),
 		})
 	}
 	return matches, nil

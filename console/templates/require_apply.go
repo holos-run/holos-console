@@ -40,6 +40,12 @@ type RequireRuleMatch struct {
 	ScopeName string
 	// TemplateName is the name of the template ConfigMap to render.
 	TemplateName string
+	// VersionConstraint carries the policy-author-declared semver
+	// constraint (if any) so applyMatch can pin the required template
+	// to the rule's version band at render time. Empty string means "use
+	// the live template source" — identical to the behavior of a
+	// LinkedTemplateRef with no version_constraint.
+	VersionConstraint string
 }
 
 // RequireRuleResolver evaluates TemplatePolicy REQUIRE rules for a project at
@@ -216,12 +222,13 @@ func (a *RequiredTemplateApplier) applyMatch(
 	platformInput v1alpha2.PlatformInput,
 ) error {
 	templateRef := &consolev1.LinkedTemplateRef{
-		Scope:     match.Scope,
-		ScopeName: match.ScopeName,
-		Name:      match.TemplateName,
+		Scope:             match.Scope,
+		ScopeName:         match.ScopeName,
+		Name:              match.TemplateName,
+		VersionConstraint: match.VersionConstraint,
 	}
 
-	ancestorSources, _, err := a.k8s.ListEffectiveTemplateSources(
+	ancestorSources, effectiveRefs, err := a.k8s.ListEffectiveTemplateSources(
 		ctx,
 		projectNs,
 		TargetKindProjectTemplate,
@@ -233,6 +240,18 @@ func (a *RequiredTemplateApplier) applyMatch(
 	if err != nil {
 		return fmt.Errorf("listing ancestor sources for required template %q (%s/%s): %w",
 			match.TemplateName, match.Scope, match.ScopeName, err)
+	}
+	// HOL-571 review round 3 P1: fail closed when ancestor lookup
+	// degrades to the nil-source signal. ListEffectiveTemplateSources
+	// returns (nil, nil, nil) on walker failure or when the walker is
+	// not configured — both cases mean "we could not confirm the
+	// required-template source unified into the render". Project
+	// creation must refuse rather than apply an empty manifest, because
+	// a policy-REQUIRE'd template that silently renders empty defeats
+	// the enforcement boundary this path exists for.
+	if ancestorSources == nil && effectiveRefs == nil {
+		return fmt.Errorf("required template %q (%s/%s) source lookup returned empty; refusing to create project %q without policy-required manifests",
+			match.TemplateName, match.Scope, match.ScopeName, project)
 	}
 
 	grouped, err := a.renderer.Render(ctx, "", ancestorSources, deployments.RenderInputs{

@@ -449,6 +449,48 @@ func TestPolicyRequireRuleResolver_ResolveRequiredTemplates(t *testing.T) {
 	}
 }
 
+// TestPolicyRequireRuleResolver_PreservesVersionConstraint verifies that a
+// REQUIRE rule's template.version_constraint is threaded through to the
+// resulting RequireRuleMatch. Dropping it would silently render whichever
+// version of the template is live instead of the one the policy author
+// pinned via semver band — bypassing the explicit constraint (HOL-571
+// review round 3 P2).
+func TestPolicyRequireRuleResolver_PreservesVersionConstraint(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	fx := buildPolicyFixture(t)
+	rule := storedRuleFixture{Kind: "require"}
+	rule.Template.Scope = v1alpha2.TemplateScopeOrganization
+	rule.Template.ScopeName = "acme"
+	rule.Template.Name = "audit-policy"
+	rule.Template.VersionConstraint = ">=1.0.0 <2.0.0"
+	rule.Target.ProjectPattern = "*"
+
+	policies := map[string][]corev1.ConfigMap{
+		fx.namespaces["org"]: {
+			policyCM(fx.namespaces["org"], "pinned", []storedRuleFixture{rule}, t),
+		},
+	}
+	lister := policyresolver.NewAncestorPolicyLister(
+		&policyListerMap{items: policies},
+		fx.walker,
+		fx.resolver,
+		policyresolver.RuleUnmarshalerFunc(fixtureUnmarshalRules),
+	)
+	rr := NewPolicyRequireRuleResolver(lister, fx.resolver.ProjectNamespace)
+
+	matches, err := rr.ResolveRequiredTemplates(context.Background(), "acme", "orchids")
+	if err != nil {
+		t.Fatalf("ResolveRequiredTemplates returned error: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(matches))
+	}
+	if got := matches[0].VersionConstraint; got != ">=1.0.0 <2.0.0" {
+		t.Errorf("expected version_constraint=%q, got %q", ">=1.0.0 <2.0.0", got)
+	}
+}
+
 // TestPolicyRequireRuleResolver_IgnoresProjectNamespacePolicies is the
 // HOL-554 storage-isolation guardrail for project-creation time: a synthetic
 // (forbidden) policy ConfigMap seeded in a project namespace must NOT be

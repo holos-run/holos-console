@@ -229,6 +229,48 @@ func TestEmptyRequireRuleResolver(t *testing.T) {
 	}
 }
 
+// TestRequiredTemplateApplier_FailsClosedWhenAncestorLookupEmpty guards the
+// HOL-571 round 3 P1 fix: when ListEffectiveTemplateSources returns the
+// (nil, nil, nil) "degraded" signal (a nil walker or walker failure),
+// applyMatch must refuse to proceed. Silently rendering an empty manifest
+// would let a project be created without the policy-REQUIRE'd templates,
+// defeating the enforcement boundary.
+func TestRequiredTemplateApplier_FailsClosedWhenAncestorLookupEmpty(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	r := &resolver.Resolver{
+		NamespacePrefix:    "",
+		OrganizationPrefix: "org-",
+		FolderPrefix:       "fld-",
+		ProjectPrefix:      "prj-",
+	}
+	k8s := NewK8sClient(fake.NewClientset(), r)
+	applier := &recordingApplier{}
+	res := &stubRequireRuleResolver{
+		matches: []RequireRuleMatch{
+			{
+				Scope:        consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:    "acme",
+				TemplateName: "audit-policy",
+			},
+		},
+	}
+	// Passing a nil walker makes ListEffectiveTemplateSources return
+	// (nil, nil, nil), the "degraded" signal this guard is written for.
+	rta := NewRequiredTemplateApplier(k8s, nil, &deployments.CueRenderer{}, applier, res, policyresolver.NewNoopResolver())
+
+	err := rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", nil)
+	if err == nil {
+		t.Fatal("expected a fail-closed error when ancestor lookup degrades, got nil")
+	}
+	if !strings.Contains(err.Error(), "refusing to create project") {
+		t.Errorf("expected fail-closed error message, got %q", err.Error())
+	}
+	if len(applier.calls) != 0 {
+		t.Errorf("expected no Apply calls on fail-closed path, got %d", len(applier.calls))
+	}
+}
+
 // TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput guards
 // the fix from HOL-571 review round 1 finding 2: the applier must consult
 // the RenderHierarchyWalker when building PlatformInput so
