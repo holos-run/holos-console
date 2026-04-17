@@ -402,6 +402,16 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 		}
 		effectiveRefs = resolved
 	}
+	// Normalize a nil effectiveRefs to a non-nil empty slice so the happy
+	// path (successful render with zero policy-effective refs) is
+	// distinguishable from the degraded-render path below (nil effectiveRefs
+	// signals "do not record"). A deployment template with no linked-
+	// templates annotation is a perfectly valid apply and must still
+	// persist an applied baseline so GetDeploymentPolicyState returns
+	// has_applied_state=true (review round 2 P1a finding).
+	if effectiveRefs == nil {
+		effectiveRefs = []*consolev1.LinkedTemplateRef{}
+	}
 
 	if walker == nil {
 		// No walker means no ancestor sources are unified in. Returning
@@ -492,6 +502,21 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 		}
 	}
 
+	// Design choice for HOL-569: the returned effectiveRefs are the
+	// resolver's verbatim output, NOT the subset of refs whose ancestor
+	// ConfigMaps were actually found and unified into allSources. A
+	// template can be policy-effective yet produce zero sources (disabled
+	// in its ancestor namespace, missing ConfigMap, or unresolvable
+	// version constraint). Storing the resolver output keeps the applied-
+	// and current-side reads symmetric — GetDeploymentPolicyState invokes
+	// the same resolver to compute the current set, so comparing the two
+	// produces no spurious drift even when some refs never materialize.
+	// Filtering to "refs that produced sources" would introduce asymmetry
+	// and reopen the race that option 1 of the ticket was chosen to
+	// avoid: a concurrent policy edit between apply-time resolution and
+	// query-time resolution could make the two disagree. Review round 2
+	// P1b raised this concern; the decision to stick with the resolver
+	// output is intentional.
 	return allSources, effectiveRefs, nil
 }
 

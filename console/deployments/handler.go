@@ -548,17 +548,23 @@ func (h *Handler) CreateDeployment(
 		// store so GetDeploymentPolicyState and the list-view policy_drift
 		// flag have a baseline to diff against (HOL-569). Skipped when no
 		// checker is wired (local/dev bootstrap without a cluster policy
-		// resolver) OR when the provider signaled a degraded render by
-		// returning nil effectiveRefs (walker failed / no walker) — in that
-		// case the render was project-only and persisting the policy-
-		// resolved set would falsely claim ancestor templates were applied
-		// (review round 1 P1 finding). A record failure is logged at warn
-		// level and does NOT fail the RPC — the deployment was rendered
-		// and applied successfully, and the set can be reconstructed on
-		// the next render. This mirrors the SetOutputURLAnnotation
-		// precedent immediately below.
-		if h.policyDriftChecker != nil && effectiveRefs != nil {
-			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, effectiveRefs); recordErr != nil {
+		// resolver). When the provider signaled a degraded render by
+		// returning nil effectiveRefs (walker failed / no walker), record
+		// a non-nil empty slice so the baseline reflects reality — zero
+		// ancestor templates actually participated in this apply. This
+		// keeps GetDeploymentPolicyState honest: a subsequent query whose
+		// resolver returns a non-empty current set will correctly report
+		// drift against the empty applied set (review round 2 P2 finding).
+		// A record failure is logged at warn level and does NOT fail the
+		// RPC — the deployment was rendered and applied successfully, and
+		// the set can be reconstructed on the next render. This mirrors
+		// the SetOutputURLAnnotation precedent immediately below.
+		if h.policyDriftChecker != nil {
+			refsToRecord := effectiveRefs
+			if refsToRecord == nil {
+				refsToRecord = []*consolev1.LinkedTemplateRef{}
+			}
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
 				slog.WarnContext(ctx, "failed to record applied render set after create",
 					slog.String("project", project),
 					slog.String("name", name),
@@ -740,12 +746,17 @@ func (h *Handler) UpdateDeployment(
 		// queries diff against what this update actually rendered (HOL-569).
 		// Same contract as the create path: nil checker is a no-op, record
 		// errors are logged but do not fail the RPC because reconcile
-		// already succeeded. Also skip when effectiveRefs is nil (degraded
-		// render path — walker failed / no walker) so the stored set
-		// cannot falsely claim ancestor templates participated (review
-		// round 1 P1 finding).
-		if h.policyDriftChecker != nil && effectiveRefs != nil {
-			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, effectiveRefs); recordErr != nil {
+		// already succeeded. A nil effectiveRefs signals a degraded render
+		// path (walker failed / no walker) — in that case overwrite the
+		// stored baseline with an empty set so any previously recorded
+		// policy-resolved set cannot mask the fact that this reconcile
+		// applied zero ancestor templates (review round 2 P2 finding).
+		if h.policyDriftChecker != nil {
+			refsToRecord := effectiveRefs
+			if refsToRecord == nil {
+				refsToRecord = []*consolev1.LinkedTemplateRef{}
+			}
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
 				slog.WarnContext(ctx, "failed to record applied render set after update",
 					slog.String("project", project),
 					slog.String("name", name),

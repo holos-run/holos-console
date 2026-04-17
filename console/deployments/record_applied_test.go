@@ -187,14 +187,17 @@ func (degradedAncestorProvider) ListAncestorTemplateSources(_ context.Context, _
 	return nil, nil, nil
 }
 
-// TestHandler_CreateDeployment_SkipsRecordOnDegradedRender verifies that
+// TestHandler_CreateDeployment_RecordsEmptyOnDegradedRender verifies that
 // when the ancestor template provider returns nil effectiveRefs — the
 // contract for "ancestor walk failed / no walker, render is project-only"
-// after the review round 1 P1 finding — the handler does NOT call
-// RecordApplied. Persisting in that branch would falsely claim ancestor
-// templates participated in the render, producing spurious no-drift
-// reports on deployments that skipped their policy-injected templates.
-func TestHandler_CreateDeployment_SkipsRecordOnDegradedRender(t *testing.T) {
+// — the handler calls RecordApplied with a non-nil empty slice so the
+// stored applied baseline honestly reflects "zero ancestor templates were
+// unified into this apply" (review round 2 P2 finding). Skipping the
+// record would leave any previously recorded applied set in place, and a
+// subsequent GetDeploymentPolicyState read could compare the current
+// policy output against that stale baseline and report false no-drift
+// even though the last apply did not include those templates.
+func TestHandler_CreateDeployment_RecordsEmptyOnDegradedRender(t *testing.T) {
 	checker := &stubPolicyDriftChecker{}
 	fakeClient := fake.NewClientset(projectNS("my-project"))
 	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
@@ -213,8 +216,55 @@ func TestHandler_CreateDeployment_SkipsRecordOnDegradedRender(t *testing.T) {
 	if _, err := h.CreateDeployment(aliceEditorCtx(), req); err != nil {
 		t.Fatalf("unexpected error on degraded render: %v", err)
 	}
-	if checker.recordCalls != 0 {
-		t.Errorf("RecordApplied called %d times on degraded render; want 0", checker.recordCalls)
+	if checker.recordCalls != 1 {
+		t.Fatalf("RecordApplied called %d times on degraded render; want 1 (empty baseline)", checker.recordCalls)
+	}
+	if checker.lastRecordRefs == nil {
+		t.Errorf("RecordApplied refs: got nil on degraded render; want non-nil empty slice")
+	}
+	if len(checker.lastRecordRefs) != 0 {
+		t.Errorf("RecordApplied refs: got %d entries on degraded render; want 0", len(checker.lastRecordRefs))
+	}
+}
+
+// TestHandler_CreateDeployment_RecordsEmptyOnZeroExplicitRefs verifies the
+// HOL-569 baseline contract: a successful apply with no explicit linked
+// templates still persists an applied set (the empty slice) so
+// GetDeploymentPolicyState reports has_applied_state=true on the very
+// next read. Review round 2 P1a found a gap where the previous guard
+// (effectiveRefs != nil before RecordApplied) conflated "no refs to
+// record" with "degraded render"; the normalization in
+// ListEffectiveTemplateSources plus the empty-slice write-through here
+// keeps the two cases distinct and correct.
+func TestHandler_CreateDeployment_RecordsEmptyOnZeroExplicitRefs(t *testing.T) {
+	// Stub provider returns a non-nil empty effective-ref slice —
+	// mirroring what ListEffectiveTemplateSources now produces on a
+	// successful render whose resolver output is empty.
+	atp := &stubAncestorTemplateProvider{
+		sources:       []string{"// deployment template only"},
+		effectiveRefs: []*consolev1.LinkedTemplateRef{},
+	}
+	checker := &stubPolicyDriftChecker{}
+	h, _ := recordAppliedHandler(t, atp, checker, &stubRenderer{}, &stubApplier{})
+
+	req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+		Project:  "my-project",
+		Name:     "web-app",
+		Image:    "nginx",
+		Tag:      "1.25",
+		Template: "default",
+	})
+	if _, err := h.CreateDeployment(aliceEditorCtx(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if checker.recordCalls != 1 {
+		t.Fatalf("RecordApplied called %d times, want 1 (even for zero-ref render)", checker.recordCalls)
+	}
+	if checker.lastRecordRefs == nil {
+		t.Error("RecordApplied refs: got nil on zero-ref render; want non-nil empty slice")
+	}
+	if len(checker.lastRecordRefs) != 0 {
+		t.Errorf("RecordApplied refs length: got %d, want 0", len(checker.lastRecordRefs))
 	}
 }
 
