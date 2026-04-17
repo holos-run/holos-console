@@ -48,6 +48,11 @@ type GroupedResources struct {
 	ProjectInputJSON            *string
 	PlatformResourcesStructJSON *string
 	ProjectResourcesStructJSON  *string
+	// OutputJSON carries the JSON-serialized `output` section of the unified
+	// CUE value (ResourceSetSpec.output). Nil when the template has no
+	// `output` block or the section is non-concrete. Present-but-empty
+	// (e.g. `{}`) is preserved so the frontend can decide whether to render.
+	OutputJSON *string
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.
@@ -510,7 +515,7 @@ func extractCuePathJSON(unified cue.Value, cuePath string) (*string, error) {
 	return &s, nil
 }
 
-// populateStructuredJSON extracts the five structured JSON sections from the
+// populateStructuredJSON extracts the structured JSON sections from the
 // unified CUE value and sets the corresponding fields on the GroupedResources.
 // Extraction errors are logged but do not fail the render.
 func populateStructuredJSON(unified cue.Value, gr *GroupedResources) {
@@ -523,6 +528,7 @@ func populateStructuredJSON(unified cue.Value, gr *GroupedResources) {
 		{"input", &gr.ProjectInputJSON},
 		{"platformResources", &gr.PlatformResourcesStructJSON},
 		{"projectResources", &gr.ProjectResourcesStructJSON},
+		{"output", &gr.OutputJSON},
 	}
 	for _, p := range paths {
 		val, err := extractCuePathJSON(unified, p.cuePath)

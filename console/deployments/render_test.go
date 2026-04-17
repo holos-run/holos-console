@@ -2666,6 +2666,102 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 	})
 }
 
+// templateWithOutput declares an `output` block with a concrete URL so the
+// render pipeline can extract and surface it via OutputJSON.
+const templateWithOutput = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+output: {
+	url: "https://example.com"
+}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
+// templateWithEmptyOutput declares an `output` block without a concrete url so
+// the render pipeline should extract an empty JSON object. This verifies the
+// pitfall noted in HOL-545: `output: {}` must surface as a present but empty
+// DeploymentOutput, not be filtered out by the backend.
+const templateWithEmptyOutput = `
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+
+output: {}
+
+projectResources: {
+	namespacedResources: (platform.namespace): {
+		Deployment: (input.name): {
+			apiVersion: "apps/v1"
+			kind:       "Deployment"
+			metadata: {
+				name:      input.name
+				namespace: platform.namespace
+				labels: {
+					"app.kubernetes.io/managed-by": "console.holos.run"
+					"app.kubernetes.io/name":       input.name
+				}
+			}
+			spec: {
+				selector: matchLabels: "app.kubernetes.io/name": input.name
+				template: {
+					metadata: labels: "app.kubernetes.io/name": input.name
+					spec: containers: [{
+						name:  input.name
+						image: input.image + ":" + input.tag
+					}]
+				}
+			}
+		}
+	}
+	clusterResources: {}
+}
+`
+
 // templateWithDefaults includes a defaults block so structured JSON extraction
 // can verify it is populated.
 const templateWithDefaults = `
@@ -2946,6 +3042,71 @@ func TestStructuredJSONExtraction(t *testing.T) {
 			if !json.Valid([]byte(*val)) {
 				t.Errorf("%s is not valid JSON: %s", name, *val)
 			}
+		}
+	})
+
+	t.Run("template without output leaves OutputJSON nil", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			validTemplate,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.OutputJSON != nil {
+			t.Errorf("expected OutputJSON to be nil for template without output, got %q", *grouped.OutputJSON)
+		}
+	})
+
+	t.Run("template with output.url populates OutputJSON with the URL", func(t *testing.T) {
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			templateWithOutput,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.OutputJSON == nil {
+			t.Fatal("expected OutputJSON to be set for template with output.url, got nil")
+		}
+		if !json.Valid([]byte(*grouped.OutputJSON)) {
+			t.Fatalf("OutputJSON is not valid JSON: %s", *grouped.OutputJSON)
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(*grouped.OutputJSON), &out); err != nil {
+			t.Fatalf("failed to unmarshal OutputJSON: %v", err)
+		}
+		if out["url"] != "https://example.com" {
+			t.Errorf("expected output.url = https://example.com, got %v", out["url"])
+		}
+	})
+
+	t.Run("template with empty output block still populates OutputJSON", func(t *testing.T) {
+		// Pitfall guard: `output: {}` is a present-but-empty section; the backend
+		// must not filter it out. The frontend decides whether to render.
+		grouped, err := renderer.RenderGrouped(context.Background(),
+			templateWithEmptyOutput,
+			defaultPlatform(namespace),
+			defaultProject(),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if grouped.OutputJSON == nil {
+			t.Fatal("expected OutputJSON to be set for template with empty output block, got nil")
+		}
+		if !json.Valid([]byte(*grouped.OutputJSON)) {
+			t.Fatalf("OutputJSON is not valid JSON: %s", *grouped.OutputJSON)
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(*grouped.OutputJSON), &out); err != nil {
+			t.Fatalf("failed to unmarshal OutputJSON: %v", err)
+		}
+		// url key should not be present when it's not set in the template.
+		if _, ok := out["url"]; ok {
+			t.Errorf("expected no url key in OutputJSON for empty output, got %v", out["url"])
 		}
 	})
 }
