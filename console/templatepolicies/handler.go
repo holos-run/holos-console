@@ -39,6 +39,7 @@ package templatepolicies
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -76,6 +77,41 @@ type TemplateExistsResolver interface {
 	TemplateExists(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (bool, error)
 }
 
+// ResourceTopologyResolver enumerates the render-target resources (project
+// namespaces plus their ProjectTemplate and Deployment ConfigMaps) that live
+// under a TemplatePolicy's owning scope. The handler uses it to enforce the
+// HOL-570 "EXCLUDE cannot contradict an explicit link" guardrail at policy
+// authoring time: every EXCLUDE rule is checked against the
+// `console.holos.run/linked-templates` annotation of every candidate target,
+// so the operator learns immediately that the rule they just wrote cannot
+// do what they expect.
+//
+// Methods are intentionally narrow so the handler never reaches into the
+// cluster directly — that keeps both the import graph and the test seam
+// simple. A nil ResourceTopologyResolver disables the guardrail (so unit
+// tests that never exercise EXCLUDE rules do not need to stub it).
+//
+// ListProjectsUnderScope returns project namespaces whose ancestor chain
+// passes through the namespace that owns the policy. Implementations MUST
+// filter by DeletionTimestamp and MUST NOT surface a folder or organization
+// namespace. When the scope is an organization, every project in that
+// organization is reachable regardless of which folder contains it.
+//
+// ListProjectTemplates returns Template ConfigMaps stored in the given
+// project namespace; only project-scope Template resources are considered
+// candidate EXCLUDE targets (org and folder-scope templates are injected by
+// REQUIRE rules, never owned by a project).
+//
+// ListProjectDeployments returns Deployment ConfigMaps stored in the given
+// project namespace. Both lists are filtered by the standard
+// `console.holos.run/resource-type` label selectors so unmanaged ConfigMaps
+// do not appear as candidate targets.
+type ResourceTopologyResolver interface {
+	ListProjectsUnderScope(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]*corev1.Namespace, error)
+	ListProjectTemplates(ctx context.Context, projectNs string) ([]corev1.ConfigMap, error)
+	ListProjectDeployments(ctx context.Context, projectNs string) ([]corev1.ConfigMap, error)
+}
+
 // Handler implements the TemplatePolicyService.
 type Handler struct {
 	consolev1connect.UnimplementedTemplatePolicyServiceHandler
@@ -84,6 +120,7 @@ type Handler struct {
 	orgGrantResolver    OrgGrantResolver
 	folderGrantResolver FolderGrantResolver
 	templateResolver    TemplateExistsResolver
+	topologyResolver    ResourceTopologyResolver
 }
 
 // NewHandler creates a TemplatePolicyService handler.
@@ -107,6 +144,16 @@ func (h *Handler) WithFolderGrantResolver(fgr FolderGrantResolver) *Handler {
 // used when validating a policy's rules.
 func (h *Handler) WithTemplateExistsResolver(ter TemplateExistsResolver) *Handler {
 	h.templateResolver = ter
+	return h
+}
+
+// WithResourceTopologyResolver configures the enumerator used by the HOL-570
+// EXCLUDE-vs-explicit-link guardrail. Leaving it unset keeps the guardrail
+// off (every EXCLUDE is accepted), which is the safe default for unit tests
+// that never author EXCLUDE rules but would otherwise need to stub the
+// resolver just to exercise the Create/Update paths.
+func (h *Handler) WithResourceTopologyResolver(r ResourceTopologyResolver) *Handler {
+	h.topologyResolver = r
 	return h
 }
 
@@ -230,6 +277,18 @@ func (h *Handler) CreateTemplatePolicy(
 		return nil, err
 	}
 
+	// HOL-570: EXCLUDE rules are rejected when they would contradict an
+	// explicit `console.holos.run/linked-templates` annotation already set on
+	// a matching ProjectTemplate or Deployment. Runs AFTER checkAccess so an
+	// unauthorized caller cannot use the guardrail's "conflict with
+	// lilies/web" error as a probe oracle that reveals which project
+	// explicitly links which template (information disclosure to someone
+	// without policy-write access). Runs BEFORE CreatePolicy so the
+	// rejection short-circuits the Kubernetes write.
+	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
+		return nil, err
+	}
+
 	// Best-effort template-existence probe. Log but do not block on transient
 	// errors so the control plane can still author a policy when the template
 	// service is momentarily unavailable.
@@ -298,10 +357,23 @@ func (h *Handler) UpdateTemplatePolicy(
 	// Fetch the existing policy so we can distinguish "unset" from "set to
 	// empty" for the top-level metadata fields. The previous read is also
 	// required to surface NotFound before we attempt the Update (the K8s API
-	// would otherwise return a less-informative error).
+	// would otherwise return a less-informative error). The explicit-link
+	// guardrail below runs AFTER this read so an Update to a non-existent
+	// policy still returns connect.CodeNotFound regardless of the submitted
+	// rules — clients rely on that distinction for idempotent upsert flows.
 	existing, err := h.k8s.GetPolicy(ctx, scope, scopeName, name)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// HOL-570: reject EXCLUDE rules that would contradict explicit links.
+	// Runs AFTER checkAccess (to avoid leaking "template X is linked on
+	// project Y" to an unauthorized caller — see the matching comment in
+	// CreateTemplatePolicy) AND AFTER GetPolicy (to preserve the NotFound
+	// error precedence). Runs BEFORE k8s.UpdatePolicy so a rejected call
+	// never rewrites the stored ConfigMap's rules annotation.
+	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
+		return nil, err
 	}
 
 	// Preserve unspecified fields. Proto3 scalars default to "" which we
@@ -556,6 +628,208 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 			)
 		}
 	}
+}
+
+// validateExcludeRulesAgainstExplicitLinks enforces the HOL-570 guardrail:
+// an EXCLUDE rule cannot reference a template that any existing ProjectTemplate
+// or Deployment *explicitly* linked via the
+// `console.holos.run/linked-templates` annotation. At render time, the
+// policy resolver already ignores EXCLUDE against owner-linked refs
+// (console/policyresolver/folder_resolver.go), so the subtraction would
+// silently be a no-op. Failing fast at policy-authoring time tells the
+// platform engineer that the rule they just wrote cannot do what they
+// expect; they can either narrow the rule's patterns or ask the resource
+// owner to unlink the template.
+//
+// Scope of the check: the rule's (project_pattern, deployment_pattern) is
+// evaluated against every project namespace that lives under the policy's
+// owning scope (ancestor chain passes through the folder or organization
+// namespace). Within each matching project, ProjectTemplates and Deployments
+// that match the rule's deployment_pattern are inspected for the EXCLUDE
+// template in their LinkedTemplates annotation. The first offense per rule
+// short-circuits validation with the rule index, so a policy with multiple
+// EXCLUDEs surfaces one conflict at a time.
+//
+// An empty scope (no existing candidate resources) accepts any EXCLUDE rule.
+// A resource owner who later links the excluded template is an operator
+// problem, not a policy-author problem — the guardrail fires only against
+// the state visible to the author at the moment they submit the rule. When
+// the handler is constructed without a topologyResolver, the guardrail is
+// disabled (unit tests that never exercise EXCLUDE rules can skip the
+// wiring). REQUIRE rules are unaffected.
+func (h *Handler) validateExcludeRulesAgainstExplicitLinks(
+	ctx context.Context,
+	scope consolev1.TemplateScope,
+	scopeName string,
+	rules []*consolev1.TemplatePolicyRule,
+) error {
+	if h.topologyResolver == nil {
+		return nil
+	}
+	// Fast path: no EXCLUDE rules means nothing to validate. Avoids a
+	// potentially expensive namespace enumeration for the common REQUIRE-only
+	// policy.
+	hasExclude := false
+	for _, rule := range rules {
+		if rule != nil && rule.GetKind() == consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE {
+			hasExclude = true
+			break
+		}
+	}
+	if !hasExclude {
+		return nil
+	}
+
+	projects, err := h.topologyResolver.ListProjectsUnderScope(ctx, scope, scopeName)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal,
+			fmt.Errorf("enumerating projects under scope %s/%s: %w", scope, scopeName, err))
+	}
+	if len(projects) == 0 {
+		return nil
+	}
+
+	for i, rule := range rules {
+		if rule == nil || rule.GetKind() != consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE {
+			continue
+		}
+		tmpl := rule.GetTemplate()
+		target := rule.GetTarget()
+		if tmpl == nil || target == nil {
+			continue // validatePolicyRules already rejected this shape
+		}
+		projectPattern := target.GetProjectPattern()
+		deploymentPattern := target.GetDeploymentPattern()
+
+		for _, projectNs := range projects {
+			projectSlug, err := h.resolver.ProjectFromNamespace(projectNs.Name)
+			if err != nil {
+				// Fall back to the raw namespace name if the resolver can't
+				// strip the prefix — matching still works on the
+				// fully-qualified name in that degenerate case.
+				projectSlug = projectNs.Name
+			}
+			matched, err := filepath.Match(projectPattern, projectSlug)
+			if err != nil || !matched {
+				continue
+			}
+
+			offender, err := h.findExplicitLinkOffender(ctx, projectNs.Name, projectSlug, deploymentPattern, tmpl)
+			if err != nil {
+				return connect.NewError(connect.CodeInternal,
+					fmt.Errorf("rule %d: listing candidate targets in %q: %w", i, projectNs.Name, err))
+			}
+			if offender != "" {
+				return connect.NewError(connect.CodeFailedPrecondition,
+					fmt.Errorf("rule %d: EXCLUDE of template %s/%s/%s conflicts with explicit link on %s; unlink the template or narrow the rule's patterns",
+						i,
+						templateScopeLabel(tmpl.GetScope()),
+						tmpl.GetScopeName(),
+						tmpl.GetName(),
+						offender))
+			}
+		}
+	}
+	return nil
+}
+
+// findExplicitLinkOffender returns a human-readable resource identifier of
+// the first candidate (ProjectTemplate or Deployment) in projectNs whose
+// linked-templates annotation contains `tmpl` AND whose target kind +
+// deployment_pattern pair would select it at render time. Empty string
+// means "no conflict in this project". ProjectTemplates are checked before
+// Deployments so the reported identifier prefers the template-bearing
+// resource when both would conflict.
+//
+// The render-selection contract (see console/policyresolver/
+// folder_resolver.go:ruleAppliesTo): an EXCLUDE rule with a non-empty
+// `deployment_pattern` applies ONLY to Deployments, never to project-scope
+// Templates. Matching the same pattern against project-template names here
+// would incorrectly reject deployment-only EXCLUDE rules that happen to
+// carry a name overlapping an existing project-template. An empty
+// `deployment_pattern` applies to both resource kinds, matching the
+// resolver's behavior for project-template previews.
+func (h *Handler) findExplicitLinkOffender(
+	ctx context.Context,
+	projectNs, projectSlug, deploymentPattern string,
+	tmpl *consolev1.LinkedTemplateRef,
+) (string, error) {
+	if deploymentPattern == "" {
+		templates, err := h.topologyResolver.ListProjectTemplates(ctx, projectNs)
+		if err != nil {
+			return "", fmt.Errorf("listing project templates: %w", err)
+		}
+		for i := range templates {
+			if annotationLinksTemplate(&templates[i], tmpl) {
+				return fmt.Sprintf("project-template %s/%s", projectSlug, templates[i].Name), nil
+			}
+		}
+	}
+	deployments, err := h.topologyResolver.ListProjectDeployments(ctx, projectNs)
+	if err != nil {
+		return "", fmt.Errorf("listing deployments: %w", err)
+	}
+	for i := range deployments {
+		if matchesDeploymentPattern(deploymentPattern, deployments[i].Name) && annotationLinksTemplate(&deployments[i], tmpl) {
+			return fmt.Sprintf("deployment %s/%s", projectSlug, deployments[i].Name), nil
+		}
+	}
+	return "", nil
+}
+
+// matchesDeploymentPattern applies the rule's deployment_pattern glob
+// against a Deployment name. An empty pattern matches everything —
+// mirroring the resolver's behavior that treats an empty deployment_pattern
+// as "apply to every deployment in the project".
+func matchesDeploymentPattern(pattern, name string) bool {
+	if pattern == "" {
+		return true
+	}
+	ok, err := filepath.Match(pattern, name)
+	if err != nil {
+		// validatePolicyRules already rejected bad patterns, so an error
+		// here means the rule was mutated in-flight — treat as non-match so
+		// the caller cannot use a malformed pattern to bypass the check in
+		// one direction while it correctly fires in another.
+		return false
+	}
+	return ok
+}
+
+// annotationLinksTemplate returns true when the `linked-templates` annotation
+// on cm contains the exact (scope, scope_name, name) triple of ref. The JSON
+// wire shape matches the one on Template + Deployment ConfigMaps (see
+// console/templates/k8s.go:marshalLinkedTemplates). A malformed annotation
+// is treated as "no explicit link" — the guardrail refuses to give the
+// operator a false positive when the annotation itself is broken; any
+// real-world malformed data would have already surfaced a warning from the
+// owning handler when the resource was created.
+func annotationLinksTemplate(cm *corev1.ConfigMap, ref *consolev1.LinkedTemplateRef) bool {
+	if cm == nil || cm.Annotations == nil || ref == nil {
+		return false
+	}
+	raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]
+	if !ok || raw == "" {
+		return false
+	}
+	type storedRef struct {
+		Scope     string `json:"scope"`
+		ScopeName string `json:"scope_name"`
+		Name      string `json:"name"`
+	}
+	var stored []storedRef
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return false
+	}
+	wantScope := templateScopeLabel(ref.GetScope())
+	wantScopeName := ref.GetScopeName()
+	wantName := ref.GetName()
+	for _, s := range stored {
+		if s.Scope == wantScope && s.ScopeName == wantScopeName && s.Name == wantName {
+			return true
+		}
+	}
+	return false
 }
 
 // configMapToPolicy converts a stored ConfigMap into a TemplatePolicy proto.
