@@ -676,7 +676,11 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 }
 
 // ListLinkableTemplates returns all enabled templates in ancestor scopes that
-// the given scope may link against (ADR 021 Decision 7).
+// the given scope may link against (ADR 021 Decision 7). When
+// include_self_scope is true the response also contains enabled templates at
+// the request's own scope — needed by the TemplatePolicy editor so org-scope
+// policies (which have no ancestors) and folder-scope policies can pick
+// same-scope templates. See HOL-561.
 func (h *Handler) ListLinkableTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListLinkableTemplatesRequest],
@@ -685,6 +689,7 @@ func (h *Handler) ListLinkableTemplates(
 	if err != nil {
 		return nil, err
 	}
+	includeSelfScope := req.Msg.GetIncludeSelfScope()
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -715,20 +720,24 @@ func (h *Handler) ListLinkableTemplates(
 		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
 
-	// Collect linkable (enabled) templates from all ancestors (skip the first
-	// namespace since that's the scope itself — we only return ancestor templates).
+	// Collect linkable (enabled) templates from each ancestor. When
+	// include_self_scope is false we skip the first namespace (the scope
+	// itself) and only return ancestor templates — this preserves existing
+	// project-template linking semantics. When include_self_scope is true we
+	// include the scope's own templates as well so the policy editor can pick
+	// same-scope templates. See HOL-561.
 	var result []*consolev1.LinkableTemplate
 	for i, ns := range ancestors {
-		if i == 0 {
-			continue // skip the scope itself
+		if i == 0 && !includeSelfScope {
+			continue // skip the scope itself unless explicitly requested
 		}
-		ancestorScope, ancestorName := scopeAndNameFromNs(h.resolver, ns.Name)
-		if ancestorScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		entryScope, entryName := scopeAndNameFromNs(h.resolver, ns.Name)
+		if entryScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
 			continue
 		}
-		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, ancestorScope, ancestorName)
+		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, entryScope, entryName)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to list linkable templates from ancestor",
+			slog.WarnContext(ctx, "failed to list linkable templates from namespace",
 				slog.String("namespace", ns.Name),
 				slog.Any("error", err),
 			)
@@ -737,7 +746,7 @@ func (h *Handler) ListLinkableTemplates(
 		// Fetch releases for each linkable template and populate the Releases
 		// field, stripping cue_template and defaults to keep the payload small.
 		for _, lt := range infos {
-			cms, relErr := h.k8s.ListReleases(ctx, ancestorScope, ancestorName, lt.Name)
+			cms, relErr := h.k8s.ListReleases(ctx, entryScope, entryName, lt.Name)
 			if relErr != nil {
 				slog.WarnContext(ctx, "failed to list releases for linkable template",
 					slog.String("template", lt.Name),
@@ -747,7 +756,7 @@ func (h *Handler) ListLinkableTemplates(
 			}
 			releases := make([]*consolev1.Release, 0, len(cms))
 			for _, cm := range cms {
-				r := configMapToRelease(&cm, ancestorScope, ancestorName)
+				r := configMapToRelease(&cm, entryScope, entryName)
 				// Strip heavy fields the linking UI does not need.
 				r.CueTemplate = ""
 				r.Defaults = nil
@@ -762,6 +771,7 @@ func (h *Handler) ListLinkableTemplates(
 		slog.String("action", "linkable_templates_list"),
 		slog.String("scope", scope.String()),
 		slog.String("scopeName", scopeName),
+		slog.Bool("include_self_scope", includeSelfScope),
 		slog.String("sub", claims.Sub),
 		slog.Int("count", len(result)),
 	)

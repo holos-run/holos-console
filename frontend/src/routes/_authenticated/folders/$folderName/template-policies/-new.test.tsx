@@ -46,8 +46,25 @@ vi.mock('@/queries/templates', async () => {
   return {
     ...actual,
     makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
+    // HOL-561: the TemplatePolicy editor passes `includeSelfScope: true` so
+    // same-scope (folder) templates appear alongside ancestor (org) templates.
+    // The test stub returns BOTH so tests can assert the picker surfaces the
+    // folder-owned template in addition to ancestor ones.
     useListLinkableTemplates: vi.fn().mockReturnValue({
       data: [
+        {
+          $typeName: 'holos.console.v1.LinkableTemplate',
+          scopeRef: {
+            $typeName: 'holos.console.v1.TemplateScopeRef',
+            scope: 2,
+            scopeName: 'test-folder',
+          },
+          name: 'folder-gateway',
+          displayName: 'FolderGateway',
+          description: '',
+          releases: [],
+          forced: false,
+        },
         {
           $typeName: 'holos.console.v1.LinkableTemplate',
           scopeRef: {
@@ -74,6 +91,7 @@ vi.mock('@/queries/folders', () => ({
 
 import { useCreateTemplatePolicy } from '@/queries/templatePolicies'
 import { useGetFolder } from '@/queries/folders'
+import { useListLinkableTemplates } from '@/queries/templates'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateFolderTemplatePolicyPage } from './new'
 
@@ -218,6 +236,44 @@ describe('CreateFolderTemplatePolicyPage', () => {
         screen.getByText(/template selection is required|failedprecondition/i),
       ).toBeInTheDocument()
     })
+  })
+
+  // HOL-561: the TemplatePolicy picker must show same-scope templates in
+  // addition to ancestor-scope ones. The PolicyForm should request the
+  // linkable template list with `{ includeSelfScope: true }`, and the picker
+  // must surface a folder-owned template alongside org-owned ancestors.
+  it('passes includeSelfScope=true to useListLinkableTemplates', () => {
+    setupMocks()
+    render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
+    // The mock is keyed on positional call arguments. The second argument
+    // must carry `includeSelfScope: true`; default (undefined or false) would
+    // hide folder-owned templates from the picker — the very regression
+    // HOL-561 fixes.
+    expect(useListLinkableTemplates).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: 2, scopeName: 'test-folder' }),
+      expect.objectContaining({ includeSelfScope: true }),
+    )
+  })
+
+  it('shows both same-scope and ancestor templates in the rule template picker', async () => {
+    setupMocks()
+    render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
+
+    // Open the first rule's template combobox. The trigger is labeled
+    // "Rule 1 template"; the Radix popover mounts list items in an accessible
+    // listbox that testing-library queries can walk.
+    const firstRow = screen.getByTestId('rule-editor-row-0')
+    const trigger = within(firstRow).getByRole('combobox', { name: /rule 1 template/i })
+    fireEvent.click(trigger)
+
+    // Both the folder-scope template (same scope) and the org-scope template
+    // (ancestor) must be offered. The Combobox renders items as
+    // `<scopeLabel> / <scopeName> / <name>` so we match on a substring that
+    // includes the template's DNS label.
+    await waitFor(() => {
+      expect(screen.getByText(/folder \/ test-folder \/ folder-gateway/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/org \/ test-org \/ httproute/)).toBeInTheDocument()
   })
 
   // Form-level scope guard: contrived project-scope path must be blocked

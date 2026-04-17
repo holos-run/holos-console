@@ -747,6 +747,19 @@ export declare type ListLinkableTemplatesRequest = Message<"holos.console.v1.Lis
    * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
    */
   scope?: TemplateScopeRef;
+
+  /**
+   * include_self_scope, when true, also returns enabled templates at the
+   * request's own scope in addition to ancestor-scope templates. Default false
+   * preserves the existing semantics for project-template linking UIs, which
+   * only link against ancestor-scope templates. The TemplatePolicy editor sets
+   * this to true so org-scope policies can pick org-scope templates (there are
+   * no ancestors to pick from otherwise) and folder-scope policies can pick
+   * templates owned by the same folder. See HOL-561.
+   *
+   * @generated from field: bool include_self_scope = 2;
+   */
+  includeSelfScope: boolean;
 };
 
 /**
