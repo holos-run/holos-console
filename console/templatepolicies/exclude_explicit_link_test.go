@@ -297,13 +297,16 @@ func TestCreateRejectsExcludeOnExplicitlyLinkedProjectTemplate(t *testing.T) {
 	)
 
 	ctx := authedCtx("owner@example.com", nil)
+	// Empty deployment_pattern so the rule applies to project-template
+	// renders too — matches folder_resolver.ruleAppliesTo semantics where
+	// an empty pattern selects both Deployments and ProjectTemplates.
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope: newOrgScope("acme"),
 		Policy: &consolev1.TemplatePolicy{
 			Name:     "block-httproute",
 			ScopeRef: newOrgScope("acme"),
 			Rules: []*consolev1.TemplatePolicyRule{
-				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", ""),
 			},
 		},
 	}))
@@ -609,5 +612,190 @@ func TestCreateRejectsExcludeAtFolderScope(t *testing.T) {
 	}))
 	if err != nil {
 		t.Fatalf("folder-team-a policy should not see lilies/web: %v", err)
+	}
+}
+
+// TestCreateReturnsPermissionDeniedBeforeExplicitLinkProbe is the regression
+// guard for the codex-review round 1 P1 finding: an unauthorized caller
+// must receive PermissionDenied (the generic auth-failure result) rather
+// than FailedPrecondition citing the linked resource. The guardrail runs
+// AFTER checkAccess, so a viewer who sends an EXCLUDE policy that *would*
+// conflict with an existing explicit link learns only that they lack write
+// permission — no information about which project links which template.
+func TestCreateReturnsPermissionDeniedBeforeExplicitLinkProbe(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	// Seed a conflict that the guardrail WOULD fire on, but set up share
+	// grants so the caller carries NO write permission at folder or org
+	// scope — checkAccess must reject first.
+	client, _ := buildHol570Fixture(
+		mkDeployment("holos-prj-lilies", "web", linkedJSON),
+	)
+	r := newTestResolver()
+	k := NewK8sClient(client, r)
+	topology := NewK8sResourceTopology(client, r, &fakeWalker{client: client})
+	// Viewer grant only — no owner/editor role — so checkAccess denies.
+	h := NewHandler(k, r).
+		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
+		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
+		WithResourceTopologyResolver(topology)
+
+	ctx := authedCtx("viewer@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "probe-attempt",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected authz rejection, got success")
+	}
+	if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
+		t.Fatalf("expected CodePermissionDenied (not FailedPrecondition — the guardrail must not leak conflict details to an unauthorized caller), got %v: %v", got, err)
+	}
+	// Belt-and-suspenders: the error message MUST NOT name the offending
+	// resource (lilies/web). If it does, the ordering regressed and the
+	// guardrail ran before checkAccess.
+	if strings.Contains(err.Error(), "lilies/web") {
+		t.Errorf("authz rejection leaked conflict details: %v", err)
+	}
+}
+
+// TestUpdateReturnsPermissionDeniedBeforeExplicitLinkProbe mirrors the
+// create-path regression for UpdateTemplatePolicy. A viewer who tries to
+// Update a folder-scope policy with an EXCLUDE rule that would conflict
+// must receive PermissionDenied, not the conflict error.
+func TestUpdateReturnsPermissionDeniedBeforeExplicitLinkProbe(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	client, _ := buildHol570Fixture(
+		mkDeployment("holos-prj-lilies", "web", linkedJSON),
+	)
+	// Seed an existing policy the viewer will try to Update.
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy",
+			Namespace: "holos-org-acme",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationTemplatePolicyRules: `[]`,
+			},
+		},
+	}
+	if _, err := client.CoreV1().ConfigMaps("holos-org-acme").Create(context.Background(), existing, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("seeding policy: %v", err)
+	}
+
+	r := newTestResolver()
+	k := NewK8sClient(client, r)
+	topology := NewK8sResourceTopology(client, r, &fakeWalker{client: client})
+	h := NewHandler(k, r).
+		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
+		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
+		WithResourceTopologyResolver(topology)
+
+	ctx := authedCtx("viewer@example.com", nil)
+	_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "policy",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected authz rejection")
+	}
+	if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
+		t.Fatalf("expected CodePermissionDenied, got %v: %v", got, err)
+	}
+	if strings.Contains(err.Error(), "lilies/web") {
+		t.Errorf("authz rejection leaked conflict details: %v", err)
+	}
+}
+
+// TestCreateAllowsDeploymentScopedExcludeWhenProjectTemplateNameOverlaps is
+// the regression guard for the codex-review round 1 P2 finding. A project
+// template named `api` with an explicit link should NOT block an EXCLUDE
+// rule whose `deployment_pattern: "api"` targets only deployments — the
+// resolver's ruleAppliesTo rejects project-template renders for any rule
+// with a non-empty deployment_pattern, so validating the rule against the
+// project-template is incorrect. Only deployments named `api` should be
+// candidate targets here, and no such deployment exists in the fixture.
+func TestCreateAllowsDeploymentScopedExcludeWhenProjectTemplateNameOverlaps(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	// A project-scope Template named `api` that explicitly links httproute.
+	// There is NO deployment named `api` in the fixture; if the pattern
+	// check incorrectly applied the deployment_pattern to the
+	// project-template, the EXCLUDE below would be (wrongly) rejected.
+	h := makeHol570Fixture(t,
+		mkProjectTemplate("holos-prj-lilies", "api", linkedJSON),
+	)
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "block-httproute-on-api-deploy",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				// Non-empty deployment_pattern targets Deployments ONLY;
+				// the project template named `api` must be skipped.
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "api"),
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("deployment-scoped EXCLUDE must not match project-template by name: %v", err)
+	}
+}
+
+// TestCreateRejectsExcludeAgainstProjectTemplateOnlyWhenDeploymentPatternEmpty
+// is the positive companion to the "deployment_pattern skips project
+// templates" test. When the rule's deployment_pattern is empty (applies to
+// both kinds), an explicit project-template link still triggers the
+// rejection.
+func TestCreateRejectsExcludeAgainstProjectTemplateOnlyWhenDeploymentPatternEmpty(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	h := makeHol570Fixture(t,
+		mkProjectTemplate("holos-prj-lilies", "api", linkedJSON),
+	)
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "block-httproute",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				// Empty deployment_pattern — applies to both kinds.
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", ""),
+			},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected FailedPrecondition on project-template conflict")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeFailedPrecondition {
+		t.Fatalf("expected CodeFailedPrecondition, got %v: %v", got, err)
+	}
+	if !strings.Contains(err.Error(), "project-template lilies/api") {
+		t.Errorf("expected error to name project-template lilies/api, got: %v", err)
 	}
 }

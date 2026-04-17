@@ -267,16 +267,6 @@ func (h *Handler) CreateTemplatePolicy(
 	if err := validatePolicyRules(policy.GetRules()); err != nil {
 		return nil, err
 	}
-	// HOL-570: EXCLUDE rules are rejected when they would contradict an
-	// explicit `console.holos.run/linked-templates` annotation already set on
-	// a matching ProjectTemplate or Deployment. Runs after
-	// validatePolicyRules so the error message can cite the rule index the
-	// caller just failed on; runs before checkAccess + CreatePolicy so the
-	// rejection is visible to every caller, not just ones that would have
-	// passed RBAC.
-	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
-		return nil, err
-	}
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -284,6 +274,18 @@ func (h *Handler) CreateTemplatePolicy(
 	}
 
 	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
+		return nil, err
+	}
+
+	// HOL-570: EXCLUDE rules are rejected when they would contradict an
+	// explicit `console.holos.run/linked-templates` annotation already set on
+	// a matching ProjectTemplate or Deployment. Runs AFTER checkAccess so an
+	// unauthorized caller cannot use the guardrail's "conflict with
+	// lilies/web" error as a probe oracle that reveals which project
+	// explicitly links which template (information disclosure to someone
+	// without policy-write access). Runs BEFORE CreatePolicy so the
+	// rejection short-circuits the Kubernetes write.
+	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -342,12 +344,6 @@ func (h *Handler) UpdateTemplatePolicy(
 	if err := validatePolicyRules(policy.GetRules()); err != nil {
 		return nil, err
 	}
-	// HOL-570: reject EXCLUDE rules that would contradict explicit links.
-	// Runs before the stored policy is mutated so the current on-disk rules
-	// are preserved when the caller tries to write a conflicting rule set.
-	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
-		return nil, err
-	}
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -355,6 +351,15 @@ func (h *Handler) UpdateTemplatePolicy(
 	}
 
 	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
+		return nil, err
+	}
+
+	// HOL-570: reject EXCLUDE rules that would contradict explicit links.
+	// Runs AFTER checkAccess to avoid leaking "template X is linked on
+	// project Y" to an unauthorized caller (see the matching comment in
+	// CreateTemplatePolicy) and BEFORE GetPolicy + UpdatePolicy so a
+	// rejected call never touches the stored ConfigMap.
+	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -726,22 +731,34 @@ func (h *Handler) validateExcludeRulesAgainstExplicitLinks(
 
 // findExplicitLinkOffender returns a human-readable resource identifier of
 // the first candidate (ProjectTemplate or Deployment) in projectNs whose
-// linked-templates annotation contains `tmpl` AND whose name matches the
-// rule's deployment_pattern. Empty string means "no conflict in this
-// project". ProjectTemplates are checked before Deployments so the reported
-// identifier prefers the template-bearing resource when both exist.
+// linked-templates annotation contains `tmpl` AND whose target kind +
+// deployment_pattern pair would select it at render time. Empty string
+// means "no conflict in this project". ProjectTemplates are checked before
+// Deployments so the reported identifier prefers the template-bearing
+// resource when both would conflict.
+//
+// The render-selection contract (see console/policyresolver/
+// folder_resolver.go:ruleAppliesTo): an EXCLUDE rule with a non-empty
+// `deployment_pattern` applies ONLY to Deployments, never to project-scope
+// Templates. Matching the same pattern against project-template names here
+// would incorrectly reject deployment-only EXCLUDE rules that happen to
+// carry a name overlapping an existing project-template. An empty
+// `deployment_pattern` applies to both resource kinds, matching the
+// resolver's behavior for project-template previews.
 func (h *Handler) findExplicitLinkOffender(
 	ctx context.Context,
 	projectNs, projectSlug, deploymentPattern string,
 	tmpl *consolev1.LinkedTemplateRef,
 ) (string, error) {
-	templates, err := h.topologyResolver.ListProjectTemplates(ctx, projectNs)
-	if err != nil {
-		return "", fmt.Errorf("listing project templates: %w", err)
-	}
-	for i := range templates {
-		if matchesPattern(deploymentPattern, templates[i].Name) && annotationLinksTemplate(&templates[i], tmpl) {
-			return fmt.Sprintf("project-template %s/%s", projectSlug, templates[i].Name), nil
+	if deploymentPattern == "" {
+		templates, err := h.topologyResolver.ListProjectTemplates(ctx, projectNs)
+		if err != nil {
+			return "", fmt.Errorf("listing project templates: %w", err)
+		}
+		for i := range templates {
+			if annotationLinksTemplate(&templates[i], tmpl) {
+				return fmt.Sprintf("project-template %s/%s", projectSlug, templates[i].Name), nil
+			}
 		}
 	}
 	deployments, err := h.topologyResolver.ListProjectDeployments(ctx, projectNs)
@@ -749,18 +766,18 @@ func (h *Handler) findExplicitLinkOffender(
 		return "", fmt.Errorf("listing deployments: %w", err)
 	}
 	for i := range deployments {
-		if matchesPattern(deploymentPattern, deployments[i].Name) && annotationLinksTemplate(&deployments[i], tmpl) {
+		if matchesDeploymentPattern(deploymentPattern, deployments[i].Name) && annotationLinksTemplate(&deployments[i], tmpl) {
 			return fmt.Sprintf("deployment %s/%s", projectSlug, deployments[i].Name), nil
 		}
 	}
 	return "", nil
 }
 
-// matchesPattern applies the rule's deployment_pattern glob against a
-// resource name. An empty pattern matches everything — mirroring the
-// folder_resolver Resolve path, which treats empty deployment_pattern as
-// "apply to every deployment in the project".
-func matchesPattern(pattern, name string) bool {
+// matchesDeploymentPattern applies the rule's deployment_pattern glob
+// against a Deployment name. An empty pattern matches everything —
+// mirroring the resolver's behavior that treats an empty deployment_pattern
+// as "apply to every deployment in the project".
+func matchesDeploymentPattern(pattern, name string) bool {
 	if pattern == "" {
 		return true
 	}
