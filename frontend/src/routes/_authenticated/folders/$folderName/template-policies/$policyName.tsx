@@ -67,6 +67,9 @@ export function FolderTemplatePolicyDetailPage({
   const userRole = folder?.userRole ?? Role.VIEWER
   // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+  // PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in the RBAC cascade
+  // table, so editors must not see the destructive control.
+  const canDelete = userRole === Role.OWNER
 
   const scopeType: PolicyScope = forcedScopeType ?? 'folder'
 
@@ -148,7 +151,7 @@ export function FolderTemplatePolicyDetailPage({
             </p>
             <CardTitle className="mt-1">{policy?.displayName || policyName}</CardTitle>
           </div>
-          {canWrite && (
+          {canDelete && (
             <Button
               variant="destructive"
               size="sm"

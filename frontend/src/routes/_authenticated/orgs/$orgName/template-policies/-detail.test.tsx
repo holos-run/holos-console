@@ -8,7 +8,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return {
     ...actual,
     createFileRoute: () => () => ({
-      useParams: () => ({ folderName: 'test-folder', policyName: 'policy-a' }),
+      useParams: () => ({ orgName: 'test-org', policyName: 'policy-a' }),
     }),
     useNavigate: () => vi.fn(),
     Link: ({
@@ -44,7 +44,7 @@ vi.mock('@/queries/templates', async () => {
   const actual = await vi.importActual<typeof import('@/queries/templates')>('@/queries/templates')
   return {
     ...actual,
-    makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
+    makeOrgScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-org' }),
     useListLinkableTemplates: vi.fn().mockReturnValue({
       data: [],
       isPending: false,
@@ -53,8 +53,8 @@ vi.mock('@/queries/templates', async () => {
   }
 })
 
-vi.mock('@/queries/folders', () => ({
-  useGetFolder: vi.fn(),
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
 }))
 
 import {
@@ -63,9 +63,9 @@ import {
   useDeleteTemplatePolicy,
   TemplatePolicyKind,
 } from '@/queries/templatePolicies'
-import { useGetFolder } from '@/queries/folders'
+import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { FolderTemplatePolicyDetailPage } from './$policyName'
+import { OrgTemplatePolicyDetailPage } from './$policyName'
 
 function makeMockPolicy() {
   return {
@@ -105,56 +105,37 @@ function setupMocks(
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
-  ;(useGetFolder as Mock).mockReturnValue({
-    data: { name: 'test-folder', organization: 'test-org', userRole },
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'test-org', userRole },
     isPending: false,
     error: null,
   })
 }
 
-describe('FolderTemplatePolicyDetailPage', () => {
+describe('OrgTemplatePolicyDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders the policy display name and locks the name slug', () => {
-    setupMocks()
-    render(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
-    expect(screen.getAllByText('Policy A').length).toBeGreaterThan(0)
-    const slugInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
-    expect(slugInput).toBeDisabled()
-    expect(slugInput.value).toBe('policy-a')
+  it('shows the Delete Policy button for OWNER', () => {
+    setupMocks(Role.OWNER)
+    render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
+    expect(screen.getByRole('button', { name: /delete policy/i })).toBeInTheDocument()
   })
 
-  it('shows the Delete Policy button for OWNER and hides it for VIEWER', () => {
-    setupMocks(Role.OWNER)
-    const { rerender } = render(
-      <FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />,
-    )
-    expect(screen.getByRole('button', { name: /delete policy/i })).toBeInTheDocument()
-
+  it('hides the Delete Policy button for VIEWER', () => {
     setupMocks(Role.VIEWER)
-    rerender(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
+    render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
     expect(screen.queryByRole('button', { name: /delete policy/i })).not.toBeInTheDocument()
   })
 
-  it('pre-populates one rule row per existing rule', () => {
-    setupMocks()
-    render(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
-    expect(screen.getByTestId('rule-editor-row-0')).toBeInTheDocument()
-  })
-
-  // Regression test for codex review round 1: editors are granted
-  // PERMISSION_TEMPLATE_POLICIES_WRITE by the cascade table. The detail page
-  // previously gated the whole form on Role.OWNER, which incorrectly disabled
-  // editing for editors.
-  //
-  // Round 3 refinement: PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in
-  // the RBAC cascade, so the Delete button must stay hidden for editors even
-  // though the rest of the form is enabled.
+  // Regression test for codex review round 3: PERMISSION_TEMPLATE_POLICIES_DELETE
+  // is OWNER-only in the RBAC cascade, so the Delete button must stay hidden
+  // for editors even though PERMISSION_TEMPLATE_POLICIES_WRITE is granted and
+  // the rest of the form is enabled.
   it('enables the form for EDITOR but hides the Delete Policy button', () => {
     setupMocks(Role.EDITOR)
-    render(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
+    render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
     expect(screen.queryByRole('button', { name: /delete policy/i })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/display name/i)).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled()
