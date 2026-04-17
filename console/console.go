@@ -387,10 +387,17 @@ func (s *Server) Serve(ctx context.Context) error {
 		// templatePoliciesK8s was constructed earlier so the folderResolver
 		// could be wired; reuse the same client here so there is exactly
 		// one policy reader+writer in the process.
+		// Topology resolver enumerates project namespaces + their
+		// ProjectTemplate / Deployment ConfigMaps under a policy's scope so
+		// CreateTemplatePolicy and UpdateTemplatePolicy can reject an
+		// EXCLUDE rule that would contradict an explicit
+		// console.holos.run/linked-templates annotation (HOL-570).
+		templatePolicyTopology := templatepolicies.NewK8sResourceTopology(k8sClientset, nsResolver, nsWalker)
 		templatePoliciesHandler := templatepolicies.NewHandler(templatePoliciesK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
-			WithTemplateExistsResolver(templates.NewTemplateExistsAdapter(templatesK8s))
+			WithTemplateExistsResolver(templates.NewTemplateExistsAdapter(templatesK8s)).
+			WithResourceTopologyResolver(templatePolicyTopology)
 		templatePoliciesPath, templatePoliciesHTTPHandler := consolev1connect.NewTemplatePolicyServiceHandler(templatePoliciesHandler, protectedInterceptors)
 		mux.Handle(templatePoliciesPath, templatePoliciesHTTPHandler)
 
