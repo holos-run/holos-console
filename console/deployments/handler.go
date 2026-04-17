@@ -62,9 +62,12 @@ const DefaultGatewayNamespace = "istio-ingress"
 type Renderer interface {
 	// Render evaluates the deployment template unified with zero or more
 	// ancestor template CUE sources and the provided inputs, returning
-	// resources grouped by origin (platform vs project). When
-	// ancestorSources is empty this is a project-level render and
-	// platformResources is not read (ADR 016 Decision 8).
+	// resources grouped by origin (platform vs project). The render level is
+	// controlled by inputs.ReadPlatformResources (project-level: false;
+	// organization/folder-level: true); ancestorSources may be empty at
+	// either level and carries additional template CUE sources unified with
+	// the deployment template but does not select the render level (ADR 016
+	// Decision 8).
 	Render(ctx context.Context, cueSource string, ancestorSources []string, inputs RenderInputs) (*GroupedResources, error)
 }
 
