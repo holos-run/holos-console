@@ -611,11 +611,28 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 	var templateSources []string
 	if h.k8s != nil && h.walker != nil && msg.GetScope() != nil {
 		startNs, nsErr := h.k8s.namespaceForScope(msg.GetScope().GetScope(), msg.GetScope().GetScopeName())
-		if nsErr == nil {
+		if nsErr != nil {
+			// Falling through to the plain-render path below. Logging the
+			// namespace resolution failure here makes the "why didn't my
+			// linked template apply" debug path discoverable instead of
+			// silently producing a templateless render.
+			slog.WarnContext(ctx, "failed to resolve namespace for scope, falling back to plain render",
+				slog.String("scope", msg.GetScope().GetScope().String()),
+				slog.String("scopeName", msg.GetScope().GetScopeName()),
+				slog.Any("error", nsErr),
+			)
+		} else {
+			// ListEffectiveTemplateSources currently swallows walker errors
+			// internally and returns (nil, nil) on walker failure (see
+			// k8s.go: "failed to walk ancestor chain for render, returning
+			// empty sources"). The walkErr branch below is therefore
+			// unreachable today but kept as belt-and-suspenders so a future
+			// edit that starts propagating walker errors out of the helper
+			// still degrades to the plain-render fallback here.
 			sources, walkErr := h.k8s.ListEffectiveTemplateSources(
 				ctx,
 				startNs,
-				targetKindForScope(msg.GetScope().GetScope()),
+				previewTargetKindForScope(msg.GetScope().GetScope()),
 				msg.GetScope().GetScopeName(),
 				msg.LinkedTemplates,
 				h.walker,
@@ -645,12 +662,23 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 	return grouped, nil
 }
 
-// targetKindForScope maps the preview's request scope to the TargetKind the
-// unified helper expects. Project scope means a project-scope template is
-// being previewed (TargetKindProjectTemplate). Org/folder/unknown scopes also
-// use TargetKindProjectTemplate today — no call site actually differentiates
-// yet (the discriminator is plumbed for Phase 4 policy evaluation).
-func targetKindForScope(scope consolev1.TemplateScope) TargetKind {
+// previewTargetKindForScope maps the preview's request scope to the
+// TargetKind the unified helper expects. Project scope means a project-scope
+// template is being previewed (TargetKindProjectTemplate). Org/folder/unknown
+// scopes also use TargetKindProjectTemplate today — no call site actually
+// differentiates yet (the discriminator is plumbed for Phase 4 policy
+// evaluation).
+//
+// IMPORTANT: This helper is for the PREVIEW render path only. The deployments
+// apply path does NOT go through this function: it calls
+// K8sClient.ListEffectiveTemplateSources directly with TargetKindDeployment
+// from AncestorTemplateResolver. When Phase 4 wires real policy evaluation,
+// do not add a branch here that returns TargetKindDeployment — that would be
+// wrong because this function never runs on the apply path. The scope input
+// is intentionally ignored today; the parameter exists so Phase 4 can add
+// preview-path-specific TargetKind discrimination (e.g., different kinds for
+// project-vs-folder preview) without changing the call site signature.
+func previewTargetKindForScope(scope consolev1.TemplateScope) TargetKind {
 	_ = scope
 	return TargetKindProjectTemplate
 }
