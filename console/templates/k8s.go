@@ -300,62 +300,28 @@ func (k *K8sClient) ListTemplatesInNamespace(ctx context.Context, ns string) ([]
 	return list.Items, nil
 }
 
-// ListTemplateSourcesForRender returns CUE sources for the effective template set
-// participating in render from the given namespace's templates. The effective set
-// is: (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
-// Disabled templates are never included even when explicitly linked.
-// The result is deduplicated so a mandatory+explicitly-linked template appears once.
-//
-// Storage-isolation note (HOL-554): callers pass a specific namespace and this
-// helper operates purely on ConfigMaps in that namespace. A render-time policy
-// resolver (tracked by HOL-557) will eventually replace the mandatory-flag
-// mechanism with TemplatePolicy REQUIRE rules; when it does, the applied
-// render-set state it persists MUST live exclusively in folder or
-// organization namespaces (the same namespaces that store TemplatePolicy
-// ConfigMaps), never in project namespaces. Project owners have write access
-// to their own project namespace and must never be able to mutate
-// applied-render-set state from there.
-func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string, linkedRefs []linkedRef) ([]string, error) {
-	cms, err := k.ListTemplatesInNamespace(ctx, ns)
-	if err != nil {
-		return nil, err
-	}
+// TargetKind identifies the kind of render target driving a call to
+// ListEffectiveTemplateSources. In this phase it is purely descriptive — both
+// values exercise the same resolution logic — but Phase 4 will key
+// PolicyResolver evaluation off this discriminator so the signature is stable
+// across call sites today.
+type TargetKind int
 
-	// Build a set for O(1) lookup.
-	linked := make(map[linkedRef]bool, len(linkedRefs))
-	for _, r := range linkedRefs {
-		linked[r] = true
-	}
+const (
+	// TargetKindProjectTemplate is the preview render path for project-scope
+	// templates (the RenderTemplate RPC and the project-scope Create/Update
+	// template handlers once they grow a render step).
+	TargetKindProjectTemplate TargetKind = iota
+	// TargetKindDeployment is the apply render path for deployments
+	// (AncestorTemplateProvider on the deployments handler).
+	TargetKindDeployment
+)
 
-	seen := make(map[string]bool)
-	var sources []string
-	for _, cm := range cms {
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
-		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
-		if !enabled {
-			continue // disabled templates never participate
-		}
-		// Determine which scope this template belongs to from the label.
-		scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
-		scopeName := scopeNameFromNs(k.Resolver, ns, scopeLabel)
-		ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
-		include := mandatory || linked[ref]
-		if !include {
-			continue
-		}
-		key := scopeLabel + "/" + scopeName + "/" + cm.Name
-		if seen[key] {
-			continue // deduplicate
-		}
-		src := cm.Data[CueTemplateKey]
-		if src == "" {
-			continue
-		}
-		seen[key] = true
-		sources = append(sources, src)
-	}
-	return sources, nil
-}
+// PolicyResolver is a forward-declared placeholder for the TemplatePolicy
+// resolver interface introduced in Phase 4 (HOL-566). Every call site passes
+// nil today; Phase 4 replaces the alias with a concrete interface without
+// touching call sites.
+type PolicyResolver = any
 
 // RenderHierarchyWalker walks the namespace hierarchy for render-time ancestor
 // template resolution. This mirrors HierarchyWalker from apply.go but is
@@ -364,26 +330,55 @@ type RenderHierarchyWalker interface {
 	WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error)
 }
 
-// ListAncestorTemplateSourcesForRender walks the ancestor chain from the given
-// project namespace and collects CUE sources from all ancestor scopes (folders
-// and org) using the render set formula:
+// ListEffectiveTemplateSources returns the ordered, deduplicated CUE sources
+// that participate in rendering the given target. The effective set at each
+// ancestor namespace is:
 //
-//	(mandatory AND enabled) UNION (enabled AND ref IN linkedRefs)
+//	(mandatory AND enabled) UNION (enabled AND ref IN explicitRefs)
 //
-// at each ancestor namespace. For linked templates with a version constraint,
-// the CUE source is resolved from the latest matching release via
-// ResolveVersionedSource. Disabled templates are never included.
+// For linked templates that carry a version constraint, the CUE source is
+// resolved from the latest matching release via ResolveVersionedSource
+// (ADR 024); mandatory templates and linked templates without releases fall
+// back to the live ConfigMap CUE source. Disabled templates are never
+// included, even when explicitly linked.
 //
-// If the walker fails, the method degrades gracefully by returning an empty
-// source list (no error).
+// Dedup key: (scope, scopeName, name). This uniform key replaces the
+// three inconsistent dedup strategies of the legacy helpers this function
+// supersedes, so a folder template named "foo" and an org template named
+// "foo" correctly survive as two distinct sources.
 //
-// Storage-isolation note (HOL-554): the walk deliberately skips the project
-// namespace (ancestors[0]) and only reads from folder and organization
-// namespaces. Templates, releases, and — once HOL-557 lands — TemplatePolicy
-// ConfigMaps and applied-render-set state all live exclusively in those
-// folder/org namespaces. The project namespace is reserved for the project
-// owner's own writes and must never be read as a source of render-set truth.
-func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef, walker RenderHierarchyWalker) ([]string, error) {
+// The walker drives ancestor traversal. If walker is nil, the method returns
+// nil (no ancestor sources). If the walker returns an error, the method
+// degrades gracefully to an empty slice — callers render project-only.
+//
+// policyResolver is currently an untyped nil placeholder (Phase 2 of
+// HOL-562). Phase 4 (HOL-566) replaces the PolicyResolver alias with a real
+// interface and wires evaluation through this function; every call site
+// passes nil today so that phase swap is internal.
+//
+// targetKind is accepted but not yet consulted — Phase 4 keys
+// PolicyResolver.Evaluate off it. Every call site already passes the
+// appropriate discriminator so no call site touching is needed later.
+//
+// Storage-isolation note (HOL-554): the walk deliberately skips the starting
+// namespace (ancestors[0]) and only reads templates, releases, and — once
+// HOL-557 lands — applied-render-set state from folder and organization
+// namespaces. Project owners have write access to their project namespace
+// and must never be able to mutate render-set truth from there.
+func (k *K8sClient) ListEffectiveTemplateSources(
+	ctx context.Context,
+	projectNs string,
+	targetKind TargetKind,
+	targetName string,
+	explicitRefs []*consolev1.LinkedTemplateRef,
+	walker RenderHierarchyWalker,
+	_ PolicyResolver,
+) ([]string, error) {
+	// targetKind and targetName are accepted for a stable signature; both
+	// become load-bearing in Phase 4 when PolicyResolver evaluates per target.
+	_ = targetKind
+	_ = targetName
+
 	if walker == nil {
 		return nil, nil
 	}
@@ -397,19 +392,20 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 		return nil, nil
 	}
 
-	// Build a lookup from (scope, scopeName, name) -> linked ref for O(1) checks.
-	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(linkedRefs))
-	for _, ref := range linkedRefs {
+	// Build a lookup from (scope, scopeName, name) -> linked ref so linked
+	// templates with version constraints resolve their release source.
+	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(explicitRefs))
+	for _, ref := range explicitRefs {
 		if ref == nil {
 			continue
 		}
 		linkedByKey[linkedRefFromProto(ref)] = ref
 	}
 
-	// Walk ancestors: skip the project namespace itself (ancestors[0]) since we
-	// only collect from org and folder ancestors.
+	// Walk ancestors: skip the starting namespace itself (ancestors[0]) since
+	// templates live in folder/org namespaces only (HOL-554 storage isolation).
 	var allSources []string
-	seen := make(map[string]bool)
+	seen := make(map[linkedRef]bool)
 	for i := 1; i < len(ancestors); i++ {
 		ns := ancestors[i]
 		cms, listErr := k.ListTemplatesInNamespace(ctx, ns.Name)
@@ -428,22 +424,19 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 				continue
 			}
 
-			// Determine the scope for this template.
+			// Determine the scope for this template from its label.
 			scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
 			scopeName := scopeNameFromNs(k.Resolver, ns.Name, scopeLabel)
-			ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
-			protoRef, isLinked := linkedByKey[ref]
+			key := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
+			protoRef, isLinked := linkedByKey[key]
 
-			include := mandatory || isLinked
-			if !include {
+			if !mandatory && !isLinked {
 				continue
 			}
-
-			dedupeKey := scopeLabel + "/" + scopeName + "/" + cm.Name
-			if seen[dedupeKey] {
+			if seen[key] {
 				continue
 			}
-			seen[dedupeKey] = true
+			seen[key] = true
 
 			// For linked templates, resolve versioned source (ADR 024).
 			if isLinked {
@@ -471,72 +464,6 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 	}
 
 	return allSources, nil
-}
-
-// ListOrgTemplateSourcesForRender returns CUE sources for the effective set of
-// organization-scope templates using the render set formula:
-//
-//	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
-//
-// For linked templates that carry a version constraint, the CUE source is
-// resolved from the latest matching release via ResolveVersionedSource
-// (ADR 024). Mandatory templates and linked templates without releases fall
-// back to the live ConfigMap CUE source.
-func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
-	cms, err := k.ListTemplates(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build a lookup from template name to the linked ref (carries version constraint).
-	linkedByName := make(map[string]*consolev1.LinkedTemplateRef, len(linkedRefs))
-	for _, ref := range linkedRefs {
-		if ref != nil {
-			linkedByName[ref.Name] = ref
-		}
-	}
-
-	seen := make(map[string]bool)
-	var sources []string
-	for _, cm := range cms {
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
-		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
-		if !enabled {
-			continue
-		}
-		ref, isLinked := linkedByName[cm.Name]
-		include := mandatory || isLinked
-		if !include {
-			continue
-		}
-		if seen[cm.Name] {
-			continue
-		}
-		seen[cm.Name] = true
-
-		// For linked templates, resolve versioned source (ADR 024).
-		if isLinked {
-			src, resolveErr := k.ResolveVersionedSource(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org, cm.Name, ref.GetVersionConstraint())
-			if resolveErr != nil {
-				slog.WarnContext(ctx, "failed to resolve versioned source, falling back to live template",
-					slog.String("template", cm.Name),
-					slog.String("org", org),
-					slog.Any("error", resolveErr),
-				)
-				// Fall through to live ConfigMap below.
-			} else if src != "" {
-				sources = append(sources, src)
-				continue
-			}
-		}
-
-		// Mandatory templates and fallback: use the live ConfigMap CUE source.
-		src := cm.Data[CueTemplateKey]
-		if src != "" {
-			sources = append(sources, src)
-		}
-	}
-	return sources, nil
 }
 
 // ListLinkableTemplateInfos returns all enabled templates at the given scope
@@ -1034,6 +961,8 @@ func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker) *
 }
 
 // ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
+// The targetName is unused in this phase; Phase 4 (HOL-566) will key policy
+// evaluation off it.
 func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
-	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, linkedRefs, a.walker)
+	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, "", linkedRefs, a.walker, nil)
 }

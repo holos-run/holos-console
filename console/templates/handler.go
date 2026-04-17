@@ -595,84 +595,64 @@ func (h *Handler) RenderTemplate(
 	}), nil
 }
 
-// renderTemplateGrouped resolves linked template sources from all ancestor
-// scopes (org + folders) and delegates to the appropriate renderer method.
-// When the ancestor walker is configured, it walks the full hierarchy to
-// collect sources from every ancestor namespace using the render set formula.
-// When no walker is configured, it falls back to org-scope-only resolution
-// via ListOrgTemplateSourcesForRender.
+// renderTemplateGrouped resolves the effective ancestor-template source list
+// for the preview target and delegates to the renderer. Both paths — this
+// preview and the deployments apply path — now route through the same
+// K8sClient.ListEffectiveTemplateSources helper, so preview-vs-apply
+// divergence of the ancestor-source slice is structurally impossible
+// (HOL-562 Phase 2, HOL-564).
+//
+// When the handler has no Kubernetes client (in-process test / no-k8s mode),
+// the render runs without any ancestor sources. The previous three-branch
+// fallback ladder (walker → org-only → plain) was deleted: production always
+// has a walker, and tests that want no walker simply pass nil like the
+// deployments handler does.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
-	if h.k8s == nil {
-		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
-		}
-		return grouped, nil
-	}
-
-	// Prefer ancestor-walking resolution when the walker is available and we
-	// have a scope to derive the start namespace from.
-	if h.walker != nil && msg.GetScope() != nil {
+	var templateSources []string
+	if h.k8s != nil && h.walker != nil && msg.GetScope() != nil {
 		startNs, nsErr := h.k8s.namespaceForScope(msg.GetScope().GetScope(), msg.GetScope().GetScopeName())
 		if nsErr == nil {
-			templateSources, walkErr := h.k8s.ListAncestorTemplateSourcesForRender(ctx, startNs, msg.LinkedTemplates, h.walker)
+			sources, walkErr := h.k8s.ListEffectiveTemplateSources(
+				ctx,
+				startNs,
+				targetKindForScope(msg.GetScope().GetScope()),
+				msg.GetScope().GetScopeName(),
+				msg.LinkedTemplates,
+				h.walker,
+				nil, // Phase 4 (HOL-566) wires a real PolicyResolver here.
+			)
 			if walkErr != nil {
 				slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
 					slog.Any("error", walkErr),
 				)
-			} else if len(templateSources) > 0 {
-				grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
-				if err != nil {
-					return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
-				}
-				return grouped, nil
 			} else {
-				// No ancestor sources (e.g. all disabled or no mandatory) — render plain.
-				grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
-				if err != nil {
-					return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
-				}
-				return grouped, nil
+				templateSources = sources
 			}
 		}
 	}
 
-	// Fallback: org-only resolution when no walker is configured or the scope
-	// namespace could not be derived. Derives the org name from linked refs.
-	var org string
-	for _, ref := range msg.LinkedTemplates {
-		if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION && ref.GetScopeName() != "" {
-			org = ref.GetScopeName()
-			break
-		}
-	}
-	if org == "" {
-		// No org-scoped linked templates and no walker; render without ancestors.
+	if len(templateSources) == 0 {
 		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 		}
 		return grouped, nil
 	}
-
-	templateSources, err := h.k8s.ListOrgTemplateSourcesForRender(ctx, org, msg.LinkedTemplates)
-	if err != nil {
-		slog.WarnContext(ctx, "could not list platform templates for render, skipping platform template unification",
-			slog.String("org", org),
-			slog.Any("error", err),
-		)
-		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
-		}
-		return grouped, nil
-	}
-
 	grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}
 	return grouped, nil
+}
+
+// targetKindForScope maps the preview's request scope to the TargetKind the
+// unified helper expects. Project scope means a project-scope template is
+// being previewed (TargetKindProjectTemplate). Org/folder/unknown scopes also
+// use TargetKindProjectTemplate today — no call site actually differentiates
+// yet (the discriminator is plumbed for Phase 4 policy evaluation).
+func targetKindForScope(scope consolev1.TemplateScope) TargetKind {
+	_ = scope
+	return TargetKindProjectTemplate
 }
 
 // ListLinkableTemplates returns all enabled templates in ancestor scopes that

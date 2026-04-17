@@ -824,7 +824,14 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to org-only when no walker configured", func(t *testing.T) {
+	// With no walker configured, the unified renderTemplateGrouped degrades
+	// to a plain render (no ancestor sources). The legacy org-only fallback
+	// was deleted along with ListOrgTemplateSourcesForRender in HOL-564:
+	// production always has a walker, and the org-only branch's dedup-by-name
+	// was inconsistent with the walker branch's dedup-by-(scope, scopeName,
+	// name). The structural invariant after Phase 2 is "one helper, one dedup
+	// key, one fallback" — this test guards that invariant.
+	t.Run("plain render when no walker configured", func(t *testing.T) {
 		orgNsObj := orgNS(org)
 		prjNsObj := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
@@ -832,25 +839,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			},
 		}
 
-		orgCue := "// org httproute"
-		orgCM := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "httproute",
-				Namespace: "org-" + org,
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationMandatory: "false",
-					v1alpha2.AnnotationEnabled:   "true",
-				},
-			},
-			Data: map[string]string{CueTemplateKey: orgCue},
-		}
-
-		fakeClient := fake.NewClientset(orgNsObj, prjNsObj, orgCM)
+		fakeClient := fake.NewClientset(orgNsObj, prjNsObj)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := NewK8sClient(fakeClient, r)
 		renderer := &trackingRenderer{}
@@ -868,9 +857,101 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		// Should use org-only fallback.
-		if !renderer.calledGroupedWithSources {
-			t.Error("expected RenderGroupedWithTemplateSources to be called via org fallback")
+		if renderer.calledGroupedWithSources {
+			t.Error("did not expect RenderGroupedWithTemplateSources (no walker means plain render)")
+		}
+		if !renderer.calledGrouped {
+			t.Error("expected RenderGrouped to be called (plain render with no ancestors)")
+		}
+	})
+
+	// Structural invariant HOL-564 introduces: the preview path and the apply
+	// path yield the same ancestor-source slice for the same inputs because
+	// both route through K8sClient.ListEffectiveTemplateSources. This test
+	// sets up a project with a folder-linked template and asserts that the
+	// renderer sees the same source regardless of which TargetKind would be
+	// wired through the rest of the stack.
+	t.Run("preview source slice matches apply source slice", func(t *testing.T) {
+		orgNsObj := orgNS(org)
+		fldNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+					v1alpha2.LabelFolder:       folder,
+				},
+			},
+		}
+		prjNsObj := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "prj-" + project,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.LabelProject:      project,
+				},
+			},
+		}
+
+		folderCue := "// folder shared template"
+		fldCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "shared",
+				Namespace: "fld-" + folder,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				},
+				Annotations: map[string]string{
+					v1alpha2.AnnotationMandatory: "false",
+					v1alpha2.AnnotationEnabled:   "true",
+				},
+			},
+			Data: map[string]string{CueTemplateKey: folderCue},
+		}
+
+		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
+		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+		k8s := NewK8sClient(fakeClient, r)
+
+		// Preview path: runs via renderTemplateGrouped + ListEffectiveTemplateSources.
+		renderer := &trackingRenderer{}
+		walker := &stubAncestorWalker{
+			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
+		}
+		handler := NewHandler(k8s, r, renderer)
+		handler.WithAncestorWalker(walker)
+		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
+			Scope:       projectScopeRef(project),
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				folderLinkedRef(folder, "shared"),
+			},
+		})
+		if err != nil {
+			t.Fatalf("preview render failed: %v", err)
+		}
+
+		// Apply path: runs via AncestorTemplateResolver + ListEffectiveTemplateSources.
+		applyResolver := NewAncestorTemplateResolver(k8s, walker)
+		applySources, err := applyResolver.ListAncestorTemplateSources(
+			context.Background(),
+			"prj-"+project,
+			[]*consolev1.LinkedTemplateRef{folderLinkedRef(folder, "shared")},
+		)
+		if err != nil {
+			t.Fatalf("apply render failed: %v", err)
+		}
+
+		if len(renderer.lastTemplateSources) != len(applySources) {
+			t.Fatalf("source slice length drift: preview=%d apply=%d", len(renderer.lastTemplateSources), len(applySources))
+		}
+		for i := range renderer.lastTemplateSources {
+			if renderer.lastTemplateSources[i] != applySources[i] {
+				t.Errorf("source drift at index %d: preview=%q apply=%q", i, renderer.lastTemplateSources[i], applySources[i])
+			}
 		}
 	})
 }

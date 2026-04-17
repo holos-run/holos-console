@@ -481,186 +481,6 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 	})
 }
 
-// orgLinkedRefWithConstraint is a helper to build an org-scope LinkedTemplateRef
-// with a version constraint for tests.
-func orgLinkedRefWithConstraint(org, name, constraint string) *consolev1.LinkedTemplateRef {
-	return &consolev1.LinkedTemplateRef{
-		Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName:         org,
-		Name:              name,
-		VersionConstraint: constraint,
-	}
-}
-
-func TestListOrgTemplateSourcesForRender(t *testing.T) {
-	t.Run("mandatory+enabled template always included without linking", func(t *testing.T) {
-		ns := orgNS("my-org")
-		cm := orgTemplateConfigMap("my-org", "policy", "Policy", "", "// policy", true, true)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != "// policy" {
-			t.Errorf("unexpected source: %q", sources[0])
-		}
-	})
-
-	t.Run("non-mandatory enabled template NOT included when not linked", func(t *testing.T) {
-		ns := orgNS("my-org")
-		cm := orgTemplateConfigMap("my-org", "archetype", "Archetype", "", "// archetype", false, true)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 0 {
-			t.Fatalf("expected 0 sources, got %d", len(sources))
-		}
-	})
-
-	t.Run("non-mandatory enabled template included when explicitly linked", func(t *testing.T) {
-		ns := orgNS("my-org")
-		cm := orgTemplateConfigMap("my-org", "archetype", "Archetype", "", "// archetype", false, true)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		refs := []*consolev1.LinkedTemplateRef{orgLinkedRef("my-org", "archetype")}
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-	})
-
-	t.Run("disabled template not included even when linked", func(t *testing.T) {
-		ns := orgNS("my-org")
-		cm := orgTemplateConfigMap("my-org", "disabled", "Disabled", "", "// disabled", false, false)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		refs := []*consolev1.LinkedTemplateRef{orgLinkedRef("my-org", "disabled")}
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 0 {
-			t.Fatalf("expected 0 sources, got %d", len(sources))
-		}
-	})
-
-	t.Run("linked template resolved from release when version constraint provided", func(t *testing.T) {
-		ns := orgNS("my-org")
-		liveCue := "// live source"
-		releaseCue := "// release 1.0.0 source"
-		cm := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", liveCue, false, true)
-		// Create a release ConfigMap for version 1.0.0.
-		v, _ := ParseVersion("1.0.0")
-		releaseCM := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ReleaseConfigMapName("httproute", v),
-				Namespace: "org-my-org",
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     "httproute",
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: "1.0.0",
-				},
-			},
-			Data: map[string]string{
-				CueTemplateKey: releaseCue,
-			},
-		}
-		fakeClient := fake.NewClientset(ns, cm, releaseCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		refs := []*consolev1.LinkedTemplateRef{orgLinkedRefWithConstraint("my-org", "httproute", ">=1.0.0")}
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != releaseCue {
-			t.Errorf("expected release CUE source %q, got %q", releaseCue, sources[0])
-		}
-	})
-
-	t.Run("linked template falls back to live source when no releases exist", func(t *testing.T) {
-		ns := orgNS("my-org")
-		liveCue := "// live source no releases"
-		cm := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", liveCue, false, true)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		refs := []*consolev1.LinkedTemplateRef{orgLinkedRefWithConstraint("my-org", "httproute", ">=1.0.0")}
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", refs)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != liveCue {
-			t.Errorf("expected live CUE source %q, got %q", liveCue, sources[0])
-		}
-	})
-
-	t.Run("mandatory template uses live source not versioned resolution", func(t *testing.T) {
-		ns := orgNS("my-org")
-		liveCue := "// mandatory live"
-		releaseCue := "// mandatory release"
-		cm := orgTemplateConfigMap("my-org", "policy", "Policy", "", liveCue, true, true)
-		// Create a release (should be ignored for mandatory non-linked templates).
-		v, _ := ParseVersion("1.0.0")
-		releaseCM := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ReleaseConfigMapName("policy", v),
-				Namespace: "org-my-org",
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     "policy",
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: "1.0.0",
-				},
-			},
-			Data: map[string]string{
-				CueTemplateKey: releaseCue,
-			},
-		}
-		fakeClient := fake.NewClientset(ns, cm, releaseCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		// No linked refs — mandatory template is included automatically.
-		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != liveCue {
-			t.Errorf("expected live CUE source %q for mandatory template, got %q", liveCue, sources[0])
-		}
-	})
-}
-
 // folderLinkedRefWithConstraint builds a folder-scope LinkedTemplateRef with a version constraint.
 func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.LinkedTemplateRef {
 	return &consolev1.LinkedTemplateRef{
@@ -671,8 +491,8 @@ func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.L
 	}
 }
 
-// stubHierarchyWalker implements HierarchyWalker for testing
-// ListAncestorTemplateSourcesForRender.
+// stubHierarchyWalker implements RenderHierarchyWalker for testing
+// ListEffectiveTemplateSources.
 type stubHierarchyWalker struct {
 	ancestors []*corev1.Namespace
 	err       error
@@ -682,25 +502,42 @@ func (s *stubHierarchyWalker) WalkAncestors(_ context.Context, _ string) ([]*cor
 	return s.ancestors, s.err
 }
 
-func TestListAncestorTemplateSourcesForRender(t *testing.T) {
-	t.Run("folder-only linked refs resolves sources from folder namespace", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
+// TestListEffectiveTemplateSources exercises the unified ancestor-source helper
+// that replaced the three legacy List*TemplateSourcesForRender helpers in
+// HOL-564 (Phase 2 of HOL-562). The helper is the single render-time seam for
+// effective template resolution across every render path — preview and apply,
+// deployments and project-scope templates — so all tests here assert
+// identical slices are produced regardless of the TargetKind passed in.
+func TestListEffectiveTemplateSources(t *testing.T) {
+	orgNsObj := orgNS("my-org")
+	fldNsObj := folderNS("payments")
+	prjNsObj := projectNS("my-project")
+	fullAncestors := []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj}
 
+	t.Run("nil walker returns no sources (no fallback path)", func(t *testing.T) {
+		fakeClient := fake.NewClientset(orgNsObj)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 0 {
+			t.Errorf("expected 0 sources with nil walker, got %d", len(sources))
+		}
+	})
+
+	t.Run("folder-only linked refs resolves from folder namespace", func(t *testing.T) {
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", refs, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -712,28 +549,20 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 		}
 	})
 
-	t.Run("mixed org+folder linked refs resolves sources from both namespaces", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
-
+	t.Run("mixed org+folder linked refs resolves from both namespaces", func(t *testing.T) {
 		orgCue := "// org httproute"
 		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
-
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", refs, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -743,21 +572,13 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 	})
 
 	t.Run("mandatory folder template included without explicit linking", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
-
 		mandatoryCue := "// mandatory folder template"
 		fldCM := folderTemplateConfigMap("payments", "audit-policy", "Audit Policy", "", mandatoryCue, true, true)
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		// No linked refs — mandatory folder template should still be included.
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", nil, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -770,23 +591,15 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 	})
 
 	t.Run("disabled folder template excluded even when linked", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
-
-		// disabled template
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", "// disabled", false, false)
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", refs, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -796,10 +609,6 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 	})
 
 	t.Run("version-constrained folder linked ref resolved from release", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
-
 		liveCue := "// live folder template"
 		releaseCue := "// folder release 1.0.0"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", liveCue, false, true)
@@ -821,17 +630,14 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 			},
 			Data: map[string]string{CueTemplateKey: releaseCue},
 		}
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM, releaseCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
 			folderLinkedRefWithConstraint("payments", "payments-policy", ">=1.0.0"),
 		}
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", refs, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -846,14 +652,12 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 	t.Run("walker failure degrades gracefully with empty sources", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			err: fmt.Errorf("walk failed"),
-		}
+		walker := &stubHierarchyWalker{err: fmt.Errorf("walk failed")}
 
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", refs, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
 		if err != nil {
 			t.Fatalf("expected graceful degradation, got error: %v", err)
 		}
@@ -863,25 +667,86 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 	})
 
 	t.Run("no linked refs and no mandatory templates returns empty", func(t *testing.T) {
-		orgNsObj := orgNS("my-org")
-		fldNsObj := folderNS("payments")
-		prjNsObj := projectNS("my-project")
-
-		// Non-mandatory, enabled, but not linked
+		// Non-mandatory, enabled, but not linked.
 		fldCM := folderTemplateConfigMap("payments", "optional", "Optional", "", "// optional", false, true)
-
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
-		walker := &stubHierarchyWalker{
-			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
-		}
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", nil, walker)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(sources) != 0 {
 			t.Errorf("expected 0 sources, got %d", len(sources))
+		}
+	})
+
+	// Dedup regression test: the legacy ListOrgTemplateSourcesForRender
+	// deduplicated by template name alone, so a folder template named "foo"
+	// and an org template named "foo" would collide and one source would be
+	// dropped. The unified helper deduplicates by (scope, scopeName, name),
+	// so both survive. Guards HOL-564.
+	t.Run("dedup key is (scope, scopeName, name) across scopes", func(t *testing.T) {
+		sharedName := "shared"
+		orgCue := "// org shared"
+		folderCue := "// folder shared"
+		orgCM := orgTemplateConfigMap("my-org", sharedName, "OrgShared", "", orgCue, false, true)
+		fldCM := folderTemplateConfigMap("payments", sharedName, "FolderShared", "", folderCue, false, true)
+		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: orgScope, ScopeName: "my-org", Name: sharedName},
+			{Scope: folderScope, ScopeName: "payments", Name: sharedName},
+		}
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sources) != 2 {
+			t.Fatalf("expected 2 sources (both scopes of the same name), got %d", len(sources))
+		}
+		got := map[string]bool{sources[0]: true, sources[1]: true}
+		if !got[orgCue] || !got[folderCue] {
+			t.Errorf("expected both org and folder sources, got %v", sources)
+		}
+	})
+
+	// Structural invariant HOL-564 establishes: every TargetKind that travels
+	// through the helper must yield an identical source slice for the same
+	// inputs. Phase 4 will make TargetKind load-bearing for policy evaluation;
+	// until then, callers on the preview path (project templates) and callers
+	// on the apply path (deployments) cannot drift.
+	t.Run("TargetKind does not alter resolution in Phase 2", func(t *testing.T) {
+		orgCue := "// org httproute"
+		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
+		folderCue := "// folder payments policy"
+		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, true, true)
+		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		walker := &stubHierarchyWalker{ancestors: fullAncestors}
+
+		refs := []*consolev1.LinkedTemplateRef{
+			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
+		}
+
+		deploymentSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		if err != nil {
+			t.Fatalf("unexpected error (deployment): %v", err)
+		}
+		projectSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindProjectTemplate, "tmpl", refs, walker, nil)
+		if err != nil {
+			t.Fatalf("unexpected error (project template): %v", err)
+		}
+		if len(deploymentSources) != len(projectSources) {
+			t.Fatalf("preview-vs-apply slice length drift: deployment=%d projectTemplate=%d", len(deploymentSources), len(projectSources))
+		}
+		for i := range deploymentSources {
+			if deploymentSources[i] != projectSources[i] {
+				t.Errorf("preview-vs-apply drift at index %d: %q vs %q", i, deploymentSources[i], projectSources[i])
+			}
 		}
 	})
 }
