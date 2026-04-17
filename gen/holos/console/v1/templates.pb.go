@@ -1473,7 +1473,18 @@ type LinkableTemplate struct {
 	// releases carries the available published releases for this template, sorted
 	// descending by version (newest first). Populated by ListLinkableTemplates so
 	// the linking UI can display version choices without a separate RPC call.
-	Releases      []*Release `protobuf:"bytes,6,rep,name=releases,proto3" json:"releases,omitempty"`
+	Releases []*Release `protobuf:"bytes,6,rep,name=releases,proto3" json:"releases,omitempty"`
+	// forced signals that this template is unconditionally unified with every
+	// project at render time, so the linking UI MUST render it as selected and
+	// disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
+	// the backend still auto-includes mandatory ancestor templates via the
+	// annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
+	// TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
+	// this field becomes server-populated from policy evaluation.
+	//
+	// Clients MUST NOT treat `forced=true` as a permission to author the
+	// template — it only describes render-time behavior for the UI.
+	Forced        bool `protobuf:"varint,7,opt,name=forced,proto3" json:"forced,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1541,6 +1552,13 @@ func (x *LinkableTemplate) GetReleases() []*Release {
 		return x.Releases
 	}
 	return nil
+}
+
+func (x *LinkableTemplate) GetForced() bool {
+	if x != nil {
+		return x.Forced
+	}
+	return false
 }
 
 // ListLinkableTemplatesResponse returns the linkable templates.
@@ -2397,13 +2415,14 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x15CloneTemplateResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"X\n" +
 	"\x1cListLinkableTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\xf4\x01\n" +
+	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\x8c\x02\n" +
 	"\x10LinkableTemplate\x12?\n" +
 	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x125\n" +
-	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleasesJ\x04\b\x05\x10\x06R\tmandatory\"a\n" +
+	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\x12\x16\n" +
+	"\x06forced\x18\a \x01(\bR\x06forcedJ\x04\b\x05\x10\x06R\tmandatory\"a\n" +
 	"\x1dListLinkableTemplatesResponse\x12@\n" +
 	"\ttemplates\x18\x01 \x03(\v2\".holos.console.v1.LinkableTemplateR\ttemplates\"X\n" +
 	"\x1cListAncestorTemplatesRequest\x128\n" +

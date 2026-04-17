@@ -541,10 +541,14 @@ describe('DeploymentTemplateDetailPage', () => {
   })
 
   describe('linked platform templates', () => {
+    // HOL-555: LinkableTemplate.mandatory was removed in favor of `forced`,
+    // which the linking UI uses to render "always applied" templates as
+    // checked + disabled until HOL-557 migrates the backend auto-inclusion
+    // to TemplatePolicy REQUIRE evaluation.
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', forced: false, scopeRef: { scope: 2, scopeName: 'platform' } },
     ]
 
     it('shows linked templates section with empty state when no linkable templates exist', () => {
@@ -620,18 +624,18 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
-    // HOL-555 removed the `mandatory` field on LinkableTemplate, so there is
-    // no longer any checkbox that is auto-checked or disabled on that basis.
-    // TemplatePolicy REQUIRE rules (HOL-557) will restore the behavior.
-    it('checkbox for former mandatory template is now a normal checkbox (HOL-555)', async () => {
+    // HOL-555: `forced` templates render checked and disabled so the UI
+    // reflects the backend's annotation-driven auto-inclusion until HOL-557
+    // migrates this behavior to TemplatePolicy REQUIRE.
+    it('forced template checkbox in dialog is checked and disabled', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
       const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(checkbox).not.toBeChecked()
-      expect(checkbox).not.toBeDisabled()
+      expect(checkbox).toBeChecked()
+      expect(checkbox).toBeDisabled()
     })
 
     it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {
@@ -681,7 +685,7 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getByText('Folder Templates')).toBeInTheDocument()
     })
 
-    it('OWNER can toggle non-mandatory checkboxes in dialog', async () => {
+    it('OWNER can toggle non-forced checkboxes in dialog', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
@@ -777,9 +781,9 @@ describe('DeploymentTemplateDetailPage', () => {
 
   describe('version status indicator', () => {
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
-      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
+      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', forced: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
     ]
 
     it('shows green check icon when current version equals latest version', () => {

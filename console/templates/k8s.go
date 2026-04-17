@@ -536,9 +536,15 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 		if !enabled {
 			continue
 		}
-		// The `mandatory` annotation is no longer surfaced on LinkableTemplate;
-		// HOL-555 removed the proto field. TemplatePolicy REQUIRE rules
-		// (HOL-557) will drive "always applied" UI state.
+		// The `mandatory` annotation is no longer a first-class proto field on
+		// LinkableTemplate (HOL-555). However, the resolver still auto-includes
+		// mandatory ancestor templates at render time via the annotation until
+		// HOL-557 replaces that with TemplatePolicy REQUIRE evaluation. During
+		// that transition we surface the effective "always applied" state via
+		// the `forced` field so the linking UI doesn't lie about what actually
+		// renders. Once HOL-557 lands, `forced` is populated from policy
+		// evaluation instead of the annotation.
+		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 		result = append(result, &consolev1.LinkableTemplate{
 			ScopeRef: &consolev1.TemplateScopeRef{
 				Scope:     scope,
@@ -547,6 +553,7 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 			Name:        cm.Name,
 			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 			Description: cm.Annotations[v1alpha2.AnnotationDescription],
+			Forced:      mandatory,
 		})
 	}
 	return result, nil

@@ -425,23 +425,28 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {orgTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
+                      const forced = !!t.forced
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
                           id={`linked-create-${key}`}
-                          checked={selectedLinkedKeys.includes(key)}
+                          checked={forced || selectedLinkedKeys.includes(key)}
+                          disabled={forced}
                           onCheckedChange={(checked) => {
+                            if (forced) return
                             setSelectedLinkedKeys((prev) =>
                               checked ? [...prev, key] : prev.filter((k) => k !== key),
                             )
                           }}
                         />
                         <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
                             {t.displayName || t.name}
-                            {/* Mandatory badge removed in HOL-555; TemplatePolicy
-                                REQUIRE rules (HOL-558) will re-introduce an
-                                "always applied" affordance. */}
+                            {forced && (
+                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                Always applied
+                              </span>
+                            )}
                           </label>
                           {t.description && (
                             <p className="text-xs text-muted-foreground">{t.description}</p>
@@ -480,23 +485,28 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {folderTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
+                      const forced = !!t.forced
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
                           id={`linked-create-${key}`}
-                          checked={selectedLinkedKeys.includes(key)}
+                          checked={forced || selectedLinkedKeys.includes(key)}
+                          disabled={forced}
                           onCheckedChange={(checked) => {
+                            if (forced) return
                             setSelectedLinkedKeys((prev) =>
                               checked ? [...prev, key] : prev.filter((k) => k !== key),
                             )
                           }}
                         />
                         <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
                             {t.displayName || t.name}
-                            {/* Mandatory badge removed in HOL-555; TemplatePolicy
-                                REQUIRE rules (HOL-558) will re-introduce an
-                                "always applied" affordance. */}
+                            {forced && (
+                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                Always applied
+                              </span>
+                            )}
                           </label>
                           {t.description && (
                             <p className="text-xs text-muted-foreground">{t.description}</p>

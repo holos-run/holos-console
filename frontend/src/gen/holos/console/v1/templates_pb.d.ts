@@ -797,6 +797,22 @@ export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplat
    * @generated from field: repeated holos.console.v1.Release releases = 6;
    */
   releases: Release[];
+
+  /**
+   * forced signals that this template is unconditionally unified with every
+   * project at render time, so the linking UI MUST render it as selected and
+   * disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
+   * the backend still auto-includes mandatory ancestor templates via the
+   * annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
+   * TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
+   * this field becomes server-populated from policy evaluation.
+   *
+   * Clients MUST NOT treat `forced=true` as a permission to author the
+   * template — it only describes render-time behavior for the UI.
+   *
+   * @generated from field: bool forced = 7;
+   */
+  forced: boolean;
 };
 
 /**
