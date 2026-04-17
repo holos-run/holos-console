@@ -4,16 +4,37 @@
 // and LinkableTemplate (HOL-554/HOL-555). The handler:
 //
 //   - Rejects project-scope storage outright so a project owner cannot tamper
-//     with the very policy the platform means to constrain them with
-//     (HOL-554 storage-isolation design note).
+//     with the very policy the platform means to constrain them with. See
+//     storage-isolation guardrail below.
 //   - Stores policies as ConfigMaps in the folder or organization namespace
 //     with the console.holos.run/resource-type=template-policy label and a
 //     JSON-serialized rules annotation.
-//   - Enforces RBAC through the new TemplatePolicyCascadePerms table using the
-//     PERMISSION_TEMPLATE_POLICIES_* permissions.
+//   - Enforces RBAC through the TemplatePolicyCascadePerms table using the
+//     PERMISSION_TEMPLATE_POLICIES_* permissions, so WRITE/DELETE/ADMIN can
+//     only be granted at organization or folder scope.
 //
-// Render-time integration (treating REQUIRE rules as the only source of forced
-// templates) lands in HOL-557.
+// # Storage-isolation guardrail (HOL-554)
+//
+// TemplatePolicy ConfigMaps and any applied-render-set state live exclusively
+// in folder or organization namespaces. They must NEVER be stored in a
+// project namespace because project owners have namespace-scoped write access
+// to their project namespace and could otherwise tamper with the very policy
+// the platform means to constrain them with. Storage-isolation is enforced
+// at three layers:
+//
+//  1. Proto contract: CreateTemplatePolicyRequest and UpdateTemplatePolicyRequest
+//     both carry a TemplateScopeRef; validatePolicyScopeRef rejects
+//     TEMPLATE_SCOPE_PROJECT directly.
+//  2. Handler validation: extractPolicyScope rejects project scope with a
+//     specific error message naming the project namespace.
+//  3. K8s client: namespaceForScope in k8s.go re-derives the namespace via
+//     the resolver and asserts it does not classify as a project namespace,
+//     catching any bug that routed a project scope through validation.
+//
+// Render-time integration (treating REQUIRE rules as the only source of
+// forced templates) is tracked by HOL-557. Until that lands, the existing
+// annotation-driven `mandatory` flag on Template ConfigMaps continues to
+// drive auto-inclusion at render time; see console/templates/k8s.go.
 package templatepolicies
 
 import (
@@ -118,12 +139,16 @@ func (h *Handler) ListTemplatePolicies(
 		policies = append(policies, configMapToPolicy(&cms[i], scope, scopeName))
 	}
 
+	// HOL-560: audit shape harmonized with console/folders/handler.go. List and
+	// read paths include the caller email alongside sub so security review can
+	// pivot on either identifier.
 	slog.InfoContext(ctx, "template policies listed",
 		slog.String("action", "template_policy_list"),
 		slog.String("resource_type", auditResourceType),
 		slog.String("scope", scope.String()),
 		slog.String("scopeName", scopeName),
 		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
 		slog.Int("count", len(policies)),
 	)
 
@@ -165,6 +190,7 @@ func (h *Handler) GetTemplatePolicy(
 		slog.String("scopeName", scopeName),
 		slog.String("name", name),
 		slog.String("sub", claims.Sub),
+		slog.String("email", claims.Email),
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplatePolicyResponse{
