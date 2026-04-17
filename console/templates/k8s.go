@@ -11,9 +11,9 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -617,8 +617,8 @@ func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateS
 	)
 
 	data := map[string]string{
-		CueTemplateKey:         cueTemplate,
-		v1alpha2.ChangelogKey:  changelog,
+		CueTemplateKey:            cueTemplate,
+		v1alpha2.ChangelogKey:     changelog,
 		v1alpha2.UpgradeAdviceKey: upgradeAdvice,
 	}
 	if defaults != nil {

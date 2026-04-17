@@ -33,6 +33,15 @@
 // across all hierarchy levels (ADR 021 Decision 4).
 #ResourceTypeTemplate: "template"
 
+// ResourceTypeTemplatePolicy is the resource type label value for
+// TemplatePolicy ConfigMaps. TemplatePolicy objects bind REQUIRE/EXCLUDE
+// rules to templates and replace the removed `mandatory` flag on Template
+// and LinkableTemplate (HOL-554/HOL-555). Policy ConfigMaps live only in
+// organization or folder namespaces; project-scoped storage is forbidden
+// because a project owner could otherwise tamper with the very policy the
+// platform meant to constrain them with.
+#ResourceTypeTemplatePolicy: "template-policy"
+
 // Annotations.
 #AnnotationDisplayName:  "console.holos.run/display-name"
 #AnnotationDescription:  "console.holos.run/description"
@@ -87,6 +96,13 @@
 // LabelTemplateScope identifies the hierarchy level of a template ConfigMap.
 // Values: "organization", "folder", "project" (ADR 021 Decision 4).
 #LabelTemplateScope: "console.holos.run/template-scope"
+
+// AnnotationTemplatePolicyRules stores the JSON-serialized list of
+// TemplatePolicyRule entries for a TemplatePolicy ConfigMap. The handler
+// serializes the proto rules on write and round-trips them back on read;
+// this mirrors the AnnotationLinkedTemplates pattern used on Template
+// ConfigMaps (HOL-556).
+#AnnotationTemplatePolicyRules: "console.holos.run/template-policy-rules"
 
 // ResourceTypeTemplateRelease is the resource type label value for release
 // ConfigMaps, distinguishing them from live template ConfigMaps.

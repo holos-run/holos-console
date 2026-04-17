@@ -425,14 +425,14 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                 string
-		email                string
-		updateLinkedTmpl     bool
-		linkedTemplates      []*consolev1.LinkedTemplateRef
-		wantErr              bool
-		wantCode             connect.Code
-		wantLinksPreserved   bool // When true, verify existing links are still present after update.
-		wantLinksCleared     bool // When true, verify linked-templates annotation is removed after update.
+		name               string
+		email              string
+		updateLinkedTmpl   bool
+		linkedTemplates    []*consolev1.LinkedTemplateRef
+		wantErr            bool
+		wantCode           connect.Code
+		wantLinksPreserved bool // When true, verify existing links are still present after update.
+		wantLinksCleared   bool // When true, verify linked-templates annotation is removed after update.
 	}{
 		{
 			name:             "OWNER updates linked templates with update_linked_templates=true succeeds",
@@ -879,11 +879,11 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 // fields populated, for testing that RenderTemplate propagates them.
 type structuredJSONRenderer struct {
 	stubRenderer
-	defaultsJSON       *string
-	platformInputJSON  *string
-	projectInputJSON   *string
-	platResStructJSON  *string
-	projResStructJSON  *string
+	defaultsJSON      *string
+	platformInputJSON *string
+	projectInputJSON  *string
+	platResStructJSON *string
+	projResStructJSON *string
 }
 
 func (r *structuredJSONRenderer) RenderGrouped(_ context.Context, _ string, _ string, _ string) (*GroupedRenderResources, error) {
@@ -980,9 +980,9 @@ func TestRenderTemplateStructuredJSON(t *testing.T) {
 
 	t.Run("all structured JSON fields are valid JSON", func(t *testing.T) {
 		fields := map[string]*string{
-			"DefaultsJson":                   resp.Msg.DefaultsJson,
-			"PlatformInputJson":              resp.Msg.PlatformInputJson,
-			"ProjectInputJson":               resp.Msg.ProjectInputJson,
+			"DefaultsJson":                    resp.Msg.DefaultsJson,
+			"PlatformInputJson":               resp.Msg.PlatformInputJson,
+			"ProjectInputJson":                resp.Msg.ProjectInputJson,
 			"PlatformResourcesStructuredJson": resp.Msg.PlatformResourcesStructuredJson,
 			"ProjectResourcesStructuredJson":  resp.Msg.ProjectResourcesStructuredJson,
 		}
