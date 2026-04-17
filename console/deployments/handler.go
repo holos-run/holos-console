@@ -60,17 +60,12 @@ const DefaultGatewayNamespace = "istio-ingress"
 
 // Renderer evaluates CUE templates with deployment parameters.
 type Renderer interface {
-	Render(ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error)
-	// RenderWithAncestorTemplates unifies one or more ancestor (organization- and
-	// folder-level) template CUE sources with the deployment template before
-	// filling in platform and project inputs.
-	RenderWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error)
-	// RenderGrouped evaluates the CUE template and returns resources grouped by
-	// origin (platform vs project). Project-level path: platform group is empty.
-	RenderGrouped(ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error)
-	// RenderGroupedWithAncestorTemplates evaluates the deployment template unified
-	// with ancestor templates and returns resources grouped by origin.
-	RenderGroupedWithAncestorTemplates(ctx context.Context, deploymentCUE string, ancestorTemplateCUESources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error)
+	// Render evaluates the deployment template unified with zero or more
+	// ancestor template CUE sources and the provided inputs, returning
+	// resources grouped by origin (platform vs project). When
+	// ancestorSources is empty this is a project-level render and
+	// platformResources is not read (ADR 016 Decision 8).
+	Render(ctx context.Context, cueSource string, ancestorSources []string, inputs RenderInputs) (*GroupedResources, error)
 }
 
 // AncestorWalker resolves the folder ancestry for a project namespace.
@@ -192,33 +187,44 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 // The effective template set at render time is the union of mandatory+enabled
 // templates and the explicitly linked enabled templates (ADR 019).
 //
-// When no AncestorTemplateProvider is configured, falls back to Render
-// (deployment template only, no platform template unification).
+// When no AncestorTemplateProvider is configured, falls back to a plain
+// project-level render (deployment template only, no platform template
+// unification).
+//
+// This helper flattens the grouped render result into a single list. Callers
+// that need the per-origin split should use renderResourcesGrouped.
 func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
-		if len(sources) > 0 {
-			return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
-		}
-		return h.renderer.Render(ctx, cueSource, platform, projectInput)
+	grouped, err := h.renderResourcesGrouped(ctx, project, cueSource, platform, projectInput, linkedRefs)
+	if err != nil {
+		return nil, err
 	}
-
-	// No AncestorTemplateProvider configured; render without platform templates.
-	return h.renderer.Render(ctx, cueSource, platform, projectInput)
+	combined := make([]unstructured.Unstructured, 0, len(grouped.Platform)+len(grouped.Project))
+	combined = append(combined, grouped.Platform...)
+	combined = append(combined, grouped.Project...)
+	return combined, nil
 }
 
 // renderResourcesGrouped mirrors renderResources but returns resources grouped
 // by origin (platform vs project). Used by GetDeploymentRenderPreview to populate
 // the per-collection response fields.
+//
+// When an AncestorTemplateProvider is configured this is an
+// organization/folder-level render (ReadPlatformResources=true) even when the
+// ancestor chain returns zero sources, so a deployment template authored with
+// its own platformResources still emits them. When no provider is configured
+// we fall back to a project-level render (ADR 016 Decision 8).
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
+	var ancestorSources []string
+	readPlatformResources := false
 	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
-		if len(sources) > 0 {
-			return h.renderer.RenderGroupedWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
-		}
-		return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+		ancestorSources = sources
+		readPlatformResources = true
 	}
-
-	// No AncestorTemplateProvider configured; render without platform templates.
-	return h.renderer.RenderGrouped(ctx, cueSource, platform, projectInput)
+	return h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{
+		Platform:              platform,
+		Project:               projectInput,
+		ReadPlatformResources: readPlatformResources,
+	})
 }
 
 // ListDeployments returns all deployments in a project.

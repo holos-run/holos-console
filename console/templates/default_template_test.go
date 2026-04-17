@@ -28,6 +28,20 @@ func defaultPlatformInput(namespace string) v1alpha2.PlatformInput {
 	}
 }
 
+// renderFlat calls the unified deployments.CueRenderer.Render and flattens
+// the grouped result into a single slice, preserving the "platform-first"
+// ordering historically produced by the flat render entry point.
+func renderFlat(r *deployments.CueRenderer, ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	grouped, err := r.Render(ctx, cueSource, nil, deployments.RenderInputs{Platform: platform, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]unstructured.Unstructured, 0, len(grouped.Platform)+len(grouped.Project))
+	out = append(out, grouped.Platform...)
+	out = append(out, grouped.Project...)
+	return out, nil
+}
+
 // TestDefaultTemplate verifies that DefaultTemplate renders correctly through
 // the full CUE render pipeline including managed-by label validation.
 func TestDefaultTemplate(t *testing.T) {
@@ -41,7 +55,7 @@ func TestDefaultTemplate(t *testing.T) {
 		Port:  8080,
 	}
 
-	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+	resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 	if err != nil {
 		t.Fatalf("default template render failed: %v", err)
 	}
@@ -109,7 +123,7 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 			Port:    8080,
 		}
 
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("default template render failed: %v", err)
 		}
@@ -147,7 +161,7 @@ func TestDefaultTemplate_CommandArgs(t *testing.T) {
 			Port:  8080,
 		}
 
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("default template render failed: %v", err)
 		}
@@ -190,7 +204,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 			Tag:   "latest",
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -222,7 +236,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 			Env:   []v1alpha2.EnvVar{{Name: "FOO", Value: "bar"}},
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -251,7 +265,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 			Env:   []v1alpha2.EnvVar{{Name: "DB_PASS", SecretKeyRef: &v1alpha2.KeyRef{Name: "my-secret", Key: "password"}}},
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -285,7 +299,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 			Env:   []v1alpha2.EnvVar{{Name: "APP_MODE", ConfigMapKeyRef: &v1alpha2.KeyRef{Name: "my-config", Key: "mode"}}},
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -323,7 +337,7 @@ func TestDefaultTemplate_EnvVars(t *testing.T) {
 			},
 			Port: 8080,
 		}
-		resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 		if err != nil {
 			t.Fatalf("render failed: %v", err)
 		}
@@ -358,7 +372,7 @@ func TestDefaultTemplate_StructuredOutput(t *testing.T) {
 		Port:  8080,
 	}
 
-	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+	resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 	if err != nil {
 		t.Fatalf("default template render failed: %v", err)
 	}
@@ -422,7 +436,7 @@ func TestDefaultTemplate_DeployerEmailAnnotation(t *testing.T) {
 		Port:  8080,
 	}
 
-	resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+	resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 	if err != nil {
 		t.Fatalf("default template render failed: %v", err)
 	}
@@ -468,7 +482,7 @@ func TestDefaultTemplate_ClaimsEmailInAnnotation(t *testing.T) {
 				Tag:   "latest",
 				Port:  8080,
 			}
-			resources, err := renderer.Render(context.Background(), DefaultTemplate, system, user)
+			resources, err := renderFlat(renderer, context.Background(), DefaultTemplate, system, user)
 			if err != nil {
 				t.Fatalf("render failed: %v", err)
 			}

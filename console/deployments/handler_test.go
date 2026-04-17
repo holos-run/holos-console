@@ -97,38 +97,22 @@ type stubRenderer struct {
 	called       bool
 	lastPlatform v1alpha2.PlatformInput
 	lastProject  v1alpha2.ProjectInput
-	// outputJSON, when non-nil, is copied onto GroupedResources.OutputJSON in
-	// the RenderGrouped* methods so tests can simulate a template producing an
-	// `output` block.
+	// outputJSON, when non-nil, is copied onto GroupedResources.OutputJSON so
+	// tests can simulate a template producing an `output` block.
 	outputJSON *string
 }
 
-func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+// Render implements Renderer for tests. The stub returns a GroupedResources
+// whose Project group carries the stubbed resources; callers that care about
+// the Platform group can wrap the stub.
+func (s *stubRenderer) Render(_ context.Context, _ string, _ []string, inputs RenderInputs) (*GroupedResources, error) {
 	s.called = true
-	s.lastPlatform = platform
-	s.lastProject = project
-	return s.resources, s.err
-}
-
-func (s *stubRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
-	s.called = true
-	s.lastPlatform = platform
-	s.lastProject = project
-	return s.resources, s.err
-}
-
-func (s *stubRenderer) RenderGrouped(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
-	s.called = true
-	s.lastPlatform = platform
-	s.lastProject = project
-	return &GroupedResources{Project: s.resources, OutputJSON: s.outputJSON}, s.err
-}
-
-func (s *stubRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
-	s.called = true
-	s.lastPlatform = platform
-	s.lastProject = project
-	return &GroupedResources{Project: s.resources, OutputJSON: s.outputJSON}, s.err
+	s.lastPlatform = inputs.Platform
+	s.lastProject = inputs.Project
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &GroupedResources{Project: s.resources, OutputJSON: s.outputJSON}, nil
 }
 
 // stubApplier implements ResourceApplier for tests.
@@ -1341,44 +1325,34 @@ func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Con
 	return s.sources, s.err
 }
 
-// trackingDeploymentRenderer extends stubRenderer to track which method was called.
+// trackingDeploymentRenderer extends stubRenderer to record whether Render
+// was called with ancestor sources. After the render-path collapse (HOL-563)
+// the renderer exposes exactly one entry point, so the "was this the ancestor
+// path" question is answered by inspecting lastAncestorSources rather than
+// by counting separate method calls.
 type trackingDeploymentRenderer struct {
 	stubRenderer
-	calledRender                    bool
-	calledRenderWithAncestor        bool
-	calledRenderGrouped             bool
-	calledRenderGroupedWithAncestor bool
-	lastAncestorSources             []string
+	calledRender        bool
+	lastAncestorSources []string
 }
 
-func (r *trackingDeploymentRenderer) Render(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+func (r *trackingDeploymentRenderer) Render(_ context.Context, _ string, ancestorSources []string, inputs RenderInputs) (*GroupedResources, error) {
 	r.calledRender = true
-	r.lastPlatform = platform
-	r.lastProject = project
-	return r.resources, r.err
+	r.lastAncestorSources = ancestorSources
+	r.lastPlatform = inputs.Platform
+	r.lastProject = inputs.Project
+	if r.err != nil {
+		return nil, r.err
+	}
+	return &GroupedResources{Project: r.resources, OutputJSON: r.outputJSON}, nil
 }
 
-func (r *trackingDeploymentRenderer) RenderWithAncestorTemplates(_ context.Context, _ string, sources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
-	r.calledRenderWithAncestor = true
-	r.lastAncestorSources = sources
-	r.lastPlatform = platform
-	r.lastProject = project
-	return r.resources, r.err
-}
-
-func (r *trackingDeploymentRenderer) RenderGrouped(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
-	r.calledRenderGrouped = true
-	r.lastPlatform = platform
-	r.lastProject = project
-	return &GroupedResources{Project: r.resources, OutputJSON: r.outputJSON}, r.err
-}
-
-func (r *trackingDeploymentRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, sources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
-	r.calledRenderGroupedWithAncestor = true
-	r.lastAncestorSources = sources
-	r.lastPlatform = platform
-	r.lastProject = project
-	return &GroupedResources{Project: r.resources, OutputJSON: r.outputJSON}, r.err
+// renderedWithAncestors reports whether the last Render call passed a
+// non-empty ancestor-sources slice. Tests use this to assert on which render
+// path was taken, replacing the pre-HOL-563 distinction between separate
+// "with ancestor" entry points and the plain Render.
+func (r *trackingDeploymentRenderer) renderedWithAncestors() bool {
+	return len(r.lastAncestorSources) > 0
 }
 
 func TestRenderResourcesWithAncestorProvider(t *testing.T) {
@@ -1401,8 +1375,11 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		if !atp.called {
 			t.Error("expected ancestor provider to be called")
 		}
-		if !renderer.calledRenderWithAncestor {
-			t.Error("expected RenderWithAncestorTemplates to be called")
+		if !renderer.calledRender {
+			t.Error("expected Render to be called")
+		}
+		if !renderer.renderedWithAncestors() {
+			t.Error("expected Render to be called with ancestor sources")
 		}
 		if len(renderer.lastAncestorSources) != 1 {
 			t.Fatalf("expected 1 ancestor source, got %d", len(renderer.lastAncestorSources))
@@ -1424,7 +1401,10 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !renderer.calledRender {
-			t.Error("expected plain Render to be called when no ancestor provider configured")
+			t.Error("expected Render to be called when no ancestor provider configured")
+		}
+		if renderer.renderedWithAncestors() {
+			t.Error("expected Render to be called without ancestor sources when no provider is configured")
 		}
 	})
 
@@ -1449,7 +1429,10 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		}
 		// Should fall back to plain render without platform templates.
 		if !renderer.calledRender {
-			t.Error("expected plain Render to be called after ancestor provider error")
+			t.Error("expected Render to be called after ancestor provider error")
+		}
+		if renderer.renderedWithAncestors() {
+			t.Error("expected Render to be called without ancestor sources after provider error")
 		}
 	})
 }
@@ -1474,8 +1457,11 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		if !atp.called {
 			t.Error("expected ancestor provider to be called")
 		}
-		if !renderer.calledRenderGroupedWithAncestor {
-			t.Error("expected RenderGroupedWithAncestorTemplates to be called")
+		if !renderer.calledRender {
+			t.Error("expected Render to be called")
+		}
+		if !renderer.renderedWithAncestors() {
+			t.Error("expected Render to be called with ancestor sources")
 		}
 	})
 
@@ -1495,8 +1481,11 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !renderer.calledRenderGrouped {
-			t.Error("expected RenderGrouped (no ancestors) to be called")
+		if !renderer.calledRender {
+			t.Error("expected Render to be called")
+		}
+		if renderer.renderedWithAncestors() {
+			t.Error("expected Render to be called without ancestor sources when provider returns empty")
 		}
 	})
 }
