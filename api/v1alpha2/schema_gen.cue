@@ -355,7 +355,10 @@
 	spec:     #ResourceSetSpec  @go(Spec)
 }
 
-// ResourceSetSpec groups the input and output sections of a ResourceSet.
+// ResourceSetSpec groups the top-level sections of a ResourceSet: defaults,
+// platformInput, projectInput (inputs), platformResources, projectResources
+// (generated K8s manifests), and the optional output section (values the
+// template publishes to the UI, such as the deployment URL).
 #ResourceSetSpec: {
 	// Defaults carries optional default values for ProjectInput fields.
 	// Template authors specify concrete values in the CUE template's defaults
