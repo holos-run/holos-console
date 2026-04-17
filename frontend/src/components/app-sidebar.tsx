@@ -99,7 +99,15 @@ export function AppSidebar() {
         // must not be rendered when the user is focused on a project route
         // (where the org nav group is still visible via selectedOrg but the
         // tab would misleadingly imply a project-level concept).
-        ...(!selectedProject
+        //
+        // Gate on the current pathname rather than `selectedProject` from
+        // context: `selectedProject` persists across navigations within the
+        // same org (ProjectProvider only clears it when the org changes),
+        // so a user who visits a project route and then returns to Folders
+        // / Projects / Org Settings still has `selectedProject` set. Using
+        // the pathname ensures the tab is hidden only while the user is
+        // actually on a /projects/... route.
+        ...(!pathname.startsWith('/projects/')
           ? [
               {
                 label: 'Template Policies',
