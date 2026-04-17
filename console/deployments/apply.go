@@ -52,16 +52,48 @@ func NewApplier(client dynamic.Interface) *Applier {
 // Reconcile and Cleanup can scope queries to a single project, preventing
 // cross-project collisions in shared namespaces.
 func (a *Applier) Apply(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured) error {
+	return a.applyWithOwnerLabels(ctx, resources, map[string]string{
+		v1alpha2.LabelProject:        project,
+		v1alpha2.AnnotationDeployment: deploymentName,
+	}, map[string]string{
+		"project":    project,
+		"deployment": deploymentName,
+	})
+}
+
+// ApplyRequiredTemplate performs server-side apply of the rendered manifests
+// with a *required-template* ownership identity — never the deployment
+// identity. This is used by the project-creation-time REQUIRE-rule
+// evaluator (HOL-571) so that a future deployment whose name matches a
+// required-template name cannot adopt, delete, or otherwise collide with
+// required-template resources via the deployment Reconcile/Cleanup label
+// selector (`project=X,deployment=Y`). Required-template resources are
+// tagged with `project=X,required-template=T` — a disjoint selector.
+func (a *Applier) ApplyRequiredTemplate(ctx context.Context, project, templateName string, resources []unstructured.Unstructured) error {
+	return a.applyWithOwnerLabels(ctx, resources, map[string]string{
+		v1alpha2.LabelProject:              project,
+		v1alpha2.AnnotationRequiredTemplate: templateName,
+	}, map[string]string{
+		"project":          project,
+		"requiredTemplate": templateName,
+	})
+}
+
+// applyWithOwnerLabels SSAs resources after stamping the given ownership
+// labels. logAttrs carries the human-readable slog fields so debug output
+// reflects whichever ownership identity is in use.
+func (a *Applier) applyWithOwnerLabels(ctx context.Context, resources []unstructured.Unstructured, ownerLabels map[string]string, logAttrs map[string]string) error {
 	for i := range resources {
 		r := resources[i].DeepCopy()
 
-		// Inject ownership labels (project + deployment).
+		// Inject ownership labels (project + owner identity).
 		labels := r.GetLabels()
 		if labels == nil {
 			labels = make(map[string]string)
 		}
-		labels[v1alpha2.LabelProject] = project
-		labels[v1alpha2.AnnotationDeployment] = deploymentName
+		for k, v := range ownerLabels {
+			labels[k] = v
+		}
 		r.SetLabels(labels)
 
 		kind := r.GetKind()
@@ -76,12 +108,15 @@ func (a *Applier) Apply(ctx context.Context, project, deploymentName string, res
 		}
 
 		namespace := r.GetNamespace()
-		slog.DebugContext(ctx, "applying resource",
+		attrs := []any{
 			slog.String("kind", kind),
 			slog.String("name", r.GetName()),
 			slog.String("namespace", namespace),
-			slog.String("deployment", deploymentName),
-		)
+		}
+		for k, v := range logAttrs {
+			attrs = append(attrs, slog.String(k, v))
+		}
+		slog.DebugContext(ctx, "applying resource", attrs...)
 
 		// Use the namespaced or cluster-scoped client depending on the resource.
 		var rc dynamic.ResourceInterface

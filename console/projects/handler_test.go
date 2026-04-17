@@ -1398,8 +1398,8 @@ type capturedApply struct {
 	resources      []unstructured.Unstructured
 }
 
-func (c *capturingApplier) Apply(_ context.Context, project, deploymentName string, resources []unstructured.Unstructured) error {
-	c.calls = append(c.calls, capturedApply{project: project, deploymentName: deploymentName, resources: resources})
+func (c *capturingApplier) ApplyRequiredTemplate(_ context.Context, project, templateName string, resources []unstructured.Unstructured) error {
+	c.calls = append(c.calls, capturedApply{project: project, deploymentName: templateName, resources: resources})
 	return c.err
 }
 
