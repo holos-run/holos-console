@@ -1315,13 +1315,15 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 
 // stubAncestorTemplateProvider implements AncestorTemplateProvider for tests.
 type stubAncestorTemplateProvider struct {
-	sources []string
-	err     error
-	called  bool
+	sources            []string
+	err                error
+	called             bool
+	lastDeploymentName string
 }
 
-func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
+func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, deploymentName string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
 	s.called = true
+	s.lastDeploymentName = deploymentName
 	return s.sources, s.err
 }
 
@@ -1368,7 +1370,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
 		}
-		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1396,7 +1398,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
 		}
-		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1420,7 +1422,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
 		}
-		_, err := handler.renderResources(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1450,7 +1452,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
 		}
-		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1477,7 +1479,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
 		}
-		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

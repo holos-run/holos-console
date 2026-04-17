@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -96,11 +97,18 @@ type Handler struct {
 	walker               AncestorWalker
 	resolver             *resolver.Resolver
 	renderer             Renderer
+	// policyResolver is the TemplatePolicy resolution seam threaded through
+	// every render path in this handler (HOL-566 Phase 4). Phase 5 (HOL-567)
+	// swaps the no-op implementation wired at server startup for a real
+	// REQUIRE/EXCLUDE resolver without touching this handler.
+	policyResolver policyresolver.PolicyResolver
 }
 
-// NewHandler creates a TemplateService handler.
-func NewHandler(k8s *K8sClient, r *resolver.Resolver, renderer Renderer) *Handler {
-	return &Handler{k8s: k8s, resolver: r, renderer: renderer}
+// NewHandler creates a TemplateService handler. policyResolver is the
+// TemplatePolicy resolution seam — Phase 4 callers should pass
+// policyresolver.NewNoopResolver(); Phase 5 swaps in a real implementation.
+func NewHandler(k8s *K8sClient, r *resolver.Resolver, renderer Renderer, policyResolver policyresolver.PolicyResolver) *Handler {
+	return &Handler{k8s: k8s, resolver: r, renderer: renderer, policyResolver: policyResolver}
 }
 
 // WithOrgGrantResolver configures the handler with an OrgGrantResolver.
@@ -629,7 +637,7 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 				msg.GetScope().GetScopeName(),
 				msg.LinkedTemplates,
 				h.walker,
-				nil, // Phase 4 (HOL-566) wires a real PolicyResolver here.
+				h.policyResolver,
 			)
 			if walkErr != nil {
 				slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
@@ -659,16 +667,17 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 // TargetKind the unified helper expects. Project scope means a project-scope
 // template is being previewed (TargetKindProjectTemplate). Org/folder/unknown
 // scopes also use TargetKindProjectTemplate today — no call site actually
-// differentiates yet (the discriminator is plumbed for Phase 4 policy
-// evaluation).
+// differentiates yet. The discriminator is plumbed end-to-end by HOL-566
+// Phase 4 so Phase 5 (HOL-567) can key real REQUIRE/EXCLUDE evaluation off
+// it without touching call sites.
 //
 // IMPORTANT: This helper is for the PREVIEW render path only. The deployments
 // apply path does NOT go through this function: it calls
 // K8sClient.ListEffectiveTemplateSources directly with TargetKindDeployment
-// from AncestorTemplateResolver. When Phase 4 wires real policy evaluation,
+// from AncestorTemplateResolver. When Phase 5 wires real policy evaluation,
 // do not add a branch here that returns TargetKindDeployment — that would be
 // wrong because this function never runs on the apply path. The scope input
-// is intentionally ignored today; the parameter exists so Phase 4 can add
+// is intentionally ignored today; the parameter exists so Phase 5 can add
 // preview-path-specific TargetKind discrimination (e.g., different kinds for
 // project-vs-folder preview) without changing the call site signature.
 func previewTargetKindForScope(scope consolev1.TemplateScope) TargetKind {

@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -258,7 +259,7 @@ func TestValidateCueSyntax(t *testing.T) {
 func newTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 	k8s := NewK8sClient(fakeClient, r)
-	handler := NewHandler(k8s, r, &stubRenderer{})
+	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 	return handler
 }
@@ -703,7 +704,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
 
-		handler := NewHandler(k8s, r, renderer)
+		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
@@ -794,7 +795,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
 
-		handler := NewHandler(k8s, r, renderer)
+		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
@@ -838,7 +839,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, r)
 		renderer := &trackingRenderer{}
 		// No walker configured.
-		handler := NewHandler(k8s, r, renderer)
+		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 
 		msg := &consolev1.RenderTemplateRequest{
 			CueTemplate: validCue,
@@ -914,7 +915,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
-		handler := NewHandler(k8s, r, renderer)
+		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(walker)
 		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
 			Scope:       projectScopeRef(project),
@@ -928,10 +929,11 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		}
 
 		// Apply path: runs via AncestorTemplateResolver + ListEffectiveTemplateSources.
-		applyResolver := NewAncestorTemplateResolver(k8s, walker)
+		applyResolver := NewAncestorTemplateResolver(k8s, walker, policyresolver.NewNoopResolver())
 		applySources, err := applyResolver.ListAncestorTemplateSources(
 			context.Background(),
 			"prj-"+project,
+			"test-deployment",
 			[]*consolev1.LinkedTemplateRef{folderLinkedRef(folder, "shared")},
 		)
 		if err != nil {
@@ -1240,7 +1242,7 @@ input: #ProjectInput & {
 
 			r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 			k8s := NewK8sClient(fakeClient, r)
-			handler := NewHandler(k8s, r, &stubRenderer{})
+			handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 			handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
 
@@ -1294,7 +1296,7 @@ input: #ProjectInput & {
 func TestGetTemplateDefaultsValidation(t *testing.T) {
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 	k8s := NewK8sClient(fake.NewClientset(), r)
-	handler := NewHandler(k8s, r, &stubRenderer{})
+	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{})
 	handler.WithOrgGrantResolver(&stubOrgGrantResolver{})
 

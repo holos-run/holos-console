@@ -37,6 +37,7 @@ import (
 	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -292,6 +293,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
 
+		// TemplatePolicy resolution seam (HOL-566 Phase 4). A single no-op
+		// resolver is threaded through every render path — deployments,
+		// project-scope templates, and required-template application — so
+		// Phase 5 (HOL-567) can swap the implementation for a real
+		// REQUIRE/EXCLUDE resolver without revisiting call sites.
+		policyResolverSeam := policyresolver.NewNoopResolver()
+
 		// Wire defaults seeder for populate_defaults org creation flow.
 		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
 		orgsHandler.WithDefaultsSeeder(templatesK8s, &projects.ProjectCreatorAdapter{K8s: projectsK8s}, projectPrefix)
@@ -309,6 +317,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				&deployments.CueRenderer{},
 				deployments.NewApplier(dynamicClient),
 				templates.NewEmptyRequireRuleResolver(),
+				policyResolverSeam,
 			)
 		}
 
@@ -336,7 +345,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Unified TemplateService handler — manages templates at org, folder, and
 		// project scopes in a single service (ADR 021).
 		folderGrantResolver := folders.NewFolderGrantResolver(foldersK8s)
-		templatesHandler := templates.NewHandler(templatesK8s, nsResolver, templates.NewCueRendererAdapter()).
+		templatesHandler := templates.NewHandler(templatesK8s, nsResolver, templates.NewCueRendererAdapter(), policyResolverSeam).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
 			WithProjectGrantResolver(projectResolver).
@@ -368,7 +377,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
-		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker)
+		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker, policyResolverSeam)
 		// Deployment status informer cache: one shared watch scoped to
 		// console-managed apps/v1.Deployment resources via the managed-by
 		// label. The informer lifecycle is tied to the server context so it
