@@ -1316,15 +1316,25 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 // stubAncestorTemplateProvider implements AncestorTemplateProvider for tests.
 type stubAncestorTemplateProvider struct {
 	sources            []string
+	effectiveRefs      []*consolev1.LinkedTemplateRef
 	err                error
 	called             bool
 	lastDeploymentName string
 }
 
-func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, deploymentName string, _ []*consolev1.LinkedTemplateRef) ([]string, error) {
+func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	s.called = true
 	s.lastDeploymentName = deploymentName
-	return s.sources, s.err
+	if s.err != nil {
+		return nil, nil, s.err
+	}
+	// When no explicit override, mirror the input refs back as the "resolved"
+	// effective set so tests that do not care about policy resolution still
+	// see a non-nil ref slice flow through the write-through path.
+	if s.effectiveRefs != nil {
+		return s.sources, s.effectiveRefs, nil
+	}
+	return s.sources, linkedRefs, nil
 }
 
 // trackingDeploymentRenderer extends stubRenderer to record whether Render
@@ -1452,7 +1462,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
 		}
-		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1479,7 +1489,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
 		}
-		_, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

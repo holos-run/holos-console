@@ -377,6 +377,16 @@ func (h *Handler) CreateTemplate(
 		return nil, mapK8sError(err)
 	}
 
+	// Write-through the policy-effective ref set for project-scope templates
+	// so GetProjectTemplatePolicyState has a baseline to diff against
+	// (HOL-569). Org/folder scopes are skipped because they are not
+	// render targets — only project-scope templates participate in policy
+	// resolution today. A nil drift checker (local/dev bootstrap without a
+	// cluster policy resolver) is a no-op. Record failures are logged at
+	// warn level and do not fail the RPC — the template was persisted
+	// successfully and the set is reconstructable on the next preview.
+	h.recordProjectTemplateApplied(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
+
 	slog.InfoContext(ctx, "template created",
 		slog.String("action", "template_create"),
 		slog.String("resource_type", auditResourceType),
@@ -430,7 +440,12 @@ func (h *Handler) UpdateTemplate(
 	enabled := tmpl.Enabled
 
 	// Determine linked template handling based on the update_linked_templates flag.
+	// We also track the post-update effective explicit link set — new refs
+	// when the caller asked to update links, the existing refs otherwise —
+	// so the HOL-569 write-through on the success path records the right
+	// baseline against which future drift checks will compare.
 	var linkedTemplates []*consolev1.LinkedTemplateRef
+	var explicitRefsForRecord []*consolev1.LinkedTemplateRef
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
 		// (being removed) and new (being added) linked template scopes.
@@ -462,14 +477,37 @@ func (h *Handler) UpdateTemplate(
 		if linkedTemplates == nil {
 			linkedTemplates = []*consolev1.LinkedTemplateRef{}
 		}
+		explicitRefsForRecord = linkedTemplates
+	} else {
+		// When update_linked_templates is false, linkedTemplates stays nil,
+		// which tells K8sClient.UpdateTemplate to preserve existing links.
+		// For the HOL-569 write-through we need to know what those existing
+		// links are so the resolver sees the same explicit ref set the
+		// next preview will see. Only read the existing template when we
+		// actually intend to record — project scope with a drift checker
+		// wired — so non-project scopes don't pay an unnecessary API call.
+		if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && h.projectTemplateDriftChecker != nil {
+			existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+			if getErr == nil {
+				if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+					if existingRefs, parseErr := unmarshalLinkedTemplates(raw); parseErr == nil {
+						explicitRefsForRecord = existingRefs
+					}
+				}
+			}
+		}
 	}
-	// When update_linked_templates is false, linkedTemplates stays nil,
-	// which tells K8sClient.UpdateTemplate to preserve existing links.
 
 	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
+
+	// Write-through the policy-effective ref set for project-scope templates
+	// after a successful persist so GetProjectTemplatePolicyState reflects
+	// the new linking state (HOL-569). Non-project scopes are skipped as on
+	// the create path. Record failures are logged but do not fail the RPC.
+	h.recordProjectTemplateApplied(ctx, scope, scopeName, name, explicitRefsForRecord)
 
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),
@@ -482,6 +520,60 @@ func (h *Handler) UpdateTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateTemplateResponse{}), nil
+}
+
+// recordProjectTemplateApplied writes the policy-effective ref set for a
+// project-scope template to the applied-render-set store. This is the
+// write-through path invoked from the CreateTemplate/UpdateTemplate happy
+// paths so GetProjectTemplatePolicyState and the project-template drift
+// badge have a baseline to diff against (HOL-569).
+//
+// This is a no-op for non-project scopes because only project-scope
+// templates participate in TemplatePolicy resolution today (org/folder
+// templates are not render targets on their own — they are only unified
+// into a project render via ancestor walks). It is also a no-op when
+// no ProjectTemplateDriftChecker is wired (local/dev bootstrap without a
+// cluster policy resolver).
+//
+// The resolver is invoked directly (not via ListEffectiveTemplateSources)
+// because the template handler does not render during Create/Update — the
+// sources are irrelevant here, only the resolved ref set is. A failure
+// is logged at warn level and swallowed so the RPC's success contract is
+// not broken: the template was persisted, and the set can be reconstructed
+// on the next preview.
+func (h *Handler) recordProjectTemplateApplied(
+	ctx context.Context,
+	scope consolev1.TemplateScope,
+	scopeName, name string,
+	explicitRefs []*consolev1.LinkedTemplateRef,
+) {
+	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return
+	}
+	if h.projectTemplateDriftChecker == nil {
+		return
+	}
+	effectiveRefs := explicitRefs
+	if h.policyResolver != nil {
+		projectNs := h.resolver.ProjectNamespace(scopeName)
+		resolved, resolveErr := h.policyResolver.Resolve(ctx, projectNs, policyresolver.TargetKindProjectTemplate, name, explicitRefs)
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "failed to resolve policy for project template applied-set write-through",
+				slog.String("project", scopeName),
+				slog.String("template", name),
+				slog.Any("error", resolveErr),
+			)
+			return
+		}
+		effectiveRefs = resolved
+	}
+	if recordErr := h.projectTemplateDriftChecker.RecordApplied(ctx, scopeName, name, effectiveRefs); recordErr != nil {
+		slog.WarnContext(ctx, "failed to record applied render set for project template",
+			slog.String("project", scopeName),
+			slog.String("template", name),
+			slog.Any("error", recordErr),
+		)
+	}
 }
 
 // DeleteTemplate deletes a template.
@@ -661,7 +753,7 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 			// unreachable today but kept as belt-and-suspenders so a future
 			// edit that starts propagating walker errors out of the helper
 			// still degrades to the plain-render fallback here.
-			sources, walkErr := h.k8s.ListEffectiveTemplateSources(
+			sources, _, walkErr := h.k8s.ListEffectiveTemplateSources(
 				ctx,
 				startNs,
 				previewTargetKindForScope(msg.GetScope().GetScope()),

@@ -930,7 +930,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		// Apply path: runs via AncestorTemplateResolver + ListEffectiveTemplateSources.
 		applyResolver := NewAncestorTemplateResolver(k8s, walker, policyresolver.NewNoopResolver())
-		applySources, err := applyResolver.ListAncestorTemplateSources(
+		applySources, _, err := applyResolver.ListAncestorTemplateSources(
 			context.Background(),
 			"prj-"+project,
 			"test-deployment",

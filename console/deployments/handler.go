@@ -85,8 +85,17 @@ type AncestorWalker interface {
 // starting namespace for the ancestor walk; deploymentName identifies the
 // render target so the underlying PolicyResolver can key REQUIRE/EXCLUDE
 // evaluation off it (HOL-566 Phase 4).
+//
+// The second return value is the policy-effective ref set (explicit ∪
+// REQUIRE − EXCLUDE) that produced the sources. Exposing it here lets the
+// deployments Create/Update happy paths write-through the same set to the
+// applied-render-set store via PolicyDriftChecker.RecordApplied without
+// invoking the resolver a second time (HOL-569). A second invocation would
+// open a race with concurrent policy edits in which the stored set drifts
+// from the rendered set and GetDeploymentPolicyState reports false drift.
+// Callers that only need the sources can ignore the second return.
 type AncestorTemplateProvider interface {
-	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
+	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -201,23 +210,30 @@ func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 // the full ancestor chain when an AncestorTemplateProvider is configured.
 // deploymentName identifies the render target so the underlying
 // PolicyResolver (HOL-566 Phase 4) can key REQUIRE/EXCLUDE evaluation off
-// it in Phase 5. Returns (sources, true) on success, or (nil, false) when no
-// provider is configured or the walk fails.
-func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
+// it in Phase 5.
+//
+// Returns (sources, effectiveRefs, true) on success — the effectiveRefs
+// slice carries the policy-resolved ref set that produced the sources so
+// the deployments handler can write-through the same set to the applied-
+// render-set store after a successful apply/reconcile without a second
+// resolver invocation (HOL-569). Returns (nil, nil, false) when no
+// provider is configured or the walk fails; the caller should fall back to
+// a project-only render in that case.
+func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, bool) {
 	if h.ancestorTemplateProvider == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	sources, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, linkedRefs)
+	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, linkedRefs)
 	if err != nil {
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
 			slog.String("deployment", deploymentName),
 			slog.Any("error", err),
 		)
-		return nil, false
+		return nil, nil, false
 	}
-	return sources, true
+	return sources, effectiveRefs, true
 }
 
 // renderResources renders deployment resources, unifying with platform
@@ -241,7 +257,7 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, d
 // PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
 // evaluation off it; until then it is observational.
 func (h *Handler) renderResources(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	grouped, err := h.renderResourcesGrouped(ctx, project, deploymentName, cueSource, platform, projectInput, linkedRefs)
+	grouped, _, err := h.renderResourcesGrouped(ctx, project, deploymentName, cueSource, platform, projectInput, linkedRefs)
 	if err != nil {
 		return nil, err
 	}
@@ -264,18 +280,32 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // deploymentName is the render target name plumbed through to the
 // PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
 // evaluation off it; until then it is observational.
-func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
+//
+// The second return value is the policy-effective ref set the provider
+// reported — callers on the Create/Update write path pass it to
+// PolicyDriftChecker.RecordApplied so the applied-render-set store stays
+// aligned with what was actually rendered (HOL-569). Preview callers can
+// ignore it. It is nil when no AncestorTemplateProvider is configured or the
+// provider returned an error (the render falls back to project-only in both
+// cases, so there is no rendered set to record).
+func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
 	var ancestorSources []string
+	var effectiveRefs []*consolev1.LinkedTemplateRef
 	readPlatformResources := false
-	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
+	if sources, refs, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
 		ancestorSources = sources
+		effectiveRefs = refs
 		readPlatformResources = true
 	}
-	return h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{
+	grouped, err := h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{
 		Platform:              platform,
 		Project:               projectInput,
 		ReadPlatformResources: readPlatformResources,
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return grouped, effectiveRefs, nil
 }
 
 // ListDeployments returns all deployments in a project.
@@ -494,7 +524,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplates)
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplates)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -513,6 +543,24 @@ func (h *Handler) CreateDeployment(
 			)
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+		}
+		// Write-through the effective render set to the applied-render-set
+		// store so GetDeploymentPolicyState and the list-view policy_drift
+		// flag have a baseline to diff against (HOL-569). Skipped when no
+		// checker is wired (local/dev bootstrap without a cluster policy
+		// resolver). A record failure is logged at warn level and does NOT
+		// fail the RPC — the deployment was rendered and applied
+		// successfully, and the set can be reconstructed on the next render.
+		// This mirrors the SetOutputURLAnnotation precedent immediately
+		// below.
+		if h.policyDriftChecker != nil {
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, effectiveRefs); recordErr != nil {
+				slog.WarnContext(ctx, "failed to record applied render set after create",
+					slog.String("project", project),
+					slog.String("name", name),
+					slog.Any("error", recordErr),
+				)
+			}
 		}
 		// Cache the evaluated output.url on the ConfigMap annotation so
 		// later ListDeployments/GetDeployment calls can surface it without
@@ -654,7 +702,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -683,6 +731,20 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", reconcileErr),
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
+		}
+		// Write-through the effective render set so subsequent policy-state
+		// queries diff against what this update actually rendered (HOL-569).
+		// Same contract as the create path: nil checker is a no-op, record
+		// errors are logged but do not fail the RPC because reconcile
+		// already succeeded.
+		if h.policyDriftChecker != nil {
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, effectiveRefs); recordErr != nil {
+				slog.WarnContext(ctx, "failed to record applied render set after update",
+					slog.String("project", project),
+					slog.String("name", name),
+					slog.Any("error", recordErr),
+				)
+			}
 		}
 		// Refresh the cached output URL annotation. Unlike create, update
 		// always sets or clears so a template edit that drops the output
@@ -956,7 +1018,9 @@ func (h *Handler) GetDeploymentRenderPreview(
 	var grouped *GroupedResources
 	if h.renderer != nil {
 		var renderErr error
-		grouped, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		// Preview path: discard the effective-ref set (second return) — only
+		// the write-through paths on Create/Update consume it (HOL-569).
+		grouped, _, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
