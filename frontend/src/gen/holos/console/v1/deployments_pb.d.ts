@@ -897,6 +897,19 @@ export declare type DeploymentStatusSummary = Message<"holos.console.v1.Deployme
    * @generated from field: optional holos.console.v1.DeploymentOutput output = 8;
    */
   output?: DeploymentOutput;
+
+  /**
+   * policy_drift is true when the current TemplatePolicy-resolved render set
+   * differs from the render set recorded at the last successful create or
+   * update. The authoritative applied set lives in the folder namespace
+   * (HOL-557 storage-isolation rule): a project owner has write access to the
+   * project namespace and could otherwise clear a drift flag stored there.
+   * List-view callers read only this bool; full before/after diffs come from
+   * GetDeploymentPolicyState.
+   *
+   * @generated from field: bool policy_drift = 9;
+   */
+  policyDrift: boolean;
 };
 
 /**
@@ -1289,6 +1302,167 @@ export declare type DeploymentOutput = Message<"holos.console.v1.DeploymentOutpu
 export declare const DeploymentOutputSchema: GenMessage<DeploymentOutput>;
 
 /**
+ * PolicyTemplateRef is a scope-qualified reference to a template as surfaced by
+ * the policy-state RPCs. It mirrors the wire shape of the authoritative
+ * LinkedTemplateRef (in templates.proto) but is declared locally because
+ * deployments.proto cannot import templates.proto without creating a cycle —
+ * see the top-of-file NOTE. A future proto refactor may unify these by moving
+ * LinkedTemplateRef (and a few other leaf types) to a dedicated types file, at
+ * which point PolicyTemplateRef becomes an alias and eventually a reserved
+ * message name.
+ *
+ * @generated from message holos.console.v1.PolicyTemplateRef
+ */
+export declare type PolicyTemplateRef = Message<"holos.console.v1.PolicyTemplateRef"> & {
+  /**
+   * scope is the numeric TemplateScope value (see templates.proto) carried as
+   * a plain int32 so deployments.proto does not need to import templates.proto.
+   *
+   * @generated from field: int32 scope = 1;
+   */
+  scope: number;
+
+  /**
+   * scope_name is the org/folder/project name for the referenced template.
+   *
+   * @generated from field: string scope_name = 2;
+   */
+  scopeName: string;
+
+  /**
+   * name is the template name.
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * version_constraint is a semver range string. Empty means no constraint.
+   *
+   * @generated from field: string version_constraint = 4;
+   */
+  versionConstraint: string;
+};
+
+/**
+ * Describes the message holos.console.v1.PolicyTemplateRef.
+ * Use `create(PolicyTemplateRefSchema)` to create a new message.
+ */
+export declare const PolicyTemplateRefSchema: GenMessage<PolicyTemplateRef>;
+
+/**
+ * DeploymentPolicyState describes the current TemplatePolicy-resolved render
+ * set for a deployment, the last applied render set, and the diff between
+ * them. Returned by GetDeploymentPolicyState.
+ *
+ * The `applied_set` value is always read from the folder-namespace drift
+ * store managed by the policy resolver — never from a project-namespace
+ * annotation. A project owner has write access to the project namespace and
+ * could clear or rewrite an annotation stored there to mask drift, so the
+ * authoritative drift state lives above the project level (HOL-557).
+ *
+ * This message is the Deployment-scoped sibling of ProjectTemplatePolicyState
+ * (templates.proto). The two messages carry identical fields but have
+ * different names because deployments.proto and templates.proto cannot share a
+ * single `PolicyState` type without breaking protobuf's no-cyclic-imports
+ * rule (templates.proto already imports deployments.proto for EnvVar).
+ *
+ * @generated from message holos.console.v1.DeploymentPolicyState
+ */
+export declare type DeploymentPolicyState = Message<"holos.console.v1.DeploymentPolicyState"> & {
+  /**
+   * applied_set is the render set serialized at the last successful create
+   * or update of the deployment. Empty means the deployment has not yet been
+   * rendered through the policy-aware pipeline.
+   *
+   * @generated from field: repeated holos.console.v1.PolicyTemplateRef applied_set = 1;
+   */
+  appliedSet: PolicyTemplateRef[];
+
+  /**
+   * current_set is the resolver output against today's policies and today's
+   * linked templates.
+   *
+   * @generated from field: repeated holos.console.v1.PolicyTemplateRef current_set = 2;
+   */
+  currentSet: PolicyTemplateRef[];
+
+  /**
+   * added_refs are templates present in current_set but not in applied_set.
+   *
+   * @generated from field: repeated holos.console.v1.PolicyTemplateRef added_refs = 3;
+   */
+  addedRefs: PolicyTemplateRef[];
+
+  /**
+   * removed_refs are templates present in applied_set but not in current_set.
+   *
+   * @generated from field: repeated holos.console.v1.PolicyTemplateRef removed_refs = 4;
+   */
+  removedRefs: PolicyTemplateRef[];
+
+  /**
+   * drift is true when applied_set and current_set differ (equivalent to
+   * `len(added_refs)+len(removed_refs) > 0`). Callers that want just the bool
+   * can use DeploymentStatusSummary.policy_drift on list-view rows.
+   *
+   * @generated from field: bool drift = 5;
+   */
+  drift: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentPolicyState.
+ * Use `create(DeploymentPolicyStateSchema)` to create a new message.
+ */
+export declare const DeploymentPolicyStateSchema: GenMessage<DeploymentPolicyState>;
+
+/**
+ * GetDeploymentPolicyStateRequest requests the policy state for a deployment.
+ *
+ * @generated from message holos.console.v1.GetDeploymentPolicyStateRequest
+ */
+export declare type GetDeploymentPolicyStateRequest = Message<"holos.console.v1.GetDeploymentPolicyStateRequest"> & {
+  /**
+   * project is the project namespace that owns the deployment.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * name is the deployment name.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentPolicyStateRequest.
+ * Use `create(GetDeploymentPolicyStateRequestSchema)` to create a new message.
+ */
+export declare const GetDeploymentPolicyStateRequestSchema: GenMessage<GetDeploymentPolicyStateRequest>;
+
+/**
+ * GetDeploymentPolicyStateResponse carries the deployment's policy state.
+ *
+ * @generated from message holos.console.v1.GetDeploymentPolicyStateResponse
+ */
+export declare type GetDeploymentPolicyStateResponse = Message<"holos.console.v1.GetDeploymentPolicyStateResponse"> & {
+  /**
+   * @generated from field: holos.console.v1.DeploymentPolicyState state = 1;
+   */
+  state?: DeploymentPolicyState;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDeploymentPolicyStateResponse.
+ * Use `create(GetDeploymentPolicyStateResponseSchema)` to create a new message.
+ */
+export declare const GetDeploymentPolicyStateResponseSchema: GenMessage<GetDeploymentPolicyStateResponse>;
+
+/**
  * DeploymentPhase represents the lifecycle phase of a deployment.
  *
  * @generated from enum holos.console.v1.DeploymentPhase
@@ -1433,6 +1607,20 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof GetDeploymentRenderPreviewRequestSchema;
     output: typeof GetDeploymentRenderPreviewResponseSchema;
+  },
+  /**
+   * GetDeploymentPolicyState returns the current, last-applied, and diff of the
+   * effective TemplatePolicy-resolved render set for a deployment. Drives drift
+   * indicators in the UI. Reads the applied set from the folder-namespace
+   * drift store managed by the policy resolver; never from a project-namespace
+   * annotation (HOL-557 storage-isolation rule).
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.GetDeploymentPolicyState
+   */
+  getDeploymentPolicyState: {
+    methodKind: "unary";
+    input: typeof GetDeploymentPolicyStateRequestSchema;
+    output: typeof GetDeploymentPolicyStateResponseSchema;
   },
 }>;
 

@@ -37,6 +37,7 @@ import (
 	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -44,6 +45,7 @@ import (
 	"github.com/holos-run/holos-console/console/settings"
 	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templates"
+	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
 
@@ -296,12 +298,67 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
 		orgsHandler.WithDefaultsSeeder(templatesK8s, &projects.ProjectCreatorAdapter{K8s: projectsK8s}, projectPrefix)
 
-		// Mandatory template applier for project creation: walks the project's
-		// ancestor chain (org + folder ancestors) and applies all mandatory+enabled
-		// templates to the project namespace (ADR 021 Decision 3).
+		// TemplatePolicy resolver used by project creation to find REQUIRE
+		// rules that apply to a newly-created project. Declared here so the
+		// mandatory-template applier can consume the lookup and the later
+		// deployment / template wiring can reuse it.
+		earlyPolicyRes := &policyresolver.Resolver{
+			Client:   k8sClientset,
+			Walker:   nsWalker,
+			Resolver: nsResolver,
+		}
+
+		// REQUIRE-driven template applier for project creation: replaces the
+		// pre-HOL-557 `mandatory` annotation walk. When no policy matches a
+		// new project, the applier is a no-op; every template a project
+		// gets must come through an explicit link.
 		var orgTmplApplier projects.MandatoryTemplateApplier
 		if dynamicClient != nil {
-			orgTmplApplier = templates.NewMandatoryTemplateApplier(templatesK8s, nsWalker, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+			applier := templates.NewMandatoryTemplateApplier(templatesK8s, nsWalker, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+			applier = applier.WithPolicyRequireLookup(func(ctx context.Context, project string) ([]templates.PolicyRequiredTemplate, error) {
+				// Evaluate policies with TargetKindProjectTemplate so REQUIRE
+				// rules that specify project_pattern match a brand-new
+				// project with no deployments yet. deployment_pattern is
+				// treated as "any" in this kind.
+				refs, err := earlyPolicyRes.Resolve(
+					ctx,
+					consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+					project,
+					policyresolver.TargetKindProjectTemplate,
+					"",
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]templates.PolicyRequiredTemplate, 0, len(refs))
+				for _, ref := range refs {
+					if ref == nil {
+						continue
+					}
+					var ns string
+					switch ref.GetScope() {
+					case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+						ns = nsResolver.OrgNamespace(ref.GetScopeName())
+					case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+						ns = nsResolver.FolderNamespace(ref.GetScopeName())
+					case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+						// A project template cannot be REQUIRE-injected
+						// onto itself; skip silently so a self-referential
+						// policy never becomes an infinite loop.
+						continue
+					}
+					if ns == "" {
+						continue
+					}
+					out = append(out, templates.PolicyRequiredTemplate{
+						ScopeNamespace: ns,
+						TemplateName:   ref.GetName(),
+					})
+				}
+				return out, nil
+			})
+			orgTmplApplier = applier
 		}
 
 		// Project service with org grant fallback
@@ -325,6 +382,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
 		mux.Handle(settingsPath, settingsHTTPHandler)
 
+		// TemplatePolicy resolver is shared with the mandatory-template
+		// applier above, so reuse the instance declared there instead of
+		// re-building.
+		policyRes := earlyPolicyRes
+		policyAugmentor := policyresolver.NewAugmentor(policyRes)
+		templatePolicyStateProvider := policyresolver.NewProjectTemplatePolicyStateProvider(policyRes, k8sClientset)
+
 		// Unified TemplateService handler — manages templates at org, folder, and
 		// project scopes in a single service (ADR 021).
 		folderGrantResolver := folders.NewFolderGrantResolver(foldersK8s)
@@ -332,7 +396,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
 			WithProjectGrantResolver(projectResolver).
-			WithAncestorWalker(nsWalker)
+			WithAncestorWalker(nsWalker).
+			WithPolicyStateProvider(templatePolicyStateProvider)
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
@@ -360,7 +425,11 @@ func (s *Server) Serve(ctx context.Context) error {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
-		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker)
+		// Policy-aware ancestor template resolver: REQUIRE/EXCLUDE rules
+		// shape the effective render set before the CUE sources are read
+		// (HOL-557).
+		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker).
+			WithPolicyAugmentor(policyAugmentor)
 		// Deployment status informer cache: one shared watch scoped to
 		// console-managed apps/v1.Deployment resources via the managed-by
 		// label. The informer lifecycle is tied to the server context so it
@@ -373,10 +442,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		// itself cancels the reflector to avoid leaking LIST/WATCH retry
 		// goroutines and logs a warning.
 		deploymentStatusCache := statuscache.New(ctx, k8sClientset)
+		deploymentPolicyStateProvider := policyresolver.NewDeploymentPolicyStateProvider(policyRes, k8sClientset)
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
-			WithStatusCache(deploymentStatusCache)
+			WithStatusCache(deploymentStatusCache).
+			WithPolicyStateProvider(deploymentPolicyStateProvider)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

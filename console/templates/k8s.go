@@ -301,10 +301,12 @@ func (k *K8sClient) ListTemplatesInNamespace(ctx context.Context, ns string) ([]
 }
 
 // ListTemplateSourcesForRender returns CUE sources for the effective template set
-// participating in render from the given namespace's templates. The effective set
-// is: (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
+// participating in render from the given namespace's templates. The render-set
+// formula after HOL-557 is (enabled AND ref IN linkedRefs); the caller is
+// expected to pre-compute linkedRefs by running TemplatePolicy REQUIRE/EXCLUDE
+// rules via policyresolver. The `mandatory` annotation no longer triggers
+// auto-inclusion — REQUIRE rules are the only "always applied" mechanism.
 // Disabled templates are never included even when explicitly linked.
-// The result is deduplicated so a mandatory+explicitly-linked template appears once.
 func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string, linkedRefs []linkedRef) ([]string, error) {
 	cms, err := k.ListTemplatesInNamespace(ctx, ns)
 	if err != nil {
@@ -320,17 +322,14 @@ func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string,
 	seen := make(map[string]bool)
 	var sources []string
 	for _, cm := range cms {
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 		if !enabled {
 			continue // disabled templates never participate
 		}
-		// Determine which scope this template belongs to from the label.
 		scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
 		scopeName := scopeNameFromNs(k.Resolver, ns, scopeLabel)
 		ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
-		include := mandatory || linked[ref]
-		if !include {
+		if !linked[ref] {
 			continue
 		}
 		key := scopeLabel + "/" + scopeName + "/" + cm.Name
@@ -356,13 +355,18 @@ type RenderHierarchyWalker interface {
 
 // ListAncestorTemplateSourcesForRender walks the ancestor chain from the given
 // project namespace and collects CUE sources from all ancestor scopes (folders
-// and org) using the render set formula:
+// and org) using the HOL-557 render-set formula:
 //
-//	(mandatory AND enabled) UNION (enabled AND ref IN linkedRefs)
+//	enabled AND ref IN linkedRefs
 //
-// at each ancestor namespace. For linked templates with a version constraint,
-// the CUE source is resolved from the latest matching release via
-// ResolveVersionedSource. Disabled templates are never included.
+// The caller is expected to have already expanded linkedRefs with any
+// TemplatePolicy REQUIRE injections and removed any EXCLUDE matches — see
+// console/policyresolver. The `mandatory` annotation no longer contributes;
+// policies are the only mechanism for "always applied" now.
+//
+// For linked templates with a version constraint the CUE source is resolved
+// from the latest matching release via ResolveVersionedSource. Disabled
+// templates are never included.
 //
 // If the walker fails, the method degrades gracefully by returning an empty
 // source list (no error).
@@ -405,20 +409,16 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 		}
 
 		for _, cm := range cms {
-			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 			if !enabled {
 				continue
 			}
 
-			// Determine the scope for this template.
 			scopeLabel := cm.Labels[v1alpha2.LabelTemplateScope]
 			scopeName := scopeNameFromNs(k.Resolver, ns.Name, scopeLabel)
 			ref := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
 			protoRef, isLinked := linkedByKey[ref]
-
-			include := mandatory || isLinked
-			if !include {
+			if !isLinked {
 				continue
 			}
 
@@ -428,27 +428,24 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 			}
 			seen[dedupeKey] = true
 
-			// For linked templates, resolve versioned source (ADR 024).
-			if isLinked {
-				scope := scopeFromLabel(scopeLabel)
-				src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, cm.Name, protoRef.GetVersionConstraint())
-				if resolveErr != nil {
-					slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
-						slog.String("template", cm.Name),
-						slog.String("namespace", ns.Name),
-						slog.Any("error", resolveErr),
-					)
-					// Fall through to live ConfigMap below.
-				} else if src != "" {
-					allSources = append(allSources, src)
-					continue
-				}
+			// Resolve versioned source if a constraint is pinned (ADR 024).
+			scope := scopeFromLabel(scopeLabel)
+			src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, cm.Name, protoRef.GetVersionConstraint())
+			if resolveErr != nil {
+				slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
+					slog.String("template", cm.Name),
+					slog.String("namespace", ns.Name),
+					slog.Any("error", resolveErr),
+				)
+				// Fall through to live ConfigMap below.
+			} else if src != "" {
+				allSources = append(allSources, src)
+				continue
 			}
 
-			// Mandatory templates and fallback: use the live ConfigMap CUE source.
-			src := cm.Data[CueTemplateKey]
-			if src != "" {
-				allSources = append(allSources, src)
+			// Fallback to live ConfigMap when version resolution fails.
+			if live := cm.Data[CueTemplateKey]; live != "" {
+				allSources = append(allSources, live)
 			}
 		}
 	}
@@ -457,14 +454,15 @@ func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, pr
 }
 
 // ListOrgTemplateSourcesForRender returns CUE sources for the effective set of
-// organization-scope templates using the render set formula:
+// organization-scope templates using the HOL-557 render-set formula:
 //
-//	(mandatory AND enabled) UNION (enabled AND ref.Name IN linkedRefs)
+//	enabled AND ref.Name IN linkedRefs
 //
+// The caller is expected to have expanded linkedRefs with any TemplatePolicy
+// REQUIRE injections; the `mandatory` annotation no longer contributes.
 // For linked templates that carry a version constraint, the CUE source is
-// resolved from the latest matching release via ResolveVersionedSource
-// (ADR 024). Mandatory templates and linked templates without releases fall
-// back to the live ConfigMap CUE source.
+// resolved from the latest matching release via ResolveVersionedSource (ADR
+// 024). A resolver failure falls back to the live ConfigMap CUE source.
 func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
 	cms, err := k.ListTemplates(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org)
 	if err != nil {
@@ -482,14 +480,12 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 	seen := make(map[string]bool)
 	var sources []string
 	for _, cm := range cms {
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 		if !enabled {
 			continue
 		}
 		ref, isLinked := linkedByName[cm.Name]
-		include := mandatory || isLinked
-		if !include {
+		if !isLinked {
 			continue
 		}
 		if seen[cm.Name] {
@@ -497,26 +493,23 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 		}
 		seen[cm.Name] = true
 
-		// For linked templates, resolve versioned source (ADR 024).
-		if isLinked {
-			src, resolveErr := k.ResolveVersionedSource(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org, cm.Name, ref.GetVersionConstraint())
-			if resolveErr != nil {
-				slog.WarnContext(ctx, "failed to resolve versioned source, falling back to live template",
-					slog.String("template", cm.Name),
-					slog.String("org", org),
-					slog.Any("error", resolveErr),
-				)
-				// Fall through to live ConfigMap below.
-			} else if src != "" {
-				sources = append(sources, src)
-				continue
-			}
+		// Resolve versioned source (ADR 024).
+		src, resolveErr := k.ResolveVersionedSource(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, org, cm.Name, ref.GetVersionConstraint())
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "failed to resolve versioned source, falling back to live template",
+				slog.String("template", cm.Name),
+				slog.String("org", org),
+				slog.Any("error", resolveErr),
+			)
+			// Fall through to live ConfigMap below.
+		} else if src != "" {
+			sources = append(sources, src)
+			continue
 		}
 
-		// Mandatory templates and fallback: use the live ConfigMap CUE source.
-		src := cm.Data[CueTemplateKey]
-		if src != "" {
-			sources = append(sources, src)
+		// Fallback to live ConfigMap on version-resolution failure.
+		if live := cm.Data[CueTemplateKey]; live != "" {
+			sources = append(sources, live)
 		}
 	}
 	return sources, nil
@@ -525,6 +518,14 @@ func (k *K8sClient) ListOrgTemplateSourcesForRender(ctx context.Context, org str
 // ListLinkableTemplateInfos returns all enabled templates at the given scope
 // as LinkableTemplate proto messages. Used by the TemplateService to populate
 // the linking UI.
+//
+// HOL-557 removed the transitional `forced` field from LinkableTemplate:
+// TemplatePolicy REQUIRE rules are scoped by project/deployment patterns, so
+// whether a given template is forced at render time depends on the specific
+// target, which LinkableTemplate does not describe. The linking UI now
+// reflects only the explicit link list; drift and policy-driven forcing
+// surface through GetDeploymentPolicyState / GetProjectTemplatePolicyState
+// instead.
 func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]*consolev1.LinkableTemplate, error) {
 	cms, err := k.ListTemplates(ctx, scope, scopeName)
 	if err != nil {
@@ -536,15 +537,6 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 		if !enabled {
 			continue
 		}
-		// The `mandatory` annotation is no longer a first-class proto field on
-		// LinkableTemplate (HOL-555). However, the resolver still auto-includes
-		// mandatory ancestor templates at render time via the annotation until
-		// HOL-557 replaces that with TemplatePolicy REQUIRE evaluation. During
-		// that transition we surface the effective "always applied" state via
-		// the `forced` field so the linking UI doesn't lie about what actually
-		// renders. Once HOL-557 lands, `forced` is populated from policy
-		// evaluation instead of the annotation.
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 		result = append(result, &consolev1.LinkableTemplate{
 			ScopeRef: &consolev1.TemplateScopeRef{
 				Scope:     scope,
@@ -553,7 +545,6 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 			Name:        cm.Name,
 			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 			Description: cm.Annotations[v1alpha2.AnnotationDescription],
-			Forced:      mandatory,
 		})
 	}
 	return result, nil
@@ -1006,17 +997,84 @@ func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScop
 // directly due to the avoid-import-cycle convention). The walker is closed over
 // at construction time so the caller only needs to pass project namespace and
 // linked refs.
+//
+// HOL-557 swapped the annotation-driven "mandatory+enabled" pathway for
+// TemplatePolicy REQUIRE rule evaluation via PolicyAugmentor. When an
+// augmentor is configured, linkedRefs is expanded to include policy-injected
+// templates (REQUIRE) and minus policy-excluded templates (EXCLUDE) before
+// the CUE sources are harvested. The mandatory annotation on a template
+// ConfigMap no longer triggers auto-inclusion.
 type AncestorTemplateResolver struct {
-	k8s    *K8sClient
-	walker RenderHierarchyWalker
+	k8s       *K8sClient
+	walker    RenderHierarchyWalker
+	augmentor PolicyAugmentor
 }
 
-// NewAncestorTemplateResolver creates an AncestorTemplateResolver.
+// PolicyAugmentor expands the caller-supplied linkedRefs with the
+// TemplatePolicy resolver output. The deployments and templates packages
+// each call through this interface so console/templates does not have to
+// import console/policyresolver directly (which would be a cycle once the
+// templates package is consumed by the policyresolver in a future phase).
+type PolicyAugmentor interface {
+	AugmentForDeployment(ctx context.Context, projectNs, deploymentName string, baseLinkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, error)
+	AugmentForProjectTemplate(ctx context.Context, projectNs, templateName string, baseLinkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, error)
+}
+
+// NewAncestorTemplateResolver creates an AncestorTemplateResolver. Callers
+// that want policy-aware rendering (the HOL-557 default) must call
+// WithPolicyAugmentor too; a nil augmentor degrades gracefully to the
+// pre-policy behavior, matching what the handler does today when no cluster
+// is attached.
 func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker) *AncestorTemplateResolver {
 	return &AncestorTemplateResolver{k8s: k8s, walker: walker}
 }
 
+// WithPolicyAugmentor attaches a TemplatePolicy resolver so REQUIRE/EXCLUDE
+// rules shape the effective render set.
+func (a *AncestorTemplateResolver) WithPolicyAugmentor(p PolicyAugmentor) *AncestorTemplateResolver {
+	a.augmentor = p
+	return a
+}
+
 // ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
+// When a PolicyAugmentor is configured the refs are first passed through the
+// TemplatePolicy resolver so REQUIRE/EXCLUDE rules shape the effective set.
 func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
-	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, linkedRefs, a.walker)
+	effective := linkedRefs
+	if a.augmentor != nil {
+		augmented, err := a.augmentor.AugmentForDeployment(ctx, projectNs, "", linkedRefs)
+		if err != nil {
+			// Failing closed on augmentation would turn a policy read error
+			// into a deployment render error, which is worse than proceeding
+			// with the baseline explicit links. Log and continue.
+			slog.WarnContext(ctx, "policy augmentor failed, falling back to baseline linked refs",
+				slog.String("projectNs", projectNs),
+				slog.Any("error", err),
+			)
+		} else {
+			effective = augmented
+		}
+	}
+	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, effective, a.walker)
+}
+
+// ListAncestorTemplateSourcesForTarget is the HOL-557 preferred entry point:
+// it passes the target identity through so REQUIRE/EXCLUDE rules can evaluate
+// project_pattern and deployment_pattern. Callers that need the old signature
+// (which cannot scope by target) should migrate as their handlers land.
+func (a *AncestorTemplateResolver) ListAncestorTemplateSourcesForTarget(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
+	effective := linkedRefs
+	if a.augmentor != nil {
+		augmented, err := a.augmentor.AugmentForDeployment(ctx, projectNs, deploymentName, linkedRefs)
+		if err != nil {
+			slog.WarnContext(ctx, "policy augmentor failed, falling back to baseline linked refs",
+				slog.String("projectNs", projectNs),
+				slog.String("deployment", deploymentName),
+				slog.Any("error", err),
+			)
+		} else {
+			effective = augmented
+		}
+	}
+	return a.k8s.ListAncestorTemplateSourcesForRender(ctx, projectNs, effective, a.walker)
 }

@@ -303,17 +303,18 @@ describe('CreateTemplatePage', () => {
       expect(checkboxes.length).toBe(3)
     })
 
-    // HOL-555: `forced` templates are rendered checked and disabled so the
-    // linking UI reflects the backend's annotation-driven auto-inclusion
-    // until HOL-557 migrates to TemplatePolicy REQUIRE evaluation.
-    it('forced template checkbox is checked and disabled', () => {
+    // HOL-557 removed LinkableTemplate.forced; policy-driven forcing is
+    // now target-scoped and surfaces through the GetDeploymentPolicyState /
+    // GetProjectTemplatePolicyState RPCs. The old "always applied" badge
+    // and checked+disabled behavior on the linkable list is gone. The
+    // checkbox starts unchecked so the user can link explicitly.
+    it('linkable template checkbox defaults to unchecked (HOL-557)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
       const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(checkbox).toBeChecked()
-      expect(checkbox).toBeDisabled()
-      expect(screen.getByText(/always applied/i)).toBeInTheDocument()
+      expect(checkbox).not.toBeChecked()
+      expect(checkbox).not.toBeDisabled()
     })
 
     it('non-forced template checkboxes are unchecked by default', () => {

@@ -82,6 +82,14 @@ service TemplateService {
   // complementary to Template.defaults on list/get responses, which is retained
   // for backwards compatibility.
   rpc GetTemplateDefaults(GetTemplateDefaultsRequest) returns (GetTemplateDefaultsResponse);
+
+  // GetProjectTemplatePolicyState returns the current, last-applied, and diff
+  // of the effective TemplatePolicy-resolved render set for a project-scope
+  // template. The RPC rejects non-project scopes with InvalidArgument because
+  // TemplatePolicy rules currently match only project targets. Reads the
+  // applied set from the folder-namespace drift store; never from a
+  // project-namespace annotation (HOL-557 storage-isolation rule).
+  rpc GetProjectTemplatePolicyState(GetProjectTemplatePolicyStateRequest) returns (GetProjectTemplatePolicyStateResponse);
 }
 
 // TemplateScope identifies the hierarchy level at which a template is stored.
@@ -198,6 +206,20 @@ message Template {
   // version is the current semver version string (e.g. "1.2.3") of this
   // template. Empty means the template has no published version yet.
   string version = 10;
+  // policy_drift is populated for project-scope templates only. True when the
+  // current TemplatePolicy-resolved render set differs from the render set
+  // recorded at the last successful create or update. The authoritative
+  // applied set lives in the folder namespace (HOL-557 storage-isolation
+  // rule). For org- and folder-scope templates this field is always false
+  // because policy rules are evaluated against project targets, not against
+  // ancestor templates themselves. Callers that need the full before/after
+  // diff use GetProjectTemplatePolicyState.
+  //
+  // The ticket's acceptance criteria offered (a) a bool on the existing read
+  // responses or (b) a dedicated ProjectTemplateStatusSummary message.
+  // Option (a) is chosen here because Template is already a small message and
+  // adding a fresh summary for a single bool would be gratuitous.
+  bool policy_drift = 11;
 }
 
 // ListTemplatesRequest requests all templates visible in the given scope.
@@ -383,17 +405,16 @@ message LinkableTemplate {
   // the linking UI can display version choices without a separate RPC call.
   repeated Release releases = 6;
 
-  // forced signals that this template is unconditionally unified with every
-  // project at render time, so the linking UI MUST render it as selected and
-  // disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
-  // the backend still auto-includes mandatory ancestor templates via the
-  // annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
-  // TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
-  // this field becomes server-populated from policy evaluation.
-  //
-  // Clients MUST NOT treat `forced=true` as a permission to author the
-  // template — it only describes render-time behavior for the UI.
-  bool forced = 7;
+  // Field 7 previously held `bool forced`, a transitional HOL-555 → HOL-557
+  // field that surfaced annotation-driven mandatory auto-inclusion. In HOL-557
+  // mandatory auto-inclusion is removed and TemplatePolicy REQUIRE rules are
+  // the only "always applied" mechanism. Because REQUIRE rules are scoped by
+  // project/deployment patterns, whether a template is forced at render time
+  // depends on the target — which LinkableTemplate does not describe. Clients
+  // that need "will this render?" semantics for a specific target call
+  // GetDeploymentPolicyState or GetProjectTemplatePolicyState instead.
+  reserved 7;
+  reserved "forced";
 }
 
 // ListLinkableTemplatesResponse returns the linkable templates.
@@ -513,4 +534,45 @@ message CheckUpdatesRequest {
 message CheckUpdatesResponse {
   // updates lists each linked template that has an available update.
   repeated TemplateUpdate updates = 1;
+}
+
+// ProjectTemplatePolicyState describes the current TemplatePolicy-resolved
+// render set for a project-scope template, the last applied render set, and
+// the diff between them. Returned by GetProjectTemplatePolicyState. See
+// DeploymentPolicyState in deployments.proto for the Deployment sibling; the
+// two messages carry identical fields but have distinct names because
+// templates.proto and deployments.proto cannot share a single `PolicyState`
+// without breaking protobuf's no-cyclic-imports rule.
+message ProjectTemplatePolicyState {
+  // applied_set is the render set serialized at the last successful create or
+  // update of the project-scope template. Empty means the template has not yet
+  // been rendered through the policy-aware pipeline.
+  repeated LinkedTemplateRef applied_set = 1;
+  // current_set is the resolver output against today's policies and today's
+  // linked templates.
+  repeated LinkedTemplateRef current_set = 2;
+  // added_refs are templates present in current_set but not in applied_set.
+  repeated LinkedTemplateRef added_refs = 3;
+  // removed_refs are templates present in applied_set but not in current_set.
+  repeated LinkedTemplateRef removed_refs = 4;
+  // drift is true when applied_set and current_set differ (equivalent to
+  // `len(added_refs)+len(removed_refs) > 0`). Callers that want just the bool
+  // can use Template.policy_drift on list-view rows.
+  bool drift = 5;
+}
+
+// GetProjectTemplatePolicyStateRequest requests the policy state for a
+// project-scope template. The scope MUST be TEMPLATE_SCOPE_PROJECT; other
+// scopes are rejected with InvalidArgument because TemplatePolicy rules only
+// match project targets.
+message GetProjectTemplatePolicyStateRequest {
+  // scope identifies the owning scope. TEMPLATE_SCOPE_PROJECT only.
+  TemplateScopeRef scope = 1;
+  // name is the template name.
+  string name = 2;
+}
+
+// GetProjectTemplatePolicyStateResponse carries the policy state.
+message GetProjectTemplatePolicyStateResponse {
+  ProjectTemplatePolicyState state = 1;
 }

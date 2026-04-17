@@ -4,6 +4,13 @@ import "holos/console/v1/rbac.proto";
 import "google/protobuf/timestamp.proto";
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
 
+// NOTE: deployments.proto DOES NOT import templates.proto. The
+// templates.proto → deployments.proto direction already exists (TemplateDefaults
+// uses EnvVar), and protobuf disallows cyclic imports. This is why
+// DeploymentPolicyState is defined here as its own message rather than sharing
+// a single `PolicyState` type with templates.proto — the shapes are identical
+// but the names differ so each file stays dependency-correct (HOL-557).
+
 // DeploymentService manages application deployments.
 service DeploymentService {
   rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse);
@@ -26,6 +33,12 @@ service DeploymentService {
   // project input, and rendered output for a deployment. This gives the frontend
   // everything needed to display the template preview on the deployment detail page.
   rpc GetDeploymentRenderPreview(GetDeploymentRenderPreviewRequest) returns (GetDeploymentRenderPreviewResponse);
+  // GetDeploymentPolicyState returns the current, last-applied, and diff of the
+  // effective TemplatePolicy-resolved render set for a deployment. Drives drift
+  // indicators in the UI. Reads the applied set from the folder-namespace
+  // drift store managed by the policy resolver; never from a project-namespace
+  // annotation (HOL-557 storage-isolation rule).
+  rpc GetDeploymentPolicyState(GetDeploymentPolicyStateRequest) returns (GetDeploymentPolicyStateResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -292,6 +305,14 @@ message DeploymentStatusSummary {
   // rows and GetDeploymentStatusSummary so the UI can render a link without
   // dispatching a per-row render-preview RPC.
   optional DeploymentOutput output = 8;
+  // policy_drift is true when the current TemplatePolicy-resolved render set
+  // differs from the render set recorded at the last successful create or
+  // update. The authoritative applied set lives in the folder namespace
+  // (HOL-557 storage-isolation rule): a project owner has write access to the
+  // project namespace and could otherwise clear a drift flag stored there.
+  // List-view callers read only this bool; full before/after diffs come from
+  // GetDeploymentPolicyState.
+  bool policy_drift = 9;
 }
 
 message GetDeploymentStatusSummaryRequest {
@@ -423,4 +444,70 @@ message DeploymentOutput {
   // url is the primary URL the UI should show for the deployment. Empty when
   // the template has no meaningful URL to publish.
   string url = 1;
+}
+
+// PolicyTemplateRef is a scope-qualified reference to a template as surfaced by
+// the policy-state RPCs. It mirrors the wire shape of the authoritative
+// LinkedTemplateRef (in templates.proto) but is declared locally because
+// deployments.proto cannot import templates.proto without creating a cycle —
+// see the top-of-file NOTE. A future proto refactor may unify these by moving
+// LinkedTemplateRef (and a few other leaf types) to a dedicated types file, at
+// which point PolicyTemplateRef becomes an alias and eventually a reserved
+// message name.
+message PolicyTemplateRef {
+  // scope is the numeric TemplateScope value (see templates.proto) carried as
+  // a plain int32 so deployments.proto does not need to import templates.proto.
+  int32 scope = 1;
+  // scope_name is the org/folder/project name for the referenced template.
+  string scope_name = 2;
+  // name is the template name.
+  string name = 3;
+  // version_constraint is a semver range string. Empty means no constraint.
+  string version_constraint = 4;
+}
+
+// DeploymentPolicyState describes the current TemplatePolicy-resolved render
+// set for a deployment, the last applied render set, and the diff between
+// them. Returned by GetDeploymentPolicyState.
+//
+// The `applied_set` value is always read from the folder-namespace drift
+// store managed by the policy resolver — never from a project-namespace
+// annotation. A project owner has write access to the project namespace and
+// could clear or rewrite an annotation stored there to mask drift, so the
+// authoritative drift state lives above the project level (HOL-557).
+//
+// This message is the Deployment-scoped sibling of ProjectTemplatePolicyState
+// (templates.proto). The two messages carry identical fields but have
+// different names because deployments.proto and templates.proto cannot share a
+// single `PolicyState` type without breaking protobuf's no-cyclic-imports
+// rule (templates.proto already imports deployments.proto for EnvVar).
+message DeploymentPolicyState {
+  // applied_set is the render set serialized at the last successful create
+  // or update of the deployment. Empty means the deployment has not yet been
+  // rendered through the policy-aware pipeline.
+  repeated PolicyTemplateRef applied_set = 1;
+  // current_set is the resolver output against today's policies and today's
+  // linked templates.
+  repeated PolicyTemplateRef current_set = 2;
+  // added_refs are templates present in current_set but not in applied_set.
+  repeated PolicyTemplateRef added_refs = 3;
+  // removed_refs are templates present in applied_set but not in current_set.
+  repeated PolicyTemplateRef removed_refs = 4;
+  // drift is true when applied_set and current_set differ (equivalent to
+  // `len(added_refs)+len(removed_refs) > 0`). Callers that want just the bool
+  // can use DeploymentStatusSummary.policy_drift on list-view rows.
+  bool drift = 5;
+}
+
+// GetDeploymentPolicyStateRequest requests the policy state for a deployment.
+message GetDeploymentPolicyStateRequest {
+  // project is the project namespace that owns the deployment.
+  string project = 1;
+  // name is the deployment name.
+  string name = 2;
+}
+
+// GetDeploymentPolicyStateResponse carries the deployment's policy state.
+message GetDeploymentPolicyStateResponse {
+  DeploymentPolicyState state = 1;
 }

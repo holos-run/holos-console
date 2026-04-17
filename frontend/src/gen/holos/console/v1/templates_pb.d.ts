@@ -285,6 +285,25 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
    * @generated from field: string version = 10;
    */
   version: string;
+
+  /**
+   * policy_drift is populated for project-scope templates only. True when the
+   * current TemplatePolicy-resolved render set differs from the render set
+   * recorded at the last successful create or update. The authoritative
+   * applied set lives in the folder namespace (HOL-557 storage-isolation
+   * rule). For org- and folder-scope templates this field is always false
+   * because policy rules are evaluated against project targets, not against
+   * ancestor templates themselves. Callers that need the full before/after
+   * diff use GetProjectTemplatePolicyState.
+   *
+   * The ticket's acceptance criteria offered (a) a bool on the existing read
+   * responses or (b) a dedicated ProjectTemplateStatusSummary message.
+   * Option (a) is chosen here because Template is already a small message and
+   * adding a fresh summary for a single bool would be gratuitous.
+   *
+   * @generated from field: bool policy_drift = 11;
+   */
+  policyDrift: boolean;
 };
 
 /**
@@ -797,22 +816,6 @@ export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplat
    * @generated from field: repeated holos.console.v1.Release releases = 6;
    */
   releases: Release[];
-
-  /**
-   * forced signals that this template is unconditionally unified with every
-   * project at render time, so the linking UI MUST render it as selected and
-   * disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
-   * the backend still auto-includes mandatory ancestor templates via the
-   * annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
-   * TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
-   * this field becomes server-populated from policy evaluation.
-   *
-   * Clients MUST NOT treat `forced=true` as a permission to author the
-   * template — it only describes render-time behavior for the UI.
-   *
-   * @generated from field: bool forced = 7;
-   */
-  forced: boolean;
 };
 
 /**
@@ -1203,6 +1206,113 @@ export declare type CheckUpdatesResponse = Message<"holos.console.v1.CheckUpdate
 export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse>;
 
 /**
+ * ProjectTemplatePolicyState describes the current TemplatePolicy-resolved
+ * render set for a project-scope template, the last applied render set, and
+ * the diff between them. Returned by GetProjectTemplatePolicyState. See
+ * DeploymentPolicyState in deployments.proto for the Deployment sibling; the
+ * two messages carry identical fields but have distinct names because
+ * templates.proto and deployments.proto cannot share a single `PolicyState`
+ * without breaking protobuf's no-cyclic-imports rule.
+ *
+ * @generated from message holos.console.v1.ProjectTemplatePolicyState
+ */
+export declare type ProjectTemplatePolicyState = Message<"holos.console.v1.ProjectTemplatePolicyState"> & {
+  /**
+   * applied_set is the render set serialized at the last successful create or
+   * update of the project-scope template. Empty means the template has not yet
+   * been rendered through the policy-aware pipeline.
+   *
+   * @generated from field: repeated holos.console.v1.LinkedTemplateRef applied_set = 1;
+   */
+  appliedSet: LinkedTemplateRef[];
+
+  /**
+   * current_set is the resolver output against today's policies and today's
+   * linked templates.
+   *
+   * @generated from field: repeated holos.console.v1.LinkedTemplateRef current_set = 2;
+   */
+  currentSet: LinkedTemplateRef[];
+
+  /**
+   * added_refs are templates present in current_set but not in applied_set.
+   *
+   * @generated from field: repeated holos.console.v1.LinkedTemplateRef added_refs = 3;
+   */
+  addedRefs: LinkedTemplateRef[];
+
+  /**
+   * removed_refs are templates present in applied_set but not in current_set.
+   *
+   * @generated from field: repeated holos.console.v1.LinkedTemplateRef removed_refs = 4;
+   */
+  removedRefs: LinkedTemplateRef[];
+
+  /**
+   * drift is true when applied_set and current_set differ (equivalent to
+   * `len(added_refs)+len(removed_refs) > 0`). Callers that want just the bool
+   * can use Template.policy_drift on list-view rows.
+   *
+   * @generated from field: bool drift = 5;
+   */
+  drift: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.ProjectTemplatePolicyState.
+ * Use `create(ProjectTemplatePolicyStateSchema)` to create a new message.
+ */
+export declare const ProjectTemplatePolicyStateSchema: GenMessage<ProjectTemplatePolicyState>;
+
+/**
+ * GetProjectTemplatePolicyStateRequest requests the policy state for a
+ * project-scope template. The scope MUST be TEMPLATE_SCOPE_PROJECT; other
+ * scopes are rejected with InvalidArgument because TemplatePolicy rules only
+ * match project targets.
+ *
+ * @generated from message holos.console.v1.GetProjectTemplatePolicyStateRequest
+ */
+export declare type GetProjectTemplatePolicyStateRequest = Message<"holos.console.v1.GetProjectTemplatePolicyStateRequest"> & {
+  /**
+   * scope identifies the owning scope. TEMPLATE_SCOPE_PROJECT only.
+   *
+   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   */
+  scope?: TemplateScopeRef;
+
+  /**
+   * name is the template name.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectTemplatePolicyStateRequest.
+ * Use `create(GetProjectTemplatePolicyStateRequestSchema)` to create a new message.
+ */
+export declare const GetProjectTemplatePolicyStateRequestSchema: GenMessage<GetProjectTemplatePolicyStateRequest>;
+
+/**
+ * GetProjectTemplatePolicyStateResponse carries the policy state.
+ *
+ * @generated from message holos.console.v1.GetProjectTemplatePolicyStateResponse
+ */
+export declare type GetProjectTemplatePolicyStateResponse = Message<"holos.console.v1.GetProjectTemplatePolicyStateResponse"> & {
+  /**
+   * @generated from field: holos.console.v1.ProjectTemplatePolicyState state = 1;
+   */
+  state?: ProjectTemplatePolicyState;
+};
+
+/**
+ * Describes the message holos.console.v1.GetProjectTemplatePolicyStateResponse.
+ * Use `create(GetProjectTemplatePolicyStateResponseSchema)` to create a new message.
+ */
+export declare const GetProjectTemplatePolicyStateResponseSchema: GenMessage<GetProjectTemplatePolicyStateResponse>;
+
+/**
  * TemplateScope identifies the hierarchy level at which a template is stored.
  * (ADR 021 Decision 1)
  *
@@ -1417,6 +1527,21 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof GetTemplateDefaultsRequestSchema;
     output: typeof GetTemplateDefaultsResponseSchema;
+  },
+  /**
+   * GetProjectTemplatePolicyState returns the current, last-applied, and diff
+   * of the effective TemplatePolicy-resolved render set for a project-scope
+   * template. The RPC rejects non-project scopes with InvalidArgument because
+   * TemplatePolicy rules currently match only project targets. Reads the
+   * applied set from the folder-namespace drift store; never from a
+   * project-namespace annotation (HOL-557 storage-isolation rule).
+   *
+   * @generated from rpc holos.console.v1.TemplateService.GetProjectTemplatePolicyState
+   */
+  getProjectTemplatePolicyState: {
+    methodKind: "unary";
+    input: typeof GetProjectTemplatePolicyStateRequestSchema;
+    output: typeof GetProjectTemplatePolicyStateResponseSchema;
   },
 }>;
 

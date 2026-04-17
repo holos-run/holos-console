@@ -425,7 +425,11 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {orgTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
-                      const forced = !!t.forced
+                      // HOL-557 removed LinkableTemplate.forced; TemplatePolicy
+                      // REQUIRE rules are target-scoped and don't surface here
+                      // any more. The HOL-559 drift UI surfaces policy-driven
+                      // forcing on a per-target basis.
+                      const forced = false
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
@@ -485,7 +489,11 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {folderTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
-                      const forced = !!t.forced
+                      // HOL-557 removed LinkableTemplate.forced; TemplatePolicy
+                      // REQUIRE rules are target-scoped and don't surface here
+                      // any more. The HOL-559 drift UI surfaces policy-driven
+                      // forcing on a per-target basis.
+                      const forced = false
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox

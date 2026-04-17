@@ -287,8 +287,13 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                     // TemplatePolicy REQUIRE rules (HOL-557 / HOL-558) will
                     // replace the annotation-driven signal in the same
                     // field.
-                    const allLinked = linkableTemplates.filter(
-                      (t) => !!t.forced || linkedKeys.includes(keyOf(t)),
+                    // HOL-557 removed the `forced` field from LinkableTemplate;
+                    // TemplatePolicy REQUIRE rules are target-scoped and don't
+                    // surface on the linkable message. The explicit link list
+                    // is now the only thing this view drives from. Phase 5
+                    // (HOL-559) adds a REQUIRE-resolution UI pass.
+                    const allLinked = linkableTemplates.filter((t) =>
+                      linkedKeys.includes(keyOf(t)),
                     )
                     const dedupedLinked = allLinked.filter(
                       (t, i, arr) => arr.findIndex((x) => keyOf(x) === keyOf(t)) === i,
@@ -301,7 +306,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
                             const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
-                            const forced = !!t.forced
+                            // HOL-557 removed LinkableTemplate.forced; the
+                            // read-only badge is permanently off here pending
+                            // the HOL-559 drift UI that shows policy-driven
+                            // forcing on a per-target basis.
+                            const forced = false
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
                               (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
@@ -495,7 +504,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                 templates.map((t) => {
                   const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                   const hasReleases = t.releases && t.releases.length > 0
-                  const forced = !!t.forced
+                  // HOL-557 removed LinkableTemplate.forced — the checkbox
+                  // cannot be pre-locked by ancestor-scoped mandatory flags
+                  // any more. The HOL-559 drift UI surfaces policy-driven
+                  // forcing per target instead.
+                  const forced = false
                   return (
                   <div key={key} className="flex items-start gap-2">
                     <Checkbox

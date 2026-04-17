@@ -575,36 +575,24 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
     })
 
-    // HOL-555 -> HOL-557 transition: during this window the backend
-    // resolver still auto-unifies ancestor templates carrying the
-    // legacy mandatory annotation (surfaced via `forced=true`). The
-    // detail page MUST reflect that by rendering those templates in the
-    // read-only listing so the effective template set is accurate.
-    it('shows forced ancestor template in read-only listing even when not explicitly linked', () => {
+    // HOL-557 removed LinkableTemplate.forced; policy-driven forcing is
+    // target-scoped and surfaces through GetDeploymentPolicyState /
+    // GetProjectTemplatePolicyState. The detail page no longer shows
+    // "forced" templates in the read-only list — only explicit links are
+    // displayed. Phase 5 (HOL-559) adds a drift UI that surfaces
+    // policy-driven forcing on a per-target basis.
+    it('shows None linked when no explicit links are configured (HOL-557)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
-      // reference-grant has forced=true; its pill should be visible.
-      expect(screen.getByText('Reference Grant')).toBeInTheDocument()
-      // And None-linked should NOT be shown, because the forced one counts.
-      expect(screen.queryByText(/None linked/i)).not.toBeInTheDocument()
+      // No explicit links and no forced auto-inclusion: the list says None.
+      expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
     })
 
-    it('renders Always applied badge on forced ancestor template pill', () => {
+    it('does not render Always applied badge anywhere (HOL-557 removed forced)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
-      render(<DeploymentTemplateDetailPage />)
-      // The read-only pill for the forced template is labeled
-      // "Always applied" (matching the new/edit dialog treatment).
-      expect(screen.getAllByText(/always applied/i).length).toBeGreaterThan(0)
-    })
-
-    it('does not render Always applied badge on non-forced linked templates', () => {
-      const nonForced = mockLinkable.map((t) => ({ ...t, forced: false }))
-      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: nonForced, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
       render(<DeploymentTemplateDetailPage />)
-      // No forced templates, so the Always applied badge is not shown.
       expect(screen.queryByText(/always applied/i)).not.toBeInTheDocument()
     })
 
@@ -655,18 +643,19 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
-    // HOL-555: `forced` templates render checked and disabled so the UI
-    // reflects the backend's annotation-driven auto-inclusion until HOL-557
-    // migrates this behavior to TemplatePolicy REQUIRE.
-    it('forced template checkbox in dialog is checked and disabled', async () => {
+    // HOL-557 removed LinkableTemplate.forced; policy-driven forcing is
+    // target-scoped and surfaces through GetDeploymentPolicyState /
+    // GetProjectTemplatePolicyState instead. The linkable-list dialog
+    // starts every row unchecked so users can link explicitly.
+    it('linkable template checkbox in dialog defaults to unchecked (HOL-557)', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
       const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(checkbox).toBeChecked()
-      expect(checkbox).toBeDisabled()
+      expect(checkbox).not.toBeChecked()
+      expect(checkbox).not.toBeDisabled()
     })
 
     it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {

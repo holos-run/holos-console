@@ -237,68 +237,12 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		}
 	})
 
-	// HOL-555: `forced` reflects the annotation-driven auto-inclusion that
-	// the backend resolver still performs for mandatory templates at render
-	// time. The linking UI uses this flag to render the checkbox as
-	// checked + disabled so the UI matches the backend's effective behavior
-	// until HOL-557 migrates auto-inclusion to TemplatePolicy REQUIRE.
-	t.Run("forced=true when template has mandatory annotation", func(t *testing.T) {
-		orgNsObj := orgNS(org)
-		projectNsObj := projectNS(project)
-		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", true)
-
-		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
-		walker := &stubAncestorWalker{
-			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
-		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
-
-		ctx := authedCtx(ownerEmail, nil)
-		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
-		})
-
-		resp, err := handler.ListLinkableTemplates(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		if len(resp.Msg.Templates) != 1 {
-			t.Fatalf("expected 1 linkable template, got %d", len(resp.Msg.Templates))
-		}
-		lt := resp.Msg.Templates[0]
-		if !lt.Forced {
-			t.Errorf("expected forced=true for mandatory template, got false")
-		}
-	})
-
-	t.Run("forced=false when template has no mandatory annotation", func(t *testing.T) {
-		orgNsObj := orgNS(org)
-		projectNsObj := projectNS(project)
-		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", false)
-
-		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
-		walker := &stubAncestorWalker{
-			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
-		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
-
-		ctx := authedCtx(ownerEmail, nil)
-		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
-		})
-
-		resp, err := handler.ListLinkableTemplates(ctx, req)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		if len(resp.Msg.Templates) != 1 {
-			t.Fatalf("expected 1 linkable template, got %d", len(resp.Msg.Templates))
-		}
-		lt := resp.Msg.Templates[0]
-		if lt.Forced {
-			t.Errorf("expected forced=false for non-mandatory template, got true")
-		}
-	})
+	// HOL-557 removed the transitional `forced` field from LinkableTemplate:
+	// TemplatePolicy REQUIRE rules are target-scoped (per project, per
+	// deployment) so a per-linkable-template bool cannot capture the render
+	// behavior correctly. The linking UI now surfaces drift through the
+	// per-target GetDeploymentPolicyState / GetProjectTemplatePolicyState
+	// RPCs. The "mandatory annotation vs linkable behavior" assertions that
+	// used to live here are replaced by the per-target resolver coverage in
+	// console/policyresolver/resolver_test.go.
 }

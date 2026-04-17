@@ -493,8 +493,12 @@ func orgLinkedRefWithConstraint(org, name, constraint string) *consolev1.LinkedT
 }
 
 func TestListOrgTemplateSourcesForRender(t *testing.T) {
-	t.Run("mandatory+enabled template always included without linking", func(t *testing.T) {
+	t.Run("mandatory annotation no longer triggers auto-inclusion after HOL-557", func(t *testing.T) {
 		ns := orgNS("my-org")
+		// Even when the legacy `mandatory` annotation is still set on the
+		// ConfigMap, ListOrgTemplateSourcesForRender MUST ignore it — the
+		// render set is driven purely by explicit linkedRefs now (which the
+		// caller expands with TemplatePolicy REQUIRE injections upstream).
 		cm := orgTemplateConfigMap("my-org", "policy", "Policy", "", "// policy", true, true)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -503,11 +507,8 @@ func TestListOrgTemplateSourcesForRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != "// policy" {
-			t.Errorf("unexpected source: %q", sources[0])
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (mandatory annotation no longer auto-includes), got %d", len(sources))
 		}
 	})
 
@@ -619,12 +620,16 @@ func TestListOrgTemplateSourcesForRender(t *testing.T) {
 		}
 	})
 
-	t.Run("mandatory template uses live source not versioned resolution", func(t *testing.T) {
+	t.Run("mandatory-annotated template not auto-included after HOL-557", func(t *testing.T) {
+		// HOL-557: the `mandatory` annotation is no longer a driver. The
+		// template appears only when a linked ref names it. A release
+		// exists here as a regression guard — the previous behavior
+		// deliberately ignored releases for mandatory templates and used
+		// the live source, which no longer applies.
 		ns := orgNS("my-org")
 		liveCue := "// mandatory live"
 		releaseCue := "// mandatory release"
 		cm := orgTemplateConfigMap("my-org", "policy", "Policy", "", liveCue, true, true)
-		// Create a release (should be ignored for mandatory non-linked templates).
 		v, _ := ParseVersion("1.0.0")
 		releaseCM := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -647,16 +652,14 @@ func TestListOrgTemplateSourcesForRender(t *testing.T) {
 		fakeClient := fake.NewClientset(ns, cm, releaseCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		// No linked refs — mandatory template is included automatically.
+		// No linked refs and no policy augmentation — the render set is empty
+		// regardless of the `mandatory` annotation.
 		sources, err := k8s.ListOrgTemplateSourcesForRender(context.Background(), "my-org", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source, got %d", len(sources))
-		}
-		if sources[0] != liveCue {
-			t.Errorf("expected live CUE source %q for mandatory template, got %q", liveCue, sources[0])
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (mandatory annotation no longer auto-includes), got %d", len(sources))
 		}
 	})
 }
@@ -742,7 +745,12 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 		}
 	})
 
-	t.Run("mandatory folder template included without explicit linking", func(t *testing.T) {
+	t.Run("mandatory-annotated folder template no longer auto-included after HOL-557", func(t *testing.T) {
+		// HOL-557: the `mandatory` annotation is gone as a render-set
+		// driver. A folder template with the legacy flag still set must be
+		// absent from the render output when no explicit link names it.
+		// TemplatePolicy REQUIRE rules (exercised in
+		// console/policyresolver/resolver_test.go) replace this behavior.
 		orgNsObj := orgNS("my-org")
 		fldNsObj := folderNS("payments")
 		prjNsObj := projectNS("my-project")
@@ -756,16 +764,12 @@ func TestListAncestorTemplateSourcesForRender(t *testing.T) {
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
 
-		// No linked refs — mandatory folder template should still be included.
 		sources, err := k8s.ListAncestorTemplateSourcesForRender(context.Background(), "prj-my-project", nil, walker)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source (mandatory folder template), got %d", len(sources))
-		}
-		if sources[0] != mandatoryCue {
-			t.Errorf("expected %q, got %q", mandatoryCue, sources[0])
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources (mandatory annotation no longer auto-includes), got %d", len(sources))
 		}
 	})
 

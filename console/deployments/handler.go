@@ -89,6 +89,37 @@ type AncestorTemplateProvider interface {
 	ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
 }
 
+// TargetedAncestorTemplateProvider is the HOL-557 flavor of
+// AncestorTemplateProvider that carries the target's identity (deployment
+// name) through so TemplatePolicy REQUIRE/EXCLUDE rules can evaluate
+// project_pattern and deployment_pattern against it. Handlers that wire a
+// provider implementing this interface get policy-aware rendering; providers
+// that only implement AncestorTemplateProvider degrade to the pre-policy
+// behavior (baseline linked refs only).
+type TargetedAncestorTemplateProvider interface {
+	AncestorTemplateProvider
+	ListAncestorTemplateSourcesForTarget(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
+}
+
+// PolicyStateProvider evaluates the TemplatePolicy resolver for a
+// (project, target) tuple and returns the current and applied render sets
+// so the deployment handler can report drift. Wired from console.go to the
+// policyresolver package; nil when the cluster is unavailable.
+type PolicyStateProvider interface {
+	// CurrentRenderSet returns the TemplatePolicy-resolved render set for a
+	// deployment against today's policies and today's baseLinkedRefs.
+	CurrentRenderSet(ctx context.Context, project, deploymentName string, baseLinkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, error)
+	// AppliedRenderSet returns the render set recorded at the deployment's
+	// last successful create or update, read from the folder-namespace drift
+	// store. Returns (nil, nil) when nothing has been recorded yet (treat as
+	// "applied == empty" for drift computation).
+	AppliedRenderSet(ctx context.Context, project, deploymentName string) ([]*consolev1.LinkedTemplateRef, error)
+	// RecordAppliedRenderSet persists the given refs as the deployment's
+	// last-applied render set in the folder-namespace drift store. Called
+	// from Create/Update after a successful render.
+	RecordAppliedRenderSet(ctx context.Context, project, deploymentName string, refs []*consolev1.LinkedTemplateRef) error
+}
+
 // ResourceApplier applies and cleans up K8s resources for a deployment.
 // Each resource carries its own metadata.namespace; Apply and Reconcile use
 // per-resource namespaces rather than a single namespace parameter.
@@ -122,6 +153,7 @@ type Handler struct {
 	ancestorWalker           AncestorWalker
 	ancestorTemplateProvider AncestorTemplateProvider
 	statusCache              statuscache.Cache
+	policyState              PolicyStateProvider
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -162,19 +194,42 @@ func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
 	return h
 }
 
+// WithPolicyStateProvider wires the TemplatePolicy drift-state provider.
+// When set, DeploymentStatusSummary surfaces policy_drift on list views and
+// GetDeploymentPolicyState is backed by it. A nil provider means all
+// drift-related responses leave the flag at false — safe, just uninformative.
+func (h *Handler) WithPolicyStateProvider(p PolicyStateProvider) *Handler {
+	h.policyState = p
+	return h
+}
+
 // resolveAncestorTemplateSources resolves platform template CUE sources from
 // the full ancestor chain when an AncestorTemplateProvider is configured.
 // Returns (sources, true) on success, or (nil, false) when no provider is
 // configured or the walk fails.
-func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
+//
+// When the provider also implements TargetedAncestorTemplateProvider (the
+// HOL-557 interface), the deployment name is threaded through so
+// TemplatePolicy REQUIRE/EXCLUDE rules can evaluate project_pattern and
+// deployment_pattern against it.
+func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
 	if h.ancestorTemplateProvider == nil {
 		return nil, false
 	}
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	sources, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, linkedRefs)
+	var (
+		sources []string
+		err     error
+	)
+	if targeted, ok := h.ancestorTemplateProvider.(TargetedAncestorTemplateProvider); ok {
+		sources, err = targeted.ListAncestorTemplateSourcesForTarget(ctx, projectNs, deploymentName, linkedRefs)
+	} else {
+		sources, err = h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, linkedRefs)
+	}
 	if err != nil {
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
+			slog.String("deployment", deploymentName),
 			slog.Any("error", err),
 		)
 		return nil, false
@@ -194,8 +249,8 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 //
 // When no AncestorTemplateProvider is configured, falls back to Render
 // (deployment template only, no platform template unification).
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
+func (h *Handler) renderResources(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
+	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
 		if len(sources) > 0 {
 			return h.renderer.RenderWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
 		}
@@ -209,8 +264,8 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 // renderResourcesGrouped mirrors renderResources but returns resources grouped
 // by origin (platform vs project). Used by GetDeploymentRenderPreview to populate
 // the per-collection response fields.
-func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
-	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
+func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
+	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
 		if len(sources) > 0 {
 			return h.renderer.RenderGroupedWithAncestorTemplates(ctx, cueSource, sources, platform, projectInput)
 		}
@@ -258,7 +313,7 @@ func (h *Handler) ListDeployments(
 			// Phase stays UNSPECIFIED exactly as GetDeploymentStatusSummary
 			// does on a cache miss so listing and single-row polling share
 			// the same derivation path.
-			if cm.Annotations[OutputURLAnnotation] != "" {
+			if cm.Annotations[OutputURLAnnotation] != "" || h.policyState != nil {
 				summary = &consolev1.DeploymentStatusSummary{
 					Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
 				}
@@ -266,6 +321,14 @@ func (h *Handler) ListDeployments(
 		}
 		if summary != nil {
 			mergeOutputURLAnnotation(summary, cm)
+			// Compute policy_drift once per row. This is a cheap pair of
+			// reads against the folder-namespace drift store and the
+			// resolver; it fires for every row so keep both operations
+			// O(policies × ancestors), which is linear in cluster state.
+			if h.policyState != nil {
+				baseline := linkedRefsForDeployment(ctx, h.templateResolver, project, cm.Data[TemplateKey])
+				summary.PolicyDrift = h.computePolicyDrift(ctx, project, cm.Name, baseline)
+			}
 			dep.StatusSummary = summary
 		}
 		deployments = append(deployments, dep)
@@ -323,16 +386,21 @@ func (h *Handler) GetDeployment(
 	deployment := configMapToDeployment(cm, project)
 	ns := h.k8s.Resolver.ProjectNamespace(project)
 	summary, ok := h.summaryFromCache(ns, cm.Name)
-	if !ok && cm.Annotations[OutputURLAnnotation] != "" {
-		// Cache miss, but we have a cached output URL to surface. Mirror
-		// ListDeployments and GetDeploymentStatusSummary by synthesizing
-		// an UNSPECIFIED summary so the frontend still receives the URL.
+	if !ok && (cm.Annotations[OutputURLAnnotation] != "" || h.policyState != nil) {
+		// Cache miss, but we have a cached output URL or drift state to
+		// surface. Mirror ListDeployments and GetDeploymentStatusSummary by
+		// synthesizing an UNSPECIFIED summary so the frontend still receives
+		// the extra fields.
 		summary = &consolev1.DeploymentStatusSummary{
 			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
 		}
 	}
 	if summary != nil {
 		mergeOutputURLAnnotation(summary, cm)
+		if h.policyState != nil {
+			baseline := linkedRefsForDeployment(ctx, h.templateResolver, project, cm.Data[TemplateKey])
+			summary.PolicyDrift = h.computePolicyDrift(ctx, project, name, baseline)
+		}
 		deployment.StatusSummary = summary
 	}
 
@@ -437,7 +505,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplates)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplates)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -471,6 +539,11 @@ func (h *Handler) CreateDeployment(
 				)
 			}
 		}
+		// Record the applied render set to the folder-namespace drift store
+		// so future reads can report policy_drift. A failure here is logged
+		// but never replaces the successful render — drift detection is a
+		// read-side convenience, not a correctness invariant.
+		h.recordAppliedRenderSet(ctx, project, name, linkedOrgTemplates)
 	}
 
 	slog.InfoContext(ctx, "deployment created",
@@ -597,7 +670,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -640,6 +713,9 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", err),
 			)
 		}
+		// Record the new render set so future drift checks compare against
+		// the right baseline.
+		h.recordAppliedRenderSet(ctx, project, name, linkedOrgTemplatesUpdate)
 	}
 
 	slog.InfoContext(ctx, "deployment updated",
@@ -899,7 +975,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	var grouped *GroupedResources
 	if h.renderer != nil {
 		var renderErr error
-		grouped, renderErr = h.renderResourcesGrouped(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		grouped, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -1378,4 +1454,246 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// recordAppliedRenderSet persists the effective render set for a deployment
+// to the folder-namespace drift store. No-op when no PolicyStateProvider is
+// wired; failures are logged at warn level and never fail the caller — the
+// render already succeeded, and drift detection is a read-side convenience.
+//
+// The baseline refs are resolved through the provider so the recorded set
+// matches what the resolver would return today, capturing REQUIRE injections
+// and EXCLUDE removals rather than just the raw baseline.
+func (h *Handler) recordAppliedRenderSet(ctx context.Context, project, name string, baseLinkedRefs []*consolev1.LinkedTemplateRef) {
+	if h.policyState == nil {
+		return
+	}
+	effective, err := h.policyState.CurrentRenderSet(ctx, project, name, baseLinkedRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "policy render-set resolution failed; skipping drift store update",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if err := h.policyState.RecordAppliedRenderSet(ctx, project, name, effective); err != nil {
+		slog.WarnContext(ctx, "failed to record applied render set; drift may appear until next write",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+	}
+}
+
+// computePolicyDrift reports whether today's resolver output differs from
+// the last-recorded applied set. Returns false on any error so callers can
+// unconditionally surface the bool without a nested error check; the error
+// is logged for operator visibility.
+func (h *Handler) computePolicyDrift(ctx context.Context, project, name string, baseLinkedRefs []*consolev1.LinkedTemplateRef) bool {
+	if h.policyState == nil {
+		return false
+	}
+	applied, err := h.policyState.AppliedRenderSet(ctx, project, name)
+	if err != nil {
+		slog.WarnContext(ctx, "reading applied render set for drift check failed",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return false
+	}
+	current, err := h.policyState.CurrentRenderSet(ctx, project, name, baseLinkedRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "resolving current render set for drift check failed",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return false
+	}
+	return refsDiffer(applied, current)
+}
+
+// refsDiffer reports whether two []*LinkedTemplateRef slices differ by
+// (scope, scope_name, name). The resolver ignores version constraints when
+// computing drift because release resolution is a downstream concern.
+func refsDiffer(a, b []*consolev1.LinkedTemplateRef) bool {
+	keys := func(refs []*consolev1.LinkedTemplateRef) map[string]bool {
+		out := make(map[string]bool, len(refs))
+		for _, ref := range refs {
+			if ref == nil {
+				continue
+			}
+			out[ref.GetScope().String()+"/"+ref.GetScopeName()+"/"+ref.GetName()] = true
+		}
+		return out
+	}
+	ka, kb := keys(a), keys(b)
+	if len(ka) != len(kb) {
+		return true
+	}
+	for k := range ka {
+		if !kb[k] {
+			return true
+		}
+	}
+	return false
+}
+
+// GetDeploymentPolicyState implements the HOL-557 RPC. It returns the
+// current TemplatePolicy-resolved render set, the last-applied set from the
+// folder-namespace drift store, and the diff between them so the UI can
+// render a drift explanation.
+func (h *Handler) GetDeploymentPolicyState(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetDeploymentPolicyStateRequest],
+) (*connect.Response[consolev1.GetDeploymentPolicyStateResponse], error) {
+	project := req.Msg.GetProject()
+	name := req.Msg.GetName()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	cm, err := h.k8s.GetDeployment(ctx, project, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+	linkedOrgTemplates := linkedRefsForDeployment(ctx, h.templateResolver, project, cm.Data[TemplateKey])
+
+	state := &consolev1.DeploymentPolicyState{}
+	if h.policyState != nil {
+		applied, readErr := h.policyState.AppliedRenderSet(ctx, project, name)
+		if readErr != nil {
+			slog.WarnContext(ctx, "reading applied render set for policy state failed",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", readErr),
+			)
+		} else {
+			state.AppliedSet = policyRefsFromLinked(applied)
+		}
+		current, resolveErr := h.policyState.CurrentRenderSet(ctx, project, name, linkedOrgTemplates)
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "resolving current render set for policy state failed",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", resolveErr),
+			)
+		} else {
+			state.CurrentSet = policyRefsFromLinked(current)
+		}
+		added, removed := diffRefs(applied, linkedLinkedFromPolicy(state.CurrentSet))
+		state.AddedRefs = policyRefsFromLinked(added)
+		state.RemovedRefs = policyRefsFromLinked(removed)
+		state.Drift = len(state.AddedRefs) > 0 || len(state.RemovedRefs) > 0
+	}
+
+	return connect.NewResponse(&consolev1.GetDeploymentPolicyStateResponse{State: state}), nil
+}
+
+// diffRefs returns added/removed slices (keyed by scope+scope_name+name).
+func diffRefs(applied, current []*consolev1.LinkedTemplateRef) (added, removed []*consolev1.LinkedTemplateRef) {
+	appliedKeys := map[string]bool{}
+	for _, r := range applied {
+		if r != nil {
+			appliedKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] = true
+		}
+	}
+	currentKeys := map[string]bool{}
+	for _, r := range current {
+		if r != nil {
+			currentKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] = true
+		}
+	}
+	for _, r := range current {
+		if r == nil {
+			continue
+		}
+		if !appliedKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] {
+			added = append(added, r)
+		}
+	}
+	for _, r := range applied {
+		if r == nil {
+			continue
+		}
+		if !currentKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] {
+			removed = append(removed, r)
+		}
+	}
+	return added, removed
+}
+
+// policyRefsFromLinked converts []*LinkedTemplateRef (templates.proto) into
+// []*PolicyTemplateRef (deployments.proto). The two messages carry identical
+// fields; they are distinct types because deployments.proto cannot import
+// templates.proto (cyclic). See the NOTE at the top of deployments.proto.
+func policyRefsFromLinked(refs []*consolev1.LinkedTemplateRef) []*consolev1.PolicyTemplateRef {
+	out := make([]*consolev1.PolicyTemplateRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref == nil {
+			continue
+		}
+		out = append(out, &consolev1.PolicyTemplateRef{
+			Scope:             int32(ref.GetScope()),
+			ScopeName:         ref.GetScopeName(),
+			Name:              ref.GetName(),
+			VersionConstraint: ref.GetVersionConstraint(),
+		})
+	}
+	return out
+}
+
+// linkedLinkedFromPolicy is the inverse of policyRefsFromLinked, used when
+// we need to diff a current PolicyTemplateRef slice against an applied
+// LinkedTemplateRef slice.
+func linkedLinkedFromPolicy(refs []*consolev1.PolicyTemplateRef) []*consolev1.LinkedTemplateRef {
+	out := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref == nil {
+			continue
+		}
+		out = append(out, &consolev1.LinkedTemplateRef{
+			Scope:             consolev1.TemplateScope(ref.GetScope()),
+			ScopeName:         ref.GetScopeName(),
+			Name:              ref.GetName(),
+			VersionConstraint: ref.GetVersionConstraint(),
+		})
+	}
+	return out
+}
+
+// linkedRefsForDeployment looks up the baseline explicit link list for a
+// deployment by fetching its template ConfigMap and parsing the
+// linked-templates annotation. Returns nil on any lookup error; the caller
+// treats nil as an empty baseline, which is the safe default for drift
+// computation (a missing baseline can only look like a drift, not a false
+// "no drift").
+func linkedRefsForDeployment(ctx context.Context, templateResolver TemplateResolver, project, templateName string) []*consolev1.LinkedTemplateRef {
+	if templateResolver == nil || templateName == "" {
+		return nil
+	}
+	tmplCM, err := templateResolver.GetTemplate(ctx, project, templateName)
+	if err != nil {
+		slog.WarnContext(ctx, "looking up template for deployment baseline links failed",
+			slog.String("project", project),
+			slog.String("template", templateName),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	return linkedTemplateRefsFromAnnotation(tmplCM)
 }

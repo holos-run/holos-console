@@ -93,6 +93,48 @@ const (
 	// ConfigMaps (HOL-556).
 	AnnotationTemplatePolicyRules = "console.holos.run/template-policy-rules"
 
+	// ResourceTypeRenderState labels a ConfigMap whose sole purpose is to hold
+	// the last-applied TemplatePolicy render set for a single target (a
+	// ProjectTemplate or a Deployment). These ConfigMaps live exclusively in
+	// folder or organization namespaces, never in project namespaces, so a
+	// project owner cannot tamper with the drift marker the platform reads to
+	// detect policy drift (HOL-557 storage-isolation rule).
+	//
+	// We chose shape (b) from the HOL-557 acceptance criteria — a dedicated
+	// resource-typed ConfigMap per target — rather than an annotation on the
+	// per-deployment/per-template ConfigMap, because the per-target
+	// ConfigMaps live in the project namespace where the project owner can
+	// write to them. Storing the drift marker separately in the folder
+	// namespace keeps the invariant enforceable.
+	ResourceTypeRenderState = "render-state"
+
+	// AnnotationRenderStateTarget records the target kind a render-state
+	// ConfigMap belongs to. Values are the string form of the
+	// policyresolver.TargetKind enum ("project-template" or "deployment") so
+	// the storage helper can list the applied sets for a single kind without
+	// parsing the ConfigMap name.
+	AnnotationRenderStateTarget = "console.holos.run/render-state-target"
+
+	// AnnotationRenderStateProject records the project name a render-state
+	// ConfigMap's target belongs to. Folder-namespace ConfigMaps inherit the
+	// folder's scope from their own namespace; this annotation adds the
+	// missing project dimension so a single folder namespace can hold drift
+	// state for every project nested underneath it.
+	AnnotationRenderStateProject = "console.holos.run/render-state-project"
+
+	// AnnotationRenderStateTargetName records the target resource name
+	// (deployment name or project-template name) the render-state ConfigMap
+	// describes. The ConfigMap name itself is a deterministic hash of
+	// (project, target-kind, target-name) to stay within the 63-char DNS
+	// label limit; this annotation preserves the original target name for
+	// humans and for resolver lookups.
+	AnnotationRenderStateTargetName = "console.holos.run/render-state-target-name"
+
+	// RenderStateAppliedSetKey is the ConfigMap data key that holds the
+	// JSON-serialized slice of LinkedTemplateRef values for the last-applied
+	// render set. The resolver deserializes this on every drift check.
+	RenderStateAppliedSetKey = "applied-set.json"
+
 	// Release ConfigMap labels and annotations (ADR 024).
 
 	// ResourceTypeTemplateRelease is the resource type label value for release

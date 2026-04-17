@@ -96,6 +96,19 @@ type Handler struct {
 	walker               AncestorWalker
 	resolver             *resolver.Resolver
 	renderer             Renderer
+	policyState          ProjectTemplatePolicyStateProvider
+}
+
+// ProjectTemplatePolicyStateProvider is the handler's view of the policy
+// drift store for project-scope templates. It is implemented by
+// policyresolver.ProjectTemplatePolicyStateProvider; kept as an interface
+// here so this package does not import policyresolver directly (which would
+// create a cycle once a future phase wants the resolver to introspect
+// template defaults).
+type ProjectTemplatePolicyStateProvider interface {
+	CurrentRenderSet(ctx context.Context, project, templateName string, baseLinkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, error)
+	AppliedRenderSet(ctx context.Context, project, templateName string) ([]*consolev1.LinkedTemplateRef, error)
+	RecordAppliedRenderSet(ctx context.Context, project, templateName string, refs []*consolev1.LinkedTemplateRef) error
 }
 
 // NewHandler creates a TemplateService handler.
@@ -125,6 +138,15 @@ func (h *Handler) WithProjectGrantResolver(pgr ProjectGrantResolver) *Handler {
 // hierarchy-aware permission checks and ancestor template collection.
 func (h *Handler) WithAncestorWalker(w AncestorWalker) *Handler {
 	h.walker = w
+	return h
+}
+
+// WithPolicyStateProvider wires the project-template drift-state provider.
+// When set, Template.policy_drift is populated on project-scope read
+// responses and GetProjectTemplatePolicyState returns the full before/after
+// diff.
+func (h *Handler) WithPolicyStateProvider(p ProjectTemplatePolicyStateProvider) *Handler {
+	h.policyState = p
 	return h
 }
 
@@ -330,14 +352,20 @@ func (h *Handler) CreateTemplate(
 		}
 	}
 
-	// The `mandatory` field was removed from Template in HOL-555. Passing
-	// `false` keeps the existing ConfigMap annotation plumbing alive until the
-	// resolver adopts TemplatePolicy REQUIRE rules in HOL-557, at which point
-	// the annotation and the K8sClient parameter are deleted outright.
+	// The `mandatory` field was removed from Template in HOL-555; HOL-557
+	// removed its auto-inclusion behavior entirely. K8sClient still exposes
+	// the old parameter for backwards compatibility of the ConfigMap
+	// annotation; passing `false` leaves it unset on new templates. A future
+	// phase (HOL-560) removes the parameter outright.
 	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, false, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
+
+	// Record the effective render set for project-scope templates so the
+	// drift UI can detect changes later. Failures are logged; the template
+	// has already been created successfully at this point.
+	h.recordAppliedRenderSetForTemplate(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
 
 	slog.InfoContext(ctx, "template created",
 		slog.String("action", "template_create"),
@@ -438,6 +466,11 @@ func (h *Handler) UpdateTemplate(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
+
+	// Refresh the drift store so a subsequent read reports "no drift" until
+	// a policy or ancestor template changes. Only applies to project-scope
+	// templates; the helper is a no-op for org/folder scopes.
+	h.recordAppliedRenderSetForTemplate(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
 
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),
@@ -803,10 +836,11 @@ func (h *Handler) ListAncestorTemplates(
 }
 
 // collectAncestorTemplates walks the hierarchy and collects templates from all
-// ancestor scopes plus the current scope itself. The render set formula is:
-// (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
-// Results are returned in org→folders→project order for correct CUE unification.
-// If linkedRefs is nil, only mandatory+enabled templates are returned.
+// ancestor scopes. The HOL-557 render-set formula is `enabled AND ref IN
+// linkedRefs`; the caller is expected to have expanded linkedRefs with
+// TemplatePolicy REQUIRE/EXCLUDE output ahead of time. The `mandatory`
+// annotation no longer triggers auto-inclusion. Results are returned in
+// org→folders→project order for correct CUE unification.
 func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil
@@ -850,7 +884,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 		}
 
 		for _, cm := range cms {
-			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 			if !enabled {
 				continue
@@ -860,7 +893,7 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 				scopeName: ancestorName,
 				name:      cm.Name,
 			}
-			if !mandatory && !linkedSet[ref] {
+			if !linkedSet[ref] {
 				continue
 			}
 			tmplCopy := cm
@@ -1264,6 +1297,114 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	return update, nil
 }
 
+// GetProjectTemplatePolicyState returns the current and last-applied render
+// sets for a project-scope template, plus the diff. Reads the applied set
+// from the folder-namespace drift store (HOL-557 storage-isolation rule).
+// Non-project scopes are rejected with InvalidArgument because
+// TemplatePolicy rules today only match project targets.
+func (h *Handler) GetProjectTemplatePolicyState(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetProjectTemplatePolicyStateRequest],
+) (*connect.Response[consolev1.GetProjectTemplatePolicyStateResponse], error) {
+	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	if err != nil {
+		return nil, err
+	}
+	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("GetProjectTemplatePolicyState supports TEMPLATE_SCOPE_PROJECT only"))
+	}
+	name := req.Msg.GetName()
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
+	cm, err := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Baseline links come from the template's own linked-templates annotation.
+	var baseline []*consolev1.LinkedTemplateRef
+	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+		parsed, parseErr := unmarshalLinkedTemplates(raw)
+		if parseErr == nil {
+			baseline = parsed
+		}
+	}
+
+	state := &consolev1.ProjectTemplatePolicyState{}
+	if h.policyState != nil {
+		applied, readErr := h.policyState.AppliedRenderSet(ctx, scopeName, name)
+		if readErr != nil {
+			slog.WarnContext(ctx, "reading applied render set for template failed",
+				slog.String("scope", scope.String()),
+				slog.String("scopeName", scopeName),
+				slog.String("name", name),
+				slog.Any("error", readErr),
+			)
+		} else {
+			state.AppliedSet = applied
+		}
+		current, resolveErr := h.policyState.CurrentRenderSet(ctx, scopeName, name, baseline)
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "resolving current render set for template failed",
+				slog.String("scope", scope.String()),
+				slog.String("scopeName", scopeName),
+				slog.String("name", name),
+				slog.Any("error", resolveErr),
+			)
+		} else {
+			state.CurrentSet = current
+		}
+		state.AddedRefs, state.RemovedRefs = diffLinkedRefs(state.AppliedSet, state.CurrentSet)
+		state.Drift = len(state.AddedRefs) > 0 || len(state.RemovedRefs) > 0
+	}
+
+	return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{State: state}), nil
+}
+
+// diffLinkedRefs returns the symmetric difference of two LinkedTemplateRef
+// slices keyed by (scope, scope_name, name).
+func diffLinkedRefs(applied, current []*consolev1.LinkedTemplateRef) (added, removed []*consolev1.LinkedTemplateRef) {
+	appliedKeys := map[string]bool{}
+	for _, r := range applied {
+		if r != nil {
+			appliedKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] = true
+		}
+	}
+	currentKeys := map[string]bool{}
+	for _, r := range current {
+		if r != nil {
+			currentKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] = true
+		}
+	}
+	for _, r := range current {
+		if r == nil {
+			continue
+		}
+		if !appliedKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] {
+			added = append(added, r)
+		}
+	}
+	for _, r := range applied {
+		if r == nil {
+			continue
+		}
+		if !currentKeys[r.GetScope().String()+"/"+r.GetScopeName()+"/"+r.GetName()] {
+			removed = append(removed, r)
+		}
+	}
+	return added, removed
+}
+
 // extractScope validates and extracts the scope and scope_name from a TemplateScopeRef.
 func extractScope(ref *consolev1.TemplateScopeRef) (consolev1.TemplateScope, string, error) {
 	if ref == nil {
@@ -1341,4 +1482,36 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// recordAppliedRenderSetForTemplate persists the effective render set for a
+// project-scope template to the folder-namespace drift store. No-op for
+// org/folder scopes (the resolver ignores them today) and when no
+// PolicyStateProvider is wired. Failures are logged at warn level and never
+// fail the caller.
+func (h *Handler) recordAppliedRenderSetForTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, baseLinkedRefs []*consolev1.LinkedTemplateRef) {
+	if h.policyState == nil {
+		return
+	}
+	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return
+	}
+	effective, err := h.policyState.CurrentRenderSet(ctx, scopeName, name, baseLinkedRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "policy render-set resolution for template failed; skipping drift store update",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if err := h.policyState.RecordAppliedRenderSet(ctx, scopeName, name, effective); err != nil {
+		slog.WarnContext(ctx, "failed to record applied render set for template; drift may appear until next write",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+	}
 }

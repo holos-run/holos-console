@@ -66,6 +66,9 @@ const (
 	// DeploymentServiceGetDeploymentRenderPreviewProcedure is the fully-qualified name of the
 	// DeploymentService's GetDeploymentRenderPreview RPC.
 	DeploymentServiceGetDeploymentRenderPreviewProcedure = "/holos.console.v1.DeploymentService/GetDeploymentRenderPreview"
+	// DeploymentServiceGetDeploymentPolicyStateProcedure is the fully-qualified name of the
+	// DeploymentService's GetDeploymentPolicyState RPC.
+	DeploymentServiceGetDeploymentPolicyStateProcedure = "/holos.console.v1.DeploymentService/GetDeploymentPolicyState"
 )
 
 // DeploymentServiceClient is a client for the holos.console.v1.DeploymentService service.
@@ -90,6 +93,12 @@ type DeploymentServiceClient interface {
 	// project input, and rendered output for a deployment. This gives the frontend
 	// everything needed to display the template preview on the deployment detail page.
 	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
+	// GetDeploymentPolicyState returns the current, last-applied, and diff of the
+	// effective TemplatePolicy-resolved render set for a deployment. Drives drift
+	// indicators in the UI. Reads the applied set from the folder-namespace
+	// drift store managed by the policy resolver; never from a project-namespace
+	// annotation (HOL-557 storage-isolation rule).
+	GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error)
 }
 
 // NewDeploymentServiceClient constructs a client for the holos.console.v1.DeploymentService
@@ -169,6 +178,12 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentRenderPreview")),
 			connect.WithClientOptions(opts...),
 		),
+		getDeploymentPolicyState: connect.NewClient[v1.GetDeploymentPolicyStateRequest, v1.GetDeploymentPolicyStateResponse](
+			httpClient,
+			baseURL+DeploymentServiceGetDeploymentPolicyStateProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentPolicyState")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -185,6 +200,7 @@ type deploymentServiceClient struct {
 	listNamespaceSecrets       *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
 	listNamespaceConfigMaps    *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
 	getDeploymentRenderPreview *connect.Client[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse]
+	getDeploymentPolicyState   *connect.Client[v1.GetDeploymentPolicyStateRequest, v1.GetDeploymentPolicyStateResponse]
 }
 
 // ListDeployments calls holos.console.v1.DeploymentService.ListDeployments.
@@ -242,6 +258,11 @@ func (c *deploymentServiceClient) GetDeploymentRenderPreview(ctx context.Context
 	return c.getDeploymentRenderPreview.CallUnary(ctx, req)
 }
 
+// GetDeploymentPolicyState calls holos.console.v1.DeploymentService.GetDeploymentPolicyState.
+func (c *deploymentServiceClient) GetDeploymentPolicyState(ctx context.Context, req *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error) {
+	return c.getDeploymentPolicyState.CallUnary(ctx, req)
+}
+
 // DeploymentServiceHandler is an implementation of the holos.console.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
 	ListDeployments(context.Context, *connect.Request[v1.ListDeploymentsRequest]) (*connect.Response[v1.ListDeploymentsResponse], error)
@@ -264,6 +285,12 @@ type DeploymentServiceHandler interface {
 	// project input, and rendered output for a deployment. This gives the frontend
 	// everything needed to display the template preview on the deployment detail page.
 	GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error)
+	// GetDeploymentPolicyState returns the current, last-applied, and diff of the
+	// effective TemplatePolicy-resolved render set for a deployment. Drives drift
+	// indicators in the UI. Reads the applied set from the folder-namespace
+	// drift store managed by the policy resolver; never from a project-namespace
+	// annotation (HOL-557 storage-isolation rule).
+	GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error)
 }
 
 // NewDeploymentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -339,6 +366,12 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentRenderPreview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServiceGetDeploymentPolicyStateHandler := connect.NewUnaryHandler(
+		DeploymentServiceGetDeploymentPolicyStateProcedure,
+		svc.GetDeploymentPolicyState,
+		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentPolicyState")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentServiceListDeploymentsProcedure:
@@ -363,6 +396,8 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceListNamespaceConfigMapsHandler.ServeHTTP(w, r)
 		case DeploymentServiceGetDeploymentRenderPreviewProcedure:
 			deploymentServiceGetDeploymentRenderPreviewHandler.ServeHTTP(w, r)
+		case DeploymentServiceGetDeploymentPolicyStateProcedure:
+			deploymentServiceGetDeploymentPolicyStateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -414,4 +449,8 @@ func (UnimplementedDeploymentServiceHandler) ListNamespaceConfigMaps(context.Con
 
 func (UnimplementedDeploymentServiceHandler) GetDeploymentRenderPreview(context.Context, *connect.Request[v1.GetDeploymentRenderPreviewRequest]) (*connect.Response[v1.GetDeploymentRenderPreviewResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentRenderPreview is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentPolicyState is not implemented"))
 }
