@@ -634,12 +634,81 @@ func defaultProject() v1alpha2.ProjectInput {
 	}
 }
 
+// renderFlat is a test helper that calls the unified Render and flattens the
+// grouped result into a single slice, preserving the "platform-then-project"
+// ordering historically emitted by the flat render paths.
+func renderFlat(r *CueRenderer, ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	grouped, err := r.Render(ctx, cueSource, nil, RenderInputs{Platform: platform, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	return flattenGrouped(grouped), nil
+}
+
+// renderFlatWithAncestors is a test helper that calls the unified Render with
+// ancestor sources and flattens the grouped result into a single slice.
+//
+// The pre-HOL-563 API routed RenderWithAncestorTemplates through the org-level
+// evaluate path unconditionally, which reads both platformResources and
+// projectResources even when the caller supplied a nil ancestor-sources
+// slice. To preserve that test semantic with the new API (which uses
+// len(ancestorSources)>0 as the "org-level" signal), this helper substitutes
+// a single empty-source placeholder when the caller passes nil/empty. The
+// placeholder changes no CUE evaluation output (an empty string contributes
+// nothing to the concatenated document) but forces the renderer onto the
+// org-level path that reads both collections.
+func renderFlatWithAncestors(r *CueRenderer, ctx context.Context, cueSource string, ancestorSources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	grouped, err := r.Render(ctx, cueSource, ensureAncestorSources(ancestorSources), RenderInputs{Platform: platform, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	return flattenGrouped(grouped), nil
+}
+
+// renderGrouped is a test helper that calls the unified Render without
+// ancestor sources (project-level render path).
+func renderGrouped(r *CueRenderer, ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	return r.Render(ctx, cueSource, nil, RenderInputs{Platform: platform, Project: project})
+}
+
+// renderGroupedWithAncestors is a test helper that calls the unified Render
+// with ancestor sources (organization/folder-level render path). See
+// renderFlatWithAncestors for why nil/empty ancestor slices are replaced
+// with a placeholder.
+func renderGroupedWithAncestors(r *CueRenderer, ctx context.Context, cueSource string, ancestorSources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
+	return r.Render(ctx, cueSource, ensureAncestorSources(ancestorSources), RenderInputs{Platform: platform, Project: project})
+}
+
+// ensureAncestorSources returns a non-empty ancestor-sources slice so the
+// renderer takes the org-level path (reading both platformResources and
+// projectResources). When the caller already supplied sources they pass
+// through unchanged; when the caller supplied nil or an empty slice we
+// substitute a single empty-string source which contributes nothing to the
+// compiled CUE document.
+func ensureAncestorSources(ancestorSources []string) []string {
+	if len(ancestorSources) > 0 {
+		return ancestorSources
+	}
+	return []string{""}
+}
+
+// flattenGrouped concatenates Platform resources followed by Project
+// resources, matching the historical ordering produced by the flat render
+// entry points (platform templates contributed platformResources first, then
+// the deployment template contributed projectResources).
+func flattenGrouped(g *GroupedResources) []unstructured.Unstructured {
+	out := make([]unstructured.Unstructured, 0, len(g.Platform)+len(g.Project))
+	out = append(out, g.Platform...)
+	out = append(out, g.Project...)
+	return out
+}
+
 func TestCueRenderer_Render(t *testing.T) {
 	renderer := &CueRenderer{}
 	namespace := "prj-my-project"
 
 	t.Run("valid template produces expected resources", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), validTemplate, defaultPlatform(namespace), defaultProject())
+		resources, err := renderFlat(renderer, context.Background(), validTemplate, defaultPlatform(namespace), defaultProject())
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -663,14 +732,14 @@ func TestCueRenderer_Render(t *testing.T) {
 	})
 
 	t.Run("invalid CUE syntax returns error", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), invalidCUETemplate, defaultPlatform(namespace), defaultProject())
+		_, err := renderFlat(renderer, context.Background(), invalidCUETemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for invalid CUE syntax")
 		}
 	})
 
 	t.Run("struct-key metadata namespace mismatch rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), crossNamespaceTemplate, defaultPlatform(namespace), defaultProject())
+		_, err := renderFlat(renderer, context.Background(), crossNamespaceTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for struct-key/metadata namespace mismatch")
 		}
@@ -680,14 +749,14 @@ func TestCueRenderer_Render(t *testing.T) {
 	})
 
 	t.Run("disallowed resource kind rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), disallowedKindTemplate, defaultPlatform(namespace), defaultProject())
+		_, err := renderFlat(renderer, context.Background(), disallowedKindTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for disallowed resource kind")
 		}
 	})
 
 	t.Run("missing managed-by label rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), missingManagedByTemplate, defaultPlatform(namespace), defaultProject())
+		_, err := renderFlat(renderer, context.Background(), missingManagedByTemplate, defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for missing managed-by label")
 		}
@@ -696,14 +765,14 @@ func TestCueRenderer_Render(t *testing.T) {
 	t.Run("timeout enforced for slow evaluation", func(t *testing.T) {
 		// A valid template should not time out (5s limit, evaluation is fast).
 		ctx := context.Background()
-		_, err := renderer.Render(ctx, validTemplate, defaultPlatform(namespace), defaultProject())
+		_, err := renderFlat(renderer, ctx, validTemplate, defaultPlatform(namespace), defaultProject())
 		if err != nil {
 			t.Fatalf("fast template should not time out: %v", err)
 		}
 	})
 
 	t.Run("input values are available in template", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), validTemplate,
+		resources, err := renderFlat(renderer, context.Background(), validTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v2.0.0", Port: 8080},
 		)
@@ -837,7 +906,7 @@ func TestCueRenderer_Env(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("literal env var is passed to template", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), envTemplate,
+		resources, err := renderFlat(renderer, context.Background(), envTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Env: []v1alpha2.EnvVar{{Name: "FOO", Value: "bar"}}},
 		)
@@ -872,7 +941,7 @@ func TestCueRenderer_Env(t *testing.T) {
 	})
 
 	t.Run("empty env is omitted from template", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), envTemplate,
+		resources, err := renderFlat(renderer, context.Background(), envTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
@@ -901,7 +970,7 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("command and args are passed to template", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
+		resources, err := renderFlat(renderer, context.Background(), commandArgsTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Command: []string{"/bin/sh", "-c"}, Args: []string{"echo hello"}},
 		)
@@ -930,7 +999,7 @@ func TestCueRenderer_CommandArgs(t *testing.T) {
 	})
 
 	t.Run("empty command and args are omitted", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), commandArgsTemplate,
+		resources, err := renderFlat(renderer, context.Background(), commandArgsTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
@@ -1023,7 +1092,7 @@ func TestCueRenderer_Port(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("explicit port is used in containerPort", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), portTemplate,
+		resources, err := renderFlat(renderer, context.Background(), portTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 9090},
 		)
@@ -1066,7 +1135,7 @@ func TestCueRenderer_Port(t *testing.T) {
 	t.Run("default port 8080 is applied by Go when port is unset", func(t *testing.T) {
 		// The Go handler defaults Port to 8080 before calling the renderer.
 		// This test verifies that Port: 8080 (the default) renders correctly.
-		resources, err := renderer.Render(context.Background(), portTemplate,
+		resources, err := renderFlat(renderer, context.Background(), portTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "my-app", Image: "myrepo/myapp", Tag: "v1.0.0", Port: 8080},
 		)
@@ -1153,7 +1222,7 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("structured template produces expected resources", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), structuredTemplate,
+		resources, err := renderFlat(renderer, context.Background(), structuredTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1183,7 +1252,7 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 	})
 
 	t.Run("structured template rejects struct-key metadata namespace mismatch", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), structuredCrossNamespaceTemplate,
+		_, err := renderFlat(renderer, context.Background(), structuredCrossNamespaceTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1196,7 +1265,7 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 	})
 
 	t.Run("structured template rejects missing managed-by label", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), structuredMissingManagedByTemplate,
+		_, err := renderFlat(renderer, context.Background(), structuredMissingManagedByTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1206,7 +1275,7 @@ func TestCueRenderer_StructuredOutput(t *testing.T) {
 	})
 
 	t.Run("duplicate Kind/name with incompatible values causes CUE conflict", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), structuredDuplicateTemplate,
+		_, err := renderFlat(renderer, context.Background(), structuredDuplicateTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1244,7 +1313,7 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 	}
 
 	t.Run("platform.claims.email appears in resource annotation", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), claimsAnnotationTemplate, system, user)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -1261,7 +1330,7 @@ func TestCueRenderer_ClaimsPropagation(t *testing.T) {
 	t.Run("platform.namespace is used for namespace constraint not input.namespace", func(t *testing.T) {
 		// The claimsAnnotationTemplate uses platform.namespace (not input.namespace)
 		// for the namespaced struct key, confirming the split input architecture.
-		resources, err := renderer.Render(context.Background(), claimsAnnotationTemplate, system, user)
+		resources, err := renderFlat(renderer, context.Background(), claimsAnnotationTemplate, system, user)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -1400,7 +1469,7 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
+		resources, err := renderFlat(renderer, context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -1435,7 +1504,7 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 				EmailVerified: true,
 			},
 		}
-		resources, err := renderer.Render(context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
+		resources, err := renderFlat(renderer, context.Background(), gatewayNamespaceTemplate, system, v1alpha2.ProjectInput{
 			Name:  "web-app",
 			Image: "nginx",
 			Tag:   "1.25",
@@ -1632,7 +1701,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	}
 
 	t.Run("platform template resources are included when unified with deployment template", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemUnificationTemplate},
 			system, user,
@@ -1663,7 +1732,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	})
 
 	t.Run("no platform templates returns only deployment resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			deploymentTemplateForUnification,
 			nil,
 			system, user,
@@ -1682,7 +1751,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	// ADR 016 key insight: any template at any level can define values in any
 	// collection. A platform template is not restricted to platformResources only.
 	t.Run("platform template contributing to projectResources is unified", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemProjectResourcesTemplate},
 			system, user,
@@ -1711,7 +1780,7 @@ func TestCueRenderer_OrgTemplateUnification(t *testing.T) {
 	// Validate that RenderWithAncestorTemplates returns resources from both
 	// projectResources and platformResources when a platform template defines both.
 	t.Run("platform template defining both collections returns all resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemBothCollectionsTemplate},
 			system, user,
@@ -1760,7 +1829,7 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	// Render() uses evaluate() — the project-level path. Per ADR 016, it must
 	// NOT read platformResources even if the template defines them.
 	t.Run("Render does not read platformResources (project-level boundary)", func(t *testing.T) {
-		resources, err := renderer.Render(context.Background(), systemOutputTemplate,
+		resources, err := renderFlat(renderer, context.Background(), systemOutputTemplate,
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
 			v1alpha2.ProjectInput{Name: "web-app", Image: "nginx", Tag: "1.25", Port: 8080},
 		)
@@ -1781,7 +1850,7 @@ func TestCueRenderer_LevelBasedResourceReading(t *testing.T) {
 	// RenderWithAncestorTemplates() uses evaluateWithOrgTemplates() — the
 	// org/folder level path. It must read BOTH projectResources and platformResources.
 	t.Run("RenderWithAncestorTemplates reads both projectResources and platformResources", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil, // no additional platform templates; the deployment template itself defines platformResources
 			v1alpha2.PlatformInput{Project: "my-project", Namespace: namespace},
@@ -2065,7 +2134,7 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// resources: 3 project resources (Deployment, Service, ServiceAccount) from
 	// projectResources + 1 HTTPRoute from platformResources = 4 total.
 	t.Run("allowed kinds succeed", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(
+		resources, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			closedStructProjectTemplate,
 			[]string{closedStructOrgTemplate},
@@ -2098,7 +2167,7 @@ func TestCueRenderer_ClosedStructKindConstraint(t *testing.T) {
 	// closed struct error), matching the documented error:
 	//   projectResources.namespacedResources.<ns>.RoleBinding: field not allowed
 	t.Run("disallowed kind fails with CUE closed struct error", func(t *testing.T) {
-		_, err := renderer.RenderWithAncestorTemplates(
+		_, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			closedStructProjectTemplateForbidden,
 			[]string{closedStructOrgTemplate},
@@ -2183,7 +2252,7 @@ func TestCueRenderer_HttpbinExample(t *testing.T) {
 	// 3 project resources (ServiceAccount, Deployment, Service) from
 	// projectResources + 1 platform resource (HTTPRoute) from platformResources.
 	t.Run("templates render together producing 4 resources", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(
+		resources, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			projectTemplate,
 			[]string{platformTemplate},
@@ -2240,7 +2309,7 @@ projectResources: namespacedResources: (platform.namespace): {
 		// have a template that produces a disallowed kind alongside the allowed ones.
 		projectWithForbidden := projectTemplate + forbiddenAddition
 
-		_, err := renderer.RenderWithAncestorTemplates(
+		_, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			projectWithForbidden,
 			[]string{platformTemplate},
@@ -2259,7 +2328,7 @@ projectResources: namespacedResources: (platform.namespace): {
 	// Render with just the project template (no platform template) must produce
 	// exactly 3 resources: ServiceAccount, Deployment, Service.
 	t.Run("project template renders standalone producing 3 resources", func(t *testing.T) {
-		resources, err := renderer.Render(
+		resources, err := renderFlat(renderer,
 			context.Background(),
 			projectTemplate,
 			platform,
@@ -2369,7 +2438,7 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), foldersTemplate, platform, project)
+		resources, err := renderFlat(renderer, context.Background(), foldersTemplate, platform, project)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -2405,7 +2474,7 @@ func TestCueRenderer_FoldersPropagation(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), foldersTemplate, platform, project)
+		resources, err := renderFlat(renderer, context.Background(), foldersTemplate, platform, project)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -2473,7 +2542,7 @@ func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
 	}
 
 	t.Run("folder-level platform template unified with deployment template", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(
+		resources, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			deploymentTemplateForUnification,
 			[]string{folderPlatformTemplate},
@@ -2501,7 +2570,7 @@ func TestCueRenderer_AncestorTemplateWalk(t *testing.T) {
 	})
 
 	t.Run("multiple ancestor templates (org + folder) are all unified", func(t *testing.T) {
-		resources, err := renderer.RenderWithAncestorTemplates(
+		resources, err := renderFlatWithAncestors(renderer,
 			context.Background(),
 			deploymentTemplateForUnification,
 			[]string{systemUnificationTemplate, folderPlatformTemplate},
@@ -2538,7 +2607,7 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("project-only template produces empty platform group", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2560,7 +2629,7 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 	})
 
 	t.Run("template with both collections produces populated platform and project groups", func(t *testing.T) {
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil, // deployment template itself defines platformResources
 			defaultPlatform(namespace),
@@ -2586,7 +2655,7 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 	})
 
 	t.Run("unified fields equal union of both groups", func(t *testing.T) {
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -2597,7 +2666,7 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 		}
 
 		// The flat render should return the same total count as Platform + Project.
-		flat, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		flat, err := renderFlatWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -2630,7 +2699,7 @@ func TestEvaluateStructuredGrouped(t *testing.T) {
 	})
 
 	t.Run("org template with closed struct produces grouped results", func(t *testing.T) {
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			closedStructProjectTemplate,
 			[]string{closedStructOrgTemplate},
 			v1alpha2.PlatformInput{
@@ -2821,7 +2890,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	namespace := "prj-my-project"
 
 	t.Run("template without defaults leaves DefaultsJSON nil", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2835,7 +2904,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("template with defaults populates DefaultsJSON", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			templateWithDefaults,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2860,7 +2929,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("PlatformInputJSON is populated", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2884,7 +2953,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("ProjectInputJSON is populated", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2908,7 +2977,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("ProjectResourcesStructJSON is populated for non-empty resources", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2925,7 +2994,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("PlatformResourcesStructJSON is set for template with platform resources", func(t *testing.T) {
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -2946,7 +3015,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 		// validTemplate has no platformResources, but when rendered via the
 		// org-level path (readPlatformResources=true) the platformResources CUE
 		// path does not exist, so the field should be nil.
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -2965,7 +3034,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 		// emptyPlatformResourcesTemplate defines platformResources with empty
 		// namespacedResources and clusterResources sub-structs. The field should
 		// be non-nil because the CUE path exists and is concrete.
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			emptyPlatformResourcesTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -2996,7 +3065,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	t.Run("populated platformResources produces JSON", func(t *testing.T) {
 		// systemOutputTemplate defines platformResources with actual resources.
 		// Use the org-level render path which reads both collections.
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -3019,7 +3088,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("all structured JSON fields are valid JSON", func(t *testing.T) {
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			systemOutputTemplate,
 			nil,
 			defaultPlatform(namespace),
@@ -3046,7 +3115,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("template without output leaves OutputJSON nil", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			validTemplate,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -3060,7 +3129,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	})
 
 	t.Run("template with output.url populates OutputJSON with the URL", func(t *testing.T) {
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			templateWithOutput,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -3086,7 +3155,7 @@ func TestStructuredJSONExtraction(t *testing.T) {
 	t.Run("template with empty output block still populates OutputJSON", func(t *testing.T) {
 		// Pitfall guard: `output: {}` is a present-but-empty section; the backend
 		// must not filter it out. The frontend decides whether to render.
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			templateWithEmptyOutput,
 			defaultPlatform(namespace),
 			defaultProject(),
@@ -3131,7 +3200,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		resources, err := renderer.Render(context.Background(), multiNamespaceTemplate, platform, project)
+		resources, err := renderFlat(renderer, context.Background(), multiNamespaceTemplate, platform, project)
 		if err != nil {
 			t.Fatalf("expected no error for multi-namespace template, got %v", err)
 		}
@@ -3171,7 +3240,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		resources, err := renderer.RenderWithAncestorTemplates(context.Background(),
+		resources, err := renderFlatWithAncestors(renderer, context.Background(),
 			multiNamespacePlatformTemplate,
 			nil,
 			platform, project,
@@ -3197,7 +3266,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 	})
 
 	t.Run("struct-key metadata mismatch still rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), structKeyMismatchTemplate,
+		_, err := renderFlat(renderer, context.Background(), structKeyMismatchTemplate,
 			defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for struct-key/metadata namespace mismatch")
@@ -3208,7 +3277,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 	})
 
 	t.Run("empty namespace key rejected", func(t *testing.T) {
-		_, err := renderer.Render(context.Background(), emptyNamespaceKeyTemplate,
+		_, err := renderFlat(renderer, context.Background(), emptyNamespaceKeyTemplate,
 			defaultPlatform(namespace), defaultProject())
 		if err == nil {
 			t.Fatal("expected error for empty namespace key")
@@ -3230,7 +3299,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		grouped, err := renderer.RenderGrouped(context.Background(),
+		grouped, err := renderGrouped(renderer, context.Background(),
 			multiNamespaceTemplate, platform, project)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -3260,7 +3329,7 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 			Tag:   "1.25",
 			Port:  8080,
 		}
-		grouped, err := renderer.RenderGroupedWithAncestorTemplates(context.Background(),
+		grouped, err := renderGroupedWithAncestors(renderer, context.Background(),
 			multiNamespacePlatformTemplate, nil, platform, project)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)

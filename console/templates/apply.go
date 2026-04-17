@@ -155,12 +155,19 @@ func (a *MandatoryTemplateApplier) applyMandatoryFromNamespace(ctx context.Conte
 			return fmt.Errorf("encoding user input for template %q in %q: %w", cm.Name, ancestorNs, err)
 		}
 
-		combinedCUE := fmt.Sprintf("platform: %s\ninput: %s", string(platformJSON), string(userJSON))
+		combinedCUE := cueSource + "\n" + fmt.Sprintf("platform: %s\ninput: %s", string(platformJSON), string(userJSON))
 
-		resources, err := a.renderer.RenderWithCueInput(ctx, cueSource, combinedCUE)
+		// Mandatory templates are applied to the project namespace at project
+		// creation time. Ancestor templates are not unified here (this applier
+		// itself IS the ancestor-application path). Read both collections
+		// because mandatory templates typically define platformResources.
+		grouped, err := deployments.EvaluateGroupedCUE(ctx, combinedCUE, true)
 		if err != nil {
 			return fmt.Errorf("rendering mandatory template %q from %q for project %q: %w", cm.Name, ancestorNs, project, err)
 		}
+		resources := make([]unstructured.Unstructured, 0, len(grouped.Platform)+len(grouped.Project))
+		resources = append(resources, grouped.Platform...)
+		resources = append(resources, grouped.Project...)
 
 		if a.applier == nil {
 			slog.WarnContext(ctx, "no resource applier configured, skipping mandatory template apply",
