@@ -130,17 +130,12 @@ func New(ctx context.Context, client kubernetes.Interface) Cache {
 		hasSynced: informer.HasSynced,
 	}
 
-	// Capture the sync timeout synchronously in New, before spawning the
-	// watcher goroutine, so the value is read under the caller's happens-
-	// before relationship rather than racing with a concurrent test that
-	// swaps initialSyncTimeoutForTest between consecutive New calls.
-	timeout := initialSyncTimeoutForTest
-
 	// Watch the initial sync in the background. If it never completes
 	// within initialSyncTimeout, cancel the child context to stop the
 	// reflector and log the degradation. We deliberately do not block New
 	// on this: server startup must not depend on optional status data.
 	go func() {
+		timeout := initialSyncTimeoutForTest
 		syncCtx, syncCancel := context.WithTimeout(childCtx, timeout)
 		defer syncCancel()
 		if !waitForCacheSync(syncCtx, informer.HasSynced) {
