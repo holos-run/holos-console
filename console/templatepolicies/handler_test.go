@@ -49,24 +49,58 @@ func walkGoFiles(t *testing.T, root string, visit func(path, body string)) error
 // per-user role grants for the organization passed to its constructor; folder
 // lookups use stubFolderGrantResolver instead so tests can verify the handler
 // picks the right cascade source.
+//
+// The resolver supports two modes. When perScope is non-nil it is consulted
+// first and keyed by the org scope_name — this lets a single test install
+// different grants for different scopes (e.g. seed an "owner" grant only on
+// the project namespace while keeping folder / org namespaces empty). The
+// fall-through fields users and roles preserve the simpler "one grant set for
+// all scopes" behaviour the rest of the tests rely on.
 type stubOrgGrantResolver struct {
-	users map[string]string
-	roles map[string]string
-	err   error
+	users    map[string]string
+	roles    map[string]string
+	perScope map[string]stubGrant
+	err      error
 }
 
-func (s *stubOrgGrantResolver) GetOrgGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
-	return s.users, s.roles, s.err
+// stubGrant is a (users, roles) pair keyed by scope name in the per-scope
+// variants of the grant-resolver stubs.
+type stubGrant struct {
+	users map[string]string
+	roles map[string]string
+}
+
+func (s *stubOrgGrantResolver) GetOrgGrants(_ context.Context, scopeName string) (map[string]string, map[string]string, error) {
+	if s.err != nil {
+		return nil, nil, s.err
+	}
+	if s.perScope != nil {
+		if g, ok := s.perScope[scopeName]; ok {
+			return g.users, g.roles, nil
+		}
+		return map[string]string{}, map[string]string{}, nil
+	}
+	return s.users, s.roles, nil
 }
 
 type stubFolderGrantResolver struct {
-	users map[string]string
-	roles map[string]string
-	err   error
+	users    map[string]string
+	roles    map[string]string
+	perScope map[string]stubGrant
+	err      error
 }
 
-func (s *stubFolderGrantResolver) GetFolderGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
-	return s.users, s.roles, s.err
+func (s *stubFolderGrantResolver) GetFolderGrants(_ context.Context, scopeName string) (map[string]string, map[string]string, error) {
+	if s.err != nil {
+		return nil, nil, s.err
+	}
+	if s.perScope != nil {
+		if g, ok := s.perScope[scopeName]; ok {
+			return g.users, g.roles, nil
+		}
+		return map[string]string{}, map[string]string{}, nil
+	}
+	return s.users, s.roles, nil
 }
 
 // fakeTemplateResolver implements TemplateExistsResolver. The err field is
@@ -782,7 +816,7 @@ func stringContains(haystack, needle string) bool {
 // called out by HOL-554 AC "A negative test in HOL-560 verifies a project-owner
 // role cannot mutate any policy ConfigMap or policy-enforcement annotation."
 //
-// The scenario: a user holds an owner grant only on a project (typical PaaS
+// The scenario: a user holds an owner grant *only* on a project (typical PaaS
 // customer-persona grant) and has NO grant at any ancestor folder or
 // organization. The TemplatePolicyService handler must refuse every mutation
 // path at every reachable scope, so there is no way for such a user to create,
@@ -792,23 +826,65 @@ func stringContains(haystack, needle string) bool {
 // PermissionDenied because the folder / org grant resolver carries no grant
 // for this user).
 //
+// To make the test a genuine regression guard rather than a trivially-passing
+// "unauthenticated user is denied" check, the grant resolvers are wired to
+// return an actual "owner" grant for the user — but only under the project
+// scope name. If a future refactor accidentally routes folder / org RBAC
+// checks through the project-scope grant table (or otherwise elevates
+// project-scoped ownership to folder/org writes on TemplatePolicy), the folder
+// / org cases below would flip from PermissionDenied to success and this test
+// would fail. Keeping the folder and org perScope maps empty for the queried
+// scope names ("payments", "acme") proves the existing handler does NOT
+// consult project grants when authorizing folder/org policy mutations.
+//
+// The user also carries a project-scoped role claim ("project-owner") in
+// their JWT-like Claims.Roles. No folder / org shareRoles map contains that
+// claim, so BestRoleFromGrants must not elevate the user via the role claim.
+// A regression that made folder / org shareRoles contain project-level role
+// mappings would again fail this test.
+//
 // This closes the loop on the HOL-554 storage-isolation guardrail: storage is
 // restricted to folder / org namespaces by construction (project scope is
 // rejected up front), and write access to those namespaces is gated by the
 // TemplatePolicyCascadePerms table which never awards WRITE / DELETE to a
 // project-scoped grant. The test asserts both halves.
 func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
-	// Org and folder resolvers return empty grants: the "project owner" user
-	// has no grant at any ancestor scope. This mirrors the real production
-	// wiring in which org / folder grant resolvers consult the
-	// org- / folder-namespace ShareUsers annotations only; a project-only
-	// grant would not appear in those maps.
+	const projectOwnerEmail = "project-owner@example.com"
+	const projectScopeName = "billing-web"
+	const folderScopeName = "payments"
+	const orgScopeName = "acme"
+	const projectOwnerRoleClaim = "project-owner"
+
+	// Simulate a genuine project-owner grant. The org and folder resolvers
+	// are per-scope-keyed: for the folder and org scope names queried by
+	// the handler below (payments / acme) they return empty grants, so the
+	// TemplatePolicyCascadePerms lookup yields RoleUnspecified and denies.
+	// For the project scope name (billing-web) the resolvers *do* carry a
+	// real owner grant — the handler must never reach this entry because
+	// TemplatePolicyService does not authorize writes against the project
+	// scope. If a regression ever wired checkFolderAccess or checkOrgAccess
+	// to the project scope (or extended the project scope grant into folder
+	// / org cascade tables), the test cases below would begin to succeed
+	// and this test would fail, catching the regression.
+	orgResolver := &stubOrgGrantResolver{
+		perScope: map[string]stubGrant{
+			orgScopeName:     {users: map[string]string{}, roles: map[string]string{}},
+			projectScopeName: {users: map[string]string{projectOwnerEmail: "owner"}},
+		},
+	}
+	folderResolver := &stubFolderGrantResolver{
+		perScope: map[string]stubGrant{
+			folderScopeName:  {users: map[string]string{}, roles: map[string]string{}},
+			projectScopeName: {users: map[string]string{projectOwnerEmail: "owner"}},
+		},
+	}
+
 	fakeClient := fake.NewClientset()
 	r := newTestResolver()
 	k := NewK8sClient(fakeClient, r)
 	h := NewHandler(k, r).
-		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}}).
-		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}})
+		WithOrgGrantResolver(orgResolver).
+		WithFolderGrantResolver(folderResolver)
 
 	// Seed a legitimate folder-scope policy so the Delete / Update cases have
 	// something to attempt to mutate. Seed directly via the k8s client so the
@@ -834,9 +910,10 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 		t.Fatalf("seeding folder-scope policy: %v", err)
 	}
 
-	// authedCtx with no roles — the user's only production grant is an
-	// "owner" role at project scope, which the handler does not consult.
-	ctx := authedCtx("project-owner@example.com", nil)
+	// The user carries a project-owner role claim in their JWT-style
+	// Claims.Roles. Folder / org shareRoles maps are empty, so the role
+	// claim must not grant access at those scopes.
+	ctx := authedCtx(projectOwnerEmail, []string{projectOwnerRoleClaim})
 
 	type mutation struct {
 		name    string
