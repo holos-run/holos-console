@@ -14,6 +14,58 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// stubFolderGrantResolver implements FolderGrantResolver for tests.
+type stubFolderGrantResolver struct {
+	users map[string]string
+	roles map[string]string
+	err   error
+}
+
+func (s *stubFolderGrantResolver) GetFolderGrants(_ context.Context, _ string) (map[string]string, map[string]string, error) {
+	return s.users, s.roles, s.err
+}
+
+// folderScopeRef returns a folder-scoped TemplateScopeRef.
+func folderScopeRef(folder string) *consolev1.TemplateScopeRef {
+	return &consolev1.TemplateScopeRef{
+		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		ScopeName: folder,
+	}
+}
+
+// enabledTemplateCMForScope creates an enabled template ConfigMap in the given
+// namespace with a scope-appropriate LabelTemplateScope value. Used by tests
+// that need same-scope (non-org) templates such as folder-owned templates.
+func enabledTemplateCMForScope(ns, name, displayName, description string, scope consolev1.TemplateScope) *corev1.ConfigMap {
+	var scopeLabel string
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		scopeLabel = v1alpha2.TemplateScopeOrganization
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		scopeLabel = v1alpha2.TemplateScopeFolder
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+		scopeLabel = v1alpha2.TemplateScopeProject
+	}
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelTemplateScope: scopeLabel,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDisplayName: displayName,
+				v1alpha2.AnnotationDescription: description,
+				v1alpha2.AnnotationMandatory:   "false",
+				v1alpha2.AnnotationEnabled:     "true",
+			},
+		},
+		Data: map[string]string{CueTemplateKey: validCue},
+	}
+}
+
 // stubAncestorWalker implements AncestorWalker for tests, returning a
 // predetermined list of ancestor namespaces.
 type stubAncestorWalker struct {
@@ -301,4 +353,133 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 			t.Errorf("expected forced=false for non-mandatory template, got true")
 		}
 	})
+}
+
+// TestListLinkableTemplatesIncludeSelfScope exercises HOL-561: the
+// `include_self_scope` request flag toggles whether templates at the request's
+// own scope are returned alongside ancestor-scope templates. The TemplatePolicy
+// editor sets it to true so org-scope policies (no ancestors) and folder-scope
+// policies can pick same-scope templates. All existing call sites leave it at
+// the default false, which preserves the ancestor-only semantics required by
+// the project-template linking UI.
+func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
+	const org = "acme"
+	const folder = "platform"
+	const ownerEmail = "platform@localhost"
+
+	orgUsers := map[string]string{ownerEmail: "owner"}
+	folderUsers := map[string]string{ownerEmail: "owner"}
+
+	// Build a hierarchy with one org-scope template and one folder-scope
+	// template. A folder is a child of the org.
+	orgNsObj := orgNS(org)
+	folderNsObj := folderNS(folder)
+
+	orgTemplate := enabledTemplateCMForScope("org-"+org, "org-httproute", "OrgHTTPRoute", "org-owned", consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION)
+	folderTemplate := enabledTemplateCMForScope("fld-"+folder, "folder-gateway", "FolderGateway", "folder-owned", consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER)
+
+	// Build a fresh handler per subtest so fakeClient state is isolated.
+	makeHandler := func(scope consolev1.TemplateScope, ancestors []*corev1.Namespace) *Handler {
+		fakeClient := fake.NewClientset(orgNsObj, folderNsObj, orgTemplate, folderTemplate)
+		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+		k8s := NewK8sClient(fakeClient, r)
+		handler := NewHandler(k8s, r, &stubRenderer{})
+		handler.WithAncestorWalker(&stubAncestorWalker{ancestors: ancestors})
+		// Wire whichever grant resolver matches the request scope so
+		// checkAccess passes.
+		switch scope {
+		case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: orgUsers})
+		case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+			handler.WithFolderGrantResolver(&stubFolderGrantResolver{users: folderUsers})
+		}
+		return handler
+	}
+
+	type want struct {
+		// names is the set of expected template names (order-insensitive since
+		// the handler concatenates results across namespaces).
+		names map[string]bool
+	}
+
+	tests := []struct {
+		description      string
+		scope            *consolev1.TemplateScopeRef
+		requestScope     consolev1.TemplateScope
+		ancestors        []*corev1.Namespace
+		includeSelfScope bool
+		want             want
+	}{
+		{
+			description:      "org scope with include_self_scope=false returns empty (no ancestors)",
+			scope:            orgScopeRef(org),
+			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			ancestors:        []*corev1.Namespace{orgNsObj},
+			includeSelfScope: false,
+			want: want{
+				names: map[string]bool{},
+			},
+		},
+		{
+			description:      "org scope with include_self_scope=true returns org templates",
+			scope:            orgScopeRef(org),
+			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			ancestors:        []*corev1.Namespace{orgNsObj},
+			includeSelfScope: true,
+			want: want{
+				names: map[string]bool{"org-httproute": true},
+			},
+		},
+		{
+			description:      "folder scope with include_self_scope=false returns only ancestor (org) templates",
+			scope:            folderScopeRef(folder),
+			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
+			includeSelfScope: false,
+			want: want{
+				names: map[string]bool{"org-httproute": true},
+			},
+		},
+		{
+			description:      "folder scope with include_self_scope=true returns both folder and org templates",
+			scope:            folderScopeRef(folder),
+			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
+			includeSelfScope: true,
+			want: want{
+				names: map[string]bool{"folder-gateway": true, "org-httproute": true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			handler := makeHandler(tt.requestScope, tt.ancestors)
+
+			ctx := authedCtx(ownerEmail, nil)
+			req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
+				Scope:            tt.scope,
+				IncludeSelfScope: tt.includeSelfScope,
+			})
+
+			resp, err := handler.ListLinkableTemplates(ctx, req)
+			if err != nil {
+				t.Fatalf("ListLinkableTemplates returned unexpected error: %v", err)
+			}
+
+			got := make(map[string]bool, len(resp.Msg.Templates))
+			for _, lt := range resp.Msg.Templates {
+				got[lt.Name] = true
+			}
+			if len(got) != len(tt.want.names) {
+				t.Fatalf("template count mismatch: want %d (%v), got %d (%v)",
+					len(tt.want.names), tt.want.names, len(got), got)
+			}
+			for name := range tt.want.names {
+				if !got[name] {
+					t.Errorf("expected template %q in response, got names %v", name, got)
+				}
+			}
+		})
+	}
 }

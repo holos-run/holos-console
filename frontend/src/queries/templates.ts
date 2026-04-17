@@ -55,8 +55,8 @@ function templateGetKey(scope: TemplateScopeRef, name: string) {
   return ['templates', 'get', scope.scope, scope.scopeName, name] as const
 }
 
-function linkableTemplatesKey(scope: TemplateScopeRef) {
-  return ['templates', 'linkable', scope.scope, scope.scopeName] as const
+function linkableTemplatesKey(scope: TemplateScopeRef, includeSelfScope: boolean) {
+  return ['templates', 'linkable', scope.scope, scope.scopeName, includeSelfScope] as const
 }
 
 export function useListTemplates(scope: TemplateScopeRef) {
@@ -209,16 +209,25 @@ export function useCloneTemplate(scope: TemplateScopeRef) {
   })
 }
 
-// useListLinkableTemplates returns enabled ancestor templates that can be
-// explicitly linked to templates at the given scope.
-export function useListLinkableTemplates(scope: TemplateScopeRef) {
+// useListLinkableTemplates returns enabled templates that can be explicitly
+// linked to templates at the given scope. By default only ancestor-scope
+// templates are returned — the semantics required by the project-template
+// linking UI. Pass `{ includeSelfScope: true }` to also include templates at
+// the request's own scope; the TemplatePolicy editor uses this so org-scope
+// policies (which have no ancestors) and folder-scope policies can pick
+// same-scope templates. See HOL-561.
+export function useListLinkableTemplates(
+  scope: TemplateScopeRef,
+  options?: { includeSelfScope?: boolean },
+) {
+  const includeSelfScope = options?.includeSelfScope ?? false
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: linkableTemplatesKey(scope),
+    queryKey: linkableTemplatesKey(scope, includeSelfScope),
     queryFn: async () => {
-      const response = await client.listLinkableTemplates({ scope })
+      const response = await client.listLinkableTemplates({ scope, includeSelfScope })
       return response.templates
     },
     enabled: isAuthenticated && !!scope.scopeName,

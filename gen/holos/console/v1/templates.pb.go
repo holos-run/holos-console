@@ -1417,9 +1417,17 @@ type ListLinkableTemplatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// scope is the starting scope (e.g. SCOPE_PROJECT for a project template).
 	// The handler walks up the hierarchy and returns enabled ancestor templates.
-	Scope         *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// include_self_scope, when true, also returns enabled templates at the
+	// request's own scope in addition to ancestor-scope templates. Default false
+	// preserves the existing semantics for project-template linking UIs, which
+	// only link against ancestor-scope templates. The TemplatePolicy editor sets
+	// this to true so org-scope policies can pick org-scope templates (there are
+	// no ancestors to pick from otherwise) and folder-scope policies can pick
+	// templates owned by the same folder. See HOL-561.
+	IncludeSelfScope bool `protobuf:"varint,2,opt,name=include_self_scope,json=includeSelfScope,proto3" json:"include_self_scope,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListLinkableTemplatesRequest) Reset() {
@@ -1457,6 +1465,13 @@ func (x *ListLinkableTemplatesRequest) GetScope() *TemplateScopeRef {
 		return x.Scope
 	}
 	return nil
+}
+
+func (x *ListLinkableTemplatesRequest) GetIncludeSelfScope() bool {
+	if x != nil {
+		return x.IncludeSelfScope
+	}
+	return false
 }
 
 // LinkableTemplate describes a single template available for explicit linking.
@@ -2413,9 +2428,10 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"+\n" +
 	"\x15CloneTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"X\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x01\n" +
 	"\x1cListLinkableTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\x8c\x02\n" +
+	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12,\n" +
+	"\x12include_self_scope\x18\x02 \x01(\bR\x10includeSelfScope\"\x8c\x02\n" +
 	"\x10LinkableTemplate\x12?\n" +
 	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +

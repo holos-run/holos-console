@@ -74,7 +74,14 @@ export function PolicyForm({
   )
   const [error, setError] = useState<string | null>(null)
 
-  const { data: linkableTemplates = [] } = useListLinkableTemplates(scopeRef)
+  // HOL-561: policy authors need to pick templates that live at the policy's
+  // own scope in addition to ancestor-scope templates. Without
+  // `includeSelfScope: true`, org-scope policies see an empty picker (no
+  // ancestors) and folder-scope policies cannot reference templates owned by
+  // the same folder. All other call sites keep the default (ancestor-only).
+  const { data: linkableTemplates = [] } = useListLinkableTemplates(scopeRef, {
+    includeSelfScope: true,
+  })
 
   const slugify = (val: string) =>
     val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
