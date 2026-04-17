@@ -1575,6 +1575,13 @@ func (h *Handler) GetDeploymentPolicyState(
 
 	state := &consolev1.DeploymentPolicyState{}
 	if h.policyState != nil {
+		// HOL-557 round-1 review: both lookups must succeed before the diff
+		// is computed. Previously a failure in either path left the other
+		// slice populated and the diff ran against zero values, synthesizing
+		// bogus drift (every applied ref would appear as "removed" or every
+		// current ref as "added" on a transient backend hiccup). Now an
+		// error short-circuits to a Connect error so the caller can
+		// distinguish "partial data" from "genuine drift."
 		applied, readErr := h.policyState.AppliedRenderSet(ctx, project, name)
 		if readErr != nil {
 			slog.WarnContext(ctx, "reading applied render set for policy state failed",
@@ -1582,8 +1589,7 @@ func (h *Handler) GetDeploymentPolicyState(
 				slog.String("name", name),
 				slog.Any("error", readErr),
 			)
-		} else {
-			state.AppliedSet = policyRefsFromLinked(applied)
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("reading applied render set: %w", readErr))
 		}
 		current, resolveErr := h.policyState.CurrentRenderSet(ctx, project, name, linkedOrgTemplates)
 		if resolveErr != nil {
@@ -1592,10 +1598,11 @@ func (h *Handler) GetDeploymentPolicyState(
 				slog.String("name", name),
 				slog.Any("error", resolveErr),
 			)
-		} else {
-			state.CurrentSet = policyRefsFromLinked(current)
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("resolving current render set: %w", resolveErr))
 		}
-		added, removed := diffRefs(applied, linkedLinkedFromPolicy(state.CurrentSet))
+		state.AppliedSet = policyRefsFromLinked(applied)
+		state.CurrentSet = policyRefsFromLinked(current)
+		added, removed := diffRefs(applied, current)
 		state.AddedRefs = policyRefsFromLinked(added)
 		state.RemovedRefs = policyRefsFromLinked(removed)
 		state.Drift = len(state.AddedRefs) > 0 || len(state.RemovedRefs) > 0

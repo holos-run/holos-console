@@ -295,11 +295,24 @@ func (r *Resolver) listPolicies(ctx context.Context, ns string) ([]corev1.Config
 }
 
 // ruleMatches reports whether a policy rule applies to the given target.
-// A rule applies when its project pattern matches `project` AND either the
-// deployment pattern is empty (project-level match is sufficient) OR the
-// deployment pattern matches `targetName` when the target is a deployment.
-// For TargetKindProjectTemplate targets the deployment pattern is ignored
-// because a project template is a project-level artifact.
+// A rule applies when its project pattern matches `project` AND the rule's
+// deployment_pattern is compatible with the target kind:
+//
+//   - Empty deployment_pattern: the rule is project-level and applies to
+//     every kind whose project_pattern matches.
+//   - TargetKindDeployment: the deployment_pattern must glob-match
+//     `targetName`.
+//   - TargetKindProjectTemplate: a non-empty deployment_pattern is a
+//     deployment-scoped filter by definition, so it does NOT apply to a
+//     project-template target — with one exception: the literal `*`
+//     wildcard, which is semantically "any deployment" and is the HOL-557
+//     "REQUIRE with wildcard patterns matches the old mandatory behavior"
+//     case. Any other pattern (for example `api`) is deployment-only and
+//     must NOT widen into the project-template render set.
+//
+// This rule closes the HOL-557 round-1 review finding: before the fix a
+// deployment-targeted REQUIRE rule leaked into project-creation
+// auto-apply, effectively widening the rule's scope.
 func ruleMatches(rule *consolev1.TemplatePolicyRule, project string, targetKind TargetKind, targetName string) bool {
 	target := rule.GetTarget()
 	if target == nil {
@@ -320,10 +333,10 @@ func ruleMatches(rule *consolev1.TemplatePolicyRule, project string, targetKind 
 	if targetKind == TargetKindDeployment {
 		return globMatch(deploymentPattern, targetName)
 	}
-	// deployment_pattern on a project-template target: treat as "matches any
-	// project template in the project," which preserves the HOL-557 design
-	// note that rules apply to both kinds equally when patterns match.
-	return true
+	// TargetKindProjectTemplate: a specific deployment_pattern is
+	// deployment-scoped and does not apply. Only the `*` wildcard, which is
+	// semantically "any deployment," counts as project-wide for this kind.
+	return deploymentPattern == "*"
 }
 
 // globMatch wraps filepath.Match so a pattern parse failure never silently

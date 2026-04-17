@@ -350,6 +350,110 @@ func TestResolveScenarios(t *testing.T) {
 	_ = walker // suppress unused-variable warning in case the loop above shadows the outer walker
 }
 
+// TestResolveDeploymentScopedRuleDoesNotLeakToProjectTemplate locks in the
+// HOL-557 round-1 review fix: a REQUIRE rule with a concrete
+// deployment_pattern (for example `api`) is deployment-scoped by definition
+// and MUST NOT be auto-applied to a project-template target — otherwise
+// project creation would widen a deployment-only rule into every newly
+// created project namespace.
+//
+// The test asserts the asymmetry directly: the same rule matches
+// TargetKindDeployment with deployment name `api`, does not match a
+// different deployment name, and does not match TargetKindProjectTemplate
+// at all. The mandatory-equivalent `*` wildcard is exercised as a control
+// so we know the filter is pattern-specific rather than a blanket ban.
+func TestResolveDeploymentScopedRuleDoesNotLeakToProjectTemplate(t *testing.T) {
+	r, _, _ := testFixture()
+	orgNs := r.OrgNamespace("acme")
+
+	type want struct {
+		kind     TargetKind
+		target   string
+		wantRefs []string
+	}
+
+	tests := []struct {
+		name      string
+		rule      storedRuleWire
+		scenarios []want
+	}{
+		{
+			name: "concrete-deployment-pattern",
+			rule: makeRule("require", "organization", "acme", "reference-grant", "*", "api"),
+			scenarios: []want{
+				// Target deployment named "api" matches — normal behavior.
+				{kind: TargetKindDeployment, target: "api", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+				// A different deployment name does NOT match.
+				{kind: TargetKindDeployment, target: "web", wantRefs: []string{}},
+				// Project-template target does NOT match: the rule is
+				// deployment-scoped, so the resolver must not widen it into
+				// the project-creation auto-apply set.
+				{kind: TargetKindProjectTemplate, target: "my-pt", wantRefs: []string{}},
+			},
+		},
+		{
+			name: "wildcard-deployment-pattern-is-mandatory-equivalent",
+			rule: makeRule("require", "organization", "acme", "reference-grant", "*", "*"),
+			scenarios: []want{
+				// Every deployment matches — the HOL-557 "mandatory
+				// equivalent" baseline.
+				{kind: TargetKindDeployment, target: "api", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+				{kind: TargetKindDeployment, target: "web", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+				// And the rule still applies to project templates because
+				// `*` is semantically "any deployment," which the HOL-557
+				// design note calls mandatory-equivalent.
+				{kind: TargetKindProjectTemplate, target: "my-pt", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+			},
+		},
+		{
+			name: "empty-deployment-pattern-is-project-level",
+			rule: makeRule("require", "organization", "acme", "reference-grant", "*", ""),
+			scenarios: []want{
+				// Project-level rules apply to every kind.
+				{kind: TargetKindDeployment, target: "api", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+				{kind: TargetKindProjectTemplate, target: "my-pt", wantRefs: []string{"TEMPLATE_SCOPE_ORGANIZATION/acme/reference-grant"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			for _, sc := range tt.scenarios {
+				sc := sc
+				t.Run(sc.kind.String()+"/"+sc.target, func(t *testing.T) {
+					_, walker, client := testFixture()
+					cm := newPolicyCM(orgNs, "rule", []storedRuleWire{tt.rule})
+					if _, err := client.CoreV1().ConfigMaps(cm.Namespace).Create(context.Background(), cm, metav1.CreateOptions{}); err != nil {
+						t.Fatalf("seeding policy: %v", err)
+					}
+					res := &Resolver{Client: client, Walker: walker, Resolver: r}
+					got, err := res.Resolve(
+						context.Background(),
+						consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+						"web",
+						sc.kind,
+						sc.target,
+						nil,
+					)
+					if err != nil {
+						t.Fatalf("Resolve: %v", err)
+					}
+					gotKeys := refKeys(got)
+					if len(gotKeys) != len(sc.wantRefs) {
+						t.Fatalf("want %d refs %v, got %d %v", len(sc.wantRefs), sc.wantRefs, len(gotKeys), gotKeys)
+					}
+					for i, want := range sc.wantRefs {
+						if gotKeys[i] != want {
+							t.Errorf("ref[%d]: want %q, got %q", i, want, gotKeys[i])
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 // TestResolveSkipsProjectNamespacePolicies is the linchpin of the
 // storage-isolation invariant: a TemplatePolicy ConfigMap planted in a
 // project namespace MUST NOT influence the resolver's output.

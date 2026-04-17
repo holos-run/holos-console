@@ -1342,6 +1342,11 @@ func (h *Handler) GetProjectTemplatePolicyState(
 
 	state := &consolev1.ProjectTemplatePolicyState{}
 	if h.policyState != nil {
+		// HOL-557 round-1 review: both lookups must succeed before the diff
+		// is computed. Previously a failure in either path left the other
+		// slice populated and the diff ran against zero values, synthesizing
+		// bogus drift. Now an error short-circuits to a Connect error so
+		// the caller can distinguish "partial data" from "genuine drift."
 		applied, readErr := h.policyState.AppliedRenderSet(ctx, scopeName, name)
 		if readErr != nil {
 			slog.WarnContext(ctx, "reading applied render set for template failed",
@@ -1350,8 +1355,7 @@ func (h *Handler) GetProjectTemplatePolicyState(
 				slog.String("name", name),
 				slog.Any("error", readErr),
 			)
-		} else {
-			state.AppliedSet = applied
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("reading applied render set: %w", readErr))
 		}
 		current, resolveErr := h.policyState.CurrentRenderSet(ctx, scopeName, name, baseline)
 		if resolveErr != nil {
@@ -1361,9 +1365,10 @@ func (h *Handler) GetProjectTemplatePolicyState(
 				slog.String("name", name),
 				slog.Any("error", resolveErr),
 			)
-		} else {
-			state.CurrentSet = current
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("resolving current render set: %w", resolveErr))
 		}
+		state.AppliedSet = applied
+		state.CurrentSet = current
 		state.AddedRefs, state.RemovedRefs = diffLinkedRefs(state.AppliedSet, state.CurrentSet)
 		state.Drift = len(state.AddedRefs) > 0 || len(state.RemovedRefs) > 0
 	}
