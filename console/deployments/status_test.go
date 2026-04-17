@@ -805,13 +805,13 @@ func TestGetDeploymentStatusSummary(t *testing.T) {
 	)
 
 	type tc struct {
-		desc       string
-		ctx        context.Context
-		cachedSum  *consolev1.DeploymentStatusSummary
-		req        *consolev1.GetDeploymentStatusSummaryRequest
-		wantCode   connect.Code // zero means no error expected
-		wantPhase  consolev1.DeploymentPhase
-		wantReady  int32
+		desc      string
+		ctx       context.Context
+		cachedSum *consolev1.DeploymentStatusSummary
+		req       *consolev1.GetDeploymentStatusSummaryRequest
+		wantCode  connect.Code // zero means no error expected
+		wantPhase consolev1.DeploymentPhase
+		wantReady int32
 	}
 	cases := []tc{
 		{

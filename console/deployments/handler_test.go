@@ -1781,4 +1781,3 @@ func TestHandler_OutputURLAnnotation(t *testing.T) {
 		}
 	})
 }
-

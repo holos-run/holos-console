@@ -42,6 +42,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
+	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -335,6 +336,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
+		// TemplatePolicyService handler — manages REQUIRE/EXCLUDE policies at
+		// organization and folder scopes (HOL-556). Project scope is rejected:
+		// a project owner has write access to the project namespace, so any
+		// policy artifact stored there could be tampered with by the very
+		// actor the policy is meant to constrain (HOL-554 storage-isolation
+		// design note).
+		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
+		templatePoliciesHandler := templatepolicies.NewHandler(templatePoliciesK8s, nsResolver).
+			WithOrgGrantResolver(orgGrantResolver).
+			WithFolderGrantResolver(folderGrantResolver).
+			WithTemplateExistsResolver(templates.NewTemplateExistsAdapter(templatesK8s))
+		templatePoliciesPath, templatePoliciesHTTPHandler := consolev1connect.NewTemplatePolicyServiceHandler(templatePoliciesHandler, protectedInterceptors)
+		mux.Handle(templatePoliciesPath, templatePoliciesHTTPHandler)
+
 		// Deployment service with project grant fallback.
 		// ancestorTemplateResolver wraps templatesK8s + nsWalker to satisfy
 		// AncestorTemplateProvider for full ancestor-chain template resolution
@@ -384,6 +399,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.TemplateServiceName,
+		consolev1connect.TemplatePolicyServiceName,
 		consolev1connect.FolderServiceName,
 		consolev1connect.DeploymentServiceName,
 	)
