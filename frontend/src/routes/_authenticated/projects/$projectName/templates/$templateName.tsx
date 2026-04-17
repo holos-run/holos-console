@@ -277,11 +277,19 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                     }
                     const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
                     const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                    // Before HOL-555 this block also force-merged any
-                    // mandatory platform templates. That concept is moving to
-                    // TemplatePolicy REQUIRE rules (HOL-557); the UI affordance
-                    // is re-introduced in the TemplatePolicy UI (HOL-558).
-                    const allLinked = linkableTemplates.filter((t) => linkedKeys.includes(keyOf(t)))
+                    // HOL-555 -> HOL-557 transition: the backend resolver
+                    // still auto-unifies ancestor templates carrying the
+                    // legacy mandatory annotation (surfaced here as
+                    // `forced=true`). Keep those visible in the read-only
+                    // listing with an "Always applied" badge so the page
+                    // reflects the effective template set, matching the
+                    // checked+disabled treatment on the new/edit dialogs.
+                    // TemplatePolicy REQUIRE rules (HOL-557 / HOL-558) will
+                    // replace the annotation-driven signal in the same
+                    // field.
+                    const allLinked = linkableTemplates.filter(
+                      (t) => !!t.forced || linkedKeys.includes(keyOf(t)),
+                    )
                     const dedupedLinked = allLinked.filter(
                       (t, i, arr) => arr.findIndex((x) => keyOf(x) === keyOf(t)) === i,
                     )
@@ -293,6 +301,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
                             const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            const forced = !!t.forced
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
                               (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
@@ -306,6 +315,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                               <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
                                 {t.displayName || t.name}
                                 {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
+                                {forced && (
+                                  <span className="inline-flex items-center rounded bg-background px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                    Always applied
+                                  </span>
+                                )}
                                 {currentVersion && <span className="text-xs font-mono text-muted-foreground">v{currentVersion}</span>}
                                 {isUpToDate && (
                                   <TooltipProvider>

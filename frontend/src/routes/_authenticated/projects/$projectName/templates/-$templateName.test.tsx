@@ -567,14 +567,45 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
     })
 
-    it('shows None linked when no templates are linked', () => {
+    it('shows None linked when no templates are linked or forced', () => {
+      const noForced = mockLinkable.map((t) => ({ ...t, forced: false }))
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: noForced, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
+    })
+
+    // HOL-555 -> HOL-557 transition: during this window the backend
+    // resolver still auto-unifies ancestor templates carrying the
+    // legacy mandatory annotation (surfaced via `forced=true`). The
+    // detail page MUST reflect that by rendering those templates in the
+    // read-only listing so the effective template set is accurate.
+    it('shows forced ancestor template in read-only listing even when not explicitly linked', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
-      // HOL-555 removed the auto-always-on behavior tied to `mandatory`.
-      // TemplatePolicy REQUIRE rules (HOL-557) will re-introduce it. Until
-      // then, no templates are forced on.
-      expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
+      // reference-grant has forced=true; its pill should be visible.
+      expect(screen.getByText('Reference Grant')).toBeInTheDocument()
+      // And None-linked should NOT be shown, because the forced one counts.
+      expect(screen.queryByText(/None linked/i)).not.toBeInTheDocument()
+    })
+
+    it('renders Always applied badge on forced ancestor template pill', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      // The read-only pill for the forced template is labeled
+      // "Always applied" (matching the new/edit dialog treatment).
+      expect(screen.getAllByText(/always applied/i).length).toBeGreaterThan(0)
+    })
+
+    it('does not render Always applied badge on non-forced linked templates', () => {
+      const nonForced = mockLinkable.map((t) => ({ ...t, forced: false }))
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: nonForced, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      render(<DeploymentTemplateDetailPage />)
+      // No forced templates, so the Always applied badge is not shown.
+      expect(screen.queryByText(/always applied/i)).not.toBeInTheDocument()
     })
 
     it('shows linked template names as badges', () => {
