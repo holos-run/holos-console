@@ -57,7 +57,10 @@ func hol570Namespaces() hol570Fixture {
 }
 
 // mkNsForFixture constructs a managed namespace with the expected label set
-// (resource-type + parent). Keeping the helper in this file mirrors the
+// (managed-by + resource-type + parent + organization). The organization
+// label is set on folders and projects so the HOL-570 topology-scan
+// prefilter can narrow to the policy's owning org without calling
+// resolver.Walker. Keeping the helper in this file mirrors the
 // fake-client fixture used by console/policyresolver/folder_resolver_test.go
 // without sharing a cross-package testing util.
 func mkNsForFixture(name, kind, parent string) *corev1.Namespace {
@@ -67,6 +70,12 @@ func mkNsForFixture(name, kind, parent string) *corev1.Namespace {
 	}
 	if parent != "" {
 		labels[v1alpha2.AnnotationParent] = parent
+	}
+	// The canonical HOL-570 fixture always lives under the `acme`
+	// organization, so non-org namespaces carry the matching label. An
+	// explicit org-label makes the topology prefilter deterministic.
+	if kind != v1alpha2.ResourceTypeOrganization {
+		labels[v1alpha2.LabelOrganization] = "acme"
 	}
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -102,14 +111,17 @@ type linkedTripleForTest struct {
 	name      string
 }
 
-// mkDeployment constructs a Deployment ConfigMap with the given
-// linked-templates annotation.
+// mkDeployment constructs a managed Deployment ConfigMap with the given
+// linked-templates annotation. Carries the `managed-by=console.holos.run`
+// label so it is visible to the HOL-570 topology scan (which intentionally
+// ignores user-planted ConfigMaps).
 func mkDeployment(namespace, name, linkedTemplatesJSON string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeDeployment,
 			},
 			Annotations: map[string]string{
@@ -119,14 +131,15 @@ func mkDeployment(namespace, name, linkedTemplatesJSON string) *corev1.ConfigMap
 	}
 }
 
-// mkProjectTemplate constructs a project-scope Template ConfigMap with the
-// given linked-templates annotation.
+// mkProjectTemplate constructs a managed project-scope Template ConfigMap
+// with the given linked-templates annotation.
 func mkProjectTemplate(namespace, name, linkedTemplatesJSON string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
 			},
@@ -885,5 +898,103 @@ func TestCreateRejectsExcludeAgainstProjectTemplateOnlyWhenDeploymentPatternEmpt
 	}
 	if !strings.Contains(err.Error(), "project-template lilies/api") {
 		t.Errorf("expected error to name project-template lilies/api, got: %v", err)
+	}
+}
+
+// TestCreateIgnoresBrokenProjectsInOtherOrgs is the regression guard for
+// the codex-review round 3 P1 finding. A broken project namespace (missing
+// parent label, stale hierarchy) in some OTHER organization must not fail
+// policy writes scoped to a well-formed organization. The topology
+// prefilter keys on LabelOrganization so ancestor walks only fire against
+// candidates that plausibly belong under the policy's owning org.
+func TestCreateIgnoresBrokenProjectsInOtherOrgs(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	// Canonical acme fixture + one broken project in org `other` that has
+	// a missing parent label (so a walker would fail on it).
+	brokenProject := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-prj-broken",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelOrganization:  "other",
+				// NOTE: intentionally missing AnnotationParent.
+			},
+		},
+	}
+	h := makeHol570Fixture(t,
+		mkDeployment("holos-prj-lilies", "web", linkedJSON),
+		brokenProject,
+	)
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "block-httproute",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	// We EXPECT the acme/lilies/web conflict to trigger FailedPrecondition;
+	// what we do NOT want is a CodeInternal from the broken-other-org
+	// project short-circuiting the walk.
+	if err == nil {
+		t.Fatal("expected acme conflict to surface")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeFailedPrecondition {
+		t.Fatalf("expected CodeFailedPrecondition from acme conflict, not CodeInternal from broken other-org project; got %v: %v", got, err)
+	}
+	if !strings.Contains(err.Error(), "lilies/web") {
+		t.Errorf("expected error to cite lilies/web, got: %v", err)
+	}
+}
+
+// TestCreateAllowsExcludeWhenOnlyUnmanagedConfigMapHoldsLink is the
+// regression guard for the codex-review round 3 P2 finding. A hand-rolled
+// ConfigMap in a project namespace (created by a project owner who has
+// namespace-scoped write access) with a linked-templates annotation must
+// NOT cause the HOL-570 guardrail to fire — the topology selectors must
+// pin managed-by=console.holos.run so project-owner-planted ConfigMaps
+// cannot forge a conflict that blocks legitimate policy writes.
+func TestCreateAllowsExcludeWhenOnlyUnmanagedConfigMapHoldsLink(t *testing.T) {
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	// A ConfigMap with the right resource-type label and annotation, but
+	// WITHOUT managed-by=console.holos.run. The topology scan must ignore
+	// it.
+	poisoning := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "fake-deployment",
+			Namespace: "holos-prj-lilies",
+			Labels: map[string]string{
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeDeployment,
+				// NOTE: managed-by intentionally omitted — user-planted.
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationLinkedTemplates: linkedJSON,
+			},
+		},
+	}
+	h := makeHol570Fixture(t, poisoning)
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "block-httproute",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("unmanaged ConfigMap must not trigger HOL-570 rejection: %v", err)
 	}
 }

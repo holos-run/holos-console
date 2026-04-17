@@ -71,17 +71,21 @@ func (t *K8sResourceTopology) scopeNamespace(scope consolev1.TemplateScope, scop
 // ancestor chain passes through the policy's owning scope namespace. The
 // cluster-wide namespace list is filtered by the
 // `console.holos.run/managed-by` and `resource-type=project` labels so
-// unmanaged namespaces never appear.
+// unmanaged namespaces never appear, and by the policy's owning
+// organization label so projects in other orgs never become walker
+// candidates — one stale project in an unrelated org cannot fail a policy
+// write scoped to a well-formed org / folder.
 //
-// An ancestor-walk error for any candidate project namespace propagates to
+// An ancestor-walk error for a candidate project namespace propagates to
 // the caller (which turns it into connect.CodeInternal in
 // validateExcludeRulesAgainstExplicitLinks). Silently dropping a project
 // would bypass the HOL-570 guardrail whenever a transient namespace Get
 // fails, the hierarchy is temporarily inconsistent, or the walker hits its
 // depth / cycle guard — any of those conditions could hide an existing
-// explicit link from the validator. Better to fail loudly and let the
-// caller retry than to accept an EXCLUDE that will silently do nothing at
-// render time.
+// explicit link from the validator. The organization-label prefilter keeps
+// this fail-loud behavior narrowly scoped to descendants of the policy's
+// own organization, which is the blast radius operators already accept for
+// TemplatePolicy authoring.
 func (t *K8sResourceTopology) ListProjectsUnderScope(
 	ctx context.Context,
 	scope consolev1.TemplateScope,
@@ -91,8 +95,15 @@ func (t *K8sResourceTopology) ListProjectsUnderScope(
 	if err != nil {
 		return nil, err
 	}
+	orgLabel, err := t.organizationForScope(ctx, scope, scopeName)
+	if err != nil {
+		return nil, err
+	}
 	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
 		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeProject
+	if orgLabel != "" {
+		labelSelector += "," + v1alpha2.LabelOrganization + "=" + orgLabel
+	}
 	list, err := t.Client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("listing project namespaces: %w", err)
@@ -114,6 +125,33 @@ func (t *K8sResourceTopology) ListProjectsUnderScope(
 	return result, nil
 }
 
+// organizationForScope resolves the organization slug that owns the given
+// policy scope. For organization scope the slug is the scopeName directly;
+// for folder scope we read the folder namespace's
+// `console.holos.run/organization` label. The label is set by the folder
+// creation path and is what ListProjectsUnderScope uses to narrow the
+// project-namespace candidate list. Returns an empty string when the label
+// is missing — in that case the caller falls back to the unfiltered search
+// so the guardrail still fires for correctly-managed projects.
+func (t *K8sResourceTopology) organizationForScope(
+	ctx context.Context,
+	scope consolev1.TemplateScope,
+	scopeName string,
+) (string, error) {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return scopeName, nil
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		ns, err := t.Client.CoreV1().Namespaces().Get(ctx, t.Resolver.FolderNamespace(scopeName), metav1.GetOptions{})
+		if err != nil {
+			return "", fmt.Errorf("getting folder namespace for org label: %w", err)
+		}
+		return ns.Labels[v1alpha2.LabelOrganization], nil
+	default:
+		return "", nil
+	}
+}
+
 // ancestorChainContains reports whether `wantNs` appears in the ancestor
 // chain of `startNs`. A walker error is surfaced to the caller rather than
 // swallowed — skipping the project on walker failure would silently weaken
@@ -132,12 +170,19 @@ func (t *K8sResourceTopology) ancestorChainContains(ctx context.Context, startNs
 	return false, nil
 }
 
-// ListProjectTemplates returns all Template ConfigMaps in the project
-// namespace. Listing by label keeps unmanaged ConfigMaps (for example,
-// anything dropped into the namespace by a customer script) from being
-// treated as a candidate EXCLUDE target.
+// ListProjectTemplates returns project-scope Template ConfigMaps managed
+// by the console in the project namespace. The selector pins
+// `managed-by=console.holos.run`, `resource-type=template`, and
+// `template-scope=project` so a hand-authored ConfigMap created by a
+// project owner (who has namespace-scoped write access) cannot poison the
+// topology scan by fabricating a linked-templates annotation the guardrail
+// would then cite as a conflict. Only ConfigMaps the console itself wrote
+// — i.e. the actual render targets at HOL-570 policy-authoring time — are
+// considered.
 func (t *K8sResourceTopology) ListProjectTemplates(ctx context.Context, projectNs string) ([]corev1.ConfigMap, error) {
-	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplate
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplate + "," +
+		v1alpha2.LabelTemplateScope + "=" + v1alpha2.TemplateScopeProject
 	list, err := t.Client.CoreV1().ConfigMaps(projectNs).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("listing project templates in %q: %w", projectNs, err)
@@ -145,10 +190,14 @@ func (t *K8sResourceTopology) ListProjectTemplates(ctx context.Context, projectN
 	return list.Items, nil
 }
 
-// ListProjectDeployments returns all Deployment ConfigMaps in the project
-// namespace. Same rationale as ListProjectTemplates for the label filter.
+// ListProjectDeployments returns Deployment ConfigMaps managed by the
+// console in the project namespace. Same rationale as ListProjectTemplates
+// for the managed-by filter — the guardrail must ignore user-planted
+// ConfigMaps so a project owner cannot forge a "conflict" that blocks an
+// administrator's legitimate EXCLUDE rule.
 func (t *K8sResourceTopology) ListProjectDeployments(ctx context.Context, projectNs string) ([]corev1.ConfigMap, error) {
-	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeDeployment
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeDeployment
 	list, err := t.Client.CoreV1().ConfigMaps(projectNs).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("listing deployments in %q: %w", projectNs, err)
