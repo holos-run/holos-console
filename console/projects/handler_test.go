@@ -1549,6 +1549,105 @@ func TestCreateProject_RealRequireRuleResolver_AppliesOrgTemplate(t *testing.T) 
 	}
 }
 
+// TestCreateProject_RealRequireRuleResolver_PopulatesPlatformFolders
+// asserts that the HOL-571 review round-1 folder-ancestry fix is live: a
+// project under a folder whose required template references
+// `platform.folders` renders with the folder chain populated. The CUE
+// template emits a ConfigMap whose sentinel annotation is the first
+// folder name taken from `platform.folders`; if Folders were empty (the
+// regression this test guards against), CUE would fail the index
+// expression and the apply would error rather than succeed with the
+// expected folder name in the annotation.
+func TestCreateProject_RealRequireRuleResolver_PopulatesPlatformFolders(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Fixture: acme (org) → eng (folder) → new-prj (project under eng).
+	existing := managedNSWithOrg("existing", "acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	orgNs := makeOrgNamespace("acme")
+	folderEngNs := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-fld-eng",
+			Labels: map[string]string{
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.AnnotationParent:  orgNs.Name,
+			},
+		},
+	}
+
+	// Template CUE reads the first element of platform.folders and emits
+	// it as an annotation. Without the round-1 Folders fix this fails to
+	// evaluate (empty slice indexed at [0]) and the apply errors out.
+	templateName := "folder-aware"
+	cueSrc := `platform: #PlatformInput
+projectResources: namespacedResources: "holos-prj-new-prj": ConfigMap: "sentinel": {
+	apiVersion: "v1"
+	kind:       "ConfigMap"
+	metadata: {
+		name:      "sentinel"
+		namespace: "holos-prj-new-prj"
+		labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		annotations: "folder": platform.folders[0].name
+	}
+}
+`
+	// Build the template with the folder-aware CUE source.
+	orgTmpl := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      templateName,
+			Namespace: "holos-org-acme",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDisplayName: templateName,
+				v1alpha2.AnnotationEnabled:     "true",
+			},
+		},
+		Data: map[string]string{
+			templates.CueTemplateKey: cueSrc,
+		},
+	}
+	policyCM := seedOrgRequirePolicy(t, "acme", templateName, "*")
+
+	handler, _ := buildCreateProjectRealResolverHandler(t, existing, orgNs, folderEngNs, orgTmpl, policyCM)
+
+	recording := handler.requiredTemplateApplier.(*recordingAppliedTemplates)
+
+	ctx := contextWithClaims("alice@example.com")
+	// Create the project under the eng folder so Folders is non-empty.
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name:         "new-prj",
+		Organization: "acme",
+		ParentType:   consolev1.ParentType_PARENT_TYPE_FOLDER,
+		ParentName:   "eng",
+	}))
+	if err != nil {
+		t.Fatalf("expected no error (CUE would fail with empty platform.folders), got %v", err)
+	}
+
+	if len(recording.applied.calls) != 1 {
+		t.Fatalf("expected exactly 1 Apply call for REQUIRE-matched template, got %d", len(recording.applied.calls))
+	}
+	// The resulting ConfigMap should carry the folder annotation
+	// `folder: eng`. A stale or missing Folders slice would have aborted
+	// the CUE render above; the extra assertion here keeps the folder
+	// ancestry explicitly in scope.
+	gotFolder := ""
+	for _, r := range recording.applied.calls[0].resources {
+		anns := r.GetAnnotations()
+		if v, ok := anns["folder"]; ok {
+			gotFolder = v
+			break
+		}
+	}
+	if gotFolder != "eng" {
+		t.Errorf("expected rendered annotation folder=eng (from platform.folders[0]), got %q", gotFolder)
+	}
+}
+
 // TestCreateProject_RealRequireRuleResolver_SkipsProjectNamespacePolicy
 // exercises the HOL-554 storage-isolation guardrail end-to-end: a
 // TemplatePolicy ConfigMap seeded in a project namespace (where it is not

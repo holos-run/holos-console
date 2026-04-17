@@ -222,6 +222,43 @@ func TestApplier_ApplyRequiredTemplate(t *testing.T) {
 				v1alpha2.AnnotationDeployment)
 		}
 	})
+
+	// Regression guard for HOL-571 review round 2: a template author who
+	// emits `console.holos.run/deployment` on a rendered resource must not
+	// be able to smuggle that label back into the ownership selector that
+	// ApplyRequiredTemplate exists to keep disjoint from real deployments.
+	// The applier must strip the deployment label before stamping its own
+	// required-template identity.
+	t.Run("preexisting deployment label is stripped in patch payload", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+		res := makeDeploymentResource("sentinel", namespace)
+		// Emit the forbidden label from the rendered resource itself.
+		labels := res.GetLabels()
+		labels[v1alpha2.AnnotationDeployment] = "attacker-controlled"
+		res.SetLabels(labels)
+		resources := []unstructured.Unstructured{res}
+
+		if err := applier.ApplyRequiredTemplate(context.Background(), testProject, templateName, resources); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		sawDeploymentLabel := false
+		for _, a := range fakeClient.Actions() {
+			pa, ok := a.(testing2.PatchAction)
+			if !ok {
+				continue
+			}
+			patch := string(pa.GetPatch())
+			if containsStr(patch, v1alpha2.AnnotationDeployment) {
+				sawDeploymentLabel = true
+				break
+			}
+		}
+		if sawDeploymentLabel {
+			t.Errorf("required-template apply path must strip preexisting %q label, got it in patch",
+				v1alpha2.AnnotationDeployment)
+		}
+	})
 }
 
 func TestApplier_Cleanup(t *testing.T) {

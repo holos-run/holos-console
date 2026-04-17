@@ -35,11 +35,17 @@ func (s *stubRequireRuleResolver) ResolveRequiredTemplates(_ context.Context, _,
 
 // stubHierarchyWalkerFromNamespaces adapts a flat list of namespaces to the
 // RenderHierarchyWalker interface so tests can drive ancestor resolution.
+// Records every WalkAncestors call so tests can guard against regressions
+// that skip the walk entirely (HOL-571 review round 2).
 type stubHierarchyWalkerFromNamespaces struct {
-	ancestors []*corev1.Namespace
+	ancestors   []*corev1.Namespace
+	callCount   int
+	lastStartNs string
 }
 
-func (s *stubHierarchyWalkerFromNamespaces) WalkAncestors(_ context.Context, _ string) ([]*corev1.Namespace, error) {
+func (s *stubHierarchyWalkerFromNamespaces) WalkAncestors(_ context.Context, startNs string) ([]*corev1.Namespace, error) {
+	s.callCount++
+	s.lastStartNs = startNs
 	return s.ancestors, nil
 }
 
@@ -223,14 +229,16 @@ func TestEmptyRequireRuleResolver(t *testing.T) {
 	}
 }
 
-// TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput exercises
-// the guard introduced in HOL-571 review round 1 finding 2: the applier
-// must consult the RenderHierarchyWalker when building PlatformInput so
+// TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput guards
+// the fix from HOL-571 review round 1 finding 2: the applier must consult
+// the RenderHierarchyWalker when building PlatformInput so
 // `platform.folders` is populated for folder/org-scope required templates.
-// Asserting the Folders content end-to-end needs a renderer that can
-// capture the inputs it receives; that's covered by the integration test
-// in console/projects/handler_test.go. This unit-level check guards
-// against a regression where the walk is skipped entirely.
+// The stub walker records every invocation, so if the walk call is ever
+// removed from ApplyRequiredTemplates the assertion will fire — covering
+// the round-2 gap where checking fixture data alone was not enough.
+// End-to-end Folders-content assertions live in the handler-level
+// integration tests; at the unit level we guard against the call being
+// skipped entirely.
 func TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -273,13 +281,13 @@ func TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput(t *testing.
 	// consulted.
 	_ = rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", nil)
 
-	// The stub walker records its ancestors return; a non-nil set means
-	// ApplyRequiredTemplates reached the walk. If the code short-circuits
-	// before touching the walker, this passes trivially — so further
-	// assertions on Folders content live in the handler-level integration
-	// test. At the unit-level we just guard against the regression where
-	// the walk is skipped entirely.
-	if len(walker.ancestors) != 3 {
-		t.Errorf("fixture walker seed was lost: got %d ancestors, want 3", len(walker.ancestors))
+	if walker.callCount < 1 {
+		t.Errorf("expected WalkAncestors to be called at least once, got %d", walker.callCount)
+	}
+	// The walk starts from the new project's namespace so folder
+	// ancestry is resolved relative to the right node.
+	if walker.lastStartNs != "prj-new-prj" {
+		t.Errorf("expected WalkAncestors start namespace %q, got %q",
+			"prj-new-prj", walker.lastStartNs)
 	}
 }
