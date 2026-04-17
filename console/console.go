@@ -293,12 +293,35 @@ func (s *Server) Serve(ctx context.Context) error {
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
 		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
 
-		// TemplatePolicy resolution seam (HOL-566 Phase 4). A single no-op
-		// resolver is threaded through every render path — deployments,
-		// project-scope templates, and required-template application — so
-		// Phase 5 (HOL-567) can swap the implementation for a real
-		// REQUIRE/EXCLUDE resolver without revisiting call sites.
-		policyResolverSeam := policyresolver.NewNoopResolver()
+		// TemplatePolicy resolution seam (HOL-566 Phase 4, wired in HOL-567
+		// Phase 5). The real folderResolver is threaded through every render
+		// path — deployments, project-scope templates, and required-template
+		// application — so Phase 5 (HOL-567) swapped the Phase 4 no-op for
+		// the TemplatePolicy-backed implementation. TemplatePolicy reads
+		// route through a namespace-direct lister that never consults a
+		// project namespace (HOL-554 storage-isolation).
+		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
+		policyResolverSeam := policyresolver.NewFolderResolver(
+			templatePoliciesK8s,
+			nsWalker,
+			nsResolver,
+			policyresolver.RuleUnmarshalerFunc(templatepolicies.UnmarshalRules),
+		)
+		// AppliedRenderStateClient persists the effective render set to the
+		// owning folder namespace on successful Create/Update of a deployment
+		// or project-scope template. Reads consult ONLY folder/organization
+		// namespaces — any render-state artifact in a project namespace is
+		// ignored (HOL-554 storage-isolation guardrail).
+		appliedRenderStateClient := policyresolver.NewAppliedRenderStateClient(k8sClientset, nsResolver, nsWalker)
+		// driftChecker composes the real TemplatePolicy resolver with the
+		// applied-render-state store so the deployments and templates
+		// handlers can surface drift (DeploymentStatusSummary.policy_drift,
+		// GetDeploymentPolicyState, GetProjectTemplatePolicyState) and
+		// record the effective render set on successful Create/Update of a
+		// render target.
+		driftChecker := policyresolver.NewDriftChecker(policyResolverSeam, appliedRenderStateClient, nsResolver)
+		deploymentDriftAdapter := policyresolver.NewDeploymentDriftAdapter(driftChecker)
+		projectTemplateDriftAdapter := policyresolver.NewProjectTemplateDriftAdapter(driftChecker)
 
 		// Wire defaults seeder for populate_defaults org creation flow.
 		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
@@ -349,7 +372,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
 			WithProjectGrantResolver(projectResolver).
-			WithAncestorWalker(nsWalker)
+			WithAncestorWalker(nsWalker).
+			WithProjectTemplateDriftChecker(projectTemplateDriftAdapter)
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
@@ -359,7 +383,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		// policy artifact stored there could be tampered with by the very
 		// actor the policy is meant to constrain (HOL-554 storage-isolation
 		// design note).
-		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
+		//
+		// templatePoliciesK8s was constructed earlier so the folderResolver
+		// could be wired; reuse the same client here so there is exactly
+		// one policy reader+writer in the process.
 		templatePoliciesHandler := templatepolicies.NewHandler(templatePoliciesK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
@@ -393,7 +420,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
-			WithStatusCache(deploymentStatusCache)
+			WithStatusCache(deploymentStatusCache).
+			WithPolicyDriftChecker(deploymentDriftAdapter)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

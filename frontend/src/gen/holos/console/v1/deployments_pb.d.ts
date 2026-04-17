@@ -5,6 +5,7 @@
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import type { GetDeploymentPolicyStateRequestSchema, GetDeploymentPolicyStateResponseSchema } from "./policy_state_pb";
 
 /**
  * Describes the file holos/console/v1/deployments.proto.
@@ -897,6 +898,20 @@ export declare type DeploymentStatusSummary = Message<"holos.console.v1.Deployme
    * @generated from field: optional holos.console.v1.DeploymentOutput output = 8;
    */
   output?: DeploymentOutput;
+
+  /**
+   * policy_drift signals that the effective TemplatePolicy resolver output
+   * for this deployment no longer matches the render set last applied on
+   * Create/UpdateDeployment. When true, the UI should offer a "re-render"
+   * action so drift can be closed out; callers needing the full diff (what
+   * was added, what was removed) invoke GetDeploymentPolicyState. Unset
+   * means the comparison was not performed — typically because the
+   * informer cache has not observed the deployment yet or the handler was
+   * configured without a render-state client. Introduced in HOL-567.
+   *
+   * @generated from field: optional bool policy_drift = 9;
+   */
+  policyDrift?: boolean;
 };
 
 /**
@@ -1433,6 +1448,20 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof GetDeploymentRenderPreviewRequestSchema;
     output: typeof GetDeploymentRenderPreviewResponseSchema;
+  },
+  /**
+   * GetDeploymentPolicyState returns the full TemplatePolicy drift snapshot
+   * for a deployment: the applied render set (last recorded by
+   * Create/UpdateDeployment), the current resolver output, and the
+   * per-ref add/remove diff. Introduced in HOL-567 as the single source
+   * of truth for "is this deployment drifted from policy?".
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.GetDeploymentPolicyState
+   */
+  getDeploymentPolicyState: {
+    methodKind: "unary";
+    input: typeof GetDeploymentPolicyStateRequestSchema;
+    output: typeof GetDeploymentPolicyStateResponseSchema;
   },
 }>;
 

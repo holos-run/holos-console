@@ -3,6 +3,7 @@ syntax = "proto3";
 package holos.console.v1;
 
 import "google/protobuf/timestamp.proto";
+import "holos/console/v1/policy_state.proto";
 import "holos/console/v1/templates.proto";
 
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";

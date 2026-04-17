@@ -5,11 +5,14 @@ import { useTransport } from '@connectrpc/connect-query'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   TemplateService,
-  TemplateScopeRefSchema,
-  TemplateScope,
   ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults } from '@/gen/holos/console/v1/templates_pb.js'
+import type { LinkableTemplate, Release, TemplateUpdate, TemplateDefaults } from '@/gen/holos/console/v1/templates_pb.js'
+import {
+  TemplateScopeRefSchema,
+  TemplateScope,
+} from '@/gen/holos/console/v1/policy_state_pb.js'
+import type { TemplateScopeRef, LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
 
 // Re-export types used by consumers.

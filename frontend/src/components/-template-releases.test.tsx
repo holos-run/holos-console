@@ -70,7 +70,7 @@ vi.mock('lucide-react', () => ({
 
 import { useListReleases, useCreateRelease } from '@/queries/templates'
 import { TemplateReleases } from './template-releases'
-import { TemplateScope } from '@/gen/holos/console/v1/templates_pb.js'
+import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 const testScope = { scope: TemplateScope.ORGANIZATION, scopeName: 'test-org' } as any
 

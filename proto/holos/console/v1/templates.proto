@@ -4,6 +4,7 @@ package holos.console.v1;
 
 import "google/protobuf/timestamp.proto";
 import "holos/console/v1/deployments.proto";
+import "holos/console/v1/policy_state.proto";
 import "holos/console/v1/rbac.proto";
 
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
@@ -82,43 +83,19 @@ service TemplateService {
   // complementary to Template.defaults on list/get responses, which is retained
   // for backwards compatibility.
   rpc GetTemplateDefaults(GetTemplateDefaultsRequest) returns (GetTemplateDefaultsResponse);
-}
 
-// TemplateScope identifies the hierarchy level at which a template is stored.
-// (ADR 021 Decision 1)
-enum TemplateScope {
-  TEMPLATE_SCOPE_UNSPECIFIED = 0;
-  // TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
-  TEMPLATE_SCOPE_ORGANIZATION = 1;
-  // TEMPLATE_SCOPE_FOLDER — authored by SREs.
-  TEMPLATE_SCOPE_FOLDER = 2;
-  // TEMPLATE_SCOPE_PROJECT — authored by product engineers.
-  TEMPLATE_SCOPE_PROJECT = 3;
-}
-
-// TemplateScopeRef identifies the owning scope of a template.
-// (ADR 021 Decision 1)
-message TemplateScopeRef {
-  // scope is the hierarchy level.
-  TemplateScope scope = 1;
-  // scope_name is the org name, folder name, or project name.
-  string scope_name = 2;
-}
-
-// LinkedTemplateRef is a scope-qualified reference to a template used in the
-// explicit linking list (ADR 021 Decision 5). Replaces the flat string list
-// from v1alpha1's console.holos.run/linked-org-templates annotation.
-message LinkedTemplateRef {
-  // scope identifies the hierarchy level of the linked template.
-  TemplateScope scope = 1;
-  // scope_name is the org/folder/project name for the linked template.
-  string scope_name = 2;
-  // name is the template name.
-  string name = 3;
-  // version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
-  // restricts which release versions of the linked template are compatible.
-  // Empty means no constraint (latest version is used).
-  string version_constraint = 4;
+  // GetProjectTemplatePolicyState returns the full TemplatePolicy drift
+  // snapshot for a project-scope Template. Mirrors
+  // DeploymentService.GetDeploymentPolicyState but keyed by
+  // (scope=project, project slug, template name). Introduced in HOL-567.
+  //
+  // Scope decision (AC from HOL-567): the parallel `policy_drift` surface
+  // for project-scope Templates is provided via this RPC rather than a new
+  // `ProjectTemplateStatusSummary` message, because project-scope templates
+  // do not carry a live-status concept in the current UI — the list view
+  // shows metadata only. A dedicated RPC keeps list responses cheap and
+  // makes the drift query symmetric with deployments.
+  rpc GetProjectTemplatePolicyState(GetProjectTemplatePolicyStateRequest) returns (GetProjectTemplatePolicyStateResponse);
 }
 
 // TemplateDefaults carries optional default values that a template provides
@@ -522,3 +499,10 @@ message CheckUpdatesResponse {
   // updates lists each linked template that has an available update.
   repeated TemplateUpdate updates = 1;
 }
+
+// Note: PolicyState, GetDeploymentPolicyStateRequest/Response, and
+// GetProjectTemplatePolicyStateRequest/Response messages live in
+// policy_state.proto — alongside the LinkedTemplateRef / TemplateScope /
+// TemplateScopeRef foundational types — so both DeploymentService and
+// TemplateService can register the corresponding RPCs without creating an
+// import cycle. See policy_state.proto for message definitions.

@@ -119,6 +119,30 @@ type Handler struct {
 	ancestorWalker           AncestorWalker
 	ancestorTemplateProvider AncestorTemplateProvider
 	statusCache              statuscache.Cache
+	policyDriftChecker       PolicyDriftChecker
+}
+
+// PolicyDriftChecker exposes the minimal surface a deployment needs from the
+// TemplatePolicy resolver + applied-render-state store in order to report
+// drift and serve GetDeploymentPolicyState. Implementations record the
+// resolved set on successful Create/Update and read it back from the folder
+// namespace on subsequent status queries. Defined as a local interface so
+// tests can stub it without depending on console/policyresolver.
+type PolicyDriftChecker interface {
+	// Drift reports whether the current resolver output differs from the
+	// applied render set last recorded for the target. Returns (drift,
+	// hasAppliedState, error). When hasAppliedState is false the target
+	// has not yet been rendered through the post-HOL-567 path and drift
+	// is meaningless — callers SHOULD NOT surface policy_drift in that
+	// case.
+	Drift(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (drift, hasAppliedState bool, err error)
+	// PolicyState returns the full snapshot for the deployment: applied,
+	// current, added, removed, drift, has_applied_state.
+	PolicyState(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error)
+	// RecordApplied persists the effective render set for the target on
+	// successful Create/Update. Idempotent: second call with the same
+	// refs overwrites the first.
+	RecordApplied(ctx context.Context, project, deploymentName string, refs []*consolev1.LinkedTemplateRef) error
 }
 
 // NewHandler creates a DeploymentService handler.
@@ -156,6 +180,17 @@ func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Ha
 // status summaries (no data yet).
 func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
 	h.statusCache = c
+	return h
+}
+
+// WithPolicyDriftChecker wires the TemplatePolicy drift checker used by
+// Create/UpdateDeployment to persist the resolved render set, by
+// GetDeploymentPolicyState to surface the full snapshot, and by
+// DeploymentStatusSummary.policy_drift to flag drifted deployments on the
+// list view. A nil checker disables drift persistence and reporting so
+// local/dev wiring without a policy resolver still works.
+func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
+	h.policyDriftChecker = c
 	return h
 }
 
@@ -1397,4 +1432,58 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// GetDeploymentPolicyState returns the full TemplatePolicy drift snapshot for
+// a deployment. When no PolicyDriftChecker is wired (dev/local bootstrap
+// without a cluster policy resolver), the response carries an empty
+// PolicyState with has_applied_state=false and drift=false so clients can
+// round-trip the RPC without special-casing missing wiring.
+//
+// Introduced in HOL-567 as the single source of truth for "is this deployment
+// drifted from policy?" — the DeploymentStatusSummary.policy_drift bool on
+// list responses is derived from the same checker so the two surfaces never
+// disagree.
+func (h *Handler) GetDeploymentPolicyState(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetDeploymentPolicyStateRequest],
+) (*connect.Response[consolev1.GetDeploymentPolicyStateResponse], error) {
+	project := req.Msg.GetProject()
+	name := req.Msg.GetName()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	cm, err := h.k8s.GetDeployment(ctx, project, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+	explicitRefs := linkedTemplateRefsFromAnnotation(cm)
+
+	if h.policyDriftChecker == nil {
+		return connect.NewResponse(&consolev1.GetDeploymentPolicyStateResponse{
+			State: &consolev1.PolicyState{},
+		}), nil
+	}
+	state, err := h.policyDriftChecker.PolicyState(ctx, project, name, explicitRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "policy state computation failed",
+			slog.String("project", project),
+			slog.String("deployment", name),
+			slog.Any("error", err),
+		)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&consolev1.GetDeploymentPolicyStateResponse{State: state}), nil
 }

@@ -87,6 +87,23 @@ type Renderer interface {
 	RenderGroupedWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error)
 }
 
+// ProjectTemplateDriftChecker exposes the minimal surface needed to serve
+// TemplateService.GetProjectTemplatePolicyState and to record the applied
+// render set on successful CreateTemplate/UpdateTemplate at project scope.
+// Defined as a local interface so tests can stub it without importing the
+// policyresolver package through this handler.
+type ProjectTemplateDriftChecker interface {
+	// PolicyState returns the full TemplatePolicy drift snapshot for a
+	// project-scope template. `project` is the owning project slug;
+	// `templateName` is the template's DNS label within that project;
+	// `explicitRefs` carries the owner-linked template list read from the
+	// target template's LinkedTemplates annotation.
+	PolicyState(ctx context.Context, project, templateName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error)
+	// RecordApplied persists the effective render set for the
+	// project-scope template on successful Create/Update. Idempotent.
+	RecordApplied(ctx context.Context, project, templateName string, refs []*consolev1.LinkedTemplateRef) error
+}
+
 // Handler implements the unified TemplateService (ADR 021).
 type Handler struct {
 	consolev1connect.UnimplementedTemplateServiceHandler
@@ -102,6 +119,11 @@ type Handler struct {
 	// swaps the no-op implementation wired at server startup for a real
 	// REQUIRE/EXCLUDE resolver without touching this handler.
 	policyResolver policyresolver.PolicyResolver
+	// projectTemplateDriftChecker serves GetProjectTemplatePolicyState and
+	// the Create/Update write-through to folder-namespace storage. Optional
+	// — a nil value disables drift reporting and applied-state recording
+	// for project-scope templates (HOL-567).
+	projectTemplateDriftChecker ProjectTemplateDriftChecker
 }
 
 // NewHandler creates a TemplateService handler. policyResolver is the
@@ -133,6 +155,15 @@ func (h *Handler) WithProjectGrantResolver(pgr ProjectGrantResolver) *Handler {
 // hierarchy-aware permission checks and ancestor template collection.
 func (h *Handler) WithAncestorWalker(w AncestorWalker) *Handler {
 	h.walker = w
+	return h
+}
+
+// WithProjectTemplateDriftChecker wires the TemplatePolicy drift checker used
+// by GetProjectTemplatePolicyState and by CreateTemplate/UpdateTemplate
+// (project scope) to persist the resolved render set. A nil checker disables
+// the behavior so local/dev wiring without a cluster policy resolver works.
+func (h *Handler) WithProjectTemplateDriftChecker(c ProjectTemplateDriftChecker) *Handler {
+	h.projectTemplateDriftChecker = c
 	return h
 }
 
@@ -1374,4 +1405,71 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// GetProjectTemplatePolicyState returns the full TemplatePolicy drift
+// snapshot for a project-scope template (HOL-567). Mirrors
+// DeploymentService.GetDeploymentPolicyState but keyed by (project slug,
+// template name). Non-project scopes are rejected with InvalidArgument — a
+// folder-scope or org-scope template has no render surface today.
+//
+// When no ProjectTemplateDriftChecker is wired (dev/local bootstrap without
+// a cluster policy resolver), the response carries an empty PolicyState
+// with has_applied_state=false and drift=false so clients can round-trip
+// the RPC without special-casing missing wiring.
+func (h *Handler) GetProjectTemplatePolicyState(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetProjectTemplatePolicyStateRequest],
+) (*connect.Response[consolev1.GetProjectTemplatePolicyStateResponse], error) {
+	scopeRef := req.Msg.GetScope()
+	name := req.Msg.GetName()
+	if scopeRef == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+	}
+	if scopeRef.GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("scope must be TEMPLATE_SCOPE_PROJECT for project-template policy state"))
+	}
+	project := scopeRef.GetScopeName()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope_name (project) is required"))
+	}
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	// Read the template so we can pass its owner-linked refs to the
+	// resolver. The caller must have read access to the owning project for
+	// this to succeed.
+	cm, err := h.k8s.GetTemplate(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, name)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+	var explicitRefs []*consolev1.LinkedTemplateRef
+	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+		if refs, parseErr := unmarshalLinkedTemplates(raw); parseErr == nil {
+			explicitRefs = refs
+		}
+	}
+
+	if h.projectTemplateDriftChecker == nil {
+		return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{
+			State: &consolev1.PolicyState{},
+		}), nil
+	}
+	state, err := h.projectTemplateDriftChecker.PolicyState(ctx, project, name, explicitRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "project-template policy state computation failed",
+			slog.String("project", project),
+			slog.String("template", name),
+			slog.Any("error", err),
+		)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{State: state}), nil
 }

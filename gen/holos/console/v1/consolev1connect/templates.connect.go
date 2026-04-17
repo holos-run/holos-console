@@ -75,6 +75,9 @@ const (
 	// TemplateServiceGetTemplateDefaultsProcedure is the fully-qualified name of the TemplateService's
 	// GetTemplateDefaults RPC.
 	TemplateServiceGetTemplateDefaultsProcedure = "/holos.console.v1.TemplateService/GetTemplateDefaults"
+	// TemplateServiceGetProjectTemplatePolicyStateProcedure is the fully-qualified name of the
+	// TemplateService's GetProjectTemplatePolicyState RPC.
+	TemplateServiceGetProjectTemplatePolicyStateProcedure = "/holos.console.v1.TemplateService/GetProjectTemplatePolicyState"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -131,6 +134,18 @@ type TemplateServiceClient interface {
 	// complementary to Template.defaults on list/get responses, which is retained
 	// for backwards compatibility.
 	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
+	// GetProjectTemplatePolicyState returns the full TemplatePolicy drift
+	// snapshot for a project-scope Template. Mirrors
+	// DeploymentService.GetDeploymentPolicyState but keyed by
+	// (scope=project, project slug, template name). Introduced in HOL-567.
+	//
+	// Scope decision (AC from HOL-567): the parallel `policy_drift` surface
+	// for project-scope Templates is provided via this RPC rather than a new
+	// `ProjectTemplateStatusSummary` message, because project-scope templates
+	// do not carry a live-status concept in the current UI — the list view
+	// shows metadata only. A dedicated RPC keeps list responses cheap and
+	// makes the drift query symmetric with deployments.
+	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -228,25 +243,32 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("GetTemplateDefaults")),
 			connect.WithClientOptions(opts...),
 		),
+		getProjectTemplatePolicyState: connect.NewClient[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse](
+			httpClient,
+			baseURL+TemplateServiceGetProjectTemplatePolicyStateProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("GetProjectTemplatePolicyState")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // templateServiceClient implements TemplateServiceClient.
 type templateServiceClient struct {
-	listTemplates         *connect.Client[v1.ListTemplatesRequest, v1.ListTemplatesResponse]
-	getTemplate           *connect.Client[v1.GetTemplateRequest, v1.GetTemplateResponse]
-	createTemplate        *connect.Client[v1.CreateTemplateRequest, v1.CreateTemplateResponse]
-	updateTemplate        *connect.Client[v1.UpdateTemplateRequest, v1.UpdateTemplateResponse]
-	deleteTemplate        *connect.Client[v1.DeleteTemplateRequest, v1.DeleteTemplateResponse]
-	renderTemplate        *connect.Client[v1.RenderTemplateRequest, v1.RenderTemplateResponse]
-	cloneTemplate         *connect.Client[v1.CloneTemplateRequest, v1.CloneTemplateResponse]
-	listLinkableTemplates *connect.Client[v1.ListLinkableTemplatesRequest, v1.ListLinkableTemplatesResponse]
-	listAncestorTemplates *connect.Client[v1.ListAncestorTemplatesRequest, v1.ListAncestorTemplatesResponse]
-	createRelease         *connect.Client[v1.CreateReleaseRequest, v1.CreateReleaseResponse]
-	listReleases          *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
-	getRelease            *connect.Client[v1.GetReleaseRequest, v1.GetReleaseResponse]
-	checkUpdates          *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
-	getTemplateDefaults   *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
+	listTemplates                 *connect.Client[v1.ListTemplatesRequest, v1.ListTemplatesResponse]
+	getTemplate                   *connect.Client[v1.GetTemplateRequest, v1.GetTemplateResponse]
+	createTemplate                *connect.Client[v1.CreateTemplateRequest, v1.CreateTemplateResponse]
+	updateTemplate                *connect.Client[v1.UpdateTemplateRequest, v1.UpdateTemplateResponse]
+	deleteTemplate                *connect.Client[v1.DeleteTemplateRequest, v1.DeleteTemplateResponse]
+	renderTemplate                *connect.Client[v1.RenderTemplateRequest, v1.RenderTemplateResponse]
+	cloneTemplate                 *connect.Client[v1.CloneTemplateRequest, v1.CloneTemplateResponse]
+	listLinkableTemplates         *connect.Client[v1.ListLinkableTemplatesRequest, v1.ListLinkableTemplatesResponse]
+	listAncestorTemplates         *connect.Client[v1.ListAncestorTemplatesRequest, v1.ListAncestorTemplatesResponse]
+	createRelease                 *connect.Client[v1.CreateReleaseRequest, v1.CreateReleaseResponse]
+	listReleases                  *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
+	getRelease                    *connect.Client[v1.GetReleaseRequest, v1.GetReleaseResponse]
+	checkUpdates                  *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
+	getTemplateDefaults           *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
+	getProjectTemplatePolicyState *connect.Client[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -319,6 +341,12 @@ func (c *templateServiceClient) GetTemplateDefaults(ctx context.Context, req *co
 	return c.getTemplateDefaults.CallUnary(ctx, req)
 }
 
+// GetProjectTemplatePolicyState calls
+// holos.console.v1.TemplateService.GetProjectTemplatePolicyState.
+func (c *templateServiceClient) GetProjectTemplatePolicyState(ctx context.Context, req *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error) {
+	return c.getProjectTemplatePolicyState.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
 	// ListTemplates returns all templates the user can see in the given scope.
@@ -373,6 +401,18 @@ type TemplateServiceHandler interface {
 	// complementary to Template.defaults on list/get responses, which is retained
 	// for backwards compatibility.
 	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
+	// GetProjectTemplatePolicyState returns the full TemplatePolicy drift
+	// snapshot for a project-scope Template. Mirrors
+	// DeploymentService.GetDeploymentPolicyState but keyed by
+	// (scope=project, project slug, template name). Introduced in HOL-567.
+	//
+	// Scope decision (AC from HOL-567): the parallel `policy_drift` surface
+	// for project-scope Templates is provided via this RPC rather than a new
+	// `ProjectTemplateStatusSummary` message, because project-scope templates
+	// do not carry a live-status concept in the current UI — the list view
+	// shows metadata only. A dedicated RPC keeps list responses cheap and
+	// makes the drift query symmetric with deployments.
+	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -466,6 +506,12 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("GetTemplateDefaults")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceGetProjectTemplatePolicyStateHandler := connect.NewUnaryHandler(
+		TemplateServiceGetProjectTemplatePolicyStateProcedure,
+		svc.GetProjectTemplatePolicyState,
+		connect.WithSchema(templateServiceMethods.ByName("GetProjectTemplatePolicyState")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -496,6 +542,8 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceCheckUpdatesHandler.ServeHTTP(w, r)
 		case TemplateServiceGetTemplateDefaultsProcedure:
 			templateServiceGetTemplateDefaultsHandler.ServeHTTP(w, r)
+		case TemplateServiceGetProjectTemplatePolicyStateProcedure:
+			templateServiceGetProjectTemplatePolicyStateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -559,4 +607,8 @@ func (UnimplementedTemplateServiceHandler) CheckUpdates(context.Context, *connec
 
 func (UnimplementedTemplateServiceHandler) GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetTemplateDefaults is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetProjectTemplatePolicyState is not implemented"))
 }

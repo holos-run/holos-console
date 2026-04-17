@@ -794,7 +794,7 @@ var File_holos_console_v1_template_policies_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_template_policies_proto_rawDesc = "" +
 	"\n" +
-	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a holos/console/v1/templates.proto\"n\n" +
+	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\x1a holos/console/v1/templates.proto\"n\n" +
 	"\x14TemplatePolicyTarget\x12'\n" +
 	"\x0fproject_pattern\x18\x01 \x01(\tR\x0eprojectPattern\x12-\n" +
 	"\x12deployment_pattern\x18\x02 \x01(\tR\x11deploymentPattern\"\xcf\x01\n" +
@@ -915,6 +915,7 @@ func file_holos_console_v1_template_policies_proto_init() {
 	if File_holos_console_v1_template_policies_proto != nil {
 		return
 	}
+	file_holos_console_v1_policy_state_proto_init()
 	file_holos_console_v1_templates_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

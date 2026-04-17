@@ -21,7 +21,7 @@ import {
 import { ArrowUpCircle, AlertTriangle } from 'lucide-react'
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
 import type { TemplateScopeRef, TemplateUpdate, LinkedTemplateRef } from '@/queries/templates'
-import { TemplateScope } from '@/gen/holos/console/v1/templates_pb.js'
+import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { toast } from 'sonner'
 
 // scopeLabel returns a human-readable scope label.
