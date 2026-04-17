@@ -8,7 +8,6 @@ import (
 	"connectrpc.com/connect"
 	"k8s.io/client-go/kubernetes/fake"
 
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -356,8 +355,3 @@ func TestHandler_UpdateDeployment_NilCheckerIsSafe(t *testing.T) {
 	}
 }
 
-// Ensure v1alpha2 is imported in this file even when the helpers collapse;
-// the package consumes annotation constants elsewhere in the test suite but
-// having an explicit dependency here keeps the import block meaningful for
-// future extensions.
-var _ = v1alpha2.AnnotationLinkedTemplates
