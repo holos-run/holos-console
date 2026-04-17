@@ -1443,6 +1443,10 @@ func (h *Handler) GetProjectTemplatePolicyState(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
+	if err := h.checkAccess(ctx, claims, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, rbac.PermissionTemplatesRead); err != nil {
+		return nil, err
+	}
+
 	// Read the template so we can pass its owner-linked refs to the
 	// resolver. The caller must have read access to the owning project for
 	// this to succeed.

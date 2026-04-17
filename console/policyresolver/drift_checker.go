@@ -52,6 +52,12 @@ func NewDeploymentDriftAdapter(d *DriftChecker) *DeploymentDriftAdapter {
 // Drift reports whether the currently resolved render set for the deployment
 // differs from the applied set stored in the folder namespace. Returns
 // (drift, hasAppliedState, error).
+//
+// On any error (applied-set read or resolver failure) the returned drift and
+// hasAppliedState are both false; hasAppliedState is only true when the full
+// diff completed successfully. This matches PolicyState's error contract
+// (nil, err) so callers can switch between the two methods without tracking
+// different partial-result semantics.
 func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (bool, bool, error) {
 	if a == nil || a.inner == nil {
 		return false, false, nil
@@ -66,7 +72,7 @@ func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentN
 	}
 	current, resolveErr := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindDeployment, deploymentName, explicitRefs)
 	if resolveErr != nil {
-		return false, true, fmt.Errorf("resolving current render set: %w", resolveErr)
+		return false, false, fmt.Errorf("resolving current render set: %w", resolveErr)
 	}
 	_, _, drifted := DiffRenderSets(applied, current)
 	return drifted, true, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"path"
-	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -369,24 +368,18 @@ func ruleAppliesTo(rule *consolev1.TemplatePolicyRule, project string, targetKin
 	return globMatch(deploymentPattern, targetName)
 }
 
-// globMatch wraps path.Match and filepath.Match into a single function that
-// is tolerant of malformed patterns: a pattern that fails to compile is
-// treated as non-matching rather than propagated, because the policy
-// validator already rejects invalid patterns at write time, and a resolve-
-// time error would surface as a cryptic render failure for what is really
-// a stale-data problem.
+// globMatch wraps path.Match and is tolerant of malformed patterns: a pattern
+// that fails to compile is treated as non-matching rather than propagated,
+// because the policy validator already rejects invalid patterns at write time
+// (per HOL-556), and a resolve-time error would surface as a cryptic render
+// failure for what is really a stale-data problem. The subjects here are DNS
+// labels (project/template/deployment names) so path.Match — which uses `/`
+// as the separator — is the correct (and only) matcher.
 func globMatch(pattern, subject string) bool {
 	if pattern == "" {
 		return false
 	}
 	ok, err := path.Match(pattern, subject)
-	if err == nil {
-		return ok
-	}
-	// Fall back to filepath.Match. Both wrap the same matcher underneath
-	// but surfacing two attempts guards against platform-specific errors
-	// on exotic pattern syntax.
-	ok, err = filepath.Match(pattern, subject)
 	if err != nil {
 		return false
 	}

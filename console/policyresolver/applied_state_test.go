@@ -6,7 +6,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -87,8 +86,8 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 	if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeRenderState {
 		t.Errorf("missing resource-type label: got %q", cm.Labels[v1alpha2.LabelResourceType])
 	}
-	if cm.Labels[v1alpha2.LabelRenderTargetProject] != "lilies" {
-		t.Errorf("wrong project label: got %q", cm.Labels[v1alpha2.LabelRenderTargetProject])
+	if cm.Labels[v1alpha2.LabelProject] != "lilies" {
+		t.Errorf("wrong project label: got %q", cm.Labels[v1alpha2.LabelProject])
 	}
 
 	// Absent from project namespace.
@@ -331,8 +330,3 @@ func equalRefNames(refs []*consolev1.LinkedTemplateRef, want []string) bool {
 	}
 	return true
 }
-
-// Silences an unused-import warning on platforms where the fake package is
-// only referenced via buildFixture. Any call to NewClientset in this file
-// satisfies the lint check.
-var _ = fake.NewClientset

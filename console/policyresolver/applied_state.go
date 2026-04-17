@@ -199,12 +199,11 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 			Name:      cmName,
 			Namespace: folderNs,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:            v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:         v1alpha2.ResourceTypeRenderState,
-				v1alpha2.LabelRenderTargetKind:     kindLabel,
-				v1alpha2.LabelRenderTargetProject:  project,
-				v1alpha2.LabelRenderTargetName:     targetName,
-				v1alpha2.LabelProject:              project,
+				v1alpha2.LabelManagedBy:        v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:     v1alpha2.ResourceTypeRenderState,
+				v1alpha2.LabelRenderTargetKind: kindLabel,
+				v1alpha2.LabelRenderTargetName: targetName,
+				v1alpha2.LabelProject:          project,
 			},
 			Annotations: map[string]string{
 				v1alpha2.AnnotationAppliedRenderSet: string(payload),
@@ -251,9 +250,12 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 	existing.Labels[v1alpha2.LabelManagedBy] = v1alpha2.ManagedByValue
 	existing.Labels[v1alpha2.LabelResourceType] = v1alpha2.ResourceTypeRenderState
 	existing.Labels[v1alpha2.LabelRenderTargetKind] = kindLabel
-	existing.Labels[v1alpha2.LabelRenderTargetProject] = project
 	existing.Labels[v1alpha2.LabelRenderTargetName] = targetName
 	existing.Labels[v1alpha2.LabelProject] = project
+	// LabelRenderTargetProject was set by earlier writers before HOL-567
+	// standardized on LabelProject; scrub it so older values cannot linger
+	// on update after the canonical label is authoritative.
+	delete(existing.Labels, v1alpha2.LabelRenderTargetProject)
 	if _, updateErr := c.client.CoreV1().ConfigMaps(folderNs).Update(ctx, existing, metav1.UpdateOptions{}); updateErr != nil {
 		return fmt.Errorf("updating render state ConfigMap %q in %q: %w", cmName, folderNs, updateErr)
 	}
@@ -374,6 +376,17 @@ func scopeFromLabel(label string) consolev1.TemplateScope {
 // The comparison key is `(scope, scope_name, name, version_constraint)` —
 // two refs that differ only by version constraint are treated as distinct
 // because tightening a version constraint is itself drift worth surfacing.
+//
+// Key asymmetry with the resolver's dedup: the resolver deduplicates on the
+// `(scope, scope_name, name)` triple only (see RefKey in folder_resolver.go),
+// so when an explicit (owner-linked) ref and a REQUIRE rule name the same
+// template with different version constraints, the explicit ref wins and the
+// REQUIRE rule's constraint is dropped. Consequently, a REQUIRE-only change
+// to a version constraint (same template name) will not surface as drift if
+// the template is also explicitly linked on the target. This is intentional
+// per TestFolderResolver_DedupRespectsExplicit — the owner's choice is
+// authoritative. REQUIRE-only constraint changes on non-explicit refs and
+// any change to an explicit ref's constraint both surface here correctly.
 func DiffRenderSets(applied, current []*consolev1.LinkedTemplateRef) (added, removed []*consolev1.LinkedTemplateRef, drifted bool) {
 	appliedSet := make(map[refKey]*consolev1.LinkedTemplateRef, len(applied))
 	for _, r := range applied {
