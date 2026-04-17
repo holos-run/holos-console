@@ -7,7 +7,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -59,6 +58,13 @@ type folderResolver struct {
 	walker       WalkerInterface
 	resolver     *resolver.Resolver
 	unmarshaler  RuleUnmarshaler
+	// ancestorLister shares the ancestor-chain traversal and
+	// folder-namespace-only filter with the project-creation-time resolver
+	// in console/templates (HOL-571). When any of policyLister, walker,
+	// resolver, or unmarshaler is nil the fail-open branch in Resolve
+	// short-circuits before ancestorLister is consulted, so it is safe to
+	// construct from possibly-nil deps here.
+	ancestorLister *AncestorPolicyLister
 }
 
 // NewFolderResolver returns a folderResolver wired with the given dependencies.
@@ -73,10 +79,11 @@ func NewFolderResolver(
 	unmarshaler RuleUnmarshaler,
 ) PolicyResolver {
 	return &folderResolver{
-		policyLister: policyLister,
-		walker:       walker,
-		resolver:     r,
-		unmarshaler:  unmarshaler,
+		policyLister:   policyLister,
+		walker:         walker,
+		resolver:       r,
+		unmarshaler:    unmarshaler,
+		ancestorLister: NewAncestorPolicyLister(policyLister, walker, r, unmarshaler),
 	}
 }
 
@@ -137,7 +144,16 @@ func (r *folderResolver) Resolve(
 		project = ""
 	}
 
-	ancestors, walkErr := r.walker.WalkAncestors(ctx, projectNs)
+	// Collect every TemplatePolicy rule declared in a folder or
+	// organization namespace on the ancestor chain. The ancestor-policy
+	// lister handles the HOL-554 storage-isolation skip (project
+	// namespaces are never read) and per-namespace parse/list errors.
+	// Classify the returned rules by kind here because the resolver's
+	// REQUIRE/EXCLUDE evaluation cares about the distinction; the shared
+	// lister stays kind-agnostic so the project-creation-time caller
+	// (HOL-571) can reuse it without pulling EXCLUDE semantics it does
+	// not evaluate.
+	allRules, walkErr := r.ancestorLister.ListRules(ctx, projectNs)
 	if walkErr != nil {
 		// Degrade gracefully: a walker failure at resolve time should
 		// not block the render. Log and return the explicit refs so the
@@ -149,57 +165,14 @@ func (r *folderResolver) Resolve(
 		return explicitRefs, nil
 	}
 
-	// Collect REQUIRE/EXCLUDE rules from folder and organization
-	// namespaces only. ancestors[0] is the starting namespace; skip any
-	// namespace whose resource type is project (including the start when
-	// it is itself a project namespace).
 	var requireRules []*consolev1.TemplatePolicyRule
 	var excludeRules []*consolev1.TemplatePolicyRule
-	for _, ns := range ancestors {
-		if ns == nil {
-			continue
-		}
-		kind, _, kErr := r.resolver.ResourceTypeFromNamespace(ns.Name)
-		if kErr != nil {
-			continue
-		}
-		if kind == v1alpha2.ResourceTypeProject {
-			continue
-		}
-		cms, listErr := r.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
-		if listErr != nil {
-			slog.WarnContext(ctx, "failed to list template policies in ancestor namespace",
-				slog.String("namespace", ns.Name),
-				slog.Any("error", listErr),
-			)
-			continue
-		}
-		for i := range cms {
-			cm := &cms[i]
-			raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
-			if raw == "" {
-				continue
-			}
-			rules, parseErr := r.unmarshaler.UnmarshalRules(raw)
-			if parseErr != nil {
-				slog.WarnContext(ctx, "failed to parse template policy rules; skipping policy",
-					slog.String("namespace", ns.Name),
-					slog.String("policy", cm.Name),
-					slog.Any("error", parseErr),
-				)
-				continue
-			}
-			for _, rule := range rules {
-				if rule == nil {
-					continue
-				}
-				switch rule.GetKind() {
-				case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
-					requireRules = append(requireRules, rule)
-				case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
-					excludeRules = append(excludeRules, rule)
-				}
-			}
+	for _, rule := range allRules {
+		switch rule.GetKind() {
+		case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
+			requireRules = append(requireRules, rule)
+		case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
+			excludeRules = append(excludeRules, rule)
 		}
 	}
 
@@ -385,4 +358,3 @@ func globMatch(pattern, subject string) bool {
 	}
 	return ok
 }
-

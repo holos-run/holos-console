@@ -140,12 +140,12 @@ func mkNs(name, kind, parent string) *corev1.Namespace {
 // (folder), projects under each, plus a project directly under the org.
 func buildFixture() (*fake.Clientset, *resolver.Resolver, map[string]string) {
 	r := baseResolver()
-	orgNs := r.OrgNamespace("acme")                     // holos-org-acme
-	folderEngNs := r.FolderNamespace("eng")             // holos-fld-eng
-	folderTeamANs := r.FolderNamespace("team-a")        // holos-fld-team-a
-	projectOrchids := r.ProjectNamespace("orchids")     // holos-prj-orchids (under org directly)
-	projectLilies := r.ProjectNamespace("lilies")       // holos-prj-lilies (under eng)
-	projectRoses := r.ProjectNamespace("roses")         // holos-prj-roses (under team-a)
+	orgNs := r.OrgNamespace("acme")                 // holos-org-acme
+	folderEngNs := r.FolderNamespace("eng")         // holos-fld-eng
+	folderTeamANs := r.FolderNamespace("team-a")    // holos-fld-team-a
+	projectOrchids := r.ProjectNamespace("orchids") // holos-prj-orchids (under org directly)
+	projectLilies := r.ProjectNamespace("lilies")   // holos-prj-lilies (under eng)
+	projectRoses := r.ProjectNamespace("roses")     // holos-prj-roses (under team-a)
 
 	objects := []runtime.Object{
 		mkNs(orgNs, v1alpha2.ResourceTypeOrganization, ""),
@@ -158,9 +158,9 @@ func buildFixture() (*fake.Clientset, *resolver.Resolver, map[string]string) {
 	client := fake.NewClientset(objects...)
 
 	namespaces := map[string]string{
-		"org":          orgNs,
-		"folderEng":    folderEngNs,
-		"folderTeamA":  folderTeamANs,
+		"org":            orgNs,
+		"folderEng":      folderEngNs,
+		"folderTeamA":    folderTeamANs,
 		"projectOrchids": projectOrchids,
 		"projectLilies":  projectLilies,
 		"projectRoses":   projectRoses,

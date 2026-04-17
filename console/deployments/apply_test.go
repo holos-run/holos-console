@@ -178,6 +178,89 @@ func TestApplier_Apply(t *testing.T) {
 	})
 }
 
+// TestApplier_ApplyRequiredTemplate asserts that the project-creation-time
+// REQUIRE-rule apply path (HOL-571) stamps a disjoint ownership identity —
+// project + required-template label — and NOT the deployment label. A
+// deployment whose name matches a required-template name must not be able
+// to adopt or delete those resources through its own
+// `project=X,deployment=Y` selector.
+func TestApplier_ApplyRequiredTemplate(t *testing.T) {
+	namespace := "prj-my-project"
+	templateName := "audit-policy"
+
+	t.Run("required-template label is injected into patch payload", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+		resources := []unstructured.Unstructured{
+			makeDeploymentResource("sentinel", namespace),
+		}
+
+		if err := applier.ApplyRequiredTemplate(context.Background(), testProject, templateName, resources); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		sawRequiredLabel := false
+		sawDeploymentLabel := false
+		for _, a := range fakeClient.Actions() {
+			pa, ok := a.(testing2.PatchAction)
+			if !ok {
+				continue
+			}
+			patch := string(pa.GetPatch())
+			if containsStr(patch, v1alpha2.AnnotationRequiredTemplate) {
+				sawRequiredLabel = true
+			}
+			if containsStr(patch, v1alpha2.AnnotationDeployment) {
+				sawDeploymentLabel = true
+			}
+		}
+		if !sawRequiredLabel {
+			t.Errorf("expected required-template ownership label %q in patch payload",
+				v1alpha2.AnnotationRequiredTemplate)
+		}
+		if sawDeploymentLabel {
+			t.Errorf("required-template apply path must not stamp deployment ownership label %q",
+				v1alpha2.AnnotationDeployment)
+		}
+	})
+
+	// Regression guard for HOL-571 review round 2: a template author who
+	// emits `console.holos.run/deployment` on a rendered resource must not
+	// be able to smuggle that label back into the ownership selector that
+	// ApplyRequiredTemplate exists to keep disjoint from real deployments.
+	// The applier must strip the deployment label before stamping its own
+	// required-template identity.
+	t.Run("preexisting deployment label is stripped in patch payload", func(t *testing.T) {
+		applier, fakeClient := newFakeApplier()
+		res := makeDeploymentResource("sentinel", namespace)
+		// Emit the forbidden label from the rendered resource itself.
+		labels := res.GetLabels()
+		labels[v1alpha2.AnnotationDeployment] = "attacker-controlled"
+		res.SetLabels(labels)
+		resources := []unstructured.Unstructured{res}
+
+		if err := applier.ApplyRequiredTemplate(context.Background(), testProject, templateName, resources); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		sawDeploymentLabel := false
+		for _, a := range fakeClient.Actions() {
+			pa, ok := a.(testing2.PatchAction)
+			if !ok {
+				continue
+			}
+			patch := string(pa.GetPatch())
+			if containsStr(patch, v1alpha2.AnnotationDeployment) {
+				sawDeploymentLabel = true
+				break
+			}
+		}
+		if sawDeploymentLabel {
+			t.Errorf("required-template apply path must strip preexisting %q label, got it in patch",
+				v1alpha2.AnnotationDeployment)
+		}
+	})
+}
+
 func TestApplier_Cleanup(t *testing.T) {
 	namespace := "prj-my-project"
 	deploymentName := "web-app"

@@ -15,12 +15,17 @@ import (
 )
 
 // ResourceApplier applies rendered Kubernetes resources to the cluster using
-// each resource's own namespace. This is the same contract the legacy
-// MandatoryTemplateApplier used; it survives into Phase 3 because the
-// unified Render + Apply path at project creation time still needs a way to
-// write resources.
+// each resource's own namespace.
+//
+// ApplyRequiredTemplate stamps a *required-template* ownership identity
+// (project + required-template label, NOT project + deployment) so that a
+// future deployment whose name matches a required-template name cannot
+// adopt or delete required-template resources via the deployment
+// reconcile/cleanup label selector (HOL-571 review round 1). Production
+// wires deployments.Applier here, which keeps deployment-owned resources
+// and required-template-owned resources in disjoint label namespaces.
 type ResourceApplier interface {
-	Apply(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured) error
+	ApplyRequiredTemplate(ctx context.Context, project, templateName string, resources []unstructured.Unstructured) error
 }
 
 // RequireRuleMatch describes a single template that a TemplatePolicy REQUIRE
@@ -35,6 +40,12 @@ type RequireRuleMatch struct {
 	ScopeName string
 	// TemplateName is the name of the template ConfigMap to render.
 	TemplateName string
+	// VersionConstraint carries the policy-author-declared semver
+	// constraint (if any) so applyMatch can pin the required template
+	// to the rule's version band at render time. Empty string means "use
+	// the live template source" — identical to the behavior of a
+	// LinkedTemplateRef with no version_constraint.
+	VersionConstraint string
 }
 
 // RequireRuleResolver evaluates TemplatePolicy REQUIRE rules for a project at
@@ -138,7 +149,47 @@ func (a *RequiredTemplateApplier) ApplyRequiredTemplates(ctx context.Context, or
 	platformInput := v1alpha2.PlatformInput{
 		Project:          project,
 		Namespace:        projectNamespace,
+		Organization:     org,
 		GatewayNamespace: deployments.DefaultGatewayNamespace,
+	}
+	// Populate PlatformInput.Folders from the project's ancestor chain so
+	// folder/org-scope templates that reference `platform.folders` render
+	// correctly. The deployment render path does the same thing via
+	// AncestorWalker.GetProjectFolders; at project-creation time we have
+	// the RenderHierarchyWalker already wired for ancestor-template
+	// resolution, so walk with it and extract folder-kind ancestors.
+	// Failures here log a warning but do not abort the create — a missing
+	// Folders value may render the wrong manifests for a template that
+	// relies on folder ancestry, but refusing to create the project is
+	// worse when the ancestor chain is otherwise intact. Templates that
+	// require folder ancestry can enforce presence via CUE constraints.
+	if a.walker != nil {
+		ancestors, walkErr := a.walker.WalkAncestors(ctx, projectNs)
+		if walkErr != nil {
+			slog.WarnContext(ctx, "could not resolve folder ancestry for required-template platform input",
+				slog.String("project", project),
+				slog.Any("error", walkErr),
+			)
+		} else {
+			// ancestors is child→parent order (project first, org last).
+			// Reverse so PlatformInput.Folders is org→project (matches the
+			// contract documented on v1alpha2.PlatformInput.Folders).
+			var folders []v1alpha2.FolderInfo
+			for i := len(ancestors) - 1; i >= 0; i-- {
+				ns := ancestors[i]
+				if ns == nil {
+					continue
+				}
+				kind, name, err := a.k8s.Resolver.ResourceTypeFromNamespace(ns.Name)
+				if err != nil {
+					continue
+				}
+				if kind == v1alpha2.ResourceTypeFolder {
+					folders = append(folders, v1alpha2.FolderInfo{Name: name})
+				}
+			}
+			platformInput.Folders = folders
+		}
 	}
 	if claims != nil {
 		platformInput.Claims = v1alpha2.Claims{
@@ -171,12 +222,13 @@ func (a *RequiredTemplateApplier) applyMatch(
 	platformInput v1alpha2.PlatformInput,
 ) error {
 	templateRef := &consolev1.LinkedTemplateRef{
-		Scope:     match.Scope,
-		ScopeName: match.ScopeName,
-		Name:      match.TemplateName,
+		Scope:             match.Scope,
+		ScopeName:         match.ScopeName,
+		Name:              match.TemplateName,
+		VersionConstraint: match.VersionConstraint,
 	}
 
-	ancestorSources, _, err := a.k8s.ListEffectiveTemplateSources(
+	ancestorSources, effectiveRefs, err := a.k8s.ListEffectiveTemplateSources(
 		ctx,
 		projectNs,
 		TargetKindProjectTemplate,
@@ -188,6 +240,18 @@ func (a *RequiredTemplateApplier) applyMatch(
 	if err != nil {
 		return fmt.Errorf("listing ancestor sources for required template %q (%s/%s): %w",
 			match.TemplateName, match.Scope, match.ScopeName, err)
+	}
+	// HOL-571 review round 3 P1: fail closed when ancestor lookup
+	// degrades to the nil-source signal. ListEffectiveTemplateSources
+	// returns (nil, nil, nil) on walker failure or when the walker is
+	// not configured — both cases mean "we could not confirm the
+	// required-template source unified into the render". Project
+	// creation must refuse rather than apply an empty manifest, because
+	// a policy-REQUIRE'd template that silently renders empty defeats
+	// the enforcement boundary this path exists for.
+	if ancestorSources == nil && effectiveRefs == nil {
+		return fmt.Errorf("required template %q (%s/%s) source lookup returned empty; refusing to create project %q without policy-required manifests",
+			match.TemplateName, match.Scope, match.ScopeName, project)
 	}
 
 	grouped, err := a.renderer.Render(ctx, "", ancestorSources, deployments.RenderInputs{
@@ -204,7 +268,7 @@ func (a *RequiredTemplateApplier) applyMatch(
 	resources = append(resources, grouped.Platform...)
 	resources = append(resources, grouped.Project...)
 
-	if err := a.applier.Apply(ctx, project, match.TemplateName, resources); err != nil {
+	if err := a.applier.ApplyRequiredTemplate(ctx, project, match.TemplateName, resources); err != nil {
 		return fmt.Errorf("applying required template %q (%s/%s) to project %q: %w",
 			match.TemplateName, match.Scope, match.ScopeName, project, err)
 	}

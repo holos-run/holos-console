@@ -330,8 +330,19 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Required template applier for project creation: evaluates
 		// TemplatePolicy REQUIRE rules and applies matched templates to the new
 		// project namespace via the unified Render + Apply path (ADR 021
-		// Decision 3). Phase 3 of HOL-562 wires the empty resolver; Phase 5
-		// (HOL-567) swaps in the real TemplatePolicy-backed resolver.
+		// Decision 3). Phase 9 of HOL-562 (HOL-571) swaps the Phase 3 empty
+		// resolver for the real TemplatePolicy-backed resolver wired below.
+		// The empty resolver remains available for tests and for local/dev
+		// wiring paths that do not have a live K8s client.
+		requireRuleResolver := templates.NewPolicyRequireRuleResolver(
+			policyresolver.NewAncestorPolicyLister(
+				templatePoliciesK8s,
+				nsWalker,
+				nsResolver,
+				policyresolver.RuleUnmarshalerFunc(templatepolicies.UnmarshalRules),
+			),
+			nsResolver.ProjectNamespace,
+		)
 		var requiredTmplApplier projects.RequiredTemplateApplier
 		if dynamicClient != nil {
 			requiredTmplApplier = templates.NewRequiredTemplateApplier(
@@ -339,7 +350,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				nsWalker,
 				&deployments.CueRenderer{},
 				deployments.NewApplier(dynamicClient),
-				templates.NewEmptyRequireRuleResolver(),
+				requireRuleResolver,
 				policyResolverSeam,
 			)
 		}

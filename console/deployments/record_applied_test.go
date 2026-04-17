@@ -448,4 +448,3 @@ func TestHandler_UpdateDeployment_NilCheckerIsSafe(t *testing.T) {
 		t.Fatalf("unexpected error with nil checker: %v", err)
 	}
 }
-

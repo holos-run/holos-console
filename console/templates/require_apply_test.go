@@ -35,16 +35,24 @@ func (s *stubRequireRuleResolver) ResolveRequiredTemplates(_ context.Context, _,
 
 // stubHierarchyWalkerFromNamespaces adapts a flat list of namespaces to the
 // RenderHierarchyWalker interface so tests can drive ancestor resolution.
+// Records every WalkAncestors call so tests can guard against regressions
+// that skip the walk entirely (HOL-571 review round 2).
 type stubHierarchyWalkerFromNamespaces struct {
-	ancestors []*corev1.Namespace
+	ancestors   []*corev1.Namespace
+	callCount   int
+	lastStartNs string
 }
 
-func (s *stubHierarchyWalkerFromNamespaces) WalkAncestors(_ context.Context, _ string) ([]*corev1.Namespace, error) {
+func (s *stubHierarchyWalkerFromNamespaces) WalkAncestors(_ context.Context, startNs string) ([]*corev1.Namespace, error) {
+	s.callCount++
+	s.lastStartNs = startNs
 	return s.ancestors, nil
 }
 
-// recordingApplier captures Apply calls so the test can assert deployment name
-// and resource list without running against a real cluster.
+// recordingApplier captures ApplyRequiredTemplate calls so the test can
+// assert template name and resource list without running against a real
+// cluster. Named fields preserve the old shape for brevity; the
+// deploymentName field now carries the templateName argument.
 type recordingApplier struct {
 	calls []recordedApply
 	err   error
@@ -56,8 +64,8 @@ type recordedApply struct {
 	resources      []unstructured.Unstructured
 }
 
-func (r *recordingApplier) Apply(_ context.Context, project, deploymentName string, resources []unstructured.Unstructured) error {
-	r.calls = append(r.calls, recordedApply{project: project, deploymentName: deploymentName, resources: resources})
+func (r *recordingApplier) ApplyRequiredTemplate(_ context.Context, project, templateName string, resources []unstructured.Unstructured) error {
+	r.calls = append(r.calls, recordedApply{project: project, deploymentName: templateName, resources: resources})
 	return r.err
 }
 
@@ -218,5 +226,110 @@ func TestEmptyRequireRuleResolver(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("expected 0 matches, got %d", len(matches))
+	}
+}
+
+// TestRequiredTemplateApplier_FailsClosedWhenAncestorLookupEmpty guards the
+// HOL-571 round 3 P1 fix: when ListEffectiveTemplateSources returns the
+// (nil, nil, nil) "degraded" signal (a nil walker or walker failure),
+// applyMatch must refuse to proceed. Silently rendering an empty manifest
+// would let a project be created without the policy-REQUIRE'd templates,
+// defeating the enforcement boundary.
+func TestRequiredTemplateApplier_FailsClosedWhenAncestorLookupEmpty(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	r := &resolver.Resolver{
+		NamespacePrefix:    "",
+		OrganizationPrefix: "org-",
+		FolderPrefix:       "fld-",
+		ProjectPrefix:      "prj-",
+	}
+	k8s := NewK8sClient(fake.NewClientset(), r)
+	applier := &recordingApplier{}
+	res := &stubRequireRuleResolver{
+		matches: []RequireRuleMatch{
+			{
+				Scope:        consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:    "acme",
+				TemplateName: "audit-policy",
+			},
+		},
+	}
+	// Passing a nil walker makes ListEffectiveTemplateSources return
+	// (nil, nil, nil), the "degraded" signal this guard is written for.
+	rta := NewRequiredTemplateApplier(k8s, nil, &deployments.CueRenderer{}, applier, res, policyresolver.NewNoopResolver())
+
+	err := rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", nil)
+	if err == nil {
+		t.Fatal("expected a fail-closed error when ancestor lookup degrades, got nil")
+	}
+	if !strings.Contains(err.Error(), "refusing to create project") {
+		t.Errorf("expected fail-closed error message, got %q", err.Error())
+	}
+	if len(applier.calls) != 0 {
+		t.Errorf("expected no Apply calls on fail-closed path, got %d", len(applier.calls))
+	}
+}
+
+// TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput guards
+// the fix from HOL-571 review round 1 finding 2: the applier must consult
+// the RenderHierarchyWalker when building PlatformInput so
+// `platform.folders` is populated for folder/org-scope required templates.
+// The stub walker records every invocation, so if the walk call is ever
+// removed from ApplyRequiredTemplates the assertion will fire — covering
+// the round-2 gap where checking fixture data alone was not enough.
+// End-to-end Folders-content assertions live in the handler-level
+// integration tests; at the unit level we guard against the call being
+// skipped entirely.
+func TestRequiredTemplateApplier_WalksFolderAncestryForPlatformInput(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Minimal fixture: org acme → folder eng → project new-prj.
+	orgNsObj := orgNS("acme")
+	folderEngNsObj := folderNS("eng")
+	projectNsObj := projectNS("new-prj")
+	fakeClient := fake.NewClientset(orgNsObj, folderEngNsObj, projectNsObj)
+
+	r := &resolver.Resolver{
+		NamespacePrefix:    "",
+		OrganizationPrefix: "org-",
+		FolderPrefix:       "fld-",
+		ProjectPrefix:      "prj-",
+	}
+	k8s := NewK8sClient(fakeClient, r)
+
+	// child→parent order so applyRequired walks project, folder, org.
+	walker := &stubHierarchyWalkerFromNamespaces{
+		ancestors: []*corev1.Namespace{projectNsObj, folderEngNsObj, orgNsObj},
+	}
+	applier := &recordingApplier{}
+	// Resolver matches one template so the walker path is actually
+	// exercised; the apply failure on the empty template body is tolerated
+	// because the test asserts on the walk, not the apply.
+	res := &stubRequireRuleResolver{
+		matches: []RequireRuleMatch{
+			{
+				Scope:        consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+				ScopeName:    "acme",
+				TemplateName: "missing-template",
+			},
+		},
+	}
+	rta := NewRequiredTemplateApplier(k8s, walker, &deployments.CueRenderer{}, applier, res, policyresolver.NewNoopResolver())
+
+	// ApplyRequiredTemplates will walk ancestors to build Folders, then
+	// try to render the (nonexistent) template and fail. The error is
+	// expected — the assertion below only cares that the walker was
+	// consulted.
+	_ = rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", nil)
+
+	if walker.callCount < 1 {
+		t.Errorf("expected WalkAncestors to be called at least once, got %d", walker.callCount)
+	}
+	// The walk starts from the new project's namespace so folder
+	// ancestry is resolved relative to the right node.
+	if walker.lastStartNs != "prj-new-prj" {
+		t.Errorf("expected WalkAncestors start namespace %q, got %q",
+			"prj-new-prj", walker.lastStartNs)
 	}
 }

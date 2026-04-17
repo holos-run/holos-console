@@ -25,8 +25,8 @@ import (
 // cycles, DriftChecker's methods are named to match both interfaces where the
 // semantics coincide and dispatched on TargetKind where they diverge.
 type DriftChecker struct {
-	Resolver  PolicyResolver
-	State     *AppliedRenderStateClient
+	Resolver   PolicyResolver
+	State      *AppliedRenderStateClient
 	NsResolver *resolver.Resolver
 }
 
@@ -95,10 +95,10 @@ func (a *DeploymentDriftAdapter) PolicyState(ctx context.Context, project, deplo
 	added, removed, drift := DiffRenderSets(applied, current)
 	return &consolev1.PolicyState{
 		AppliedSet:      applied,
-		CurrentSet:     current,
-		AddedRefs:      added,
-		RemovedRefs:    removed,
-		Drift:          drift,
+		CurrentSet:      current,
+		AddedRefs:       added,
+		RemovedRefs:     removed,
+		Drift:           drift,
 		HasAppliedState: hasApplied,
 	}, nil
 }
@@ -140,10 +140,10 @@ func (a *ProjectTemplateDriftAdapter) PolicyState(ctx context.Context, project, 
 	added, removed, drift := DiffRenderSets(applied, current)
 	return &consolev1.PolicyState{
 		AppliedSet:      applied,
-		CurrentSet:     current,
-		AddedRefs:      added,
-		RemovedRefs:    removed,
-		Drift:          drift,
+		CurrentSet:      current,
+		AddedRefs:       added,
+		RemovedRefs:     removed,
+		Drift:           drift,
 		HasAppliedState: hasApplied,
 	}, nil
 }
