@@ -807,6 +807,15 @@ func (h *Handler) ListAncestorTemplates(
 // (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
 // Results are returned in org→folders→project order for correct CUE unification.
 // If linkedRefs is nil, only mandatory+enabled templates are returned.
+//
+// Storage-isolation note (HOL-554): the traversal only visits ancestor
+// namespaces — organization and folder — and never reads templates from a
+// project namespace even when the project itself is the starting scope. Any
+// future migration to a dedicated policy resolver (tracked by HOL-557) must
+// preserve this invariant. TemplatePolicy ConfigMaps and applied-render-set
+// state live exclusively in folder/organization namespaces precisely because
+// project owners can write to their project namespace and would otherwise be
+// able to tamper with the constraints the platform is enforcing.
 func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil

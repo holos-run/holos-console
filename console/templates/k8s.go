@@ -305,6 +305,16 @@ func (k *K8sClient) ListTemplatesInNamespace(ctx context.Context, ns string) ([]
 // is: (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
 // Disabled templates are never included even when explicitly linked.
 // The result is deduplicated so a mandatory+explicitly-linked template appears once.
+//
+// Storage-isolation note (HOL-554): callers pass a specific namespace and this
+// helper operates purely on ConfigMaps in that namespace. A render-time policy
+// resolver (tracked by HOL-557) will eventually replace the mandatory-flag
+// mechanism with TemplatePolicy REQUIRE rules; when it does, the applied
+// render-set state it persists MUST live exclusively in folder or
+// organization namespaces (the same namespaces that store TemplatePolicy
+// ConfigMaps), never in project namespaces. Project owners have write access
+// to their own project namespace and must never be able to mutate
+// applied-render-set state from there.
 func (k *K8sClient) ListTemplateSourcesForRender(ctx context.Context, ns string, linkedRefs []linkedRef) ([]string, error) {
 	cms, err := k.ListTemplatesInNamespace(ctx, ns)
 	if err != nil {
@@ -366,6 +376,13 @@ type RenderHierarchyWalker interface {
 //
 // If the walker fails, the method degrades gracefully by returning an empty
 // source list (no error).
+//
+// Storage-isolation note (HOL-554): the walk deliberately skips the project
+// namespace (ancestors[0]) and only reads from folder and organization
+// namespaces. Templates, releases, and — once HOL-557 lands — TemplatePolicy
+// ConfigMaps and applied-render-set state all live exclusively in those
+// folder/org namespaces. The project namespace is reserved for the project
+// owner's own writes and must never be read as a source of render-set truth.
 func (k *K8sClient) ListAncestorTemplateSourcesForRender(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef, walker RenderHierarchyWalker) ([]string, error) {
 	if walker == nil {
 		return nil, nil
