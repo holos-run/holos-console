@@ -143,10 +143,16 @@ describe('FolderTemplatePoliciesIndexPage', () => {
     expect(screen.queryByRole('link', { name: /create policy/i })).not.toBeInTheDocument()
   })
 
-  it('hides Create Policy link for EDITOR (owner-only write)', () => {
+  it('shows Create Policy link for EDITOR (PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors)', () => {
+    // Regression test for codex review round 1: previously the UI gated on
+    // Role.OWNER only, but the backend grants PERMISSION_TEMPLATE_POLICIES_WRITE
+    // to both OWNER and EDITOR. Editors must not see a read-only UI for flows
+    // they are authorized to perform.
     setupMocks(Role.EDITOR, [])
     render(<FolderTemplatePoliciesIndexPage folderName="test-folder" />)
-    expect(screen.queryByRole('link', { name: /create policy/i })).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /create policy/i })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/folders/$folderName/template-policies/new')
   })
 
   it('renders skeleton while loading', () => {

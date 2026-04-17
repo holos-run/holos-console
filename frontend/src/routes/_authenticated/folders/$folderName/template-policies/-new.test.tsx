@@ -181,6 +181,17 @@ describe('CreateFolderTemplatePolicyPage', () => {
     expect(screen.getByRole('button', { name: /^create$/i })).not.toBeDisabled()
   })
 
+  // Regression test for codex review round 1: the UI previously gated policy
+  // mutations on Role.OWNER, but the backend grants
+  // PERMISSION_TEMPLATE_POLICIES_WRITE to editors too. Editors must be able
+  // to author policies through the UI.
+  it('enables form controls for EDITOR', () => {
+    setupMocks(vi.fn().mockResolvedValue({ name: '' }), Role.EDITOR)
+    render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
+    expect(screen.getByLabelText(/display name/i)).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /^create$/i })).not.toBeDisabled()
+  })
+
   it('surfaces FailedPrecondition errors from the backend (EXCLUDE vs linked)', async () => {
     const mutateAsync = vi
       .fn()

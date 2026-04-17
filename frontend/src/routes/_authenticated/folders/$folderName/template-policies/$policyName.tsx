@@ -65,7 +65,8 @@ export function FolderTemplatePolicyDetailPage({
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
   const userRole = folder?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const scopeType: PolicyScope = forcedScopeType ?? 'folder'
 

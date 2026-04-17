@@ -43,7 +43,8 @@ export function FolderTemplatePoliciesIndexPage({
   const { data: policies, isPending, error } = useListTemplatePolicies(scope)
 
   const userRole = folder?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   if (isPending) {
     return (

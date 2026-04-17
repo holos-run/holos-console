@@ -39,7 +39,8 @@ export function CreateOrgTemplatePolicyPage({
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const scopeType: PolicyScope = forcedScopeType ?? 'organization'
 

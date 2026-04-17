@@ -156,5 +156,32 @@ describe('AppSidebar', () => {
       )
       expect(projectLabels).not.toContain('Template Policies')
     })
+
+    // Regression test for codex review round 1: when the user is focused on a
+    // project (selectedProject is set) the org nav is still rendered, but the
+    // Template Policies tab must be hidden everywhere in the sidebar because
+    // policies are not a project concept. The previous implementation gated
+    // only on selectedOrg, which left the tab visible on project detail
+    // routes where the org nav is still shown for navigation breadcrumbs.
+    it('does NOT render Template Policies anywhere when selectedProject is set', () => {
+      ;(useOrg as Mock).mockReturnValue({
+        selectedOrg: 'test-org',
+        organizations: [{ name: 'test-org', displayName: 'Test Org' }],
+        setSelectedOrg: vi.fn(),
+        isLoading: false,
+      })
+      ;(useProject as Mock).mockReturnValue({
+        projects: [{ name: 'test-project', displayName: 'Test Project' }],
+        selectedProject: 'test-project',
+        setSelectedProject: vi.fn(),
+        isLoading: false,
+      })
+
+      render(<AppSidebar />)
+
+      // Assert against the entire sidebar DOM, not just the project nav, so
+      // we catch regressions where the tab sneaks back into the org nav.
+      expect(screen.queryByText('Template Policies')).not.toBeInTheDocument()
+    })
   })
 })

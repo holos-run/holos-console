@@ -143,4 +143,16 @@ describe('FolderTemplatePolicyDetailPage', () => {
     render(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
     expect(screen.getByTestId('rule-editor-row-0')).toBeInTheDocument()
   })
+
+  // Regression test for codex review round 1: editors are granted
+  // PERMISSION_TEMPLATE_POLICIES_WRITE by the cascade table. The detail page
+  // previously gated on Role.OWNER, which incorrectly hid the Delete Policy
+  // button and disabled the form for editors.
+  it('shows the Delete Policy button and enables the form for EDITOR', () => {
+    setupMocks(Role.EDITOR)
+    render(<FolderTemplatePolicyDetailPage folderName="test-folder" policyName="policy-a" />)
+    expect(screen.getByRole('button', { name: /delete policy/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/display name/i)).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled()
+  })
 })

@@ -105,13 +105,24 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     expect(screen.getByText(/no template policies yet/i)).toBeInTheDocument()
   })
 
-  it('shows Create Policy only for OWNER', () => {
-    setup(Role.VIEWER, [])
-    const { rerender } = render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
-    expect(screen.queryByRole('link', { name: /create policy/i })).not.toBeInTheDocument()
-
+  it('shows Create Policy for OWNER', () => {
     setup(Role.OWNER, [])
-    rerender(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByRole('link', { name: /create policy/i })).toBeInTheDocument()
+  })
+
+  it('hides Create Policy for VIEWER', () => {
+    setup(Role.VIEWER, [])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.queryByRole('link', { name: /create policy/i })).not.toBeInTheDocument()
+  })
+
+  // Regression test for codex review round 1: editors are granted
+  // PERMISSION_TEMPLATE_POLICIES_WRITE by the cascade table and must see the
+  // Create Policy affordance.
+  it('shows Create Policy for EDITOR', () => {
+    setup(Role.EDITOR, [])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(screen.getByRole('link', { name: /create policy/i })).toBeInTheDocument()
   })
 })

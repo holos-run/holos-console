@@ -95,13 +95,20 @@ export function AppSidebar() {
         // Template Policies is an org- and folder-scoped concept (HOL-558);
         // there is deliberately no project-scoped equivalent. Policies are
         // surfaced here under the org nav and via in-page links from folder
-        // detail routes. They must NOT appear under projectNavItems.
-        {
-          label: 'Template Policies',
-          to: '/orgs/$orgName/template-policies' as const,
-          params: { orgName: selectedOrg },
-          icon: Shield,
-        },
+        // detail routes. They must NOT appear under projectNavItems, AND
+        // must not be rendered when the user is focused on a project route
+        // (where the org nav group is still visible via selectedOrg but the
+        // tab would misleadingly imply a project-level concept).
+        ...(!selectedProject
+          ? [
+              {
+                label: 'Template Policies',
+                to: '/orgs/$orgName/template-policies' as const,
+                params: { orgName: selectedOrg },
+                icon: Shield,
+              },
+            ]
+          : []),
         {
           label: 'Org Settings',
           to: '/orgs/$orgName/settings/' as const,
