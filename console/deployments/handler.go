@@ -870,12 +870,14 @@ func (h *Handler) GetDeploymentRenderPreview(
 	// Extract structured JSON fields from the grouped result if render succeeded.
 	var defaultsJSON, platformInputJSON, projectInputJSON *string
 	var platformResourcesStructJSON, projectResourcesStructJSON *string
+	var output *consolev1.DeploymentOutput
 	if grouped != nil {
 		defaultsJSON = grouped.DefaultsJSON
 		platformInputJSON = grouped.PlatformInputJSON
 		projectInputJSON = grouped.ProjectInputJSON
 		platformResourcesStructJSON = grouped.PlatformResourcesStructJSON
 		projectResourcesStructJSON = grouped.ProjectResourcesStructJSON
+		output = deploymentOutputFromJSON(ctx, project, name, grouped.OutputJSON)
 	}
 
 	return connect.NewResponse(&consolev1.GetDeploymentRenderPreviewResponse{
@@ -893,7 +895,37 @@ func (h *Handler) GetDeploymentRenderPreview(
 		ProjectInputJson:               projectInputJSON,
 		PlatformResourcesStructuredJson: platformResourcesStructJSON,
 		ProjectResourcesStructuredJson:  projectResourcesStructJSON,
+		Output:                          output,
 	}), nil
+}
+
+// deploymentOutputFromJSON unmarshals the evaluated `output` CUE section JSON
+// into a DeploymentOutput proto message. Returns nil when outputJSON is nil,
+// points to empty content, or cannot be parsed as JSON. A malformed OutputJSON
+// is treated as non-fatal: a warning is logged and the handler leaves the
+// response field unset rather than erroring the RPC. A valid but empty JSON
+// object (e.g. `{}`) produces a non-nil DeploymentOutput with zero values so
+// the frontend — not the backend — decides whether to render.
+func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJSON *string) *consolev1.DeploymentOutput {
+	if outputJSON == nil {
+		return nil
+	}
+	raw := strings.TrimSpace(*outputJSON)
+	if raw == "" {
+		return nil
+	}
+	var parsed struct {
+		Url string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		slog.WarnContext(ctx, "failed to unmarshal OutputJSON into DeploymentOutput",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	return &consolev1.DeploymentOutput{Url: parsed.Url}
 }
 
 // checkProjectAccess verifies that the user has the given permission via project cascade grants.
