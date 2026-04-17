@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// policy_state.proto carries the shared TemplatePolicy drift messages used by
+// both DeploymentService and TemplateService (HOL-567). It also holds the
+// LinkedTemplateRef / TemplateScope / TemplateScopeRef foundational types so
+// deployments.proto can reference them in PolicyState without creating an
+// import cycle with templates.proto (which already imports deployments.proto
+// for EnvVar).
+//
+// File-scope placement is transparent to generated Go and TypeScript:
+// types remain in the `holos.console.v1` proto package and in the
+// consolev1 Go package regardless of which file defines them. Proto consumers
+// that import `holos.console.v1.LinkedTemplateRef` continue to resolve the
+// same type.
+
+// TemplateScope identifies the hierarchy level at which a template is stored.
+// (ADR 021 Decision 1)
+enum TemplateScope {
+  TEMPLATE_SCOPE_UNSPECIFIED = 0;
+  // TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
+  TEMPLATE_SCOPE_ORGANIZATION = 1;
+  // TEMPLATE_SCOPE_FOLDER — authored by SREs.
+  TEMPLATE_SCOPE_FOLDER = 2;
+  // TEMPLATE_SCOPE_PROJECT — authored by product engineers.
+  TEMPLATE_SCOPE_PROJECT = 3;
+}
+
+// TemplateScopeRef identifies the owning scope of a template.
+// (ADR 021 Decision 1)
+message TemplateScopeRef {
+  // scope is the hierarchy level.
+  TemplateScope scope = 1;
+  // scope_name is the org name, folder name, or project name.
+  string scope_name = 2;
+}
+
+// LinkedTemplateRef is a scope-qualified reference to a template used in the
+// explicit linking list (ADR 021 Decision 5). Replaces the flat string list
+// from v1alpha1's console.holos.run/linked-org-templates annotation.
+message LinkedTemplateRef {
+  // scope identifies the hierarchy level of the linked template.
+  TemplateScope scope = 1;
+  // scope_name is the org/folder/project name for the linked template.
+  string scope_name = 2;
+  // name is the template name.
+  string name = 3;
+  // version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
+  // restricts which release versions of the linked template are compatible.
+  // Empty means no constraint (latest version is used).
+  string version_constraint = 4;
+}
+
+// PolicyState carries the full TemplatePolicy drift snapshot for a render
+// target — either a Deployment or a project-scope Template. Shared between
+// DeploymentService.GetDeploymentPolicyState and
+// TemplateService.GetProjectTemplatePolicyState. Introduced in HOL-567.
+//
+// Fields are named so a single message can back both the deployment and the
+// project-template surface. "Applied" refers to the render set recorded at
+// the last successful Create/Update of the target; "current" refers to the
+// effective set the resolver would produce if the target were rendered now.
+// `drift` is (applied != current) semantically — when true at least one ref
+// exists in `added_refs` or `removed_refs`.
+message PolicyState {
+  // applied_set is the effective set of LinkedTemplateRef values recorded at
+  // the last successful render of the target. Empty (not unset) when the
+  // target has never been rendered through the post-HOL-567 path.
+  repeated LinkedTemplateRef applied_set = 1;
+  // current_set is the effective set the PolicyResolver would return for
+  // the target right now.
+  repeated LinkedTemplateRef current_set = 2;
+  // added_refs is the set of refs present in current_set but not in
+  // applied_set — templates that policy now requires but were not applied.
+  repeated LinkedTemplateRef added_refs = 3;
+  // removed_refs is the set of refs present in applied_set but not in
+  // current_set — templates that were applied but policy no longer
+  // requires or explicitly excludes.
+  repeated LinkedTemplateRef removed_refs = 4;
+  // drift is true iff added_refs or removed_refs is non-empty.
+  bool drift = 5;
+  // has_applied_state distinguishes "never applied" (false, empty
+  // applied_set) from "applied empty set" (true, empty applied_set). The
+  // UI uses this to decide whether drift is meaningful: a target that has
+  // never been rendered through the new path is not drifted, it is
+  // un-initialized.
+  bool has_applied_state = 6;
+}
+
+// GetDeploymentPolicyStateRequest requests the policy state snapshot for a
+// single deployment. Registered on DeploymentService; the message lives here
+// because it references PolicyState (which references LinkedTemplateRef).
+message GetDeploymentPolicyStateRequest {
+  // project is the project that owns the deployment.
+  string project = 1;
+  // name is the deployment name.
+  string name = 2;
+}
+
+// GetDeploymentPolicyStateResponse returns the policy state for the
+// deployment.
+message GetDeploymentPolicyStateResponse {
+  PolicyState state = 1;
+}
+
+// GetProjectTemplatePolicyStateRequest requests the policy state snapshot for
+// a project-scope template. The scope must be TEMPLATE_SCOPE_PROJECT — other
+// scopes return InvalidArgument. This is the project-template counterpart to
+// DeploymentService.GetDeploymentPolicyState.
+message GetProjectTemplatePolicyStateRequest {
+  // scope identifies the owning project (scope must be
+  // TEMPLATE_SCOPE_PROJECT; scope_name is the project slug).
+  TemplateScopeRef scope = 1;
+  // name is the template's DNS label slug within the project.
+  string name = 2;
+}
+
+// GetProjectTemplatePolicyStateResponse returns the policy state for the
+// project-scope template.
+message GetProjectTemplatePolicyStateResponse {
+  PolicyState state = 1;
+}

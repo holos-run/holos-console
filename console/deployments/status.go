@@ -68,8 +68,10 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// shows. The handler reads the ConfigMap directly (cheap single GET) —
 	// the status cache stays focused on apps/v1.Deployment state only. A
 	// missing ConfigMap or annotation simply leaves summary.Output unset.
+	var explicitRefs []*consolev1.LinkedTemplateRef
 	if cm, cmErr := h.k8s.GetDeployment(ctx, project, name); cmErr == nil {
 		mergeOutputURLAnnotation(summary, cm)
+		explicitRefs = linkedTemplateRefsFromAnnotation(cm)
 	} else {
 		slog.DebugContext(ctx, "could not read deployment ConfigMap for output-url merge",
 			slog.String("project", project),
@@ -78,9 +80,43 @@ func (h *Handler) GetDeploymentStatusSummary(
 		)
 	}
 
+	// Populate policy_drift when a PolicyDriftChecker is wired. Silent
+	// skip on error — drift is an advisory signal for the UI, not a
+	// first-class failure mode: an outage in the TemplatePolicy resolver
+	// MUST NOT block status reads.
+	h.applyPolicyDrift(ctx, project, name, explicitRefs, summary)
+
 	return connect.NewResponse(&consolev1.GetDeploymentStatusSummaryResponse{
 		Summary: summary,
 	}), nil
+}
+
+// applyPolicyDrift sets summary.PolicyDrift when a PolicyDriftChecker is
+// configured and reports drift for the target. No-op when the checker is nil
+// (local/dev wiring without a policy resolver) or when the target has no
+// applied render state yet (a freshly-created deployment that never ran
+// through the post-HOL-567 apply path). Errors are logged at DEBUG and
+// swallowed so drift remains advisory.
+func (h *Handler) applyPolicyDrift(ctx context.Context, project, name string, explicitRefs []*consolev1.LinkedTemplateRef, summary *consolev1.DeploymentStatusSummary) {
+	if h.policyDriftChecker == nil || summary == nil {
+		return
+	}
+	drift, hasApplied, err := h.policyDriftChecker.Drift(ctx, project, name, explicitRefs)
+	if err != nil {
+		slog.DebugContext(ctx, "policy drift check failed; skipping summary.policy_drift",
+			slog.String("project", project),
+			slog.String("deployment", name),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if !hasApplied {
+		// No applied render state yet — drift is meaningless. Leave the
+		// field unset so the UI renders the "not-yet-initialized" state
+		// rather than a falsy "no drift" state.
+		return
+	}
+	summary.PolicyDrift = &drift
 }
 
 // GetDeploymentStatus returns the live status of the K8s Deployment and its pods.

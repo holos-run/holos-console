@@ -13,7 +13,7 @@ import type {
   TemplatePolicyRule,
   TemplatePolicyTarget,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
-import type { TemplateScopeRef } from '@/gen/holos/console/v1/templates_pb.js'
+import type { TemplateScopeRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types/enums used by UI consumers.

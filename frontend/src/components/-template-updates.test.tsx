@@ -60,7 +60,7 @@ vi.mock('lucide-react', () => ({
 
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
 import { UpdatesAvailableBadge, UpgradeDialog } from './template-updates'
-import { TemplateScope } from '@/gen/holos/console/v1/templates_pb.js'
+import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 const testScope = { scope: TemplateScope.PROJECT, scopeName: 'test-project' } as any
 

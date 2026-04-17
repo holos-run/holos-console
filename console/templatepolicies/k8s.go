@@ -92,10 +92,29 @@ func (k *K8sClient) ListPolicies(ctx context.Context, scope consolev1.TemplateSc
 	if err != nil {
 		return nil, err
 	}
+	return k.listPoliciesInNamespace(ctx, ns)
+}
+
+// ListPoliciesInNamespace lists TemplatePolicy ConfigMaps in the given
+// namespace without routing through scope resolution. The folderResolver
+// (HOL-567) uses this during the ancestor walk so it can feed each folder or
+// organization namespace directly.
+//
+// The caller is responsible for ensuring the namespace is NOT a project
+// namespace — this method deliberately does NOT re-check the resource type,
+// because it is invoked from a walker that already skipped project-kind
+// namespaces. Re-validating here would duplicate the guard and make the
+// behavior slower than necessary.
+func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
+	if ns == "" {
+		return nil, fmt.Errorf("namespace is required")
+	}
+	return k.listPoliciesInNamespace(ctx, ns)
+}
+
+func (k *K8sClient) listPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
 	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplatePolicy
 	slog.DebugContext(ctx, "listing template policies from kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
 		slog.String("namespace", ns),
 		slog.String("labelSelector", labelSelector),
 	)
@@ -103,9 +122,18 @@ func (k *K8sClient) ListPolicies(ctx context.Context, scope consolev1.TemplateSc
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listing template policies: %w", err)
+		return nil, fmt.Errorf("listing template policies in %q: %w", ns, err)
 	}
 	return list.Items, nil
+}
+
+// UnmarshalRules exposes the internal rule parser to other packages (notably
+// console/policyresolver) so the real TemplatePolicy resolver introduced in
+// HOL-567 can decode stored rules without re-implementing the JSON wire
+// shape. Returns an empty slice for the empty-string input so callers can
+// iterate without a nil check.
+func UnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
+	return unmarshalRules(raw)
 }
 
 // GetPolicy retrieves a single TemplatePolicy ConfigMap by name.

@@ -10,7 +10,7 @@ import {
   TemplatePolicyRuleSchema,
   TemplatePolicyTargetSchema,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
-import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/templates_pb.js'
+import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 /**
  * Draft shape used by the form while the user is authoring rules. This is

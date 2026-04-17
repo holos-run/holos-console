@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { LinkedTemplateRef, TemplateScopeRef } from "./templates_pb";
+import type { LinkedTemplateRef, TemplateScopeRef } from "./policy_state_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**

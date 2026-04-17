@@ -1,5 +1,6 @@
 syntax = "proto3";
 package holos.console.v1;
+import "holos/console/v1/policy_state.proto";
 import "holos/console/v1/rbac.proto";
 import "google/protobuf/timestamp.proto";
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
@@ -26,6 +27,12 @@ service DeploymentService {
   // project input, and rendered output for a deployment. This gives the frontend
   // everything needed to display the template preview on the deployment detail page.
   rpc GetDeploymentRenderPreview(GetDeploymentRenderPreviewRequest) returns (GetDeploymentRenderPreviewResponse);
+  // GetDeploymentPolicyState returns the full TemplatePolicy drift snapshot
+  // for a deployment: the applied render set (last recorded by
+  // Create/UpdateDeployment), the current resolver output, and the
+  // per-ref add/remove diff. Introduced in HOL-567 as the single source
+  // of truth for "is this deployment drifted from policy?".
+  rpc GetDeploymentPolicyState(GetDeploymentPolicyStateRequest) returns (GetDeploymentPolicyStateResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -292,6 +299,15 @@ message DeploymentStatusSummary {
   // rows and GetDeploymentStatusSummary so the UI can render a link without
   // dispatching a per-row render-preview RPC.
   optional DeploymentOutput output = 8;
+  // policy_drift signals that the effective TemplatePolicy resolver output
+  // for this deployment no longer matches the render set last applied on
+  // Create/UpdateDeployment. When true, the UI should offer a "re-render"
+  // action so drift can be closed out; callers needing the full diff (what
+  // was added, what was removed) invoke GetDeploymentPolicyState. Unset
+  // means the comparison was not performed — typically because the
+  // informer cache has not observed the deployment yet or the handler was
+  // configured without a render-state client. Introduced in HOL-567.
+  optional bool policy_drift = 9;
 }
 
 message GetDeploymentStatusSummaryRequest {
@@ -424,3 +440,4 @@ message DeploymentOutput {
   // the template has no meaningful URL to publish.
   string url = 1;
 }
+

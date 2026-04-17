@@ -2,88 +2,16 @@
 // @generated from file holos/console/v1/templates.proto (package holos.console.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EnvVar } from "./deployments_pb";
+import type { GetProjectTemplatePolicyStateRequestSchema, GetProjectTemplatePolicyStateResponseSchema, LinkedTemplateRef, TemplateScopeRef } from "./policy_state_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file holos/console/v1/templates.proto.
  */
 export declare const file_holos_console_v1_templates: GenFile;
-
-/**
- * TemplateScopeRef identifies the owning scope of a template.
- * (ADR 021 Decision 1)
- *
- * @generated from message holos.console.v1.TemplateScopeRef
- */
-export declare type TemplateScopeRef = Message<"holos.console.v1.TemplateScopeRef"> & {
-  /**
-   * scope is the hierarchy level.
-   *
-   * @generated from field: holos.console.v1.TemplateScope scope = 1;
-   */
-  scope: TemplateScope;
-
-  /**
-   * scope_name is the org name, folder name, or project name.
-   *
-   * @generated from field: string scope_name = 2;
-   */
-  scopeName: string;
-};
-
-/**
- * Describes the message holos.console.v1.TemplateScopeRef.
- * Use `create(TemplateScopeRefSchema)` to create a new message.
- */
-export declare const TemplateScopeRefSchema: GenMessage<TemplateScopeRef>;
-
-/**
- * LinkedTemplateRef is a scope-qualified reference to a template used in the
- * explicit linking list (ADR 021 Decision 5). Replaces the flat string list
- * from v1alpha1's console.holos.run/linked-org-templates annotation.
- *
- * @generated from message holos.console.v1.LinkedTemplateRef
- */
-export declare type LinkedTemplateRef = Message<"holos.console.v1.LinkedTemplateRef"> & {
-  /**
-   * scope identifies the hierarchy level of the linked template.
-   *
-   * @generated from field: holos.console.v1.TemplateScope scope = 1;
-   */
-  scope: TemplateScope;
-
-  /**
-   * scope_name is the org/folder/project name for the linked template.
-   *
-   * @generated from field: string scope_name = 2;
-   */
-  scopeName: string;
-
-  /**
-   * name is the template name.
-   *
-   * @generated from field: string name = 3;
-   */
-  name: string;
-
-  /**
-   * version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
-   * restricts which release versions of the linked template are compatible.
-   * Empty means no constraint (latest version is used).
-   *
-   * @generated from field: string version_constraint = 4;
-   */
-  versionConstraint: string;
-};
-
-/**
- * Describes the message holos.console.v1.LinkedTemplateRef.
- * Use `create(LinkedTemplateRefSchema)` to create a new message.
- */
-export declare const LinkedTemplateRefSchema: GenMessage<LinkedTemplateRef>;
 
 /**
  * TemplateDefaults carries optional default values that a template provides
@@ -1216,45 +1144,6 @@ export declare type CheckUpdatesResponse = Message<"holos.console.v1.CheckUpdate
 export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse>;
 
 /**
- * TemplateScope identifies the hierarchy level at which a template is stored.
- * (ADR 021 Decision 1)
- *
- * @generated from enum holos.console.v1.TemplateScope
- */
-export enum TemplateScope {
-  /**
-   * @generated from enum value: TEMPLATE_SCOPE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_ORGANIZATION = 1;
-   */
-  ORGANIZATION = 1,
-
-  /**
-   * TEMPLATE_SCOPE_FOLDER — authored by SREs.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_FOLDER = 2;
-   */
-  FOLDER = 2,
-
-  /**
-   * TEMPLATE_SCOPE_PROJECT — authored by product engineers.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_PROJECT = 3;
-   */
-  PROJECT = 3,
-}
-
-/**
- * Describes the enum holos.console.v1.TemplateScope.
- */
-export declare const TemplateScopeSchema: GenEnum<TemplateScope>;
-
-/**
  * TemplateService is the single unified service for managing CUE-based templates
  * at every hierarchy level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
@@ -1430,6 +1319,26 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof GetTemplateDefaultsRequestSchema;
     output: typeof GetTemplateDefaultsResponseSchema;
+  },
+  /**
+   * GetProjectTemplatePolicyState returns the full TemplatePolicy drift
+   * snapshot for a project-scope Template. Mirrors
+   * DeploymentService.GetDeploymentPolicyState but keyed by
+   * (scope=project, project slug, template name). Introduced in HOL-567.
+   *
+   * Scope decision (AC from HOL-567): the parallel `policy_drift` surface
+   * for project-scope Templates is provided via this RPC rather than a new
+   * `ProjectTemplateStatusSummary` message, because project-scope templates
+   * do not carry a live-status concept in the current UI — the list view
+   * shows metadata only. A dedicated RPC keeps list responses cheap and
+   * makes the drift query symmetric with deployments.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.GetProjectTemplatePolicyState
+   */
+  getProjectTemplatePolicyState: {
+    methodKind: "unary";
+    input: typeof GetProjectTemplatePolicyStateRequestSchema;
+    output: typeof GetProjectTemplatePolicyStateResponseSchema;
   },
 }>;
 
