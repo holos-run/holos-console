@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "linear-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://mcp.linear.app/mcp",
+        "--header",
+        "Authorization: Bearer ${LINEAR_API_KEY}"
+      ],
+      "env": {}
+    }
+  }
+}
