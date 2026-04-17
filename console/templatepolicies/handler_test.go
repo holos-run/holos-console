@@ -777,3 +777,176 @@ func stringContains(haystack, needle string) bool {
 	}
 	return false
 }
+
+// TestProjectOwnerCannotMutatePolicy is the storage-isolation negative test
+// called out by HOL-554 AC "A negative test in HOL-560 verifies a project-owner
+// role cannot mutate any policy ConfigMap or policy-enforcement annotation."
+//
+// The scenario: a user holds an owner grant only on a project (typical PaaS
+// customer-persona grant) and has NO grant at any ancestor folder or
+// organization. The TemplatePolicyService handler must refuse every mutation
+// path at every reachable scope, so there is no way for such a user to create,
+// update, or delete a policy — regardless of whether they aim the request at
+// their own project namespace (rejected as InvalidArgument by the proto /
+// scope guard) or at the owning folder / organization namespace (rejected as
+// PermissionDenied because the folder / org grant resolver carries no grant
+// for this user).
+//
+// This closes the loop on the HOL-554 storage-isolation guardrail: storage is
+// restricted to folder / org namespaces by construction (project scope is
+// rejected up front), and write access to those namespaces is gated by the
+// TemplatePolicyCascadePerms table which never awards WRITE / DELETE to a
+// project-scoped grant. The test asserts both halves.
+func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
+	// Org and folder resolvers return empty grants: the "project owner" user
+	// has no grant at any ancestor scope. This mirrors the real production
+	// wiring in which org / folder grant resolvers consult the
+	// org- / folder-namespace ShareUsers annotations only; a project-only
+	// grant would not appear in those maps.
+	fakeClient := fake.NewClientset()
+	r := newTestResolver()
+	k := NewK8sClient(fakeClient, r)
+	h := NewHandler(k, r).
+		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}}).
+		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}})
+
+	// Seed a legitimate folder-scope policy so the Delete / Update cases have
+	// something to attempt to mutate. Seed directly via the k8s client so the
+	// creation is not itself gated by RBAC.
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "require-httproute",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDisplayName:         "Require HTTPRoute",
+				v1alpha2.AnnotationDescription:         "Force HTTPRoute for every project",
+				v1alpha2.AnnotationCreatorEmail:        "platform@example.com",
+				v1alpha2.AnnotationTemplatePolicyRules: `[]`,
+			},
+		},
+	}
+	if _, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Create(context.Background(), existing, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("seeding folder-scope policy: %v", err)
+	}
+
+	// authedCtx with no roles — the user's only production grant is an
+	// "owner" role at project scope, which the handler does not consult.
+	ctx := authedCtx("project-owner@example.com", nil)
+
+	type mutation struct {
+		name    string
+		run     func() error
+		wantErr connect.Code
+	}
+	cases := []mutation{
+		{
+			name: "Create at folder scope (no folder grant)",
+			run: func() error {
+				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+					Scope:  newFolderScope("payments"),
+					Policy: basicPolicy(newFolderScope("payments")),
+				}))
+				return err
+			},
+			wantErr: connect.CodePermissionDenied,
+		},
+		{
+			name: "Create at organization scope (no org grant)",
+			run: func() error {
+				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+					Scope:  newOrgScope("acme"),
+					Policy: basicPolicy(newOrgScope("acme")),
+				}))
+				return err
+			},
+			wantErr: connect.CodePermissionDenied,
+		},
+		{
+			name: "Create targeting project namespace (storage-isolation rejection)",
+			run: func() error {
+				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+					Scope:  newProjectScope("billing-web"),
+					Policy: basicPolicy(newProjectScope("billing-web")),
+				}))
+				return err
+			},
+			wantErr: connect.CodeInvalidArgument,
+		},
+		{
+			name: "Update folder-scope policy (no folder grant)",
+			run: func() error {
+				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
+					Scope: newFolderScope("payments"),
+					Policy: &consolev1.TemplatePolicy{
+						Name:     "require-httproute",
+						ScopeRef: newFolderScope("payments"),
+						Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
+					},
+				}))
+				return err
+			},
+			wantErr: connect.CodePermissionDenied,
+		},
+		{
+			name: "Delete folder-scope policy (no folder grant)",
+			run: func() error {
+				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
+					Scope: newFolderScope("payments"),
+					Name:  "require-httproute",
+				}))
+				return err
+			},
+			wantErr: connect.CodePermissionDenied,
+		},
+		{
+			name: "Delete targeting project namespace (storage-isolation rejection)",
+			run: func() error {
+				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
+					Scope: newProjectScope("billing-web"),
+					Name:  "any",
+				}))
+				return err
+			},
+			wantErr: connect.CodeInvalidArgument,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.run()
+			if err == nil {
+				t.Fatalf("expected error, got nil (project-owner must not be able to mutate policies)")
+			}
+			if got := connect.CodeOf(err); got != tc.wantErr {
+				t.Errorf("expected %v, got %v: %v", tc.wantErr, got, err)
+			}
+		})
+	}
+
+	// Belt-and-suspenders: after all the mutation attempts, the seeded
+	// ConfigMap in the folder namespace must still be unchanged — no rules
+	// annotation rewrite, no deletion. This catches any future regression in
+	// which a handler path accidentally writes before checkAccess.
+	after, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "require-httproute", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("folder-scope policy unexpectedly missing after denied mutations: %v", err)
+	}
+	if got, want := after.Annotations[v1alpha2.AnnotationTemplatePolicyRules], `[]`; got != want {
+		t.Errorf("folder-scope policy rules annotation mutated by denied caller: got %q want %q", got, want)
+	}
+	if got, want := after.Annotations[v1alpha2.AnnotationCreatorEmail], "platform@example.com"; got != want {
+		t.Errorf("folder-scope policy creator annotation mutated by denied caller: got %q want %q", got, want)
+	}
+
+	// And no ConfigMap should have landed in any project namespace, even
+	// though one of the Create cases targeted TEMPLATE_SCOPE_PROJECT.
+	projectCms, _ := fakeClient.CoreV1().ConfigMaps("holos-prj-billing-web").List(context.Background(), metav1.ListOptions{})
+	if len(projectCms.Items) != 0 {
+		t.Errorf("expected zero ConfigMaps in project namespace, got %d", len(projectCms.Items))
+	}
+}
