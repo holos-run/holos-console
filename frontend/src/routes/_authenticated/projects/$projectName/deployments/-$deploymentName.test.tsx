@@ -168,6 +168,7 @@ const mockPreview = {
   cueProjectInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
   renderedYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n',
   renderedJson: '[]',
+  output: undefined as { url: string } | undefined,
 }
 
 function setupMocks(userRole = Role.OWNER) {
@@ -1015,6 +1016,69 @@ describe('DeploymentDetailPage', () => {
       expect(screen.getByText('api-pod-1')).toBeInTheDocument()
       expect(screen.getByText('api-pod-2')).toBeInTheDocument()
       expect(screen.getByText('CrashLoopBackOff')).toBeInTheDocument()
+    })
+  })
+
+  // ── Output URL row tests ─────────────────────────────────────────────────
+  //
+  // The Status tab surfaces the template-authored deployment URL from the
+  // render preview response (`output.url`). The URL row is visible when the
+  // preview has resolved and `output.url` is a non-empty string; otherwise
+  // nothing is rendered. This mirrors the acceptance criteria on HOL-546.
+
+  describe('Output URL row', () => {
+    it('renders an App URL link when preview.output.url is a non-empty string', async () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: 'https://example.com/app' } },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = await screen.findByRole('link', { name: /https:\/\/example\.com\/app/ })
+      expect(link).toBeInTheDocument()
+      expect(link.getAttribute('href')).toBe('https://example.com/app')
+      expect(link.getAttribute('target')).toBe('_blank')
+      const rel = link.getAttribute('rel') ?? ''
+      expect(rel).toContain('noopener')
+      expect(rel).toContain('noreferrer')
+      expect(screen.getByText(/^App URL$/i)).toBeInTheDocument()
+    })
+
+    it('does not render the App URL row when preview.output is undefined', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: undefined },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('deployment-output-url')).not.toBeInTheDocument()
+      expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render the App URL row when preview.output.url is an empty string', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: '' } },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('deployment-output-url')).not.toBeInTheDocument()
+      expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render the App URL row while the preview query is pending', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: undefined,
+        isPending: true,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('deployment-output-url')).not.toBeInTheDocument()
+      expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
     })
   })
 })

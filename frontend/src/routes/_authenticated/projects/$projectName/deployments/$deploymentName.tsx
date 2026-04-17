@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, CheckCircle2, Copy, Info, TriangleAlert, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar, Event, ContainerStatus } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
@@ -302,6 +302,30 @@ export function DeploymentDetailPage({
               <div className="space-y-4">
                 <h3 className="text-sm font-medium">Status</h3>
                 <Separator />
+                {/*
+                  App URL row — surfaces the template-authored deployment URL
+                  from the render preview (`output.url`). Rendered only when
+                  the preview has resolved with a non-empty URL; while the
+                  preview is pending, `preview` is undefined so nothing
+                  renders (deliberate: avoids a flash on first load).
+                */}
+                {!isPreviewPending && preview?.output?.url ? (
+                  <div
+                    data-testid="deployment-output-url"
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <span className="text-muted-foreground w-36 shrink-0">App URL</span>
+                    <a
+                      href={preview.output.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
+                    >
+                      <span className="font-mono">{preview.output.url}</span>
+                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                    </a>
+                  </div>
+                ) : null}
                 {status ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
