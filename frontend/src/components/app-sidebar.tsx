@@ -10,6 +10,7 @@ import {
   Layers,
   Plus,
   Settings,
+  Shield,
   User,
   Wrench,
   ChevronsUpDown,
@@ -91,6 +92,31 @@ export function AppSidebar() {
           params: { orgName: selectedOrg },
           icon: FolderKanban,
         },
+        // Template Policies is an org- and folder-scoped concept (HOL-558);
+        // there is deliberately no project-scoped equivalent. Policies are
+        // surfaced here under the org nav and via in-page links from folder
+        // detail routes. They must NOT appear under projectNavItems, AND
+        // must not be rendered when the user is focused on a project route
+        // (where the org nav group is still visible via selectedOrg but the
+        // tab would misleadingly imply a project-level concept).
+        //
+        // Gate on the current pathname rather than `selectedProject` from
+        // context: `selectedProject` persists across navigations within the
+        // same org (ProjectProvider only clears it when the org changes),
+        // so a user who visits a project route and then returns to Folders
+        // / Projects / Org Settings still has `selectedProject` set. Using
+        // the pathname ensures the tab is hidden only while the user is
+        // actually on a /projects/... route.
+        ...(!pathname.startsWith('/projects/')
+          ? [
+              {
+                label: 'Template Policies',
+                to: '/orgs/$orgName/template-policies' as const,
+                params: { orgName: selectedOrg },
+                icon: Shield,
+              },
+            ]
+          : []),
         {
           label: 'Org Settings',
           to: '/orgs/$orgName/settings/' as const,

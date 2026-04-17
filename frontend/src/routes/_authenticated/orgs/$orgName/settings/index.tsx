@@ -375,7 +375,8 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               <h3 className="text-sm font-medium">Platform Templates</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
-                Platform templates are automatically applied to new projects in this organization.
+                Platform templates are authored at organization scope and are applied to
+                projects in this organization.
               </p>
               <Link
                 to="/orgs/$orgName/settings/org-templates"
@@ -384,6 +385,25 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                 className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
               >
                 <span className="text-sm">Manage Platform Templates</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </div>
+
+            {/* Template Policies section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium">Template Policies</h3>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                Policies attach templates to projects and deployments in this organization via
+                REQUIRE or EXCLUDE rules with glob patterns.
+              </p>
+              <Link
+                to="/orgs/$orgName/template-policies"
+                params={{ orgName }}
+                aria-label="Organization Template Policies"
+                className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
+              >
+                <span className="text-sm">Manage Organization Template Policies</span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </Link>
             </div>

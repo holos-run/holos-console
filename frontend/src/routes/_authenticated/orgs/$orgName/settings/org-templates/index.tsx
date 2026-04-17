@@ -74,9 +74,22 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Platform templates are automatically applied to project namespaces when projects are created.
-          Mandatory templates are marked with a lock badge.
+          Platform templates are authored at organization scope and are applied to projects in
+          this organization.
         </p>
+        <Alert>
+          <AlertDescription>
+            To require or exclude a template from matching projects and deployments, create a{' '}
+            <Link
+              to="/orgs/$orgName/template-policies"
+              params={{ orgName }}
+              className="underline"
+            >
+              Template Policy
+            </Link>
+            .
+          </AlertDescription>
+        </Alert>
         <Separator />
         {templates && templates.length > 0 ? (
           <ul className="space-y-2">

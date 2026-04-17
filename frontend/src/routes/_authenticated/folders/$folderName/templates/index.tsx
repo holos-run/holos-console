@@ -192,8 +192,20 @@ export function FolderTemplatesIndexPage({
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Platform templates at folder scope are applied to projects within this folder hierarchy.
-            Mandatory templates are marked with a lock badge.
           </p>
+          <Alert>
+            <AlertDescription>
+              To require or exclude a template from matching projects and deployments, create a{' '}
+              <Link
+                to="/folders/$folderName/template-policies"
+                params={{ folderName }}
+                className="underline"
+              >
+                Template Policy
+              </Link>
+              .
+            </AlertDescription>
+          </Alert>
           <Separator />
           {data.length > 0 ? (
             <>

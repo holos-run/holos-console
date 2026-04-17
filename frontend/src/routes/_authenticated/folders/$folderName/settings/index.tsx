@@ -535,6 +535,24 @@ export function FolderDetailPage({
             </Link>
           </div>
 
+          {/* Template Policies section */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium">Template Policies</h3>
+            <Separator />
+            <p className="text-sm text-muted-foreground">
+              Policies attach templates to projects and deployments within this folder via
+              REQUIRE or EXCLUDE rules with glob patterns.
+            </p>
+            <Link
+              to="/folders/$folderName/template-policies"
+              params={{ folderName }}
+              aria-label="Folder Template Policies"
+              className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
+            >
+              <span className="text-sm">Manage Folder Template Policies</span>
+            </Link>
+          </div>
+
           {/* Danger Zone */}
           {canWrite && (
             <div className="space-y-4">

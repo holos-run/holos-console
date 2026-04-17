@@ -1,0 +1,270 @@
+import { useMemo } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { Trash2, Info, AlertTriangle } from 'lucide-react'
+import { TemplatePolicyKind } from '@/queries/templatePolicies'
+import { TemplateScope, linkableKey } from '@/queries/templates'
+import type { LinkableTemplate } from '@/queries/templates'
+import type { RuleDraft } from '@/components/template-policies/rule-draft'
+
+export type RuleEditorProps = {
+  rules: RuleDraft[]
+  onChange: (rules: RuleDraft[]) => void
+  linkableTemplates: LinkableTemplate[]
+  disabled?: boolean
+}
+
+// Kind options shown in the kind picker. Localized labels for the UI.
+const KIND_OPTIONS: Array<{ value: TemplatePolicyKind; label: string; description: string }> = [
+  {
+    value: TemplatePolicyKind.REQUIRE,
+    label: 'REQUIRE',
+    description:
+      'Force this template onto every project and deployment matched by the target patterns.',
+  },
+  {
+    value: TemplatePolicyKind.EXCLUDE,
+    label: 'EXCLUDE',
+    description:
+      'Block this template from matching projects and deployments even if a project explicitly links it.',
+  },
+]
+
+/**
+ * RuleEditor renders an editable list of policy rules. It is used by both the
+ * create route (new policy) and the detail route (existing policy). The
+ * caller owns the rules state and passes an onChange callback.
+ */
+export function RuleEditor({
+  rules,
+  onChange,
+  linkableTemplates,
+  disabled = false,
+}: RuleEditorProps) {
+  const templateItems: ComboboxItem[] = useMemo(() => {
+    return linkableTemplates.map((t) => {
+      const scope = t.scopeRef?.scope ?? TemplateScope.UNSPECIFIED
+      const scopeName = t.scopeRef?.scopeName ?? ''
+      const scopeLabel =
+        scope === TemplateScope.ORGANIZATION
+          ? 'org'
+          : scope === TemplateScope.FOLDER
+            ? 'folder'
+            : 'project'
+      return {
+        value: linkableKey(scope, scopeName, t.name),
+        label: `${scopeLabel} / ${scopeName} / ${t.name}`,
+      }
+    })
+  }, [linkableTemplates])
+
+  const handleUpdate = (index: number, patch: Partial<RuleDraft>) => {
+    const next = rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule))
+    onChange(next)
+  }
+
+  const handleRemove = (index: number) => {
+    onChange(rules.filter((_, i) => i !== index))
+  }
+
+  const handleAdd = () => {
+    onChange([...rules, {
+      kind: TemplatePolicyKind.REQUIRE,
+      templateKey: '',
+      versionConstraint: '',
+      projectPattern: '*',
+      deploymentPattern: '*',
+    }])
+  }
+
+  return (
+    <div className="space-y-4">
+      {rules.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No rules yet. A policy must have at least one rule.
+        </p>
+      )}
+      {rules.map((rule, index) => {
+        const isExclude = rule.kind === TemplatePolicyKind.EXCLUDE
+        return (
+          <div
+            key={index}
+            data-testid={`rule-editor-row-${index}`}
+            className="space-y-3 rounded-md border border-border p-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={
+                    rule.kind === TemplatePolicyKind.REQUIRE
+                      ? 'text-xs border-green-500/30 text-green-500'
+                      : 'text-xs border-amber-500/30 text-amber-500'
+                  }
+                >
+                  {rule.kind === TemplatePolicyKind.REQUIRE ? 'REQUIRE' : 'EXCLUDE'}
+                </Badge>
+                <span className="text-sm text-muted-foreground">Rule {index + 1}</span>
+              </div>
+              {!disabled && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  aria-label={`Remove rule ${index + 1}`}
+                  onClick={() => handleRemove(index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor={`rule-kind-${index}`}>Kind</Label>
+                <Select
+                  value={String(rule.kind)}
+                  onValueChange={(v) => handleUpdate(index, { kind: Number(v) as TemplatePolicyKind })}
+                  disabled={disabled}
+                >
+                  <SelectTrigger id={`rule-kind-${index}`} aria-label={`Rule ${index + 1} kind`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {KIND_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-xs text-muted-foreground">{opt.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor={`rule-template-${index}`}>Template</Label>
+                <Combobox
+                  items={templateItems}
+                  value={rule.templateKey}
+                  onValueChange={(v) => {
+                    if (disabled) return
+                    handleUpdate(index, { templateKey: v })
+                  }}
+                  placeholder="Select a template..."
+                  searchPlaceholder="Search templates..."
+                  aria-label={`Rule ${index + 1} template`}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor={`rule-version-${index}`}>Version constraint (optional)</Label>
+                <Input
+                  id={`rule-version-${index}`}
+                  aria-label={`Rule ${index + 1} version constraint`}
+                  placeholder='e.g. ">=2.0.0 <3.0.0"'
+                  value={rule.versionConstraint}
+                  onChange={(e) => handleUpdate(index, { versionConstraint: e.target.value })}
+                  disabled={disabled}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Semver range. Leave empty to always use the latest release.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor={`rule-project-pattern-${index}`} className="flex items-center gap-1">
+                  Project pattern
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Glob pattern matched against both ProjectTemplate names (per-project)
+                          and the project name. Use <code>*</code> to match every project.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Input
+                  id={`rule-project-pattern-${index}`}
+                  aria-label={`Rule ${index + 1} project pattern`}
+                  placeholder="*"
+                  value={rule.projectPattern}
+                  onChange={(e) => handleUpdate(index, { projectPattern: e.target.value })}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor={`rule-deployment-pattern-${index}`} className="flex items-center gap-1">
+                  Deployment pattern
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Glob pattern matched against Deployment names within the matched
+                          projects. Use <code>*</code> to match every deployment, or leave empty
+                          to apply at project-level only.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Input
+                  id={`rule-deployment-pattern-${index}`}
+                  aria-label={`Rule ${index + 1} deployment pattern`}
+                  placeholder="*"
+                  value={rule.deploymentPattern}
+                  onChange={(e) => handleUpdate(index, { deploymentPattern: e.target.value })}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+
+            {isExclude && (
+              <Alert className="border-amber-500/30 text-amber-500">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  EXCLUDE rules may be rejected by the backend when they target a template that is
+                  already explicitly linked to a project. The exact conflict is reported when you
+                  submit the policy.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        )
+      })}
+
+      {!disabled && (
+        <Button type="button" variant="outline" size="sm" onClick={handleAdd} aria-label="Add rule">
+          Add Rule
+        </Button>
+      )}
+    </div>
+  )
+}
