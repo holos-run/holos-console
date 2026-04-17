@@ -828,8 +828,11 @@ export declare const GetDeploymentStatusResponseSchema: GenMessage<GetDeployment
 
 /**
  * DeploymentStatusSummary is a lightweight status snapshot derived from the
- * live Deployment resource. Intended for listing contexts where returning
- * full pod and event detail would be too expensive.
+ * live Deployment resource, augmented with the template-authored output
+ * section (e.g. app URL) cached on the deployment ConfigMap annotation.
+ * Intended for listing contexts where returning full pod and event detail
+ * would be too expensive and re-running the CUE render pipeline per row
+ * would be wasteful.
  *
  * @generated from message holos.console.v1.DeploymentStatusSummary
  */

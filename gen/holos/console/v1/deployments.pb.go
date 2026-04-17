@@ -1653,8 +1653,11 @@ func (x *GetDeploymentStatusResponse) GetStatus() *DeploymentStatus {
 }
 
 // DeploymentStatusSummary is a lightweight status snapshot derived from the
-// live Deployment resource. Intended for listing contexts where returning
-// full pod and event detail would be too expensive.
+// live Deployment resource, augmented with the template-authored output
+// section (e.g. app URL) cached on the deployment ConfigMap annotation.
+// Intended for listing contexts where returning full pod and event detail
+// would be too expensive and re-running the CUE render pipeline per row
+// would be wasteful.
 type DeploymentStatusSummary struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// phase is the current deployment phase.
