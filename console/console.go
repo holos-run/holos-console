@@ -284,7 +284,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 
 		// Namespace hierarchy walker for ancestor chain resolution.
-		// Used by the mandatory template applier, project grant resolver, and
+		// Used by the required template applier, project grant resolver, and
 		// the unified TemplateService handler.
 		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
 
@@ -296,18 +296,26 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
 		orgsHandler.WithDefaultsSeeder(templatesK8s, &projects.ProjectCreatorAdapter{K8s: projectsK8s}, projectPrefix)
 
-		// Mandatory template applier for project creation: walks the project's
-		// ancestor chain (org + folder ancestors) and applies all mandatory+enabled
-		// templates to the project namespace (ADR 021 Decision 3).
-		var orgTmplApplier projects.MandatoryTemplateApplier
+		// Required template applier for project creation: evaluates
+		// TemplatePolicy REQUIRE rules and applies matched templates to the new
+		// project namespace via the unified Render + Apply path (ADR 021
+		// Decision 3). Phase 3 of HOL-562 wires the empty resolver; Phase 5
+		// (HOL-567) swaps in the real TemplatePolicy-backed resolver.
+		var requiredTmplApplier projects.RequiredTemplateApplier
 		if dynamicClient != nil {
-			orgTmplApplier = templates.NewMandatoryTemplateApplier(templatesK8s, nsWalker, &deployments.CueRenderer{}, deployments.NewApplier(dynamicClient))
+			requiredTmplApplier = templates.NewRequiredTemplateApplier(
+				templatesK8s,
+				nsWalker,
+				&deployments.CueRenderer{},
+				deployments.NewApplier(dynamicClient),
+				templates.NewEmptyRequireRuleResolver(),
+			)
 		}
 
 		// Project service with org grant fallback
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
-		if orgTmplApplier != nil {
-			projectsHandler = projectsHandler.WithMandatoryTemplateApplier(orgTmplApplier)
+		if requiredTmplApplier != nil {
+			projectsHandler = projectsHandler.WithRequiredTemplateApplier(requiredTmplApplier)
 		}
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)

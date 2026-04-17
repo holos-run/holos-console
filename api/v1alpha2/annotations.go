@@ -58,7 +58,6 @@ const (
 	AnnotationDeployment        = "console.holos.run/deployment"
 	AnnotationDeployerEmail     = "console.holos.run/deployer-email"
 	AnnotationURL               = "console.holos.run/url"
-	AnnotationMandatory         = "console.holos.run/mandatory"
 	AnnotationEnabled           = "console.holos.run/enabled"
 	AnnotationSettings          = "console.holos.run/project-settings"
 	// AnnotationDefaultFolder stores the identifier (slug) of the default folder
@@ -74,8 +73,8 @@ const (
 	AnnotationParent = "console.holos.run/parent"
 	// AnnotationLinkedOrgTemplates stores the list of explicitly linked platform
 	// template names as a JSON array on a deployment template ConfigMap.
-	// Only enabled (non-mandatory) org templates appear here; mandatory templates
-	// always participate in render regardless of this annotation.
+	// Superseded in v1alpha2 by AnnotationLinkedTemplates (which also carries
+	// scope information and version constraints).
 	// Example: ["microservice-v2", "istio-gateway"]
 	AnnotationLinkedOrgTemplates = "console.holos.run/linked-org-templates"
 	// AnnotationLinkedTemplates stores the list of explicitly linked cross-level

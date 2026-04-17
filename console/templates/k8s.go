@@ -105,7 +105,7 @@ func (k *K8sClient) GetTemplate(ctx context.Context, scope consolev1.TemplateSco
 }
 
 // CreateTemplate creates a new template ConfigMap at the given scope.
-func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, mandatory, enabled bool, linkedTemplates []*consolev1.LinkedTemplateRef) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, enabled bool, linkedTemplates []*consolev1.LinkedTemplateRef) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -129,7 +129,6 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.Template
 	annotations := map[string]string{
 		v1alpha2.AnnotationDisplayName: displayName,
 		v1alpha2.AnnotationDescription: description,
-		v1alpha2.AnnotationMandatory:   strconv.FormatBool(mandatory),
 		v1alpha2.AnnotationEnabled:     strconv.FormatBool(enabled),
 	}
 	if len(linkedTemplates) > 0 {
@@ -157,7 +156,7 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.Template
 
 // UpdateTemplate updates an existing template ConfigMap.
 // Only non-nil pointer fields are updated.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, mandatory, enabled *bool, linkedTemplates []*consolev1.LinkedTemplateRef, clearLinks bool) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, enabled *bool, linkedTemplates []*consolev1.LinkedTemplateRef, clearLinks bool) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -180,9 +179,6 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.Template
 	}
 	if description != nil {
 		cm.Annotations[v1alpha2.AnnotationDescription] = *description
-	}
-	if mandatory != nil {
-		cm.Annotations[v1alpha2.AnnotationMandatory] = strconv.FormatBool(*mandatory)
 	}
 	if enabled != nil {
 		cm.Annotations[v1alpha2.AnnotationEnabled] = strconv.FormatBool(*enabled)
@@ -252,7 +248,6 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, scope consolev1.TemplateS
 	if raw, ok := source.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
 		linkedTemplates, _ = unmarshalLinkedTemplates(raw)
 	}
-	mandatory, _ := strconv.ParseBool(source.Annotations[v1alpha2.AnnotationMandatory])
 	// New clones start as disabled.
 	return k.CreateTemplate(
 		ctx,
@@ -263,7 +258,6 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, scope consolev1.TemplateS
 		source.Annotations[v1alpha2.AnnotationDescription],
 		source.Data[CueTemplateKey],
 		defaults,
-		mandatory,
 		false, // new clones start disabled
 		linkedTemplates,
 	)
@@ -334,13 +328,21 @@ type RenderHierarchyWalker interface {
 // that participate in rendering the given target. The effective set at each
 // ancestor namespace is:
 //
-//	(mandatory AND enabled) UNION (enabled AND ref IN explicitRefs)
+//	enabled AND ref IN explicitRefs
 //
 // For linked templates that carry a version constraint, the CUE source is
 // resolved from the latest matching release via ResolveVersionedSource
-// (ADR 024); mandatory templates and linked templates without releases fall
-// back to the live ConfigMap CUE source. Disabled templates are never
-// included, even when explicitly linked.
+// (ADR 024); linked templates without releases fall back to the live
+// ConfigMap CUE source. Disabled templates are never included, even when
+// explicitly linked.
+//
+// The "mandatory" annotation that previously contributed a
+// (mandatory AND enabled) branch was removed in HOL-565 as part of the
+// HOL-562 collapse. Templates that must be unconditionally applied now come
+// in via TemplatePolicy REQUIRE rules — resolved by the caller and injected
+// as explicit refs — rather than via an annotation baked into the template
+// ConfigMap. Phase 5 (HOL-567) wires the real policy resolver; until then
+// this function only surfaces the caller's explicit link set.
 //
 // Dedup key: (scope, scopeName, name). This uniform key replaces the
 // three inconsistent dedup strategies of the legacy helpers this function
@@ -418,7 +420,6 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 		}
 
 		for _, cm := range cms {
-			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 			if !enabled {
 				continue
@@ -430,7 +431,7 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			key := linkedRef{scope: scopeLabel, scopeName: scopeName, name: cm.Name}
 			protoRef, isLinked := linkedByKey[key]
 
-			if !mandatory && !isLinked {
+			if !isLinked {
 				continue
 			}
 			if seen[key] {
@@ -439,26 +440,23 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			seen[key] = true
 
 			// For linked templates, resolve versioned source (ADR 024).
-			if isLinked {
-				scope := scopeFromLabel(scopeLabel)
-				src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, cm.Name, protoRef.GetVersionConstraint())
-				if resolveErr != nil {
-					slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
-						slog.String("template", cm.Name),
-						slog.String("namespace", ns.Name),
-						slog.Any("error", resolveErr),
-					)
-					// Fall through to live ConfigMap below.
-				} else if src != "" {
-					allSources = append(allSources, src)
-					continue
-				}
+			scope := scopeFromLabel(scopeLabel)
+			src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, cm.Name, protoRef.GetVersionConstraint())
+			if resolveErr != nil {
+				slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
+					slog.String("template", cm.Name),
+					slog.String("namespace", ns.Name),
+					slog.Any("error", resolveErr),
+				)
+				// Fall through to live ConfigMap below.
+			} else if src != "" {
+				allSources = append(allSources, src)
+				continue
 			}
 
-			// Mandatory templates and fallback: use the live ConfigMap CUE source.
-			src := cm.Data[CueTemplateKey]
-			if src != "" {
-				allSources = append(allSources, src)
+			// Fallback: use the live ConfigMap CUE source.
+			if liveSrc := cm.Data[CueTemplateKey]; liveSrc != "" {
+				allSources = append(allSources, liveSrc)
 			}
 		}
 	}
@@ -480,15 +478,10 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 		if !enabled {
 			continue
 		}
-		// The `mandatory` annotation is no longer a first-class proto field on
-		// LinkableTemplate (HOL-555). However, the resolver still auto-includes
-		// mandatory ancestor templates at render time via the annotation until
-		// HOL-557 replaces that with TemplatePolicy REQUIRE evaluation. During
-		// that transition we surface the effective "always applied" state via
-		// the `forced` field so the linking UI doesn't lie about what actually
-		// renders. Once HOL-557 lands, `forced` is populated from policy
-		// evaluation instead of the annotation.
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+		// `Forced` is the transitional field that the linking UI reads to show
+		// a disabled "always applied" checkbox. Since HOL-565 removed the
+		// `mandatory` annotation reader, the field is always false until
+		// HOL-567 populates it from TemplatePolicy REQUIRE-rule evaluation.
 		result = append(result, &consolev1.LinkableTemplate{
 			ScopeRef: &consolev1.TemplateScopeRef{
 				Scope:     scope,
@@ -497,7 +490,7 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 			Name:        cm.Name,
 			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 			Description: cm.Annotations[v1alpha2.AnnotationDescription],
-			Forced:      mandatory,
+			Forced:      false,
 		})
 	}
 	return result, nil
@@ -515,8 +508,7 @@ func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
 		"Exposes a deployment's Service via an HTTPRoute through the gateway. Requires a ReferenceGrant in the project namespace (provided by the default deployment template).",
 		DefaultReferenceGrantTemplate,
 		nil,
-		false, // not mandatory
-		true,  // enabled for populate_defaults flow
+		true, // enabled for populate_defaults flow
 		nil,
 	)
 	return err
@@ -534,8 +526,7 @@ func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) err
 		"Example go-httpbin project-level deployment template. Produces ServiceAccount, Deployment, and Service resources.",
 		ExampleHttpbinTemplate,
 		nil,
-		false, // not mandatory
-		true,  // enabled for populate_defaults flow
+		true, // enabled for populate_defaults flow
 		nil,
 	)
 	return err

@@ -116,12 +116,11 @@ func TestConfigMapToTemplate(t *testing.T) {
 				Namespace: "org-acme",
 				Annotations: map[string]string{
 					v1alpha2.AnnotationDisplayName: "ReferenceGrant",
-					// AnnotationMandatory is retained in ConfigMap storage but
-					// no longer projected into the Template proto (HOL-555).
-					// Semantic coverage returns once TemplatePolicy REQUIRE
-					// rules land in HOL-557.
-					v1alpha2.AnnotationMandatory: "true",
-					v1alpha2.AnnotationEnabled:   "true",
+					// The legacy `console.holos.run/mandatory` annotation was
+					// removed in HOL-565. Templates that must always apply to
+					// a project will be selected by TemplatePolicy REQUIRE
+					// rules in HOL-567 instead.
+					v1alpha2.AnnotationEnabled: "true",
 				},
 			},
 			Data: map[string]string{},
@@ -413,7 +412,6 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				Annotations: map[string]string{
 					v1alpha2.AnnotationDisplayName:     "Web App",
 					v1alpha2.AnnotationDescription:     "A web app",
-					v1alpha2.AnnotationMandatory:       "false",
 					v1alpha2.AnnotationEnabled:         "false",
 					v1alpha2.AnnotationLinkedTemplates: existingLinkedJSON,
 				},
@@ -592,7 +590,6 @@ func TestUpdateTemplateMalformedLinkedAnnotation(t *testing.T) {
 			Annotations: map[string]string{
 				v1alpha2.AnnotationDisplayName:     "Web App",
 				v1alpha2.AnnotationDescription:     "A web app",
-				v1alpha2.AnnotationMandatory:       "false",
 				v1alpha2.AnnotationEnabled:         "false",
 				v1alpha2.AnnotationLinkedTemplates: `{not valid json`,
 			},
@@ -692,7 +689,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 				},
 				Annotations: map[string]string{
 					v1alpha2.AnnotationDisplayName: "Payments Policy",
-					v1alpha2.AnnotationMandatory:   "false",
 					v1alpha2.AnnotationEnabled:     "true",
 				},
 			},
@@ -767,8 +763,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
 				},
 				Annotations: map[string]string{
-					v1alpha2.AnnotationMandatory: "false",
-					v1alpha2.AnnotationEnabled:   "true",
+					v1alpha2.AnnotationEnabled: "true",
 				},
 			},
 			Data: map[string]string{CueTemplateKey: orgCue},
@@ -785,8 +780,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
 				},
 				Annotations: map[string]string{
-					v1alpha2.AnnotationMandatory: "false",
-					v1alpha2.AnnotationEnabled:   "true",
+					v1alpha2.AnnotationEnabled: "true",
 				},
 			},
 			Data: map[string]string{CueTemplateKey: folderCue},
@@ -905,8 +899,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
 				},
 				Annotations: map[string]string{
-					v1alpha2.AnnotationMandatory: "false",
-					v1alpha2.AnnotationEnabled:   "true",
+					v1alpha2.AnnotationEnabled: "true",
 				},
 			},
 			Data: map[string]string{CueTemplateKey: folderCue},
