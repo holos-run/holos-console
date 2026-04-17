@@ -175,8 +175,20 @@ func (h *Handler) ListTemplates(
 	}
 
 	templates := make([]*consolev1.Template, 0, len(cms))
-	for _, cm := range cms {
-		templates = append(templates, configMapToTemplate(&cm, scope, scopeName))
+	for i := range cms {
+		cm := cms[i]
+		tmpl := configMapToTemplate(&cm, scope, scopeName)
+		// For project-scope templates, compute policy_drift using the same
+		// underlying store/resolver the dedicated
+		// GetProjectTemplatePolicyState RPC uses. List-view UIs read the bool
+		// only (ADR 026 / HOL-557 acceptance criterion: "List views use just
+		// the drift bool"). Failures degrade gracefully to drift=false with a
+		// logged warning so a transient backend hiccup never fabricates drift
+		// on a listing row.
+		if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && h.policyState != nil {
+			tmpl.PolicyDrift = h.computePolicyDriftForTemplate(ctx, scope, scopeName, cm.Name, tmpl.LinkedTemplates)
+		}
+		templates = append(templates, tmpl)
 	}
 
 	slog.InfoContext(ctx, "templates listed",
@@ -230,8 +242,16 @@ func (h *Handler) GetTemplate(
 		slog.String("sub", claims.Sub),
 	)
 
+	tmpl := configMapToTemplate(cm, scope, scopeName)
+	// Populate policy_drift for project-scope templates so the single-row
+	// read path stays consistent with ListTemplates and the dedicated
+	// GetProjectTemplatePolicyState RPC. Mirrors DeploymentStatusSummary in
+	// console/deployments/handler.go; see there for the rationale.
+	if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && h.policyState != nil {
+		tmpl.PolicyDrift = h.computePolicyDriftForTemplate(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
+	}
 	return connect.NewResponse(&consolev1.GetTemplateResponse{
-		Template: configMapToTemplate(cm, scope, scopeName),
+		Template: tmpl,
 	}), nil
 }
 
@@ -426,7 +446,12 @@ func (h *Handler) UpdateTemplate(
 	enabled := tmpl.Enabled
 
 	// Determine linked template handling based on the update_linked_templates flag.
+	// effectiveLinks is the baseline we feed to the drift store below — always
+	// reflects what is actually persisted on the ConfigMap after the write,
+	// never the raw request payload (which is nil when update_linked_templates
+	// is false and would otherwise fabricate drift against the preserved set).
 	var linkedTemplates []*consolev1.LinkedTemplateRef
+	var effectiveLinks []*consolev1.LinkedTemplateRef
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
 		// (being removed) and new (being added) linked template scopes.
@@ -458,9 +483,38 @@ func (h *Handler) UpdateTemplate(
 		if linkedTemplates == nil {
 			linkedTemplates = []*consolev1.LinkedTemplateRef{}
 		}
+		effectiveLinks = linkedTemplates
+	} else {
+		// When update_linked_templates is false, linkedTemplates stays nil,
+		// which tells K8sClient.UpdateTemplate to preserve existing links.
+		// Re-read the persisted annotation so the drift store sees the same
+		// set the caller preserved. Parse errors here leave effectiveLinks
+		// nil (safe: the recorder falls through the resolver, same as an
+		// unlinked template) but are logged for operator visibility.
+		existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+		if getErr == nil {
+			if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+				parsed, parseErr := unmarshalLinkedTemplates(raw)
+				if parseErr != nil {
+					slog.WarnContext(ctx, "parsing preserved linked-templates annotation for drift store update failed",
+						slog.String("scope", scope.String()),
+						slog.String("scopeName", scopeName),
+						slog.String("name", name),
+						slog.Any("error", parseErr),
+					)
+				} else {
+					effectiveLinks = parsed
+				}
+			}
+		} else {
+			slog.WarnContext(ctx, "reading preserved linked-templates for drift store update failed",
+				slog.String("scope", scope.String()),
+				slog.String("scopeName", scopeName),
+				slog.String("name", name),
+				slog.Any("error", getErr),
+			)
+		}
 	}
-	// When update_linked_templates is false, linkedTemplates stays nil,
-	// which tells K8sClient.UpdateTemplate to preserve existing links.
 
 	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, mandatory, &enabled, linkedTemplates, false)
 	if err != nil {
@@ -469,8 +523,11 @@ func (h *Handler) UpdateTemplate(
 
 	// Refresh the drift store so a subsequent read reports "no drift" until
 	// a policy or ancestor template changes. Only applies to project-scope
-	// templates; the helper is a no-op for org/folder scopes.
-	h.recordAppliedRenderSetForTemplate(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
+	// templates; the helper is a no-op for org/folder scopes. Passes the
+	// EFFECTIVE links that were actually written (or preserved), not the raw
+	// request payload — otherwise an update with update_linked_templates=false
+	// would record an empty applied set and fabricate drift on the next read.
+	h.recordAppliedRenderSetForTemplate(ctx, scope, scopeName, name, effectiveLinks)
 
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),
@@ -1487,6 +1544,48 @@ func mapK8sError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// computePolicyDriftForTemplate reports whether today's resolver output
+// differs from the last-recorded applied set for a project-scope template.
+// Mirrors console/deployments/handler.go's computePolicyDrift so
+// ListTemplates/GetTemplate and the dedicated GetProjectTemplatePolicyState
+// RPC share the same underlying drift store + resolver path.
+//
+// Returns false on any error so list-view rows can unconditionally surface
+// the bool without a nested error check; errors are logged at warn level
+// for operator visibility. Also returns false when no PolicyStateProvider
+// is wired or when the scope is not TEMPLATE_SCOPE_PROJECT (the drift store
+// and resolver are project-scope only today).
+func (h *Handler) computePolicyDriftForTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, baseLinkedRefs []*consolev1.LinkedTemplateRef) bool {
+	if h.policyState == nil {
+		return false
+	}
+	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return false
+	}
+	applied, err := h.policyState.AppliedRenderSet(ctx, scopeName, name)
+	if err != nil {
+		slog.WarnContext(ctx, "reading applied render set for template drift check failed",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return false
+	}
+	current, err := h.policyState.CurrentRenderSet(ctx, scopeName, name, baseLinkedRefs)
+	if err != nil {
+		slog.WarnContext(ctx, "resolving current render set for template drift check failed",
+			slog.String("scope", scope.String()),
+			slog.String("scopeName", scopeName),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return false
+	}
+	added, removed := diffLinkedRefs(applied, current)
+	return len(added) > 0 || len(removed) > 0
 }
 
 // recordAppliedRenderSetForTemplate persists the effective render set for a
