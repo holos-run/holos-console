@@ -3,6 +3,7 @@ package templatepolicies
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -761,6 +762,93 @@ func TestCreateAllowsDeploymentScopedExcludeWhenProjectTemplateNameOverlaps(t *t
 	}))
 	if err != nil {
 		t.Fatalf("deployment-scoped EXCLUDE must not match project-template by name: %v", err)
+	}
+}
+
+// failingTopology wraps K8sResourceTopology and forces ListProjectsUnderScope
+// to return an error. Used by TestCreateSurfacesTopologyErrors to assert the
+// handler propagates the failure as CodeInternal rather than treating a
+// bypassed descendant as "no conflict".
+type failingTopology struct{ err error }
+
+func (f *failingTopology) ListProjectsUnderScope(_ context.Context, _ consolev1.TemplateScope, _ string) ([]*corev1.Namespace, error) {
+	return nil, f.err
+}
+func (f *failingTopology) ListProjectTemplates(_ context.Context, _ string) ([]corev1.ConfigMap, error) {
+	return nil, nil
+}
+func (f *failingTopology) ListProjectDeployments(_ context.Context, _ string) ([]corev1.ConfigMap, error) {
+	return nil, nil
+}
+
+// TestCreateSurfacesTopologyErrorsAsInternal is the regression guard for the
+// codex-review round 2 P1 finding: if the topology resolver cannot
+// enumerate projects under the policy scope (for example because an
+// ancestor walk errors on a descendant namespace), the handler MUST return
+// CodeInternal rather than silently accepting the EXCLUDE rule as if the
+// skipped projects held no conflicts. The failingTopology below simulates
+// the downstream walker-failure path surfaced by the handler.
+func TestCreateSurfacesTopologyErrorsAsInternal(t *testing.T) {
+	client, _ := buildHol570Fixture()
+	r := newTestResolver()
+	k := NewK8sClient(client, r)
+	h := NewHandler(k, r).
+		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"owner@example.com": "owner"}}).
+		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{"owner@example.com": "owner"}}).
+		WithResourceTopologyResolver(&failingTopology{err: errors.New("walker: namespace Get failed")})
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "topology-error-block",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected topology failure to surface as an error")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeInternal {
+		t.Fatalf("expected CodeInternal, got %v: %v", got, err)
+	}
+}
+
+// TestUpdateReturnsNotFoundEvenWhenSubmittedRulesConflict is the
+// regression guard for the codex-review round 2 P2 finding. If the caller
+// tries to Update a non-existent policy with an EXCLUDE rule that WOULD
+// conflict with an existing explicit link, the handler must return
+// NotFound (the precedence clients rely on for idempotent update flows),
+// not FailedPrecondition. The guardrail MUST run after GetPolicy so a
+// missing target never short-circuits to the new HOL-570 error.
+func TestUpdateReturnsNotFoundEvenWhenSubmittedRulesConflict(t *testing.T) {
+	// Seed an offending Deployment so the EXCLUDE below would normally
+	// fail validation — but do NOT seed the target policy itself.
+	linkedJSON := mkLinkedTemplatesAnnotation(t, linkedTripleForTest{
+		scope: v1alpha2.TemplateScopeOrganization, scopeName: "acme", name: "httproute",
+	})
+	h := makeHol570Fixture(t,
+		mkDeployment("holos-prj-lilies", "web", linkedJSON),
+	)
+
+	ctx := authedCtx("owner@example.com", nil)
+	_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
+		Scope: newOrgScope("acme"),
+		Policy: &consolev1.TemplatePolicy{
+			Name:     "does-not-exist",
+			ScopeRef: newOrgScope("acme"),
+			Rules: []*consolev1.TemplatePolicyRule{
+				excludeRuleFor(orgTemplateRef("acme", "httproute"), "*", "*"),
+			},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected NotFound on missing policy Update")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeNotFound {
+		t.Fatalf("expected CodeNotFound (missing-policy precedence must beat FailedPrecondition), got %v: %v", got, err)
 	}
 }
 

@@ -72,6 +72,16 @@ func (t *K8sResourceTopology) scopeNamespace(scope consolev1.TemplateScope, scop
 // cluster-wide namespace list is filtered by the
 // `console.holos.run/managed-by` and `resource-type=project` labels so
 // unmanaged namespaces never appear.
+//
+// An ancestor-walk error for any candidate project namespace propagates to
+// the caller (which turns it into connect.CodeInternal in
+// validateExcludeRulesAgainstExplicitLinks). Silently dropping a project
+// would bypass the HOL-570 guardrail whenever a transient namespace Get
+// fails, the hierarchy is temporarily inconsistent, or the walker hits its
+// depth / cycle guard — any of those conditions could hide an existing
+// explicit link from the validator. Better to fail loudly and let the
+// caller retry than to accept an EXCLUDE that will silently do nothing at
+// render time.
 func (t *K8sResourceTopology) ListProjectsUnderScope(
 	ctx context.Context,
 	scope consolev1.TemplateScope,
@@ -93,7 +103,11 @@ func (t *K8sResourceTopology) ListProjectsUnderScope(
 		if ns.DeletionTimestamp != nil {
 			continue
 		}
-		if t.ancestorChainContains(ctx, ns.Name, scopeNs) {
+		contained, err := t.ancestorChainContains(ctx, ns.Name, scopeNs)
+		if err != nil {
+			return nil, fmt.Errorf("walking ancestors of %q: %w", ns.Name, err)
+		}
+		if contained {
 			result = append(result, ns)
 		}
 	}
@@ -101,21 +115,21 @@ func (t *K8sResourceTopology) ListProjectsUnderScope(
 }
 
 // ancestorChainContains reports whether `wantNs` appears in the ancestor
-// chain of `startNs`. Walker errors fall back to "not a descendant" — a
-// project namespace that cannot be walked (missing parent label, cycle) is
-// already dysfunctional and cannot reliably host an EXCLUDE conflict; we
-// refuse to erroneously cite it as a conflict source.
-func (t *K8sResourceTopology) ancestorChainContains(ctx context.Context, startNs, wantNs string) bool {
+// chain of `startNs`. A walker error is surfaced to the caller rather than
+// swallowed — skipping the project on walker failure would silently weaken
+// the HOL-570 guardrail. Callers convert the error to connect.CodeInternal
+// so the RPC layer can distinguish it from validation-failure categories.
+func (t *K8sResourceTopology) ancestorChainContains(ctx context.Context, startNs, wantNs string) (bool, error) {
 	chain, err := t.Walker.WalkAncestors(ctx, startNs)
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, ancestor := range chain {
 		if ancestor.Name == wantNs {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // ListProjectTemplates returns all Template ConfigMaps in the project

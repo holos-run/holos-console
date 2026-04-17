@@ -354,22 +354,26 @@ func (h *Handler) UpdateTemplatePolicy(
 		return nil, err
 	}
 
-	// HOL-570: reject EXCLUDE rules that would contradict explicit links.
-	// Runs AFTER checkAccess to avoid leaking "template X is linked on
-	// project Y" to an unauthorized caller (see the matching comment in
-	// CreateTemplatePolicy) and BEFORE GetPolicy + UpdatePolicy so a
-	// rejected call never touches the stored ConfigMap.
-	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
-		return nil, err
-	}
-
 	// Fetch the existing policy so we can distinguish "unset" from "set to
 	// empty" for the top-level metadata fields. The previous read is also
 	// required to surface NotFound before we attempt the Update (the K8s API
-	// would otherwise return a less-informative error).
+	// would otherwise return a less-informative error). The explicit-link
+	// guardrail below runs AFTER this read so an Update to a non-existent
+	// policy still returns connect.CodeNotFound regardless of the submitted
+	// rules — clients rely on that distinction for idempotent upsert flows.
 	existing, err := h.k8s.GetPolicy(ctx, scope, scopeName, name)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// HOL-570: reject EXCLUDE rules that would contradict explicit links.
+	// Runs AFTER checkAccess (to avoid leaking "template X is linked on
+	// project Y" to an unauthorized caller — see the matching comment in
+	// CreateTemplatePolicy) AND AFTER GetPolicy (to preserve the NotFound
+	// error precedence). Runs BEFORE k8s.UpdatePolicy so a rejected call
+	// never rewrites the stored ConfigMap's rules annotation.
+	if err := h.validateExcludeRulesAgainstExplicitLinks(ctx, scope, scopeName, policy.GetRules()); err != nil {
+		return nil, err
 	}
 
 	// Preserve unspecified fields. Proto3 scalars default to "" which we
