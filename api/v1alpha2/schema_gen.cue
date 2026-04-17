@@ -384,5 +384,24 @@
 
 	// ProjectResources is the output collection for project-managed resources.
 	projectResources: #ProjectResources  @go(ProjectResources)
+
+	// Output carries optional values the template wants to publish to the UI.
+	// Platform templates assign concrete values inside a top-level `output`
+	// block (e.g. `output: url: "https://example.com"`); the render pipeline
+	// surfaces the evaluated Output on the deployment detail view. The field
+	// is a pointer so the section can be absent entirely when a template
+	// does not declare one.
+	output?: (null | #Output)  @go(Output,*Output)
+}
+
+// Output carries values a template publishes for UI consumption. It is the
+// counterpart to the inputs on [ResourceSetSpec]: templates may unify values
+// into the top-level `output` block to expose them to the deployment detail
+// view without stuffing them into annotations or labels.
+#Output: {
+	// Url is the primary URL (e.g. the HTTPS URL of the ingress route) that
+	// the UI should show for a deployment. Left empty when the template has
+	// no meaningful URL to publish.
+	url?: string  @go(Url)
 }
 

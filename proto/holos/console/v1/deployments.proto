@@ -399,4 +399,18 @@ message GetDeploymentRenderPreviewResponse {
   // clusterResources nesting. Unset means render was not attempted; set means
   // evaluation produced this value.
   optional string project_resources_structured_json = 14;
+  // output is the evaluated `output` section of the ResourceSetSpec,
+  // populated when a template provides one. Unset means the template did
+  // not declare an output block or render was not attempted.
+  optional DeploymentOutput output = 15;
+}
+
+// DeploymentOutput carries the evaluated `output` section of the v1alpha2
+// ResourceSetSpec. Templates assign concrete values here to publish data for
+// the UI (e.g. the deployed application's URL) without stuffing it into
+// annotations or labels.
+message DeploymentOutput {
+  // url is the primary URL the UI should show for the deployment. Empty when
+  // the template has no meaningful URL to publish.
+  string url = 1;
 }

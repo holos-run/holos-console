@@ -1232,6 +1232,15 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
    * @generated from field: optional string project_resources_structured_json = 14;
    */
   projectResourcesStructuredJson?: string;
+
+  /**
+   * output is the evaluated `output` section of the ResourceSetSpec,
+   * populated when a template provides one. Unset means the template did
+   * not declare an output block or render was not attempted.
+   *
+   * @generated from field: optional holos.console.v1.DeploymentOutput output = 15;
+   */
+  output?: DeploymentOutput;
 };
 
 /**
@@ -1239,6 +1248,30 @@ export declare type GetDeploymentRenderPreviewResponse = Message<"holos.console.
  * Use `create(GetDeploymentRenderPreviewResponseSchema)` to create a new message.
  */
 export declare const GetDeploymentRenderPreviewResponseSchema: GenMessage<GetDeploymentRenderPreviewResponse>;
+
+/**
+ * DeploymentOutput carries the evaluated `output` section of the v1alpha2
+ * ResourceSetSpec. Templates assign concrete values here to publish data for
+ * the UI (e.g. the deployed application's URL) without stuffing it into
+ * annotations or labels.
+ *
+ * @generated from message holos.console.v1.DeploymentOutput
+ */
+export declare type DeploymentOutput = Message<"holos.console.v1.DeploymentOutput"> & {
+  /**
+   * url is the primary URL the UI should show for the deployment. Empty when
+   * the template has no meaningful URL to publish.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentOutput.
+ * Use `create(DeploymentOutputSchema)` to create a new message.
+ */
+export declare const DeploymentOutputSchema: GenMessage<DeploymentOutput>;
 
 /**
  * DeploymentPhase represents the lifecycle phase of a deployment.
