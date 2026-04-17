@@ -28,6 +28,12 @@ type stubPolicyDriftChecker struct {
 	stateErr    error
 
 	recordErr error
+
+	// Capture fields for the write-through acceptance tests (HOL-569).
+	recordCalls       int
+	lastRecordProject string
+	lastRecordName    string
+	lastRecordRefs    []*consolev1.LinkedTemplateRef
 }
 
 func (s *stubPolicyDriftChecker) Drift(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) (bool, bool, error) {
@@ -38,7 +44,11 @@ func (s *stubPolicyDriftChecker) PolicyState(_ context.Context, _, _ string, _ [
 	return s.stateResult, s.stateErr
 }
 
-func (s *stubPolicyDriftChecker) RecordApplied(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) error {
+func (s *stubPolicyDriftChecker) RecordApplied(_ context.Context, project, name string, refs []*consolev1.LinkedTemplateRef) error {
+	s.recordCalls++
+	s.lastRecordProject = project
+	s.lastRecordName = name
+	s.lastRecordRefs = refs
 	return s.recordErr
 }
 

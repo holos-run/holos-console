@@ -176,7 +176,7 @@ func (a *RequiredTemplateApplier) applyMatch(
 		Name:      match.TemplateName,
 	}
 
-	ancestorSources, err := a.k8s.ListEffectiveTemplateSources(
+	ancestorSources, _, err := a.k8s.ListEffectiveTemplateSources(
 		ctx,
 		projectNs,
 		TargetKindProjectTemplate,

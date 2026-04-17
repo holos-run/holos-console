@@ -321,8 +321,9 @@ type RenderHierarchyWalker interface {
 }
 
 // ListEffectiveTemplateSources returns the ordered, deduplicated CUE sources
-// that participate in rendering the given target. The effective set at each
-// ancestor namespace is:
+// that participate in rendering the given target, alongside the policy-
+// effective ref set that produced them. The effective set at each ancestor
+// namespace is:
 //
 //	enabled AND ref IN explicitRefs
 //
@@ -346,8 +347,12 @@ type RenderHierarchyWalker interface {
 // "foo" correctly survive as two distinct sources.
 //
 // The walker drives ancestor traversal. If walker is nil, the method returns
-// nil (no ancestor sources). If the walker returns an error, the method
-// degrades gracefully to an empty slice — callers render project-only.
+// (nil, nil, nil): no sources AND no effective refs, because the caller
+// will render project-only and must not persist an applied-render-set that
+// claims ancestor templates were unified in. If the walker returns an
+// error, the method degrades gracefully the same way — nil refs plus a
+// warn log — so HOL-569 write-through never persists refs that did not
+// actually participate in the render.
 //
 // resolver evaluates TemplatePolicy REQUIRE/EXCLUDE rules against the
 // caller's explicitRefs before the ancestor walk. Phase 4 (HOL-566) threads
@@ -356,6 +361,18 @@ type RenderHierarchyWalker interface {
 // swaps in a real policy-backed implementation. When resolver is nil the
 // call site predates the seam — the function falls back to using
 // explicitRefs directly so tests that have not been updated keep working.
+//
+// The effectiveRefs return value is the single authoritative representation
+// of "what the policy chain decided would participate in this render AND
+// the ancestor walk succeeded." Every write-through to the applied-render-
+// set store (HOL-569) consumes this value directly so the stored set
+// always matches the rendered set without a second resolver invocation
+// that could race a policy edit. Callers that need just the sources can
+// ignore this value; callers that need the ref set (Create/Update write-
+// through) MUST read it from here rather than re-invoking the resolver,
+// and MUST treat a nil effectiveRefs as "do not record" because a nil
+// signals a degraded render path where the stored set would not match
+// what actually rendered.
 //
 // Storage-isolation note (HOL-554): the walk deliberately skips the starting
 // namespace (ancestors[0]) and only reads templates, releases, and — once
@@ -370,11 +387,7 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	explicitRefs []*consolev1.LinkedTemplateRef,
 	walker RenderHierarchyWalker,
 	resolver policyresolver.PolicyResolver,
-) ([]string, error) {
-	if walker == nil {
-		return nil, nil
-	}
-
+) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	// Resolve the caller's explicit refs through the PolicyResolver seam
 	// before walking ancestors. Phase 4 (HOL-566) wires a no-op resolver at
 	// every call site; Phase 5 swaps in real REQUIRE/EXCLUDE evaluation.
@@ -385,9 +398,26 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	if resolver != nil {
 		resolved, resolveErr := resolver.Resolve(ctx, projectNs, targetKind, targetName, explicitRefs)
 		if resolveErr != nil {
-			return nil, fmt.Errorf("resolving template policy for %q: %w", targetName, resolveErr)
+			return nil, nil, fmt.Errorf("resolving template policy for %q: %w", targetName, resolveErr)
 		}
 		effectiveRefs = resolved
+	}
+	// Normalize a nil effectiveRefs to a non-nil empty slice so the happy
+	// path (successful render with zero policy-effective refs) is
+	// distinguishable from the degraded-render path below (nil effectiveRefs
+	// signals "do not record"). A deployment template with no linked-
+	// templates annotation is a perfectly valid apply and must still
+	// persist an applied baseline so GetDeploymentPolicyState returns
+	// has_applied_state=true (review round 2 P1a finding).
+	if effectiveRefs == nil {
+		effectiveRefs = []*consolev1.LinkedTemplateRef{}
+	}
+
+	if walker == nil {
+		// No walker means no ancestor sources are unified in. Returning
+		// nil effectiveRefs prevents the HOL-569 write-through from
+		// recording a set that does not match the degraded render.
+		return nil, nil, nil
 	}
 
 	ancestors, err := walker.WalkAncestors(ctx, projectNs)
@@ -396,7 +426,13 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			slog.String("projectNs", projectNs),
 			slog.Any("error", err),
 		)
-		return nil, nil
+		// Walker failure degrades to project-only render. Discard
+		// effectiveRefs for the same reason as the nil-walker branch:
+		// callers MUST NOT persist an applied set that claims ancestor
+		// templates were unified when they were not. Callers that want a
+		// policy-resolved set independent of ancestor sourcing can invoke
+		// the resolver directly.
+		return nil, nil, nil
 	}
 
 	// Build a lookup from (scope, scopeName, name) -> linked ref so linked
@@ -466,7 +502,22 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 		}
 	}
 
-	return allSources, nil
+	// Design choice for HOL-569: the returned effectiveRefs are the
+	// resolver's verbatim output, NOT the subset of refs whose ancestor
+	// ConfigMaps were actually found and unified into allSources. A
+	// template can be policy-effective yet produce zero sources (disabled
+	// in its ancestor namespace, missing ConfigMap, or unresolvable
+	// version constraint). Storing the resolver output keeps the applied-
+	// and current-side reads symmetric — GetDeploymentPolicyState invokes
+	// the same resolver to compute the current set, so comparing the two
+	// produces no spurious drift even when some refs never materialize.
+	// Filtering to "refs that produced sources" would introduce asymmetry
+	// and reopen the race that option 1 of the ticket was chosen to
+	// avoid: a concurrent policy edit between apply-time resolution and
+	// query-time resolution could make the two disagree. Review round 2
+	// P1b raised this concern; the decision to stick with the resolver
+	// output is intentional.
+	return allSources, effectiveRefs, nil
 }
 
 // ListLinkableTemplateInfos returns all enabled templates at the given scope
@@ -964,7 +1015,10 @@ func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker, r
 
 // ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
 // The targetName identifies the deployment driving the render so Phase 5
-// REQUIRE/EXCLUDE evaluation can key off it.
-func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs, targetName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
+// REQUIRE/EXCLUDE evaluation can key off it. Returns the effective policy-
+// resolved ref set alongside the sources so the deployments handler can
+// write-through to the applied-render-set store without invoking the
+// resolver a second time (HOL-569).
+func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs, targetName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, targetName, linkedRefs, a.walker, a.resolver)
 }
