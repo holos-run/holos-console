@@ -185,6 +185,9 @@ func (h *Handler) CreateTemplatePolicy(
 	if policy == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy is required"))
 	}
+	if err := validatePolicyScopeRef(policy.GetScopeRef(), scope, scopeName); err != nil {
+		return nil, err
+	}
 	if err := validatePolicyName(policy.GetName()); err != nil {
 		return nil, err
 	}
@@ -245,6 +248,9 @@ func (h *Handler) UpdateTemplatePolicy(
 	policy := req.Msg.GetPolicy()
 	if policy == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy is required"))
+	}
+	if err := validatePolicyScopeRef(policy.GetScopeRef(), scope, scopeName); err != nil {
+		return nil, err
 	}
 	name := policy.GetName()
 	if name == "" {
@@ -380,6 +386,33 @@ func (h *Handler) extractPolicyScope(ref *consolev1.TemplateScopeRef) (consolev1
 		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name is required"))
 	}
 	return ref.GetScope(), ref.GetScopeName(), nil
+}
+
+// validatePolicyScopeRef enforces the proto contract that every
+// TemplatePolicy carries a scope_ref and that it exactly matches the outer
+// request scope. The proto comment on CreateTemplatePolicyRequest.policy
+// states scope_ref is required; silently accepting a nil or mismatched
+// scope_ref would let a client believe a policy was stored at one scope when
+// it was actually stored at another. Project scope is rejected here too so
+// the storage-isolation guardrail (HOL-554) holds at the proto boundary and
+// not only via the downstream namespace check.
+func validatePolicyScopeRef(ref *consolev1.TemplateScopeRef, reqScope consolev1.TemplateScope, reqScopeName string) error {
+	if ref == nil {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy.scope_ref is required"))
+	}
+	if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED || ref.GetScopeName() == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy.scope_ref.scope and policy.scope_ref.scope_name are required"))
+	}
+	if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("policy.scope_ref cannot be TEMPLATE_SCOPE_PROJECT; template policies must live at folder or organization scope"))
+	}
+	if ref.GetScope() != reqScope || ref.GetScopeName() != reqScopeName {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("policy.scope_ref (%s/%s) must match request scope (%s/%s)",
+				ref.GetScope(), ref.GetScopeName(), reqScope, reqScopeName))
+	}
+	return nil
 }
 
 // validatePolicyName enforces DNS-label rules and the 63-character limit so

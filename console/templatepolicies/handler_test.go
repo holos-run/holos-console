@@ -128,11 +128,17 @@ func newProjectScope(name string) *consolev1.TemplateScopeRef {
 	}
 }
 
-func basicPolicy() *consolev1.TemplatePolicy {
+// basicPolicy builds a policy whose scope_ref matches the supplied request
+// scope. The outer request scope and the embedded policy scope must line up
+// for the handler to accept the request (see validatePolicyScopeRef); this
+// helper keeps the invariant in one place instead of duplicating scope_ref
+// construction at every call site.
+func basicPolicy(scope *consolev1.TemplateScopeRef) *consolev1.TemplatePolicy {
 	return &consolev1.TemplatePolicy{
 		Name:        "require-httproute",
 		DisplayName: "Require HTTPRoute",
 		Description: "Force HTTPRoute for every project",
+		ScopeRef:    scope,
 		Rules:       []*consolev1.TemplatePolicyRule{sampleRule()},
 	}
 }
@@ -146,7 +152,7 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 
 	req := connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newProjectScope("billing-web"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newProjectScope("billing-web")),
 	})
 	ctx := authedCtx("owner@example.com", nil)
 
@@ -200,7 +206,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			run: func() error {
 				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
 					Scope:  newProjectScope("billing-web"),
-					Policy: basicPolicy(),
+					Policy: basicPolicy(newProjectScope("billing-web")),
 				}))
 				return err
 			},
@@ -327,6 +333,13 @@ func TestCreatePolicyValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Ensure every fixture in this table carries the matching
+			// scope_ref so the test isolates the field-level validation
+			// under test (rules, names) from the scope_ref check covered
+			// by TestCreatePolicyScopeRefValidation.
+			if tt.policy != nil && tt.policy.ScopeRef == nil {
+				tt.policy.ScopeRef = newFolderScope("payments")
+			}
 			_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 				Scope:  newFolderScope("payments"),
 				Policy: tt.policy,
@@ -344,6 +357,176 @@ func TestCreatePolicyValidation(t *testing.T) {
 	}
 }
 
+// TestCreatePolicyScopeRefValidation covers the proto-contract check on
+// policy.scope_ref. The reviewer called out that the handler previously
+// accepted nil, mismatched, or project-scope scope_ref values and silently
+// stored the policy under the outer request scope; that let a client think a
+// policy had landed at one scope when it had actually landed at another and
+// also let a project-scope scope_ref slip past the HOL-554 storage-isolation
+// guardrail at the proto boundary.
+func TestCreatePolicyScopeRefValidation(t *testing.T) {
+	h, _ := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+	ctx := authedCtx("owner@example.com", nil)
+
+	tests := []struct {
+		name    string
+		reqRef  *consolev1.TemplateScopeRef
+		polRef  *consolev1.TemplateScopeRef
+		wantMsg string
+	}{
+		{
+			name:    "missing policy scope_ref",
+			reqRef:  newFolderScope("payments"),
+			polRef:  nil,
+			wantMsg: "policy.scope_ref is required",
+		},
+		{
+			name:    "empty policy scope_ref fields",
+			reqRef:  newFolderScope("payments"),
+			polRef:  &consolev1.TemplateScopeRef{},
+			wantMsg: "policy.scope_ref.scope",
+		},
+		{
+			name:    "mismatched scope kind org vs folder",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newOrgScope("payments"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "mismatched scope kind folder vs org",
+			reqRef:  newOrgScope("acme"),
+			polRef:  newFolderScope("acme"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "mismatched folder name",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newFolderScope("identity"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "mismatched org name",
+			reqRef:  newOrgScope("acme"),
+			polRef:  newOrgScope("other"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "project-scope policy scope_ref at folder request",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newProjectScope("billing-web"),
+			wantMsg: "TEMPLATE_SCOPE_PROJECT",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+				Scope:  tt.reqRef,
+				Policy: basicPolicy(tt.polRef),
+			}))
+			if err == nil {
+				t.Fatal("expected scope_ref validation error")
+			}
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
+			}
+			if !containsString(err.Error(), tt.wantMsg) {
+				t.Errorf("expected error to contain %q, got %v", tt.wantMsg, err)
+			}
+		})
+	}
+
+	t.Run("valid matching folder scope is accepted", func(t *testing.T) {
+		_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+			Scope:  newFolderScope("payments"),
+			Policy: basicPolicy(newFolderScope("payments")),
+		}))
+		if err != nil {
+			t.Fatalf("matching folder scope_ref must be accepted: %v", err)
+		}
+	})
+}
+
+// TestUpdatePolicyScopeRefValidation mirrors the create-path coverage for
+// UpdateTemplatePolicy. The update path is independently vulnerable because
+// callers commonly round-trip a proto Policy fetched from Get and could edit
+// scope_ref to escape the outer scope guard.
+func TestUpdatePolicyScopeRefValidation(t *testing.T) {
+	// Seed a policy we can legitimately update in the happy-path subtest.
+	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+	ctx := authedCtx("owner@example.com", nil)
+	if _, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
+		Scope:  newFolderScope("payments"),
+		Policy: basicPolicy(newFolderScope("payments")),
+	})); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	_ = fakeClient
+
+	update := func(reqRef, polRef *consolev1.TemplateScopeRef) error {
+		_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
+			Scope: reqRef,
+			Policy: &consolev1.TemplatePolicy{
+				Name:     "require-httproute",
+				ScopeRef: polRef,
+				Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
+			},
+		}))
+		return err
+	}
+
+	tests := []struct {
+		name    string
+		reqRef  *consolev1.TemplateScopeRef
+		polRef  *consolev1.TemplateScopeRef
+		wantMsg string
+	}{
+		{
+			name:    "missing policy scope_ref",
+			reqRef:  newFolderScope("payments"),
+			polRef:  nil,
+			wantMsg: "policy.scope_ref is required",
+		},
+		{
+			name:    "mismatched scope kind",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newOrgScope("payments"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "mismatched folder name",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newFolderScope("identity"),
+			wantMsg: "must match request scope",
+		},
+		{
+			name:    "project-scope policy scope_ref",
+			reqRef:  newFolderScope("payments"),
+			polRef:  newProjectScope("billing-web"),
+			wantMsg: "TEMPLATE_SCOPE_PROJECT",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := update(tt.reqRef, tt.polRef)
+			if err == nil {
+				t.Fatal("expected scope_ref validation error")
+			}
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
+			}
+			if !containsString(err.Error(), tt.wantMsg) {
+				t.Errorf("expected error to contain %q, got %v", tt.wantMsg, err)
+			}
+		})
+	}
+
+	t.Run("valid matching folder scope is accepted", func(t *testing.T) {
+		if err := update(newFolderScope("payments"), newFolderScope("payments")); err != nil {
+			t.Fatalf("matching folder scope_ref must be accepted on update: %v", err)
+		}
+	})
+}
+
 // TestCreatePolicyHappyPath walks the end-to-end create flow and verifies the
 // audit trail and storage invariants.
 func TestCreatePolicyHappyPath(t *testing.T) {
@@ -352,7 +535,7 @@ func TestCreatePolicyHappyPath(t *testing.T) {
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newFolderScope("payments"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
@@ -375,7 +558,7 @@ func TestCreatePolicyPermissionDeniedForViewer(t *testing.T) {
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newFolderScope("payments"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err == nil {
 		t.Fatal("expected permission denied")
@@ -391,7 +574,7 @@ func TestCreatePolicyAtOrgScope(t *testing.T) {
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newOrgScope("acme"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newOrgScope("acme")),
 	}))
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy at org scope: %v", err)
@@ -460,8 +643,9 @@ func TestUpdatePreservesUnspecifiedFields(t *testing.T) {
 	_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
 		Scope: newFolderScope("payments"),
 		Policy: &consolev1.TemplatePolicy{
-			Name:  "policy",
-			Rules: []*consolev1.TemplatePolicyRule{sampleRule()},
+			Name:     "policy",
+			ScopeRef: newFolderScope("payments"),
+			Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
 		},
 	}))
 	if err != nil {
@@ -493,7 +677,7 @@ func TestTemplateExistsProbeDoesNotBlockOnTransientError(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newFolderScope("payments"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
 		t.Fatalf("transient probe error must not block create: %v", err)
@@ -511,7 +695,7 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 
 	if _, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
 		Scope:  newFolderScope("payments"),
-		Policy: basicPolicy(),
+		Policy: basicPolicy(newFolderScope("payments")),
 	})); err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
 	}
