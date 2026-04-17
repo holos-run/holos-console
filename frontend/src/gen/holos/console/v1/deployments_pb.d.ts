@@ -882,6 +882,18 @@ export declare type DeploymentStatusSummary = Message<"holos.console.v1.Deployme
    * @generated from field: string message = 7;
    */
   message: string;
+
+  /**
+   * output carries the template-authored output section (currently just the
+   * app URL) captured at the last successful create/update render. Unset
+   * when the template does not declare an output block, the URL is empty,
+   * or the annotation cache has not yet been populated. Surfaced on listing
+   * rows and GetDeploymentStatusSummary so the UI can render a link without
+   * dispatching a per-row render-preview RPC.
+   *
+   * @generated from field: optional holos.console.v1.DeploymentOutput output = 8;
+   */
+  output?: DeploymentOutput;
 };
 
 /**
