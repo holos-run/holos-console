@@ -58,7 +58,6 @@ func enabledTemplateCMForScope(ns, name, displayName, description string, scope 
 			Annotations: map[string]string{
 				v1alpha2.AnnotationDisplayName: displayName,
 				v1alpha2.AnnotationDescription: description,
-				v1alpha2.AnnotationMandatory:   "false",
 				v1alpha2.AnnotationEnabled:     "true",
 			},
 		},
@@ -78,12 +77,11 @@ func (s *stubAncestorWalker) WalkAncestors(_ context.Context, _ string) ([]*core
 }
 
 // enabledTemplateCM creates an enabled template ConfigMap suitable for
-// ListLinkableTemplateInfos.
-func enabledTemplateCM(ns, name, displayName, description string, mandatory bool) *corev1.ConfigMap {
-	mandatoryStr := "false"
-	if mandatory {
-		mandatoryStr = "true"
-	}
+// ListLinkableTemplateInfos. Prior to HOL-565 this helper also toggled the
+// now-deleted `console.holos.run/mandatory` annotation; the boolean is
+// retained as a no-op parameter so call sites that previously asserted the
+// mandatory-vs-linked distinction continue to compile during the transition.
+func enabledTemplateCM(ns, name, displayName, description string, _ bool) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -96,7 +94,6 @@ func enabledTemplateCM(ns, name, displayName, description string, mandatory bool
 			Annotations: map[string]string{
 				v1alpha2.AnnotationDisplayName: displayName,
 				v1alpha2.AnnotationDescription: description,
-				v1alpha2.AnnotationMandatory:   mandatoryStr,
 				v1alpha2.AnnotationEnabled:     "true",
 			},
 		},
@@ -289,14 +286,18 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		}
 	})
 
-	// HOL-555: `forced` reflects the annotation-driven auto-inclusion that
-	// the backend resolver still performs for mandatory templates at render
-	// time. The linking UI uses this flag to render the checkbox as
-	// checked + disabled so the UI matches the backend's effective behavior
-	// until HOL-557 migrates auto-inclusion to TemplatePolicy REQUIRE.
-	t.Run("forced=true when template has mandatory annotation", func(t *testing.T) {
+	// HOL-565 removed the `console.holos.run/mandatory` annotation reader.
+	// `Forced` is now always false until HOL-567 wires it to TemplatePolicy
+	// REQUIRE-rule evaluation. The previous `forced=true when template has
+	// mandatory annotation` assertion is therefore intentionally gone — the
+	// dual of it below is kept so regressions that re-populate `forced` from
+	// anything but REQUIRE rules show up as a test failure.
+	t.Run("forced=false after mandatory annotation reader removal", func(t *testing.T) {
 		orgNsObj := orgNS(org)
 		projectNsObj := projectNS(project)
+		// Pass true for the (now-ignored) mandatory parameter to lock in the
+		// behavior: even if the caller would have requested a "mandatory"
+		// template, `forced` stays false because the annotation is gone.
 		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", true)
 
 		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
@@ -319,8 +320,8 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 			t.Fatalf("expected 1 linkable template, got %d", len(resp.Msg.Templates))
 		}
 		lt := resp.Msg.Templates[0]
-		if !lt.Forced {
-			t.Errorf("expected forced=true for mandatory template, got false")
+		if lt.Forced {
+			t.Errorf("expected forced=false after HOL-565, got true (did a REQUIRE resolver accidentally wire through?)")
 		}
 	})
 

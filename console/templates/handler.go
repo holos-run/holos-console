@@ -330,11 +330,10 @@ func (h *Handler) CreateTemplate(
 		}
 	}
 
-	// The `mandatory` field was removed from Template in HOL-555. Passing
-	// `false` keeps the existing ConfigMap annotation plumbing alive until the
-	// resolver adopts TemplatePolicy REQUIRE rules in HOL-557, at which point
-	// the annotation and the K8sClient parameter are deleted outright.
-	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, false, tmpl.Enabled, tmpl.LinkedTemplates)
+	// The `mandatory` annotation and its Go/proto projections were removed in
+	// HOL-565. Ancestor templates that must always apply to every project now
+	// come in via TemplatePolicy REQUIRE rules (HOL-567).
+	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -389,12 +388,6 @@ func (h *Handler) UpdateTemplate(
 	displayName := tmpl.DisplayName
 	description := tmpl.Description
 	cueTemplate := tmpl.CueTemplate
-	// The `mandatory` field was removed from Template in HOL-555. Update calls
-	// no longer mutate the annotation; the nil pointer tells K8sClient to
-	// preserve whatever value is already stored. The annotation and parameter
-	// are deleted outright in HOL-557 when the resolver adopts TemplatePolicy
-	// REQUIRE rules.
-	var mandatory *bool
 	enabled := tmpl.Enabled
 
 	// Determine linked template handling based on the update_linked_templates flag.
@@ -434,7 +427,7 @@ func (h *Handler) UpdateTemplate(
 	// When update_linked_templates is false, linkedTemplates stays nil,
 	// which tells K8sClient.UpdateTemplate to preserve existing links.
 
-	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, mandatory, &enabled, linkedTemplates, false)
+	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -821,10 +814,15 @@ func (h *Handler) ListAncestorTemplates(
 }
 
 // collectAncestorTemplates walks the hierarchy and collects templates from all
-// ancestor scopes plus the current scope itself. The render set formula is:
-// (mandatory AND enabled) UNION (enabled AND ref IN linkedRefs).
-// Results are returned in org→folders→project order for correct CUE unification.
-// If linkedRefs is nil, only mandatory+enabled templates are returned.
+// ancestor scopes plus the current scope itself. The render-set formula is:
+//
+//	enabled AND ref IN linkedRefs
+//
+// Results are returned in org→folders→project order for correct CUE
+// unification. If linkedRefs is empty, no ancestor templates are returned.
+// The "mandatory" annotation branch of the effective set was removed in
+// HOL-565; TemplatePolicy REQUIRE rules (wired in HOL-567) will reintroduce
+// unconditional ancestor inclusion via the policy resolver.
 //
 // Storage-isolation note (HOL-554): the traversal only visits ancestor
 // namespaces — organization and folder — and never reads templates from a
@@ -877,7 +875,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 		}
 
 		for _, cm := range cms {
-			mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 			if !enabled {
 				continue
@@ -887,7 +884,7 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 				scopeName: ancestorName,
 				name:      cm.Name,
 			}
-			if !mandatory && !linkedSet[ref] {
+			if !linkedSet[ref] {
 				continue
 			}
 			tmplCopy := cm

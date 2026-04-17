@@ -67,7 +67,6 @@ func makeTemplateWithLinks(ns, name string, links []*consolev1.LinkedTemplateRef
 			Annotations: map[string]string{
 				v1alpha2.AnnotationDisplayName:     name,
 				v1alpha2.AnnotationDescription:     "test template",
-				v1alpha2.AnnotationMandatory:       "false",
 				v1alpha2.AnnotationEnabled:         "true",
 				v1alpha2.AnnotationLinkedTemplates: string(linkedJSON),
 			},
@@ -272,7 +271,6 @@ func TestCheckUpdates(t *testing.T) {
 				Annotations: map[string]string{
 					v1alpha2.AnnotationDisplayName: "standalone",
 					v1alpha2.AnnotationDescription: "no links",
-					v1alpha2.AnnotationMandatory:   "false",
 					v1alpha2.AnnotationEnabled:     "true",
 				},
 			},

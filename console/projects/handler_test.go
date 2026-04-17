@@ -1297,29 +1297,36 @@ func assertInvalidArgument(t *testing.T, err error) {
 	}
 }
 
-// ---- CreateProject with mandatory platform templates tests ----
+// ---- CreateProject with REQUIRE-rule applier tests ----
+//
+// HOL-565 (Phase 3 of HOL-562) replaced the legacy MandatoryTemplateApplier —
+// which walked the ancestor chain reading `console.holos.run/mandatory` — with
+// a RequiredTemplateApplier interface that evaluates TemplatePolicy REQUIRE
+// rules at project-creation time. The stub here only asserts that
+// CreateProject invokes the applier with the right arguments and respects its
+// error return; Phase 5 (HOL-567) wires the real resolver.
 
-// stubMandatoryTemplateApplier implements MandatoryTemplateApplier for tests.
-type stubMandatoryTemplateApplier struct {
+// stubRequiredTemplateApplier implements RequiredTemplateApplier for tests.
+type stubRequiredTemplateApplier struct {
 	called  bool
 	org     string
 	project string
 	err     error
 }
 
-func (s *stubMandatoryTemplateApplier) ApplyMandatoryOrgTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
+func (s *stubRequiredTemplateApplier) ApplyRequiredTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
 	s.called = true
 	s.org = org
 	s.project = project
 	return s.err
 }
 
-func TestCreateProject_CallsMandatoryTemplateApplierOnSuccess(t *testing.T) {
+func TestCreateProject_CallsRequiredTemplateApplierOnSuccess(t *testing.T) {
 	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	handler, _ := newHandler(existing)
 
-	applier := &stubMandatoryTemplateApplier{}
-	handler = handler.WithMandatoryTemplateApplier(applier)
+	applier := &stubRequiredTemplateApplier{}
+	handler = handler.WithRequiredTemplateApplier(applier)
 
 	ctx := contextWithClaims("alice@example.com")
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
@@ -1333,7 +1340,7 @@ func TestCreateProject_CallsMandatoryTemplateApplierOnSuccess(t *testing.T) {
 		t.Errorf("expected name 'new-project', got %q", resp.Msg.Name)
 	}
 	if !applier.called {
-		t.Error("expected mandatory template applier to be called")
+		t.Error("expected required template applier to be called")
 	}
 	if applier.org != "my-org" {
 		t.Errorf("expected org 'my-org', got %q", applier.org)
@@ -1347,8 +1354,8 @@ func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
 	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
 	handler, _ := newHandler(existing)
 
-	applier := &stubMandatoryTemplateApplier{}
-	handler = handler.WithMandatoryTemplateApplier(applier)
+	applier := &stubRequiredTemplateApplier{}
+	handler = handler.WithRequiredTemplateApplier(applier)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
@@ -1359,7 +1366,7 @@ func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if applier.called {
-		t.Error("expected mandatory template applier NOT to be called when org is empty")
+		t.Error("expected required template applier NOT to be called when org is empty")
 	}
 }
 
@@ -1659,10 +1666,10 @@ func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 	handler := NewHandler(k8s, nil)
 
-	applier := &stubMandatoryTemplateApplier{
+	applier := &stubRequiredTemplateApplier{
 		err: fmt.Errorf("render failed"),
 	}
-	handler = handler.WithMandatoryTemplateApplier(applier)
+	handler = handler.WithRequiredTemplateApplier(applier)
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
@@ -1670,7 +1677,7 @@ func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
 		Organization: "my-org",
 	}))
 	if err == nil {
-		t.Fatal("expected error when mandatory template applier fails")
+		t.Fatal("expected error when required template applier fails")
 	}
 
 	// Verify project namespace was cleaned up (deleted).

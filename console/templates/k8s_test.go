@@ -59,7 +59,6 @@ func templateConfigMap(scope consolev1.TemplateScope, scopePrefix, scopeName, na
 			Annotations: map[string]string{
 				v1alpha2.AnnotationDisplayName: displayName,
 				v1alpha2.AnnotationDescription: description,
-				v1alpha2.AnnotationMandatory:   "false",
 				v1alpha2.AnnotationEnabled:     "false",
 			},
 		},
@@ -73,9 +72,12 @@ func projectTemplateConfigMap(project, name, displayName, description, cueTempla
 	return templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "prj-", project, name, displayName, description, cueTemplate)
 }
 
-func orgTemplateConfigMap(org, name, displayName, description, cueTemplate string, mandatory, enabled bool) *corev1.ConfigMap {
+// orgTemplateConfigMap builds a test fixture for an organization-scope
+// template. The first boolean parameter was the now-deleted "mandatory"
+// annotation (HOL-565); callers pass a value that is ignored so existing test
+// call sites continue to compile.
+func orgTemplateConfigMap(org, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
 	cm := templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "org-", org, name, displayName, description, cueTemplate)
-	cm.Annotations[v1alpha2.AnnotationMandatory] = boolStr(mandatory)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -104,9 +106,12 @@ func folderNS(folder string) *corev1.Namespace {
 	}
 }
 
-func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, mandatory, enabled bool) *corev1.ConfigMap {
+// folderTemplateConfigMap builds a test fixture for a folder-scope template.
+// The first boolean parameter was the now-deleted "mandatory" annotation
+// (HOL-565); callers pass a value that is ignored so existing test call
+// sites continue to compile.
+func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
 	cm := templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, "fld-", folder, name, displayName, description, cueTemplate)
-	cm.Annotations[v1alpha2.AnnotationMandatory] = boolStr(mandatory)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -200,7 +205,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, false, nil)
+		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -230,20 +235,17 @@ func TestCreateTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("creates org template with mandatory and enabled flags", func(t *testing.T) {
+	t.Run("creates org template with enabled flag", func(t *testing.T) {
 		ns := orgNS("acme")
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), orgScope, "acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", nil, true, true, nil)
+		cm, err := k8s.CreateTemplate(context.Background(), orgScope, "acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", nil, true, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if cm.Labels[v1alpha2.LabelTemplateScope] != v1alpha2.TemplateScopeOrganization {
 			t.Errorf("expected org scope label, got %q", cm.Labels[v1alpha2.LabelTemplateScope])
-		}
-		if cm.Annotations[v1alpha2.AnnotationMandatory] != "true" {
-			t.Errorf("expected mandatory=true, got %q", cm.Annotations[v1alpha2.AnnotationMandatory])
 		}
 		if cm.Annotations[v1alpha2.AnnotationEnabled] != "true" {
 			t.Errorf("expected enabled=true, got %q", cm.Annotations[v1alpha2.AnnotationEnabled])
@@ -267,7 +269,7 @@ func TestCreateTemplate(t *testing.T) {
 			Image: "ghcr.io/mccutchen/go-httpbin",
 			Tag:   "2.21",
 		}
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults, false, false, nil)
+		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -289,7 +291,7 @@ func TestCreateTemplate(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, false, nil)
+		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -307,7 +309,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated Web App"
-		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", &newName, nil, nil, nil, false, nil, nil, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", &newName, nil, nil, nil, false, nil, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -326,7 +328,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newTemplate := "#Input: { name: string }\n"
-		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", nil, nil, &newTemplate, nil, false, nil, nil, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", nil, nil, &newTemplate, nil, false, nil, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -335,20 +337,16 @@ func TestUpdateTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("updates mandatory and enabled flags on org template", func(t *testing.T) {
+	t.Run("updates enabled flag on org template", func(t *testing.T) {
 		ns := orgNS("acme")
 		cm := orgTemplateConfigMap("acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", false, false)
 		fakeClient := fake.NewClientset(ns, cm)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		mandatory := true
 		enabled := true
-		updated, err := k8s.UpdateTemplate(context.Background(), orgScope, "acme", "ref-grant", nil, nil, nil, nil, false, &mandatory, &enabled, nil, false)
+		updated, err := k8s.UpdateTemplate(context.Background(), orgScope, "acme", "ref-grant", nil, nil, nil, nil, false, &enabled, nil, false)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
-		}
-		if updated.Annotations[v1alpha2.AnnotationMandatory] != "true" {
-			t.Errorf("expected mandatory=true, got %q", updated.Annotations[v1alpha2.AnnotationMandatory])
 		}
 		if updated.Annotations[v1alpha2.AnnotationEnabled] != "true" {
 			t.Errorf("expected enabled=true, got %q", updated.Annotations[v1alpha2.AnnotationEnabled])
@@ -361,7 +359,7 @@ func TestUpdateTemplate(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		newName := "Updated"
-		_, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "nonexistent", &newName, nil, nil, nil, false, nil, nil, nil, false)
+		_, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "nonexistent", &newName, nil, nil, nil, false, nil, nil, false)
 		if err == nil {
 			t.Fatal("expected error for nonexistent template")
 		}
@@ -445,7 +443,7 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 			{Scope: orgScope, ScopeName: "acme", Name: "httproute"},
 			{Scope: orgScope, ScopeName: "acme", Name: "policy-floor"},
 		}
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, false, linked)
+		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, linked)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -471,7 +469,7 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 		fakeClient := fake.NewClientset(ns)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, false, nil)
+		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -571,8 +569,17 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		}
 	})
 
-	t.Run("mandatory folder template included without explicit linking", func(t *testing.T) {
+	// HOL-565 removed the (mandatory AND enabled) branch from
+	// ListEffectiveTemplateSources: templates that must always participate in
+	// a render now come in via TemplatePolicy REQUIRE rules (HOL-567) and
+	// are injected by the caller as explicit refs. The assertion therefore
+	// flips — a folder template that used to be forced onto every deployment
+	// by its `mandatory` annotation is now only included when the caller
+	// explicitly links it.
+	t.Run("folder template with legacy mandatory annotation is NOT auto-included", func(t *testing.T) {
 		mandatoryCue := "// mandatory folder template"
+		// The first boolean is now ignored by folderTemplateConfigMap; passing
+		// true documents the pre-HOL-565 intent.
 		fldCM := folderTemplateConfigMap("payments", "audit-policy", "Audit Policy", "", mandatoryCue, true, true)
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		k8s := NewK8sClient(fakeClient, testResolver())
@@ -582,11 +589,8 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(sources) != 1 {
-			t.Fatalf("expected 1 source (mandatory folder template), got %d", len(sources))
-		}
-		if sources[0] != mandatoryCue {
-			t.Errorf("expected %q, got %q", mandatoryCue, sources[0])
+		if len(sources) != 0 {
+			t.Fatalf("expected 0 sources after HOL-565 removed mandatory auto-inclusion, got %d", len(sources))
 		}
 	})
 
