@@ -42,6 +42,7 @@ import type { EnvVar, Event, ContainerStatus } from '@/gen/holos/console/v1/depl
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { isSafeHttpUrl } from '@/lib/url'
 
 type DeploymentTab = 'status' | 'logs' | 'template'
 
@@ -107,22 +108,6 @@ function isContainerError(cs: ContainerStatus): boolean {
   if (CONTAINER_ERROR_REASONS.has(cs.reason)) return true
   if (cs.state === 'terminated' && cs.restartCount > 0) return true
   return false
-}
-
-/**
- * Returns true only when `value` parses as a URL with an http: or https:
- * scheme. Used to guard rendering of template-authored URLs (such as
- * `output.url` from the render preview) into anchor hrefs so that unsafe
- * schemes like `javascript:`, `data:`, `vbscript:`, and `file:` never
- * reach the DOM. Parse failures (malformed URLs) also return false.
- */
-export function isSafeHttpUrl(value: string): boolean {
-  try {
-    const u = new URL(value)
-    return u.protocol === 'http:' || u.protocol === 'https:'
-  } catch {
-    return false
-  }
 }
 
 function DeploymentDetailRoute() {
