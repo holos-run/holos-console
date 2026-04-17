@@ -135,6 +135,101 @@ func TestFolderSpecCUEValidation(t *testing.T) {
 	validateAgainstSchema(t, fsTop, "#FolderSpec")
 }
 
+// TestOutputCUEValidation validates table-driven Output snippets against the
+// generated #Output definition and asserts that the url round-trips through a
+// CUE compile. The Output schema gives platform templates a contractual place
+// to publish values (initially url) intended for the UI.
+func TestOutputCUEValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		snippet string
+		wantURL string
+	}{
+		{
+			name:    "url set",
+			snippet: `output: {url: "https://example.com"}`,
+			wantURL: "https://example.com",
+		},
+		{
+			name:    "url empty",
+			snippet: `output: {url: ""}`,
+			wantURL: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := cuecontext.New()
+
+			schema := ctx.CompileString(GeneratedSchema)
+			if err := schema.Err(); err != nil {
+				t.Fatalf("schema compile: %v", err)
+			}
+
+			outputDef := schema.LookupPath(cue.ParsePath("#Output"))
+			if !outputDef.Exists() {
+				t.Fatal("definition #Output not found in GeneratedSchema")
+			}
+
+			snippetVal := ctx.CompileString(tc.snippet)
+			if err := snippetVal.Err(); err != nil {
+				t.Fatalf("snippet compile: %v", err)
+			}
+
+			got := snippetVal.LookupPath(cue.ParsePath("output"))
+			if !got.Exists() {
+				t.Fatal("output path not present in compiled snippet")
+			}
+
+			unified := outputDef.Unify(got)
+			if err := unified.Validate(cue.Concrete(true)); err != nil {
+				t.Fatalf("validation against #Output failed: %v", err)
+			}
+
+			urlVal := unified.LookupPath(cue.ParsePath("url"))
+			gotURL, err := urlVal.String()
+			if err != nil {
+				t.Fatalf("url not a concrete string: %v", err)
+			}
+			if gotURL != tc.wantURL {
+				t.Errorf("url = %q, want %q", gotURL, tc.wantURL)
+			}
+		})
+	}
+}
+
+// TestResourceSetSpecOutputCUEValidation validates that a ResourceSetSpec
+// carrying an Output struct round-trips through the schema. It mirrors the
+// pattern used by the Defaults field: marshal the Go value to JSON, unify
+// against #ResourceSetSpec, and assert no validation error.
+func TestResourceSetSpecOutputCUEValidation(t *testing.T) {
+	spec := ResourceSetSpec{
+		Output: &Output{Url: "https://example.com"},
+		PlatformInput: PlatformInput{
+			Project:          "frontend",
+			Namespace:        "holos-prj-frontend",
+			GatewayNamespace: "istio-ingress",
+			Organization:     "acme",
+			Claims: Claims{
+				Iss:           "https://dex.example.com",
+				Sub:           "user-123",
+				Exp:           1700000000,
+				Iat:           1699990000,
+				Email:         "alice@example.com",
+				EmailVerified: true,
+			},
+		},
+		ProjectInput: ProjectInput{
+			Name:  "my-app",
+			Image: "ghcr.io/example/app",
+			Tag:   "v1.2.3",
+			Port:  8080,
+		},
+	}
+
+	validateAgainstSchema(t, spec, "#ResourceSetSpec")
+}
+
 // TestInvalidProjectInputCUEValidation verifies that invalid JSON is rejected.
 func TestInvalidProjectInputCUEValidation(t *testing.T) {
 	ctx := cuecontext.New()
