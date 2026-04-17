@@ -444,8 +444,14 @@ func (h *Handler) UpdateTemplate(
 	// when the caller asked to update links, the existing refs otherwise —
 	// so the HOL-569 write-through on the success path records the right
 	// baseline against which future drift checks will compare.
+	//
+	// skipRecordPreservedLinks flips to true when the preserve-links branch
+	// could not determine the existing explicit set (read or parse failure)
+	// so the write-through can be skipped rather than recording a phantom
+	// empty set that would produce false drift on the next policy-state read.
 	var linkedTemplates []*consolev1.LinkedTemplateRef
 	var explicitRefsForRecord []*consolev1.LinkedTemplateRef
+	skipRecordPreservedLinks := false
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
 		// (being removed) and new (being added) linked template scopes.
@@ -486,15 +492,40 @@ func (h *Handler) UpdateTemplate(
 		// next preview will see. Only read the existing template when we
 		// actually intend to record — project scope with a drift checker
 		// wired — so non-project scopes don't pay an unnecessary API call.
+		//
+		// If the pre-update read or annotation parse fails, we set
+		// skipRecordPreservedLinks so the write-through is skipped
+		// entirely; recording nil in that branch would silently persist
+		// an empty applied set even though the ConfigMap kept its
+		// original links, producing false drift on the next policy-state
+		// read (review findings P2 from codex round 1).
 		if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && h.projectTemplateDriftChecker != nil {
 			existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
-			if getErr == nil {
-				if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-					if existingRefs, parseErr := unmarshalLinkedTemplates(raw); parseErr == nil {
-						explicitRefsForRecord = existingRefs
-					}
+			if getErr != nil {
+				slog.WarnContext(ctx, "failed to read existing template for applied-set write-through, skipping record",
+					slog.String("scope", scope.String()),
+					slog.String("scopeName", scopeName),
+					slog.String("name", name),
+					slog.Any("error", getErr),
+				)
+				skipRecordPreservedLinks = true
+			} else if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
+				existingRefs, parseErr := unmarshalLinkedTemplates(raw)
+				if parseErr != nil {
+					slog.WarnContext(ctx, "failed to parse existing linked-templates annotation for applied-set write-through, skipping record",
+						slog.String("scope", scope.String()),
+						slog.String("scopeName", scopeName),
+						slog.String("name", name),
+						slog.Any("error", parseErr),
+					)
+					skipRecordPreservedLinks = true
+				} else {
+					explicitRefsForRecord = existingRefs
 				}
 			}
+			// If the template exists with no AnnotationLinkedTemplates,
+			// the template has zero explicit links; explicitRefsForRecord
+			// stays nil which is the correct baseline and we do NOT skip.
 		}
 	}
 
@@ -507,7 +538,12 @@ func (h *Handler) UpdateTemplate(
 	// after a successful persist so GetProjectTemplatePolicyState reflects
 	// the new linking state (HOL-569). Non-project scopes are skipped as on
 	// the create path. Record failures are logged but do not fail the RPC.
-	h.recordProjectTemplateApplied(ctx, scope, scopeName, name, explicitRefsForRecord)
+	// Skip entirely when the preserve-links branch could not read the
+	// existing explicit set — recording nil in that case would silently
+	// persist a mismatched applied set (review round 1 P2 finding).
+	if !skipRecordPreservedLinks {
+		h.recordProjectTemplateApplied(ctx, scope, scopeName, name, explicitRefsForRecord)
+	}
 
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),

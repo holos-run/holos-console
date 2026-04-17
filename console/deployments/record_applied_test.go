@@ -174,6 +174,50 @@ func TestHandler_CreateDeployment_WarnButSucceedOnRecordFailure(t *testing.T) {
 	}
 }
 
+// degradedAncestorProvider models the contract
+// ListEffectiveTemplateSources now provides on the walker-failure and
+// nil-walker branches: nil sources and nil effectiveRefs so the HOL-569
+// write-through is skipped. Introduced by review round 1 P1 fix; kept as
+// a dedicated stub (vs. setting effectiveRefs=nil on the shared
+// stubAncestorTemplateProvider) because the shared stub mirrors input
+// refs back as a non-nil empty slice to exercise the happy path.
+type degradedAncestorProvider struct{}
+
+func (degradedAncestorProvider) ListAncestorTemplateSources(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
+	return nil, nil, nil
+}
+
+// TestHandler_CreateDeployment_SkipsRecordOnDegradedRender verifies that
+// when the ancestor template provider returns nil effectiveRefs — the
+// contract for "ancestor walk failed / no walker, render is project-only"
+// after the review round 1 P1 finding — the handler does NOT call
+// RecordApplied. Persisting in that branch would falsely claim ancestor
+// templates participated in the render, producing spurious no-drift
+// reports on deployments that skipped their policy-injected templates.
+func TestHandler_CreateDeployment_SkipsRecordOnDegradedRender(t *testing.T) {
+	checker := &stubPolicyDriftChecker{}
+	fakeClient := fake.NewClientset(projectNS("my-project"))
+	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+	k8s := NewK8sClient(fakeClient, testResolver())
+	h := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).
+		WithAncestorTemplateProvider(degradedAncestorProvider{}).
+		WithPolicyDriftChecker(checker)
+
+	req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+		Project:  "my-project",
+		Name:     "web-app",
+		Image:    "nginx",
+		Tag:      "1.25",
+		Template: "default",
+	})
+	if _, err := h.CreateDeployment(aliceEditorCtx(), req); err != nil {
+		t.Fatalf("unexpected error on degraded render: %v", err)
+	}
+	if checker.recordCalls != 0 {
+		t.Errorf("RecordApplied called %d times on degraded render; want 0", checker.recordCalls)
+	}
+}
+
 // TestHandler_CreateDeployment_NilCheckerIsSafe verifies that a nil drift
 // checker is a silent no-op on the Create happy path — local/dev bootstraps
 // without a cluster policy resolver continue to work after HOL-569.

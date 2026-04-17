@@ -347,11 +347,12 @@ type RenderHierarchyWalker interface {
 // "foo" correctly survive as two distinct sources.
 //
 // The walker drives ancestor traversal. If walker is nil, the method returns
-// nil sources and the policy-resolved effective refs (still computed). If the
-// walker returns an error, the method degrades gracefully to an empty sources
-// slice — callers render project-only — but still returns the resolver-
-// computed effective refs so write-through to the applied-render-set store
-// can record what would have been rendered.
+// (nil, nil, nil): no sources AND no effective refs, because the caller
+// will render project-only and must not persist an applied-render-set that
+// claims ancestor templates were unified in. If the walker returns an
+// error, the method degrades gracefully the same way — nil refs plus a
+// warn log — so HOL-569 write-through never persists refs that did not
+// actually participate in the render.
 //
 // resolver evaluates TemplatePolicy REQUIRE/EXCLUDE rules against the
 // caller's explicitRefs before the ancestor walk. Phase 4 (HOL-566) threads
@@ -362,13 +363,16 @@ type RenderHierarchyWalker interface {
 // explicitRefs directly so tests that have not been updated keep working.
 //
 // The effectiveRefs return value is the single authoritative representation
-// of "what the policy chain decided would participate in this render." Every
-// write-through to the applied-render-set store (HOL-569) consumes this
-// value directly so the stored set always matches the rendered set without
-// a second resolver invocation that could race a policy edit. Callers that
-// need just the sources can ignore this value; callers that need the ref
-// set (Create/Update write-through) MUST read it from here rather than
-// re-invoking the resolver.
+// of "what the policy chain decided would participate in this render AND
+// the ancestor walk succeeded." Every write-through to the applied-render-
+// set store (HOL-569) consumes this value directly so the stored set
+// always matches the rendered set without a second resolver invocation
+// that could race a policy edit. Callers that need just the sources can
+// ignore this value; callers that need the ref set (Create/Update write-
+// through) MUST read it from here rather than re-invoking the resolver,
+// and MUST treat a nil effectiveRefs as "do not record" because a nil
+// signals a degraded render path where the stored set would not match
+// what actually rendered.
 //
 // Storage-isolation note (HOL-554): the walk deliberately skips the starting
 // namespace (ancestors[0]) and only reads templates, releases, and — once
@@ -400,7 +404,10 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	}
 
 	if walker == nil {
-		return nil, effectiveRefs, nil
+		// No walker means no ancestor sources are unified in. Returning
+		// nil effectiveRefs prevents the HOL-569 write-through from
+		// recording a set that does not match the degraded render.
+		return nil, nil, nil
 	}
 
 	ancestors, err := walker.WalkAncestors(ctx, projectNs)
@@ -409,7 +416,13 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			slog.String("projectNs", projectNs),
 			slog.Any("error", err),
 		)
-		return nil, effectiveRefs, nil
+		// Walker failure degrades to project-only render. Discard
+		// effectiveRefs for the same reason as the nil-walker branch:
+		// callers MUST NOT persist an applied set that claims ancestor
+		// templates were unified when they were not. Callers that want a
+		// policy-resolved set independent of ancestor sourcing can invoke
+		// the resolver directly.
+		return nil, nil, nil
 	}
 
 	// Build a lookup from (scope, scopeName, name) -> linked ref so linked
