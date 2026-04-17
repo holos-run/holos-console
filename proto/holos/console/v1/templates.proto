@@ -46,13 +46,13 @@ service TemplateService {
   // the given scope may link against. For a project scope, this is all enabled
   // templates in parent folders and the organization. For a folder scope, it is
   // all enabled templates in parent folders and the organization above it.
-  // Mandatory templates are included so the UI can display them as always-on.
   // Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
   rpc ListLinkableTemplates(ListLinkableTemplatesRequest) returns (ListLinkableTemplatesResponse);
 
   // ListAncestorTemplates returns templates from all ancestor scopes of the
-  // given scope, including mandatory and enabled non-linked templates. Used by
-  // the renderer to compute the effective template set.
+  // given scope. Used by the renderer to compute the effective template set;
+  // TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
+  // templates are forced onto the project.
   rpc ListAncestorTemplates(ListAncestorTemplatesRequest) returns (ListAncestorTemplatesResponse);
 
   // CreateRelease publishes a new versioned release of a template, capturing
@@ -181,13 +181,19 @@ message Template {
   TemplateDefaults defaults = 6;
   // linked_templates lists templates in ancestor scopes to unify with this
   // template at render time. Replaces linked_org_templates from v1alpha1.
-  // Mandatory+enabled ancestor templates always unify regardless of this list.
+  // Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
+  // always unify regardless of this list.
   repeated LinkedTemplateRef linked_templates = 7;
-  // mandatory indicates the template is automatically applied to every project
-  // namespace at project creation time. Applicable to org and folder scopes.
-  bool mandatory = 8;
+
+  // Field 8 previously held `bool mandatory`. Removed in HOL-555 in favor of
+  // TemplatePolicy REQUIRE rules (TemplatePolicyService). The number and name
+  // are reserved to prevent silent reuse.
+  reserved 8;
+  reserved "mandatory";
+
   // enabled indicates whether this template is active. Disabled templates are
-  // not applied to new project namespaces even if mandatory is true.
+  // not applied to projects by any TemplatePolicy REQUIRE rule and are
+  // filtered out of render-time unification.
   bool enabled = 9;
   // version is the current semver version string (e.g. "1.2.3") of this
   // template. Empty means the template has no published version yet.
@@ -365,13 +371,29 @@ message LinkableTemplate {
   string display_name = 3;
   // description explains what the template produces.
   string description = 4;
-  // mandatory indicates this template is always unified regardless of linking.
-  // The UI renders mandatory templates as always-selected and disabled.
-  bool mandatory = 5;
+
+  // Field 5 previously held `bool mandatory`. Removed in HOL-555 in favor of
+  // TemplatePolicy REQUIRE rules (TemplatePolicyService). The number and name
+  // are reserved to prevent silent reuse.
+  reserved 5;
+  reserved "mandatory";
+
   // releases carries the available published releases for this template, sorted
   // descending by version (newest first). Populated by ListLinkableTemplates so
   // the linking UI can display version choices without a separate RPC call.
   repeated Release releases = 6;
+
+  // forced signals that this template is unconditionally unified with every
+  // project at render time, so the linking UI MUST render it as selected and
+  // disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
+  // the backend still auto-includes mandatory ancestor templates via the
+  // annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
+  // TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
+  // this field becomes server-populated from policy evaluation.
+  //
+  // Clients MUST NOT treat `forced=true` as a permission to author the
+  // template — it only describes render-time behavior for the UI.
+  bool forced = 7;
 }
 
 // ListLinkableTemplatesResponse returns the linkable templates.

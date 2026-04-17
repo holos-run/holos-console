@@ -262,23 +262,17 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
   /**
    * linked_templates lists templates in ancestor scopes to unify with this
    * template at render time. Replaces linked_org_templates from v1alpha1.
-   * Mandatory+enabled ancestor templates always unify regardless of this list.
+   * Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
+   * always unify regardless of this list.
    *
    * @generated from field: repeated holos.console.v1.LinkedTemplateRef linked_templates = 7;
    */
   linkedTemplates: LinkedTemplateRef[];
 
   /**
-   * mandatory indicates the template is automatically applied to every project
-   * namespace at project creation time. Applicable to org and folder scopes.
-   *
-   * @generated from field: bool mandatory = 8;
-   */
-  mandatory: boolean;
-
-  /**
    * enabled indicates whether this template is active. Disabled templates are
-   * not applied to new project namespaces even if mandatory is true.
+   * not applied to projects by any TemplatePolicy REQUIRE rule and are
+   * filtered out of render-time unification.
    *
    * @generated from field: bool enabled = 9;
    */
@@ -796,14 +790,6 @@ export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplat
   description: string;
 
   /**
-   * mandatory indicates this template is always unified regardless of linking.
-   * The UI renders mandatory templates as always-selected and disabled.
-   *
-   * @generated from field: bool mandatory = 5;
-   */
-  mandatory: boolean;
-
-  /**
    * releases carries the available published releases for this template, sorted
    * descending by version (newest first). Populated by ListLinkableTemplates so
    * the linking UI can display version choices without a separate RPC call.
@@ -811,6 +797,22 @@ export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplat
    * @generated from field: repeated holos.console.v1.Release releases = 6;
    */
   releases: Release[];
+
+  /**
+   * forced signals that this template is unconditionally unified with every
+   * project at render time, so the linking UI MUST render it as selected and
+   * disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
+   * the backend still auto-includes mandatory ancestor templates via the
+   * annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
+   * TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
+   * this field becomes server-populated from policy evaluation.
+   *
+   * Clients MUST NOT treat `forced=true` as a permission to author the
+   * template — it only describes render-time behavior for the UI.
+   *
+   * @generated from field: bool forced = 7;
+   */
+  forced: boolean;
 };
 
 /**
@@ -1331,7 +1333,6 @@ export declare const TemplateService: GenService<{
    * the given scope may link against. For a project scope, this is all enabled
    * templates in parent folders and the organization. For a folder scope, it is
    * all enabled templates in parent folders and the organization above it.
-   * Mandatory templates are included so the UI can display them as always-on.
    * Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
    *
    * @generated from rpc holos.console.v1.TemplateService.ListLinkableTemplates
@@ -1343,8 +1344,9 @@ export declare const TemplateService: GenService<{
   },
   /**
    * ListAncestorTemplates returns templates from all ancestor scopes of the
-   * given scope, including mandatory and enabled non-linked templates. Used by
-   * the renderer to compute the effective template set.
+   * given scope. Used by the renderer to compute the effective template set;
+   * TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
+   * templates are forced onto the project.
    *
    * @generated from rpc holos.console.v1.TemplateService.ListAncestorTemplates
    */

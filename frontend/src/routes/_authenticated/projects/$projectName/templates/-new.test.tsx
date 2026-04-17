@@ -251,12 +251,16 @@ describe('CreateTemplatePage', () => {
   })
 
   describe('linked platform templates on create page', () => {
+    // HOL-555 removed the `mandatory` field on LinkableTemplate. The `forced`
+    // field replaces the UI signal while the backend still auto-includes
+    // mandatory templates at render time (HOL-557 will migrate this to
+    // TemplatePolicy REQUIRE).
     const mockOrgTemplates = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', mandatory: true, scopeRef: { scope: 1, scopeName: 'default' } },
-      { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, scopeRef: { scope: 1, scopeName: 'default' } },
+      { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
     ]
     const mockFolderTemplates = [
-      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
     ]
     const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
@@ -299,16 +303,20 @@ describe('CreateTemplatePage', () => {
       expect(checkboxes.length).toBe(3)
     })
 
-    it('mandatory template checkbox is checked and disabled', () => {
+    // HOL-555: `forced` templates are rendered checked and disabled so the
+    // linking UI reflects the backend's annotation-driven auto-inclusion
+    // until HOL-557 migrates to TemplatePolicy REQUIRE evaluation.
+    it('forced template checkbox is checked and disabled', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
-      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(mandatoryCheckbox).toBeChecked()
-      expect(mandatoryCheckbox).toBeDisabled()
+      const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
+      expect(checkbox).toBeChecked()
+      expect(checkbox).toBeDisabled()
+      expect(screen.getByText(/always applied/i)).toBeInTheDocument()
     })
 
-    it('non-mandatory template checkboxes are unchecked by default', () => {
+    it('non-forced template checkboxes are unchecked by default', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
@@ -317,16 +325,18 @@ describe('CreateTemplatePage', () => {
       expect(httpbinCheckbox).not.toBeDisabled()
     })
 
-    it('shows read-only view for EDITOR with mandatory templates and permission note', () => {
+    // HOL-555 removed the auto-listed mandatory templates in the read-only
+    // view; the permission note remains. TemplatePolicy REQUIRE rules
+    // (HOL-558) will re-introduce the listing.
+    it('shows read-only view for EDITOR with permission note (HOL-555)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
-      expect(screen.getByText(/reference grant/i)).toBeInTheDocument()
       expect(screen.getByText(/only owners can link/i)).toBeInTheDocument()
     })
 
-    it('shows read-only view for VIEWER with mandatory templates and permission note', () => {
+    it('shows read-only view for VIEWER with permission note', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.VIEWER)
       render(<CreateTemplatePage />)
@@ -363,8 +373,8 @@ describe('CreateTemplatePage', () => {
       // When an org and folder template share the same name, selecting one
       // must not affect the other and the mutation must carry the correct scope.
       const sameName = [
-        { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
-        { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+        { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
+        { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
       ]
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: sameName, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})

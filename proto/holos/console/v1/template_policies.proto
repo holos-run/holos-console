@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "google/protobuf/timestamp.proto";
+import "holos/console/v1/templates.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// TemplatePolicyService manages TemplatePolicy resources, which declaratively
+// attach templates to projects through REQUIRE/EXCLUDE rules. Policies replace
+// the legacy `bool mandatory` flag previously carried on Template and
+// LinkableTemplate (removed in HOL-555). The only way to force a template onto
+// every project — or to block one from matching projects — is to author a
+// TemplatePolicy.
+//
+// Storage MUST live in the folder or organization namespace identified by
+// scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
+// design note. Backend handlers MUST reject any namespace whose resolver
+// classification is `ResourceTypeProject`. The TEMPLATE_SCOPE_PROJECT enum
+// value (defined in templates.proto) is explicitly unsupported for policies;
+// only TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+//
+// This is the proto contract only. Backend handler wiring, storage
+// enforcement, and resolver integration land in later phases (HOL-556,
+// HOL-557).
+service TemplatePolicyService {
+  // ListTemplatePolicies returns all TemplatePolicy resources visible in the
+  // given scope. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the scope.
+  rpc ListTemplatePolicies(ListTemplatePoliciesRequest) returns (ListTemplatePoliciesResponse);
+
+  // GetTemplatePolicy retrieves a single policy by name within a scope.
+  // Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+  rpc GetTemplatePolicy(GetTemplatePolicyRequest) returns (GetTemplatePolicyResponse);
+
+  // CreateTemplatePolicy creates a new policy at the given scope. The scope
+  // MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER; the handler
+  // MUST reject TEMPLATE_SCOPE_PROJECT and any namespace that the resolver
+  // classifies as `ResourceTypeProject`.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  rpc CreateTemplatePolicy(CreateTemplatePolicyRequest) returns (CreateTemplatePolicyResponse);
+
+  // UpdateTemplatePolicy updates an existing policy.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  rpc UpdateTemplatePolicy(UpdateTemplatePolicyRequest) returns (UpdateTemplatePolicyResponse);
+
+  // DeleteTemplatePolicy deletes a policy.
+  // Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+  rpc DeleteTemplatePolicy(DeleteTemplatePolicyRequest) returns (DeleteTemplatePolicyResponse);
+}
+
+// TemplatePolicyKind discriminates between REQUIRE and EXCLUDE rules.
+enum TemplatePolicyKind {
+  TEMPLATE_POLICY_KIND_UNSPECIFIED = 0;
+  // TEMPLATE_POLICY_KIND_REQUIRE forces the referenced template onto every
+  // project matched by the rule's target.
+  TEMPLATE_POLICY_KIND_REQUIRE = 1;
+  // TEMPLATE_POLICY_KIND_EXCLUDE blocks the referenced template from matching
+  // projects even when they explicitly link it.
+  TEMPLATE_POLICY_KIND_EXCLUDE = 2;
+}
+
+// TemplatePolicyTarget selects the set of projects (and, optionally,
+// deployments) a rule applies to. Patterns follow the same glob semantics as
+// filepath.Match: `*` matches any sequence of non-separator characters.
+message TemplatePolicyTarget {
+  // project_pattern matches project names. "*" matches every project.
+  string project_pattern = 1;
+  // deployment_pattern matches deployment names within a matched project.
+  // "*" matches every deployment. Empty string means "project-level only"
+  // (no deployment filtering applied by this rule).
+  string deployment_pattern = 2;
+}
+
+// TemplatePolicyRule binds a kind, a template reference, and a target selector
+// into a single rule. A TemplatePolicy may carry many rules.
+message TemplatePolicyRule {
+  // kind is REQUIRE or EXCLUDE.
+  TemplatePolicyKind kind = 1;
+  // template identifies the template this rule applies to. The referenced
+  // template may live in any scope the policy's owning scope can reach.
+  LinkedTemplateRef template = 2;
+  // target restricts which projects/deployments the rule matches.
+  TemplatePolicyTarget target = 3;
+}
+
+// TemplatePolicy is a named resource that declares one or more rules
+// attaching templates to projects within its scope.
+//
+// Storage MUST live in the folder or organization namespace identified by
+// scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
+// design note. Backend handlers MUST reject any namespace whose resolver
+// classification is `ResourceTypeProject`. TEMPLATE_SCOPE_PROJECT (defined in
+// templates.proto) is explicitly unsupported for policies.
+message TemplatePolicy {
+  // name is the unique identifier (DNS label slug) within the scope.
+  string name = 1;
+  // scope_ref identifies the owning scope (level + name). Only
+  // TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+  TemplateScopeRef scope_ref = 2;
+  // display_name is a human-readable name for UI presentation.
+  string display_name = 3;
+  // description explains what the policy enforces.
+  string description = 4;
+  // rules are the REQUIRE/EXCLUDE rules this policy enforces. Rules are
+  // evaluated independently and their effects are combined by the resolver.
+  repeated TemplatePolicyRule rules = 5;
+  // creator_email is the email address of the user who created this policy.
+  string creator_email = 6;
+  // created_at is the timestamp when this policy was created.
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// ListTemplatePoliciesRequest requests all policies visible in the given scope.
+message ListTemplatePoliciesRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+}
+
+// ListTemplatePoliciesResponse contains the list of policies.
+message ListTemplatePoliciesResponse {
+  repeated TemplatePolicy policies = 1;
+}
+
+// GetTemplatePolicyRequest requests a single policy by name within a scope.
+message GetTemplatePolicyRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // name is the policy's DNS label slug.
+  string name = 2;
+}
+
+// GetTemplatePolicyResponse contains the policy.
+message GetTemplatePolicyResponse {
+  TemplatePolicy policy = 1;
+}
+
+// CreateTemplatePolicyRequest creates a new policy in the given scope.
+message CreateTemplatePolicyRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // policy is the policy to create. name, scope_ref, and rules are required.
+  TemplatePolicy policy = 2;
+}
+
+// CreateTemplatePolicyResponse contains the name of the created policy.
+message CreateTemplatePolicyResponse {
+  string name = 1;
+}
+
+// UpdateTemplatePolicyRequest updates an existing policy.
+message UpdateTemplatePolicyRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // policy carries the new values; name identifies which policy to update.
+  TemplatePolicy policy = 2;
+}
+
+// UpdateTemplatePolicyResponse is empty on success.
+message UpdateTemplatePolicyResponse {}
+
+// DeleteTemplatePolicyRequest deletes a policy.
+message DeleteTemplatePolicyRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // name is the policy's DNS label slug.
+  string name = 2;
+}
+
+// DeleteTemplatePolicyResponse is empty on success.
+message DeleteTemplatePolicyResponse {}

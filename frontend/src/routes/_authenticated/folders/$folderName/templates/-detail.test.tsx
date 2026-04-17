@@ -105,7 +105,9 @@ describe('FolderTemplateDetailPage', () => {
     vi.clearAllMocks()
   })
 
-  it('renders template name and mandatory badge', () => {
+  // HOL-555 removed the Mandatory badge from the detail view. TemplatePolicy
+  // REQUIRE rules (HOL-558) will re-introduce an "always applied" affordance.
+  it('renders template name (Mandatory badge removed in HOL-555)', () => {
     setupMocks(Role.OWNER)
     render(
       <FolderTemplateDetailPage
@@ -114,7 +116,7 @@ describe('FolderTemplateDetailPage', () => {
       />,
     )
     expect(screen.getByText('httproute-ingress')).toBeInTheDocument()
-    expect(screen.getByText('Mandatory')).toBeInTheDocument()
+    expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
 
   it('renders template display name', () => {
@@ -226,13 +228,14 @@ describe('FolderTemplateDetailPage', () => {
       const mutateAsync = (useUpdateTemplate as Mock).mock.results[0].value
         .mutateAsync
       await waitFor(() => {
+        // HOL-555 removed `mandatory` from the update payload. TemplatePolicy
+        // REQUIRE rules (HOL-557) will take over this concept.
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             enabled: true,
             displayName: mockTemplate.displayName,
             description: mockTemplate.description,
             cueTemplate: mockTemplate.cueTemplate,
-            mandatory: mockTemplate.mandatory,
           }),
         )
       })
@@ -514,8 +517,11 @@ describe('FolderTemplateDetailPage', () => {
     expect(screen.getByText('not found')).toBeInTheDocument()
   })
 
-  it('Save calls useUpdateTemplate with changed CUE template and preserves enabled/mandatory', async () => {
-    setupMocks(Role.OWNER, { enabled: true, mandatory: true })
+  // HOL-555 removed the `mandatory` field from the Template proto; this test
+  // only preserves `enabled` now. TemplatePolicy REQUIRE rules (HOL-557) will
+  // take over the concept.
+  it('Save calls useUpdateTemplate with changed CUE template and preserves enabled', async () => {
+    setupMocks(Role.OWNER, { enabled: true })
     render(
       <FolderTemplateDetailPage
         folderName="test-folder"
@@ -532,7 +538,6 @@ describe('FolderTemplateDetailPage', () => {
         expect.objectContaining({
           cueTemplate: '// new cue content',
           enabled: true,
-          mandatory: true,
         }),
       )
     })

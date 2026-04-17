@@ -5,7 +5,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Lock } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
@@ -91,12 +90,9 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium font-mono">{tmpl.name}</span>
-                      {tmpl.mandatory && (
-                        <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                          <Lock className="h-3 w-3" />
-                          Mandatory
-                        </Badge>
-                      )}
+                      {/* Mandatory badge removed in HOL-555; TemplatePolicy
+                          REQUIRE rules (HOL-558) will re-introduce an
+                          "always applied" affordance. */}
                       {tmpl.enabled ? (
                         <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
                           Enabled

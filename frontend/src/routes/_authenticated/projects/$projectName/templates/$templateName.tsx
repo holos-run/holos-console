@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Pencil, Copy, Lock, ArrowUpCircle, CheckCircle2 } from 'lucide-react'
+import { Pencil, Copy, ArrowUpCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,7 +99,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         displayName: template?.displayName,
         description: template?.description,
         cueTemplate,
-        mandatory: template?.mandatory,
         enabled: template?.enabled,
       })
       toast.success('Saved')
@@ -128,7 +127,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         description: draftDescription,
         cueTemplate,
         displayName: template?.displayName,
-        mandatory: template?.mandatory,
         enabled: template?.enabled,
       })
       toast.success('Saved')
@@ -164,7 +162,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         cueTemplate,
         displayName: template?.displayName,
         description: template?.description,
-        mandatory: template?.mandatory,
         enabled: template?.enabled,
       })
       toast.success('Saved')
@@ -279,12 +276,20 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       )
                     }
                     const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
-                    const mandatoryTemplates = linkableTemplates.filter((t) => t.mandatory)
                     const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                    const allLinked = [
-                      ...mandatoryTemplates.filter((t) => !linkedKeys.includes(keyOf(t))),
-                      ...linkableTemplates.filter((t) => linkedKeys.includes(keyOf(t)) || t.mandatory),
-                    ]
+                    // HOL-555 -> HOL-557 transition: the backend resolver
+                    // still auto-unifies ancestor templates carrying the
+                    // legacy mandatory annotation (surfaced here as
+                    // `forced=true`). Keep those visible in the read-only
+                    // listing with an "Always applied" badge so the page
+                    // reflects the effective template set, matching the
+                    // checked+disabled treatment on the new/edit dialogs.
+                    // TemplatePolicy REQUIRE rules (HOL-557 / HOL-558) will
+                    // replace the annotation-driven signal in the same
+                    // field.
+                    const allLinked = linkableTemplates.filter(
+                      (t) => !!t.forced || linkedKeys.includes(keyOf(t)),
+                    )
                     const dedupedLinked = allLinked.filter(
                       (t, i, arr) => arr.findIndex((x) => keyOf(x) === keyOf(t)) === i,
                     )
@@ -296,6 +301,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
                             const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            const forced = !!t.forced
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
                               (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
@@ -309,6 +315,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                               <span key={keyOf(t)} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
                                 {t.displayName || t.name}
                                 {scopeLbl && <span className="text-xs text-muted-foreground">{scopeLbl}</span>}
+                                {forced && (
+                                  <span className="inline-flex items-center rounded bg-background px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                    Always applied
+                                  </span>
+                                )}
                                 {currentVersion && <span className="text-xs font-mono text-muted-foreground">v{currentVersion}</span>}
                                 {isUpToDate && (
                                   <TooltipProvider>
@@ -335,7 +346,6 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                                   </TooltipProvider>
                                 )}
                                 {isUnversioned && <span className="text-xs text-muted-foreground italic">unversioned</span>}
-                                {t.mandatory && <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />}
                               </span>
                             )
                           })}
@@ -465,7 +475,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <DialogHeader>
             <DialogTitle>Linked Platform Templates</DialogTitle>
             <DialogDescription>
-              Select platform templates to unify with this deployment template at render time. Mandatory templates are always included.
+              Select platform templates to unify with this deployment template at render time.
             </DialogDescription>
           </DialogHeader>
           {!canEditLinks && (
@@ -485,33 +495,27 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                 templates.map((t) => {
                   const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                   const hasReleases = t.releases && t.releases.length > 0
+                  const forced = !!t.forced
                   return (
                   <div key={key} className="flex items-start gap-2">
                     <Checkbox
                       id={`linked-edit-${key}`}
-                      checked={t.mandatory || draftLinkedTemplateKeys.includes(key)}
-                      disabled={t.mandatory || !canEditLinks}
+                      checked={forced || draftLinkedTemplateKeys.includes(key)}
+                      disabled={forced || !canEditLinks}
                       onCheckedChange={(checked) => {
-                        if (t.mandatory || !canEditLinks) return
+                        if (forced || !canEditLinks) return
                         setDraftLinkedTemplateKeys((prev) =>
                           checked ? [...prev, key] : prev.filter((k) => k !== key),
                         )
                       }}
                     />
                     <div className="flex flex-col gap-1 flex-1">
-                      <label htmlFor={`linked-edit-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                      <label htmlFor={`linked-edit-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
                         {t.displayName || t.name}
-                        {t.mandatory && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>This platform template is mandatory and always applied.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                        {forced && (
+                          <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                            Always applied
+                          </span>
                         )}
                       </label>
                       {t.description && (
@@ -527,7 +531,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                               return next
                             })
                           }}
-                          disabled={t.mandatory || !canEditLinks}
+                          disabled={!canEditLinks}
                         >
                           <SelectTrigger size="sm" className="w-40 text-xs">
                             <SelectValue placeholder="Latest (auto-update)" />

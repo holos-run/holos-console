@@ -30,7 +30,7 @@ import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatesListPage } from './index'
 
-function setupMocks(userRole = Role.OWNER, templates: Array<{ name: string; description?: string; mandatory?: boolean; enabled?: boolean }> = []) {
+function setupMocks(userRole = Role.OWNER, templates: Array<{ name: string; description?: string; enabled?: boolean }> = []) {
   ;(useListTemplates as Mock).mockReturnValue({ data: templates, isPending: false, error: null })
   ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole } })
 }
@@ -62,13 +62,15 @@ describe('OrgTemplatesListPage', () => {
 
   it('renders template list items', () => {
     setupMocks(Role.OWNER, [
-      { name: 'httpbin-platform', description: 'HTTPRoute for gateway', mandatory: false, enabled: true },
-      { name: 'lockdown', description: 'Restrict kinds', mandatory: true, enabled: false },
+      { name: 'httpbin-platform', description: 'HTTPRoute for gateway', enabled: true },
+      { name: 'lockdown', description: 'Restrict kinds', enabled: false },
     ])
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.getByText('httpbin-platform')).toBeInTheDocument()
     expect(screen.getByText('lockdown')).toBeInTheDocument()
-    expect(screen.getByText('Mandatory')).toBeInTheDocument()
+    // HOL-555 removed the Mandatory badge; TemplatePolicy REQUIRE rules
+    // (HOL-558) will re-introduce an "always applied" affordance.
+    expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
     expect(screen.getByText('Enabled')).toBeInTheDocument()
     expect(screen.getByText('Disabled')).toBeInTheDocument()
   })

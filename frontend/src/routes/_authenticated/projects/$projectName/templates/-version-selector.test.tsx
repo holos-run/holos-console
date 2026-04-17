@@ -112,7 +112,7 @@ const linkableWithReleases = [
     name: 'reference-grant',
     displayName: 'Reference Grant',
     description: 'Default ReferenceGrant',
-    mandatory: true,
+    forced: true,
     scopeRef: { scope: 1, scopeName: 'default' },
     releases: [
       { version: '1.0.0', changelog: 'Initial', templateName: 'reference-grant' },
@@ -122,7 +122,7 @@ const linkableWithReleases = [
     name: 'httpbin-platform',
     displayName: 'HTTPbin Platform',
     description: 'Platform HTTPRoute for go-httpbin',
-    mandatory: false,
+    forced: false,
     scopeRef: { scope: 1, scopeName: 'default' },
     releases: releasesForHttpbin,
   },
@@ -130,7 +130,7 @@ const linkableWithReleases = [
     name: 'team-network-policy',
     displayName: 'Team Network Policy',
     description: 'Standard NetworkPolicy',
-    mandatory: false,
+    forced: false,
     scopeRef: { scope: 2, scopeName: 'team-a' },
     releases: [], // No releases
   },
@@ -286,12 +286,13 @@ describe('Version selector — CreateTemplatePage', () => {
     })
   })
 
-  it('mandatory template version selector is disabled', () => {
+  // HOL-555: even when a template is `forced` (checkbox locked), its version
+  // selector remains enabled so operators can still pin / bump the forced
+  // template's version. Only the selection toggle is locked.
+  it('version selectors remain enabled for forced templates (HOL-555)', () => {
     render(<CreateTemplatePage />)
     const selects = screen.getAllByTestId('version-select') as HTMLSelectElement[]
-    // The first select is for mandatory reference-grant and should be disabled
-    expect(selects[0]).toBeDisabled()
-    // The second (httpbin-platform) should not be disabled
+    expect(selects[0]).not.toBeDisabled()
     expect(selects[1]).not.toBeDisabled()
   })
 
@@ -409,7 +410,10 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     expect(selects[1].value === '' || selects[1].value === '__latest__').toBe(true)
   })
 
-  it('mandatory template version selector is disabled in edit dialog', async () => {
+  // HOL-555: in the edit dialog, version selectors remain enabled even when
+  // the template is `forced`, so operators can still pin / bump the forced
+  // template's version. Only the selection toggle is locked.
+  it('version selectors in edit dialog remain enabled for forced templates (HOL-555)', async () => {
     setupDetailMocks(Role.OWNER)
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
@@ -417,8 +421,7 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
     const dialog = screen.getByRole('dialog')
     const selects = within(dialog).getAllByTestId('version-select') as HTMLSelectElement[]
-    // First select is for mandatory reference-grant
-    expect(selects[0]).toBeDisabled()
+    expect(selects[0]).not.toBeDisabled()
   })
 
   it('switching from a pinned version to Latest sends empty version_constraint', async () => {

@@ -114,4 +114,20 @@ enum Permission {
   // PERMISSION_TEMPLATES_LINK_FOLDER_WRITE allows adding or removing folder-level
   // linked template references on a template. Checked at the template's owning scope.
   PERMISSION_TEMPLATES_LINK_FOLDER_WRITE = 46;
+
+  // Template policy permissions (HOL-555, HOL-554). TemplatePolicy resources
+  // live in organization and folder namespaces and declaratively attach
+  // templates to projects via REQUIRE/EXCLUDE rules. Project-scope storage is
+  // forbidden; see template_policies.proto.
+
+  // PERMISSION_TEMPLATE_POLICIES_LIST allows listing template policies.
+  PERMISSION_TEMPLATE_POLICIES_LIST = 47;
+  // PERMISSION_TEMPLATE_POLICIES_READ allows reading a template policy.
+  PERMISSION_TEMPLATE_POLICIES_READ = 48;
+  // PERMISSION_TEMPLATE_POLICIES_WRITE allows creating and updating template policies.
+  PERMISSION_TEMPLATE_POLICIES_WRITE = 49;
+  // PERMISSION_TEMPLATE_POLICIES_DELETE allows deleting template policies.
+  PERMISSION_TEMPLATE_POLICIES_DELETE = 50;
+  // PERMISSION_TEMPLATE_POLICIES_ADMIN allows administrative operations on template policies.
+  PERMISSION_TEMPLATE_POLICIES_ADMIN = 51;
 }

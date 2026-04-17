@@ -330,7 +330,11 @@ func (h *Handler) CreateTemplate(
 		}
 	}
 
-	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Mandatory, tmpl.Enabled, tmpl.LinkedTemplates)
+	// The `mandatory` field was removed from Template in HOL-555. Passing
+	// `false` keeps the existing ConfigMap annotation plumbing alive until the
+	// resolver adopts TemplatePolicy REQUIRE rules in HOL-557, at which point
+	// the annotation and the K8sClient parameter are deleted outright.
+	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, false, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -385,7 +389,12 @@ func (h *Handler) UpdateTemplate(
 	displayName := tmpl.DisplayName
 	description := tmpl.Description
 	cueTemplate := tmpl.CueTemplate
-	mandatory := tmpl.Mandatory
+	// The `mandatory` field was removed from Template in HOL-555. Update calls
+	// no longer mutate the annotation; the nil pointer tells K8sClient to
+	// preserve whatever value is already stored. The annotation and parameter
+	// are deleted outright in HOL-557 when the resolver adopts TemplatePolicy
+	// REQUIRE rules.
+	var mandatory *bool
 	enabled := tmpl.Enabled
 
 	// Determine linked template handling based on the update_linked_templates flag.
@@ -425,7 +434,7 @@ func (h *Handler) UpdateTemplate(
 	// When update_linked_templates is false, linkedTemplates stays nil,
 	// which tells K8sClient.UpdateTemplate to preserve existing links.
 
-	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &mandatory, &enabled, linkedTemplates, false)
+	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, mandatory, &enabled, linkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}

@@ -130,19 +130,10 @@ describe('OrgTemplatesListPage', () => {
     expect(screen.getByText('Allows gateway HTTPRoutes to reference project Services')).toBeInTheDocument()
   })
 
-  it('shows mandatory badge for mandatory templates', () => {
+  // HOL-555 removed the Mandatory badge from the list view. TemplatePolicy
+  // REQUIRE rules (HOL-558) will re-introduce an "always applied" affordance.
+  it('does not show Mandatory badge (removed in HOL-555)', () => {
     setupListMocks()
-    render(<OrgTemplatesListPage orgName="test-org" />)
-    expect(screen.getByText('Mandatory')).toBeInTheDocument()
-  })
-
-  it('does not show mandatory badge for non-mandatory templates', () => {
-    ;(useListTemplates as Mock).mockReturnValue({
-      data: [mockTemplates[1]], // only non-mandatory
-      isPending: false,
-      error: null,
-    })
-    ;(useGetOrganization as Mock).mockReturnValue({ data: { userRole: Role.OWNER }, isPending: false, error: null })
     render(<OrgTemplatesListPage orgName="test-org" />)
     expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
@@ -210,11 +201,13 @@ describe('OrgTemplateDetailPage', () => {
     vi.clearAllMocks()
   })
 
-  it('renders template name and mandatory badge', () => {
+  // HOL-555 removed the Mandatory badge from the detail view. TemplatePolicy
+  // REQUIRE rules (HOL-558) will re-introduce an "always applied" affordance.
+  it('renders template name (Mandatory badge removed in HOL-555)', () => {
     setupDetailMocks(Role.OWNER)
     render(<OrgTemplateDetailPage orgName="test-org" templateName="reference-grant" />)
     expect(screen.getByText('reference-grant')).toBeInTheDocument()
-    expect(screen.getByText('Mandatory')).toBeInTheDocument()
+    expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
 
   it('renders template display name', () => {

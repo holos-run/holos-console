@@ -167,6 +167,16 @@ const (
 	// PERMISSION_TEMPLATES_LINK_FOLDER_WRITE allows adding or removing folder-level
 	// linked template references on a template. Checked at the template's owning scope.
 	Permission_PERMISSION_TEMPLATES_LINK_FOLDER_WRITE Permission = 46
+	// PERMISSION_TEMPLATE_POLICIES_LIST allows listing template policies.
+	Permission_PERMISSION_TEMPLATE_POLICIES_LIST Permission = 47
+	// PERMISSION_TEMPLATE_POLICIES_READ allows reading a template policy.
+	Permission_PERMISSION_TEMPLATE_POLICIES_READ Permission = 48
+	// PERMISSION_TEMPLATE_POLICIES_WRITE allows creating and updating template policies.
+	Permission_PERMISSION_TEMPLATE_POLICIES_WRITE Permission = 49
+	// PERMISSION_TEMPLATE_POLICIES_DELETE allows deleting template policies.
+	Permission_PERMISSION_TEMPLATE_POLICIES_DELETE Permission = 50
+	// PERMISSION_TEMPLATE_POLICIES_ADMIN allows administrative operations on template policies.
+	Permission_PERMISSION_TEMPLATE_POLICIES_ADMIN Permission = 51
 )
 
 // Enum value maps for Permission.
@@ -213,6 +223,11 @@ var (
 		44: "PERMISSION_REPARENT",
 		45: "PERMISSION_TEMPLATES_LINK_ORG_WRITE",
 		46: "PERMISSION_TEMPLATES_LINK_FOLDER_WRITE",
+		47: "PERMISSION_TEMPLATE_POLICIES_LIST",
+		48: "PERMISSION_TEMPLATE_POLICIES_READ",
+		49: "PERMISSION_TEMPLATE_POLICIES_WRITE",
+		50: "PERMISSION_TEMPLATE_POLICIES_DELETE",
+		51: "PERMISSION_TEMPLATE_POLICIES_ADMIN",
 	}
 	Permission_value = map[string]int32{
 		"PERMISSION_UNSPECIFIED":                 0,
@@ -256,6 +271,11 @@ var (
 		"PERMISSION_REPARENT":                    44,
 		"PERMISSION_TEMPLATES_LINK_ORG_WRITE":    45,
 		"PERMISSION_TEMPLATES_LINK_FOLDER_WRITE": 46,
+		"PERMISSION_TEMPLATE_POLICIES_LIST":      47,
+		"PERMISSION_TEMPLATE_POLICIES_READ":      48,
+		"PERMISSION_TEMPLATE_POLICIES_WRITE":     49,
+		"PERMISSION_TEMPLATE_POLICIES_DELETE":    50,
+		"PERMISSION_TEMPLATE_POLICIES_ADMIN":     51,
 	}
 )
 
@@ -296,8 +316,7 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_EDITOR\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x03*\xd2\n" +
-	"\n" +
+	"ROLE_OWNER\x10\x03*\x99\f\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -341,7 +360,12 @@ const file_holos_console_v1_rbac_proto_rawDesc = "" +
 	"\x1aPERMISSION_TEMPLATES_ADMIN\x10+\x12\x17\n" +
 	"\x13PERMISSION_REPARENT\x10,\x12'\n" +
 	"#PERMISSION_TEMPLATES_LINK_ORG_WRITE\x10-\x12*\n" +
-	"&PERMISSION_TEMPLATES_LINK_FOLDER_WRITE\x10.BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"&PERMISSION_TEMPLATES_LINK_FOLDER_WRITE\x10.\x12%\n" +
+	"!PERMISSION_TEMPLATE_POLICIES_LIST\x10/\x12%\n" +
+	"!PERMISSION_TEMPLATE_POLICIES_READ\x100\x12&\n" +
+	"\"PERMISSION_TEMPLATE_POLICIES_WRITE\x101\x12'\n" +
+	"#PERMISSION_TEMPLATE_POLICIES_DELETE\x102\x12&\n" +
+	"\"PERMISSION_TEMPLATE_POLICIES_ADMIN\x103BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_rbac_proto_rawDescOnce sync.Once

@@ -541,10 +541,14 @@ describe('DeploymentTemplateDetailPage', () => {
   })
 
   describe('linked platform templates', () => {
+    // HOL-555: LinkableTemplate.mandatory was removed in favor of `forced`,
+    // which the linking UI uses to render "always applied" templates as
+    // checked + disabled until HOL-557 migrates the backend auto-inclusion
+    // to TemplatePolicy REQUIRE evaluation.
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' } },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', forced: false, scopeRef: { scope: 2, scopeName: 'platform' } },
     ]
 
     it('shows linked templates section with empty state when no linkable templates exist', () => {
@@ -563,12 +567,45 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
     })
 
-    it('shows None linked when no templates are linked', () => {
+    it('shows None linked when no templates are linked or forced', () => {
+      const noForced = mockLinkable.map((t) => ({ ...t, forced: false }))
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: noForced, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
+    })
+
+    // HOL-555 -> HOL-557 transition: during this window the backend
+    // resolver still auto-unifies ancestor templates carrying the
+    // legacy mandatory annotation (surfaced via `forced=true`). The
+    // detail page MUST reflect that by rendering those templates in the
+    // read-only listing so the effective template set is accurate.
+    it('shows forced ancestor template in read-only listing even when not explicitly linked', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
-      // mandatory template is always shown even when linkedTemplates is empty
+      // reference-grant has forced=true; its pill should be visible.
       expect(screen.getByText('Reference Grant')).toBeInTheDocument()
+      // And None-linked should NOT be shown, because the forced one counts.
+      expect(screen.queryByText(/None linked/i)).not.toBeInTheDocument()
+    })
+
+    it('renders Always applied badge on forced ancestor template pill', () => {
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
+      render(<DeploymentTemplateDetailPage />)
+      // The read-only pill for the forced template is labeled
+      // "Always applied" (matching the new/edit dialog treatment).
+      expect(screen.getAllByText(/always applied/i).length).toBeGreaterThan(0)
+    })
+
+    it('does not render Always applied badge on non-forced linked templates', () => {
+      const nonForced = mockLinkable.map((t) => ({ ...t, forced: false }))
+      ;(useListLinkableTemplates as Mock).mockReturnValue({ data: nonForced, isPending: false })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      render(<DeploymentTemplateDetailPage />)
+      // No forced templates, so the Always applied badge is not shown.
+      expect(screen.queryByText(/always applied/i)).not.toBeInTheDocument()
     })
 
     it('shows linked template names as badges', () => {
@@ -618,15 +655,18 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
-    it('mandatory template checkbox is checked and disabled in dialog', async () => {
+    // HOL-555: `forced` templates render checked and disabled so the UI
+    // reflects the backend's annotation-driven auto-inclusion until HOL-557
+    // migrates this behavior to TemplatePolicy REQUIRE.
+    it('forced template checkbox in dialog is checked and disabled', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
-      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(mandatoryCheckbox).toBeChecked()
-      expect(mandatoryCheckbox).toBeDisabled()
+      const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
+      expect(checkbox).toBeChecked()
+      expect(checkbox).toBeDisabled()
     })
 
     it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {
@@ -676,7 +716,7 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getByText('Folder Templates')).toBeInTheDocument()
     })
 
-    it('OWNER can toggle non-mandatory checkboxes in dialog', async () => {
+    it('OWNER can toggle non-forced checkboxes in dialog', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
@@ -772,9 +812,9 @@ describe('DeploymentTemplateDetailPage', () => {
 
   describe('version status indicator', () => {
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', mandatory: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', mandatory: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
-      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', mandatory: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
+      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', forced: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
     ]
 
     it('shows green check icon when current version equals latest version', () => {

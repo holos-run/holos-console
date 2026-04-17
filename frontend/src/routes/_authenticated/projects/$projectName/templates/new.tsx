@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Info, Lock } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
@@ -425,33 +425,27 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {orgTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
+                      const forced = !!t.forced
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
                           id={`linked-create-${key}`}
-                          checked={t.mandatory || selectedLinkedKeys.includes(key)}
-                          disabled={t.mandatory}
+                          checked={forced || selectedLinkedKeys.includes(key)}
+                          disabled={forced}
                           onCheckedChange={(checked) => {
-                            if (t.mandatory) return
+                            if (forced) return
                             setSelectedLinkedKeys((prev) =>
                               checked ? [...prev, key] : prev.filter((k) => k !== key),
                             )
                           }}
                         />
                         <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
                             {t.displayName || t.name}
-                            {t.mandatory && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>This platform template is mandatory and always applied.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                            {forced && (
+                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                Always applied
+                              </span>
                             )}
                           </label>
                           {t.description && (
@@ -467,7 +461,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                                   return next
                                 })
                               }}
-                              disabled={t.mandatory}
                             >
                               <SelectTrigger size="sm" className="w-40 text-xs">
                                 <SelectValue placeholder="Latest (auto-update)" />
@@ -492,33 +485,27 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                     {folderTemplates.map((t) => {
                       const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
+                      const forced = !!t.forced
                       return (
                       <div key={key} className="flex items-start gap-2">
                         <Checkbox
                           id={`linked-create-${key}`}
-                          checked={t.mandatory || selectedLinkedKeys.includes(key)}
-                          disabled={t.mandatory}
+                          checked={forced || selectedLinkedKeys.includes(key)}
+                          disabled={forced}
                           onCheckedChange={(checked) => {
-                            if (t.mandatory) return
+                            if (forced) return
                             setSelectedLinkedKeys((prev) =>
                               checked ? [...prev, key] : prev.filter((k) => k !== key),
                             )
                           }}
                         />
                         <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1">
+                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
                             {t.displayName || t.name}
-                            {t.mandatory && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>This platform template is mandatory and always applied.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                            {forced && (
+                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                Always applied
+                              </span>
                             )}
                           </label>
                           {t.description && (
@@ -534,7 +521,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
                                   return next
                                 })
                               }}
-                              disabled={t.mandatory}
                             >
                               <SelectTrigger size="sm" className="w-40 text-xs">
                                 <SelectValue placeholder="Latest (auto-update)" />
@@ -556,14 +542,10 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               </div>
             ) : (
               <div className="space-y-2">
-                {linkableTemplates.filter((t) => t.mandatory).map((t) => (
-                  <div key={linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)} className="flex items-center gap-1 text-sm">
-                    <Lock className="h-3 w-3 text-muted-foreground" aria-label="mandatory" />
-                    <span>{t.displayName || t.name}</span>
-                    <span className="text-muted-foreground">(mandatory, auto-applied)</span>
-                  </div>
-                ))}
-                <p className="text-xs text-muted-foreground">Only owners can link additional platform templates.</p>
+                {/* The read-only view previously listed mandatory templates
+                    that would be auto-applied. TemplatePolicy REQUIRE rules
+                    (HOL-558) will re-introduce this affordance. */}
+                <p className="text-xs text-muted-foreground">Only owners can link platform templates.</p>
               </div>
             )}
           </div>

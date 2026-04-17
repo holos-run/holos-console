@@ -88,11 +88,11 @@ import { DeploymentTemplateDetailPage } from './$templateName'
 // ---------------------------------------------------------------------------
 
 const mockOrgTemplates = [
-  { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', mandatory: true, scopeRef: { scope: 1, scopeName: 'default' } },
-  { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', mandatory: false, scopeRef: { scope: 1, scopeName: 'default' } },
+  { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, scopeRef: { scope: 1, scopeName: 'default' } },
+  { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
 ]
 const mockFolderTemplates = [
-  { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', mandatory: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+  { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
 ]
 const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
@@ -386,8 +386,10 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
     vi.clearAllMocks()
   })
 
+  // HOL-555 removed `mandatory` from the update payload. These tests now
+  // only assert the remaining fields.
   describe('handleSaveLinkedTemplates preserves all fields', () => {
-    it('passes cueTemplate, displayName, description, mandatory, and enabled alongside linkedTemplates', async () => {
+    it('passes cueTemplate, displayName, description, and enabled alongside linkedTemplates', async () => {
       const user = userEvent.setup()
       const mutateAsync = vi.fn().mockResolvedValue({})
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
@@ -395,7 +397,6 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
         cueTemplate: '// existing content',
         displayName: 'My Template',
         description: 'My description',
-        mandatory: true,
         enabled: true,
       })
       ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
@@ -406,7 +407,7 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
       const dialog = screen.getByRole('dialog')
 
-      // Toggle a non-mandatory template
+      // Toggle httpbin-platform
       const httpbinCheckbox = within(dialog).getByRole('checkbox', { name: /httpbin platform/i })
       await user.click(httpbinCheckbox)
 
@@ -415,11 +416,9 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
 
       expect(mutateAsync).toHaveBeenCalledTimes(1)
       const callArgs = mutateAsync.mock.calls[0][0]
-      // Must include CUE template content (not empty string)
       expect(callArgs.cueTemplate).toBe('// existing content')
       expect(callArgs.displayName).toBe('My Template')
       expect(callArgs.description).toBe('My description')
-      expect(callArgs.mandatory).toBe(true)
       expect(callArgs.enabled).toBe(true)
       // Must still include linkedTemplates and updateLinkedTemplates
       expect(callArgs.updateLinkedTemplates).toBe(true)
@@ -428,7 +427,7 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
   })
 
   describe('handleSaveDescription preserves all fields', () => {
-    it('passes cueTemplate, displayName, mandatory, and enabled alongside description', async () => {
+    it('passes cueTemplate, displayName, and enabled alongside description', async () => {
       const user = userEvent.setup()
       const mutateAsync = vi.fn().mockResolvedValue({})
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
@@ -436,7 +435,6 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
         cueTemplate: '// existing content',
         displayName: 'My Template',
         description: 'Original description',
-        mandatory: true,
         enabled: true,
       })
       ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
@@ -457,17 +455,15 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
 
       expect(mutateAsync).toHaveBeenCalledTimes(1)
       const callArgs = mutateAsync.mock.calls[0][0]
-      // Must include CUE template content (not empty string)
       expect(callArgs.cueTemplate).toBe('// existing content')
       expect(callArgs.displayName).toBe('My Template')
       expect(callArgs.description).toBe('Updated description')
-      expect(callArgs.mandatory).toBe(true)
       expect(callArgs.enabled).toBe(true)
     })
   })
 
   describe('handleSave preserves all fields', () => {
-    it('passes mandatory and enabled alongside cueTemplate, displayName, and description', async () => {
+    it('passes enabled alongside cueTemplate, displayName, and description', async () => {
       const user = userEvent.setup()
       const mutateAsync = vi.fn().mockResolvedValue({})
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
@@ -475,7 +471,6 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
         cueTemplate: '// existing content',
         displayName: 'My Template',
         description: 'My description',
-        mandatory: true,
         enabled: true,
       })
       ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
@@ -491,7 +486,6 @@ describe('Partial-update regression — DeploymentTemplateDetailPage', () => {
       expect(callArgs.cueTemplate).toBe('// existing content')
       expect(callArgs.displayName).toBe('My Template')
       expect(callArgs.description).toBe('My description')
-      expect(callArgs.mandatory).toBe(true)
       expect(callArgs.enabled).toBe(true)
     })
   })

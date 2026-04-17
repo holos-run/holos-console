@@ -5,7 +5,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Lock, Copy } from 'lucide-react'
+import { Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetTemplate, useUpdateTemplate, useCloneTemplate, makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
@@ -161,12 +160,9 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
             <p className="text-sm text-muted-foreground">{orgName} / Settings / Platform Templates / {templateName}</p>
             <div className="flex items-center gap-2 mt-1">
               <h2 className="text-xl font-semibold">{template?.displayName || templateName}</h2>
-              {template?.mandatory && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
-                  Mandatory
-                </Badge>
-              )}
+              {/* Mandatory badge removed in HOL-555; TemplatePolicy REQUIRE
+                  rules (HOL-558) will re-introduce an "always applied"
+                  affordance. */}
             </div>
           </div>
 
