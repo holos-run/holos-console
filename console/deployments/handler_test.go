@@ -1501,3 +1501,284 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 	})
 }
 
+// TestHandler_OutputURLAnnotation exercises the output-url annotation cache
+// that backs the "Open" link button on the deployments listing page. The
+// annotation is authored by the handler at create/update time from the
+// rendered CUE `output.url`, and read back during ListDeployments,
+// GetDeployment, and GetDeploymentStatusSummary so those lightweight paths
+// can surface the URL without re-running the render pipeline per call.
+func TestHandler_OutputURLAnnotation(t *testing.T) {
+	// fetchCM reloads the deployment ConfigMap so tests can assert on the
+	// annotation set after the RPC returns.
+	fetchCM := func(t *testing.T, fakeClient *fake.Clientset, project, name string) *corev1.ConfigMap {
+		t.Helper()
+		ns := "prj-" + project
+		cm, err := fakeClient.CoreV1().ConfigMaps(ns).Get(context.Background(), name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("failed to fetch deployment ConfigMap: %v", err)
+		}
+		return cm
+	}
+
+	t.Run("CreateDeployment caches output.url on annotation when template publishes a URL", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		outputJSON := `{"url":"https://web-app.example.com"}`
+		renderer := &stubRenderer{outputJSON: &outputJSON}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project: "my-project", Name: "web-app", Image: "nginx", Tag: "1.25", Template: "default",
+		})
+		if _, err := handler.CreateDeployment(ctx, req); err != nil {
+			t.Fatalf("CreateDeployment: unexpected error: %v", err)
+		}
+
+		cm := fetchCM(t, fakeClient, "my-project", "web-app")
+		got := cm.Annotations[OutputURLAnnotation]
+		if got != "https://web-app.example.com" {
+			t.Errorf("annotation: got %q, want %q", got, "https://web-app.example.com")
+		}
+	})
+
+	t.Run("CreateDeployment skips annotation when template has no output block", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		// outputJSON is nil — template did not declare an output section.
+		renderer := &stubRenderer{}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project: "my-project", Name: "web-app", Image: "nginx", Tag: "1.25", Template: "default",
+		})
+		if _, err := handler.CreateDeployment(ctx, req); err != nil {
+			t.Fatalf("CreateDeployment: unexpected error: %v", err)
+		}
+
+		cm := fetchCM(t, fakeClient, "my-project", "web-app")
+		if _, ok := cm.Annotations[OutputURLAnnotation]; ok {
+			t.Errorf("annotation should not be set when template has no output, got %q", cm.Annotations[OutputURLAnnotation])
+		}
+	})
+
+	t.Run("CreateDeployment skips annotation when output block has empty url", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		outputJSON := `{}`
+		renderer := &stubRenderer{outputJSON: &outputJSON}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project: "my-project", Name: "web-app", Image: "nginx", Tag: "1.25", Template: "default",
+		})
+		if _, err := handler.CreateDeployment(ctx, req); err != nil {
+			t.Fatalf("CreateDeployment: unexpected error: %v", err)
+		}
+
+		cm := fetchCM(t, fakeClient, "my-project", "web-app")
+		if _, ok := cm.Annotations[OutputURLAnnotation]; ok {
+			t.Errorf("annotation should not be set for empty output.url, got %q", cm.Annotations[OutputURLAnnotation])
+		}
+	})
+
+	t.Run("UpdateDeployment refreshes annotation when template publishes a new URL", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://old.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		outputJSON := `{"url":"https://new.example.com"}`
+		renderer := &stubRenderer{outputJSON: &outputJSON}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		newTag := "1.26"
+		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
+			Project: "my-project", Name: "web-app", Tag: &newTag,
+		})
+		if _, err := handler.UpdateDeployment(ctx, req); err != nil {
+			t.Fatalf("UpdateDeployment: unexpected error: %v", err)
+		}
+
+		got := fetchCM(t, fakeClient, "my-project", "web-app").Annotations[OutputURLAnnotation]
+		if got != "https://new.example.com" {
+			t.Errorf("annotation: got %q, want %q", got, "https://new.example.com")
+		}
+	})
+
+	t.Run("UpdateDeployment clears annotation when template drops output block", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://stale.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		// outputJSON nil — template no longer declares an output section.
+		renderer := &stubRenderer{}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		newTag := "1.26"
+		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
+			Project: "my-project", Name: "web-app", Tag: &newTag,
+		})
+		if _, err := handler.UpdateDeployment(ctx, req); err != nil {
+			t.Fatalf("UpdateDeployment: unexpected error: %v", err)
+		}
+
+		got := fetchCM(t, fakeClient, "my-project", "web-app").Annotations
+		if _, ok := got[OutputURLAnnotation]; ok {
+			t.Errorf("annotation should be cleared after template drops output, got %q", got[OutputURLAnnotation])
+		}
+	})
+
+	t.Run("ListDeployments populates statusSummary.output.url from annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://web-app.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache()
+		cache.set("prj-my-project", "web-app", &consolev1.DeploymentStatusSummary{
+			Phase:           consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+			ReadyReplicas:   1,
+			DesiredReplicas: 1,
+		})
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
+		resp, err := handler.ListDeployments(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Msg.Deployments) != 1 {
+			t.Fatalf("expected 1 deployment, got %d", len(resp.Msg.Deployments))
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil {
+			t.Fatal("expected statusSummary to be populated, got nil")
+		}
+		if summary.Output == nil {
+			t.Fatal("expected statusSummary.output to be populated from annotation, got nil")
+		}
+		if summary.Output.Url != "https://web-app.example.com" {
+			t.Errorf("output.url: got %q, want %q", summary.Output.Url, "https://web-app.example.com")
+		}
+	})
+
+	t.Run("ListDeployments leaves output nil when annotation is absent", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		// No OutputURLAnnotation set.
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache()
+		cache.set("prj-my-project", "web-app", &consolev1.DeploymentStatusSummary{
+			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+		})
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
+		resp, err := handler.ListDeployments(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary != nil && summary.Output != nil {
+			t.Errorf("expected statusSummary.output to be nil when annotation is absent, got %+v", summary.Output)
+		}
+	})
+
+	t.Run("ListDeployments surfaces annotation even on cache miss by synthesizing UNSPECIFIED summary", func(t *testing.T) {
+		// A fresh deployment may have the output-url annotation set before
+		// the status informer has observed the apps/v1.Deployment. Listing
+		// should still surface the cached URL so the UI link appears.
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://web-app.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache() // empty — intentional cache miss
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
+		resp, err := handler.ListDeployments(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil {
+			t.Fatal("expected synthesized statusSummary when annotation is present on cache miss, got nil")
+		}
+		if summary.Phase != consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED {
+			t.Errorf("phase on synthesized summary: got %v, want UNSPECIFIED", summary.Phase)
+		}
+		if summary.Output == nil || summary.Output.Url != "https://web-app.example.com" {
+			t.Errorf("expected output.url to be surfaced on cache miss, got %+v", summary.Output)
+		}
+	})
+
+	t.Run("GetDeployment populates statusSummary.output.url from annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://web-app.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache()
+		cache.set("prj-my-project", "web-app", &consolev1.DeploymentStatusSummary{
+			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+		})
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRequest{Project: "my-project", Name: "web-app"})
+		resp, err := handler.GetDeployment(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployment.StatusSummary
+		if summary == nil || summary.Output == nil {
+			t.Fatal("expected statusSummary.output to be populated, got nil")
+		}
+		if summary.Output.Url != "https://web-app.example.com" {
+			t.Errorf("output.url: got %q, want %q", summary.Output.Url, "https://web-app.example.com")
+		}
+	})
+
+	t.Run("GetDeploymentStatusSummary populates output.url from annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "Web App", "desc")
+		cm.Annotations[OutputURLAnnotation] = "https://web-app.example.com"
+		fakeClient := fake.NewClientset(ns, cm)
+		cache := newFakeStatusCache()
+		cache.set("prj-my-project", "web-app", &consolev1.DeploymentStatusSummary{
+			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING,
+		})
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		handler := defaultHandler(fakeClient, pr).WithStatusCache(cache)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentStatusSummaryRequest{Project: "my-project", Name: "web-app"})
+		resp, err := handler.GetDeploymentStatusSummary(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Msg.Summary == nil || resp.Msg.Summary.Output == nil {
+			t.Fatal("expected summary.output to be populated, got nil")
+		}
+		if resp.Msg.Summary.Output.Url != "https://web-app.example.com" {
+			t.Errorf("output.url: got %q, want %q", resp.Msg.Summary.Output.Url, "https://web-app.example.com")
+		}
+	})
+}
+

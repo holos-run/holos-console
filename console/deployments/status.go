@@ -63,6 +63,21 @@ func (h *Handler) GetDeploymentStatusSummary(
 		}
 	}
 
+	// Merge the cached output-url annotation from the deployment ConfigMap
+	// so single-row polling carries the same URL the listing page already
+	// shows. The handler reads the ConfigMap directly (cheap single GET) —
+	// the status cache stays focused on apps/v1.Deployment state only. A
+	// missing ConfigMap or annotation simply leaves summary.Output unset.
+	if cm, cmErr := h.k8s.GetDeployment(ctx, project, name); cmErr == nil {
+		mergeOutputURLAnnotation(summary, cm)
+	} else {
+		slog.DebugContext(ctx, "could not read deployment ConfigMap for output-url merge",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", cmErr),
+		)
+	}
+
 	return connect.NewResponse(&consolev1.GetDeploymentStatusSummaryResponse{
 		Summary: summary,
 	}), nil

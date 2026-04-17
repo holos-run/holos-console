@@ -28,6 +28,13 @@ const (
 	// cueTemplateKey is the ConfigMap data key holding the CUE template source.
 	// Mirrors templates.CueTemplateKey to avoid a cross-package import cycle.
 	cueTemplateKey = "template.cue"
+	// OutputURLAnnotation caches the template-evaluated `output.url` on the
+	// deployment ConfigMap. Populated at create/update time after a
+	// successful render so ListDeployments, GetDeployment, and
+	// GetDeploymentStatusSummary can surface the URL without re-running the
+	// CUE render pipeline per row. An empty or missing value means the
+	// template did not publish a URL (or render has not yet succeeded).
+	OutputURLAnnotation = "console.holos.run/output-url"
 )
 
 // dnsLabelRe validates deployment names as DNS labels.
@@ -240,9 +247,25 @@ func (h *Handler) ListDeployments(
 
 	ns := h.k8s.Resolver.ProjectNamespace(project)
 	deployments := make([]*consolev1.Deployment, 0, len(cms))
-	for _, cm := range cms {
-		dep := configMapToDeployment(&cm, project)
-		if summary, ok := h.summaryFromCache(ns, cm.Name); ok {
+	for i := range cms {
+		cm := &cms[i]
+		dep := configMapToDeployment(cm, project)
+		summary, ok := h.summaryFromCache(ns, cm.Name)
+		if !ok {
+			// Synthesize a minimal summary so the cached output-url annotation
+			// still reaches the client even before the informer has observed
+			// the apps/v1.Deployment (first render, empty cluster, etc.).
+			// Phase stays UNSPECIFIED exactly as GetDeploymentStatusSummary
+			// does on a cache miss so listing and single-row polling share
+			// the same derivation path.
+			if cm.Annotations[OutputURLAnnotation] != "" {
+				summary = &consolev1.DeploymentStatusSummary{
+					Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
+				}
+			}
+		}
+		if summary != nil {
+			mergeOutputURLAnnotation(summary, cm)
 			dep.StatusSummary = summary
 		}
 		deployments = append(deployments, dep)
@@ -299,7 +322,17 @@ func (h *Handler) GetDeployment(
 
 	deployment := configMapToDeployment(cm, project)
 	ns := h.k8s.Resolver.ProjectNamespace(project)
-	if summary, ok := h.summaryFromCache(ns, cm.Name); ok {
+	summary, ok := h.summaryFromCache(ns, cm.Name)
+	if !ok && cm.Annotations[OutputURLAnnotation] != "" {
+		// Cache miss, but we have a cached output URL to surface. Mirror
+		// ListDeployments and GetDeploymentStatusSummary by synthesizing
+		// an UNSPECIFIED summary so the frontend still receives the URL.
+		summary = &consolev1.DeploymentStatusSummary{
+			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
+		}
+	}
+	if summary != nil {
+		mergeOutputURLAnnotation(summary, cm)
 		deployment.StatusSummary = summary
 	}
 
@@ -389,7 +422,9 @@ func (h *Handler) CreateDeployment(
 
 	// Render and apply the deployment resources. On any failure, roll back by
 	// cleaning up partial K8s resources and deleting the deployment ConfigMap so
-	// the operation is all-or-nothing.
+	// the operation is all-or-nothing. Uses RenderGrouped to capture the
+	// evaluated `output` section so a non-empty URL can be cached as an
+	// annotation on the ConfigMap for later listing calls.
 	if h.renderer != nil && h.applier != nil {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
 		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
@@ -402,7 +437,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplates)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplates)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -412,6 +447,7 @@ func (h *Handler) CreateDeployment(
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
+		resources := append(grouped.Platform, grouped.Project...)
 		if applyErr := h.applier.Apply(ctx, project, name, resources); applyErr != nil {
 			slog.WarnContext(ctx, "apply failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -420,6 +456,20 @@ func (h *Handler) CreateDeployment(
 			)
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+		}
+		// Cache the evaluated output.url on the ConfigMap annotation so
+		// later ListDeployments/GetDeployment calls can surface it without
+		// re-rendering. Skip when the template has no output block or no
+		// meaningful URL; failures here are logged and do not fail the RPC
+		// because the deployment itself was created successfully.
+		if url := outputURLFromJSON(ctx, project, name, grouped.OutputJSON); url != "" {
+			if err := h.k8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
+				slog.WarnContext(ctx, "failed to cache output URL annotation after create",
+					slog.String("project", project),
+					slog.String("name", name),
+					slog.Any("error", err),
+				)
+			}
 		}
 	}
 
@@ -547,7 +597,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		resources, renderErr := h.renderResources(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -556,6 +606,7 @@ func (h *Handler) UpdateDeployment(
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
+		resources := append(grouped.Platform, grouped.Project...)
 		// Use Reconcile instead of Apply so orphaned resources from template
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
 		// apply. Pass previously-owned namespaces so orphans from namespace
@@ -575,6 +626,19 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", reconcileErr),
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
+		}
+		// Refresh the cached output URL annotation. Unlike create, update
+		// always sets or clears so a template edit that drops the output
+		// block (or replaces the URL) does not leave a stale value behind.
+		// A failure here is logged but does not fail the RPC because the
+		// reconcile itself succeeded.
+		url := outputURLFromJSON(ctx, project, name, grouped.OutputJSON)
+		if err := h.k8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
+			slog.WarnContext(ctx, "failed to refresh output URL annotation after update",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", err),
+			)
 		}
 	}
 
@@ -926,6 +990,52 @@ func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJ
 		return nil
 	}
 	return &consolev1.DeploymentOutput{Url: parsed.Url}
+}
+
+// outputURLFromJSON extracts the `url` field from a JSON-encoded `output`
+// CUE section. Returns an empty string when the pointer is nil, the content
+// is empty, the JSON is malformed, or the `url` field is absent. Used on the
+// deployment write path to decide what to cache in the OutputURLAnnotation.
+// Never returns an error: a malformed OutputJSON simply yields "" so the
+// annotation is cleared (not set) rather than failing the create/update.
+func outputURLFromJSON(ctx context.Context, project, name string, outputJSON *string) string {
+	if outputJSON == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(*outputJSON)
+	if raw == "" {
+		return ""
+	}
+	var parsed struct {
+		Url string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		slog.WarnContext(ctx, "failed to unmarshal OutputJSON for output-url annotation cache",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return ""
+	}
+	return parsed.Url
+}
+
+// mergeOutputURLAnnotation populates summary.Output from the cached
+// OutputURLAnnotation on cm when both the summary exists and the annotation
+// is a non-empty string. The cache is authoritative-at-time-of-render; if
+// the annotation is missing (pre-feature ConfigMaps, failed renders, or
+// templates with no output block) the summary is left unchanged so callers
+// fall back to rendering without a URL. Never panics on a nil summary or a
+// ConfigMap with nil annotations.
+func mergeOutputURLAnnotation(summary *consolev1.DeploymentStatusSummary, cm *corev1.ConfigMap) {
+	if summary == nil || cm == nil {
+		return
+	}
+	url := cm.Annotations[OutputURLAnnotation]
+	if url == "" {
+		return
+	}
+	summary.Output = &consolev1.DeploymentOutput{Url: url}
 }
 
 // checkProjectAccess verifies that the user has the given permission via project cascade grants.
