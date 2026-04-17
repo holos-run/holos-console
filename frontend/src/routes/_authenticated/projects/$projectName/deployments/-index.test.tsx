@@ -29,13 +29,14 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { DeploymentPhase, type DeploymentStatusSummary } from '@/gen/holos/console/v1/deployments_pb'
+import { DeploymentPhase, type DeploymentStatusSummary, type DeploymentOutput } from '@/gen/holos/console/v1/deployments_pb'
 import { DeploymentsPage } from './index'
 
 function makeSummary(
   phase: DeploymentPhase,
   readyReplicas = 0,
   desiredReplicas = 0,
+  output?: DeploymentOutput,
 ): DeploymentStatusSummary {
   return {
     $typeName: 'holos.console.v1.DeploymentStatusSummary',
@@ -46,7 +47,12 @@ function makeSummary(
     updatedReplicas: readyReplicas,
     observedGeneration: 0n,
     message: '',
+    output,
   }
+}
+
+function makeOutput(url: string): DeploymentOutput {
+  return { $typeName: 'holos.console.v1.DeploymentOutput', url }
 }
 
 function makeDeployment(
@@ -215,5 +221,47 @@ describe('DeploymentsPage', () => {
     links.forEach((link) => {
       expect(link.getAttribute('href')).toContain('deployments/new')
     })
+  })
+
+  it('renders Open link when statusSummary.output.url is a safe http(s) URL', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
+        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('https://api.example.com'))),
+    ])
+    render(<DeploymentsPage />)
+    const link = screen.getByRole('link', { name: /open api/i })
+    expect(link.getAttribute('href')).toBe('https://api.example.com')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('does not render Open link when statusSummary.output.url is absent', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
+        makeSummary(DeploymentPhase.RUNNING, 1, 1 /* no output */)),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
+  })
+
+  it('does not render Open link when statusSummary.output.url is empty string', () => {
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
+        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput(''))),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
+  })
+
+  it('does not render Open link when output.url uses an unsafe scheme', () => {
+    // Defense-in-depth: templates are admin-authored, but the UI still
+    // refuses javascript:/data:/vbscript:/file: URLs so they cannot reach
+    // an anchor href and execute on click.
+    setupMocks([
+      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
+        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('javascript:alert(1)'))),
+    ])
+    render(<DeploymentsPage />)
+    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
   })
 })

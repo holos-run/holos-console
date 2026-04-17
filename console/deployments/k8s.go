@@ -165,6 +165,40 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 }
 
+// SetOutputURLAnnotation sets (or clears) the output-url annotation on the
+// deployment ConfigMap. An empty url removes the annotation so stale links
+// from previous renders do not persist when a template edit drops the
+// output block. A missing ConfigMap is returned as-is so the handler can
+// decide whether to log or surface the error.
+func (k *K8sClient) SetOutputURLAnnotation(ctx context.Context, project, name, url string) error {
+	ns := k.Resolver.ProjectNamespace(project)
+	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("getting deployment for annotation update: %w", err)
+	}
+	if cm.Annotations == nil {
+		cm.Annotations = map[string]string{}
+	}
+	if url == "" {
+		if _, ok := cm.Annotations[OutputURLAnnotation]; !ok {
+			// No-op: annotation not present and nothing to clear.
+			return nil
+		}
+		delete(cm.Annotations, OutputURLAnnotation)
+	} else {
+		if cm.Annotations[OutputURLAnnotation] == url {
+			// Already up to date; avoid a needless write.
+			return nil
+		}
+		cm.Annotations[OutputURLAnnotation] = url
+	}
+	_, err = k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("updating deployment output-url annotation: %w", err)
+	}
+	return nil
+}
+
 // DeleteDeployment deletes a deployment ConfigMap.
 func (k *K8sClient) DeleteDeployment(ctx context.Context, project, name string) error {
 	ns := k.Resolver.ProjectNamespace(project)

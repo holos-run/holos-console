@@ -21,11 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Trash2 } from 'lucide-react'
+import { ExternalLink, Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { PhaseBadge } from '@/components/phase-badge'
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
+import { isSafeHttpUrl } from '@/lib/url'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/')({
   component: DeploymentsRoute,
@@ -147,6 +148,31 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                       <PhaseBadge summary={deployment.statusSummary} />
                     </TableCell>
                     <TableCell className="text-right">
+                      {/*
+                        Open live site link — shown inline with other row
+                        actions when the deployment template published an
+                        `output.url` that the backend cached on the
+                        deployment ConfigMap annotation. isSafeHttpUrl
+                        restricts the anchor href to http/https so unsafe
+                        template-authored schemes (javascript:, data:,
+                        vbscript:, file:) never reach the DOM.
+                      */}
+                      {deployment.statusSummary?.output?.url && isSafeHttpUrl(deployment.statusSummary.output.url) && (
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`open ${deployment.name}`}
+                        >
+                          <a
+                            href={deployment.statusSummary.output.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
                       {canDelete && (
                         <Button
                           variant="ghost"

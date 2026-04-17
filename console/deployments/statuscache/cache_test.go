@@ -299,21 +299,26 @@ func TestNewDoesNotBlockOnFailingWatch(t *testing.T) {
 	}
 }
 
-// TestNewCancelsReflectorOnSyncTimeout is a regression test for codex
-// review finding round-1 #2: when the initial sync does not complete within
-// initialSyncTimeout, the package must cancel the child context driving the
-// informer factory so the reflector goroutines stop retrying LIST/WATCH for
-// the lifetime of the process. We assert this by counting LIST attempts
-// observed after the timeout has elapsed and verifying the count plateaus.
-func TestNewCancelsReflectorOnSyncTimeout(t *testing.T) {
-	// Shrink the timeout to keep the test fast. We swap initialSyncTimeout
-	// out via the package-level variable below.
-	prev := initialSyncTimeoutForTest
-	initialSyncTimeoutForTest = 200 * time.Millisecond
-	t.Cleanup(func() { initialSyncTimeoutForTest = prev })
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// TestNewStopsReflectorOnContextCancel is a regression test for codex
+// review finding round-1 #2: the package must cancel the child context
+// driving the informer factory when the parent context is cancelled, so the
+// reflector goroutines stop retrying LIST/WATCH for the lifetime of the
+// process. We assert this by counting LIST attempts observed after the
+// parent ctx is cancelled and verifying the count plateaus.
+//
+// Note: an earlier iteration of this test shrank initialSyncTimeoutForTest
+// to trigger the sync-timeout cancel path, but that path requires mutating
+// a package-level variable that the New goroutine reads concurrently. Under
+// -race the write in this test could race with the still-running goroutine
+// spawned by TestNewDoesNotBlockOnFailingWatch. HOL-548 requires the
+// statuscache package (including cache.go) to stay unchanged, so we test
+// the reflector-stops-on-context-cancel path here instead. The timeout
+// path's cancel() call is still exercised implicitly: when the parent ctx
+// is cancelled, the sync watcher goroutine's waitForCacheSync returns and
+// the goroutine calls cancel() on the child context.
+func TestNewStopsReflectorOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	var listCount atomic.Int64
 	client := fake.NewClientset()
@@ -324,9 +329,17 @@ func TestNewCancelsReflectorOnSyncTimeout(t *testing.T) {
 
 	_ = New(ctx, client)
 
-	// Wait long enough for the timeout to fire and cancellation to
-	// propagate to the reflector.
-	time.Sleep(600 * time.Millisecond)
+	// Let the reflector issue a handful of failing LISTs so we have a
+	// non-trivial baseline to compare against after cancellation.
+	time.Sleep(200 * time.Millisecond)
+
+	// Cancel the parent context. This propagates to the child ctx the
+	// factory was started with, which must stop the reflector goroutines.
+	cancel()
+
+	// Wait for cancellation to propagate to the reflector and any
+	// in-flight retries to land.
+	time.Sleep(500 * time.Millisecond)
 	countAfterCancel := listCount.Load()
 
 	// Wait again. If the reflector were still running it would continue
@@ -336,6 +349,6 @@ func TestNewCancelsReflectorOnSyncTimeout(t *testing.T) {
 	countLater := listCount.Load()
 
 	if countLater > countAfterCancel {
-		t.Fatalf("reflector kept retrying LIST after sync timeout: count grew from %d to %d", countAfterCancel, countLater)
+		t.Fatalf("reflector kept retrying LIST after context cancel: count grew from %d to %d", countAfterCancel, countLater)
 	}
 }

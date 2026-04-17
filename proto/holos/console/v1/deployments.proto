@@ -282,6 +282,13 @@ message DeploymentStatusSummary {
   int64 observed_generation = 6;
   // message is a human-readable status message.
   string message = 7;
+  // output carries the template-authored output section (currently just the
+  // app URL) captured at the last successful create/update render. Unset
+  // when the template does not declare an output block, the URL is empty,
+  // or the annotation cache has not yet been populated. Surfaced on listing
+  // rows and GetDeploymentStatusSummary so the UI can render a link without
+  // dispatching a per-row render-preview RPC.
+  optional DeploymentOutput output = 8;
 }
 
 message GetDeploymentStatusSummaryRequest {
