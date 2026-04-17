@@ -263,11 +263,11 @@ func TestDiffRenderSets(t *testing.T) {
 	c := &consolev1.LinkedTemplateRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "c"}
 
 	tests := []struct {
-		name     string
-		applied  []*consolev1.LinkedTemplateRef
-		current  []*consolev1.LinkedTemplateRef
-		wantAdd  []string
-		wantRem  []string
+		name      string
+		applied   []*consolev1.LinkedTemplateRef
+		current   []*consolev1.LinkedTemplateRef
+		wantAdd   []string
+		wantRem   []string
 		wantDrift bool
 	}{
 		{

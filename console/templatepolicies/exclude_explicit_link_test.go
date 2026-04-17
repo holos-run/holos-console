@@ -917,9 +917,9 @@ func TestCreateIgnoresBrokenProjectsInOtherOrgs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "holos-prj-broken",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeProject,
-				v1alpha2.LabelOrganization:  "other",
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+				v1alpha2.LabelOrganization: "other",
 				// NOTE: intentionally missing AnnotationParent.
 			},
 		},
