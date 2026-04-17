@@ -207,12 +207,24 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 // renderResourcesGrouped mirrors renderResources but returns resources grouped
 // by origin (platform vs project). Used by GetDeploymentRenderPreview to populate
 // the per-collection response fields.
+//
+// When an AncestorTemplateProvider is configured this is an
+// organization/folder-level render (ReadPlatformResources=true) even when the
+// ancestor chain returns zero sources, so a deployment template authored with
+// its own platformResources still emits them. When no provider is configured
+// we fall back to a project-level render (ADR 016 Decision 8).
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
 	var ancestorSources []string
+	readPlatformResources := false
 	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
 		ancestorSources = sources
+		readPlatformResources = true
 	}
-	return h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{Platform: platform, Project: projectInput})
+	return h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{
+		Platform:              platform,
+		Project:               projectInput,
+		ReadPlatformResources: readPlatformResources,
+	})
 }
 
 // ListDeployments returns all deployments in a project.

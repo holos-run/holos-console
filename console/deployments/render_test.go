@@ -636,7 +636,8 @@ func defaultProject() v1alpha2.ProjectInput {
 
 // renderFlat is a test helper that calls the unified Render and flattens the
 // grouped result into a single slice, preserving the "platform-then-project"
-// ordering historically emitted by the flat render paths.
+// ordering historically emitted by the flat render paths. This drives the
+// project-level render path (ReadPlatformResources=false).
 func renderFlat(r *CueRenderer, ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
 	grouped, err := r.Render(ctx, cueSource, nil, RenderInputs{Platform: platform, Project: project})
 	if err != nil {
@@ -646,19 +647,17 @@ func renderFlat(r *CueRenderer, ctx context.Context, cueSource string, platform 
 }
 
 // renderFlatWithAncestors is a test helper that calls the unified Render with
-// ancestor sources and flattens the grouped result into a single slice.
-//
-// The pre-HOL-563 API routed RenderWithAncestorTemplates through the org-level
-// evaluate path unconditionally, which reads both platformResources and
-// projectResources even when the caller supplied a nil ancestor-sources
-// slice. To preserve that test semantic with the new API (which uses
-// len(ancestorSources)>0 as the "org-level" signal), this helper substitutes
-// a single empty-source placeholder when the caller passes nil/empty. The
-// placeholder changes no CUE evaluation output (an empty string contributes
-// nothing to the concatenated document) but forces the renderer onto the
-// org-level path that reads both collections.
+// ancestor sources and flattens the grouped result into a single slice. It
+// drives the organization/folder-level render path
+// (ReadPlatformResources=true) regardless of whether the ancestor-sources
+// slice is empty, matching the pre-HOL-563 semantics of
+// RenderWithAncestorTemplates.
 func renderFlatWithAncestors(r *CueRenderer, ctx context.Context, cueSource string, ancestorSources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
-	grouped, err := r.Render(ctx, cueSource, ensureAncestorSources(ancestorSources), RenderInputs{Platform: platform, Project: project})
+	grouped, err := r.Render(ctx, cueSource, ancestorSources, RenderInputs{
+		Platform:              platform,
+		Project:               project,
+		ReadPlatformResources: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -666,30 +665,20 @@ func renderFlatWithAncestors(r *CueRenderer, ctx context.Context, cueSource stri
 }
 
 // renderGrouped is a test helper that calls the unified Render without
-// ancestor sources (project-level render path).
+// ancestor sources (project-level render path; ReadPlatformResources=false).
 func renderGrouped(r *CueRenderer, ctx context.Context, cueSource string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
 	return r.Render(ctx, cueSource, nil, RenderInputs{Platform: platform, Project: project})
 }
 
 // renderGroupedWithAncestors is a test helper that calls the unified Render
-// with ancestor sources (organization/folder-level render path). See
-// renderFlatWithAncestors for why nil/empty ancestor slices are replaced
-// with a placeholder.
+// with ancestor sources and drives the organization/folder-level render path
+// (ReadPlatformResources=true), even when ancestorSources is empty.
 func renderGroupedWithAncestors(r *CueRenderer, ctx context.Context, cueSource string, ancestorSources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
-	return r.Render(ctx, cueSource, ensureAncestorSources(ancestorSources), RenderInputs{Platform: platform, Project: project})
-}
-
-// ensureAncestorSources returns a non-empty ancestor-sources slice so the
-// renderer takes the org-level path (reading both platformResources and
-// projectResources). When the caller already supplied sources they pass
-// through unchanged; when the caller supplied nil or an empty slice we
-// substitute a single empty-string source which contributes nothing to the
-// compiled CUE document.
-func ensureAncestorSources(ancestorSources []string) []string {
-	if len(ancestorSources) > 0 {
-		return ancestorSources
-	}
-	return []string{""}
+	return r.Render(ctx, cueSource, ancestorSources, RenderInputs{
+		Platform:              platform,
+		Project:               project,
+		ReadPlatformResources: true,
+	})
 }
 
 // flattenGrouped concatenates Platform resources followed by Project

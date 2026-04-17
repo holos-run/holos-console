@@ -59,9 +59,20 @@ type GroupedResources struct {
 // platform-side PlatformInput and the user-supplied ProjectInput. Both are
 // marshaled to JSON and unified with the template at the "platform" and
 // "input" CUE paths respectively.
+//
+// ReadPlatformResources selects the render level: true is the
+// organization/folder-level path (both platformResources and projectResources
+// are read), false is the project-level path (ADR 016 Decision 8: the
+// deployment template must not emit platformResources). This must be set
+// explicitly by the caller; the renderer never infers it from the contents of
+// ancestorSources, so org/folder-level renders with zero ancestor templates
+// still read platformResources from the deployment template (for example the
+// GetDeploymentRenderPreview path invoked on a project with no linked
+// templates).
 type RenderInputs struct {
-	Platform v1alpha2.PlatformInput
-	Project  v1alpha2.ProjectInput
+	Platform              v1alpha2.PlatformInput
+	Project               v1alpha2.ProjectInput
+	ReadPlatformResources bool
 }
 
 // CueRenderer evaluates CUE templates with deployment parameters.
@@ -71,9 +82,13 @@ type CueRenderer struct{}
 // template CUE sources and the provided inputs, returning resources grouped
 // by origin (platform vs project).
 //
-// When ancestorSources is empty this is a project-level render and
-// platformResources is not read (ADR 016 Decision 8); when ancestorSources is
-// non-empty both collections are read (organization/folder-level).
+// The render level (project vs organization/folder) is signaled explicitly by
+// inputs.ReadPlatformResources, not inferred from len(ancestorSources). A
+// project-level render (false) must not emit platformResources per ADR 016
+// Decision 8; an org/folder-level render (true) reads both collections even
+// when ancestorSources is empty (for example a deployment in a project with
+// no linked templates whose deployment template itself supplies
+// platformResources).
 //
 // The deployment template and any ancestor sources are concatenated before
 // compilation so ancestor templates can reference top-level identifiers
@@ -100,44 +115,6 @@ func (r *CueRenderer) Render(ctx context.Context, cueSource string, ancestorSour
 	}
 }
 
-// EvaluateGroupedCUE compiles and evaluates a pre-concatenated CUE source
-// document (template + any already-embedded raw CUE input) and returns the
-// rendered Kubernetes resources grouped by origin. This is the raw-CUE entry
-// point used by callers that assemble the full CUE document themselves (for
-// example, the templates preview path which receives CUE strings for
-// "platform" and "input" from the client, or the mandatory-template applier
-// which marshals its own inputs to CUE).
-//
-// When readPlatformResources is true the renderer reads both
-// platformResources and projectResources; when false only projectResources is
-// read (per ADR 016 Decision 8 the project-level path must not emit
-// platformResources).
-//
-// This helper exists so the unified evaluation core lives in one place; the
-// raw-CUE call sites in the templates package will be removed in later phases
-// (see HOL-562).
-func EvaluateGroupedCUE(ctx context.Context, combinedCUESource string, readPlatformResources bool) (*GroupedResources, error) {
-	evalCtx, cancel := context.WithTimeout(ctx, renderTimeout)
-	defer cancel()
-
-	type result struct {
-		grouped *GroupedResources
-		err     error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		grouped, err := evaluateCueInput(combinedCUESource, readPlatformResources)
-		ch <- result{grouped, err}
-	}()
-
-	select {
-	case <-evalCtx.Done():
-		return nil, fmt.Errorf("CUE template evaluation timed out after %s", renderTimeout)
-	case res := <-ch:
-		return res.grouped, res.err
-	}
-}
-
 // evaluateWithInputs performs synchronous CUE template evaluation with
 // structured Platform and Project inputs. The deployment template is
 // concatenated with any ancestor sources before compilation so ancestor
@@ -147,9 +124,10 @@ func EvaluateGroupedCUE(ctx context.Context, combinedCUESource string, readPlatf
 // #Claims, etc.
 //
 // Inputs are encoded as JSON and unified at the "input" (project) and
-// "platform" paths. When ancestorSources is empty the render is project-level
-// and platformResources is not read (ADR 016 Decision 8); otherwise both
-// collections are read.
+// "platform" paths. inputs.ReadPlatformResources selects the render level:
+// false is the project-level path (platformResources not read, ADR 016
+// Decision 8); true is the org/folder-level path (both collections read)
+// regardless of whether ancestorSources is empty.
 func evaluateWithInputs(cueSource string, ancestorSources []string, inputs RenderInputs) (*GroupedResources, error) {
 	cueCtx := cuecontext.New()
 
@@ -195,36 +173,7 @@ func evaluateWithInputs(cueSource string, ancestorSources []string, inputs Rende
 		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' (structured output format required)")
 	}
 
-	readPlatformResources := len(ancestorSources) > 0
-	return evaluateStructuredGrouped(unified, readPlatformResources)
-}
-
-// evaluateCueInput performs synchronous CUE template evaluation of a
-// pre-concatenated source document. The caller is responsible for assembling
-// the full CUE document (template plus any raw-CUE "platform" / "input"
-// values). Generated schema definitions are prepended so templates can
-// reference #PlatformInput, #ProjectInput, etc.
-//
-// At least one of projectResources.namespacedResources or
-// platformResources.namespacedResources must exist (preview of a
-// platform-only template is permitted).
-func evaluateCueInput(cueSource string, readPlatformResources bool) (*GroupedResources, error) {
-	cueCtx := cuecontext.New()
-
-	combined := v1alpha2.GeneratedSchema + "\n" + cueSource
-	unified := cueCtx.CompileString(combined)
-	if err := unified.Err(); err != nil {
-		return nil, fmt.Errorf("invalid CUE template: %w", err)
-	}
-
-	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
-	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
-	if (namespacedValue.Err() != nil || !namespacedValue.Exists()) &&
-		(platformNamespacedValue.Err() != nil || !platformNamespacedValue.Exists()) {
-		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' or 'platformResources.namespacedResources' (structured output format required)")
-	}
-
-	return evaluateStructuredGrouped(unified, readPlatformResources)
+	return evaluateStructuredGrouped(unified, inputs.ReadPlatformResources)
 }
 
 // extractCuePathJSON looks up a CUE path in the unified value and returns the
