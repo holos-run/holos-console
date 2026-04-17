@@ -97,6 +97,10 @@ type stubRenderer struct {
 	called       bool
 	lastPlatform v1alpha2.PlatformInput
 	lastProject  v1alpha2.ProjectInput
+	// outputJSON, when non-nil, is copied onto GroupedResources.OutputJSON in
+	// the RenderGrouped* methods so tests can simulate a template producing an
+	// `output` block.
+	outputJSON *string
 }
 
 func (s *stubRenderer) Render(_ context.Context, _ string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
@@ -117,14 +121,14 @@ func (s *stubRenderer) RenderGrouped(_ context.Context, _ string, platform v1alp
 	s.called = true
 	s.lastPlatform = platform
 	s.lastProject = project
-	return &GroupedResources{Project: s.resources}, s.err
+	return &GroupedResources{Project: s.resources, OutputJSON: s.outputJSON}, s.err
 }
 
 func (s *stubRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, _ []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
 	s.called = true
 	s.lastPlatform = platform
 	s.lastProject = project
-	return &GroupedResources{Project: s.resources}, s.err
+	return &GroupedResources{Project: s.resources, OutputJSON: s.outputJSON}, s.err
 }
 
 // stubApplier implements ResourceApplier for tests.
@@ -1217,6 +1221,112 @@ func TestHandler_GetDeploymentRenderPreview(t *testing.T) {
 			t.Errorf("expected cue_project_input to contain image, got: %q", resp.Msg.CueProjectInput)
 		}
 	})
+
+	t.Run("response.Output is nil when template has no output section", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		// defaultHandler uses a stubRenderer with no outputJSON set, so the
+		// handler should see OutputJSON=nil and leave Output unset.
+		handler := defaultHandler(fakeClient, pr)
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Output != nil {
+			t.Errorf("expected response.Output to be nil when template has no output, got %+v", resp.Msg.Output)
+		}
+	})
+
+	t.Run("response.Output.Url is populated when template sets output.url", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		outputJSON := `{"url":"https://web-app.example.com"}`
+		renderer := &stubRenderer{outputJSON: &outputJSON}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Output == nil {
+			t.Fatal("expected response.Output to be set, got nil")
+		}
+		if resp.Msg.Output.Url != "https://web-app.example.com" {
+			t.Errorf("expected Output.Url = https://web-app.example.com, got %q", resp.Msg.Output.Url)
+		}
+	})
+
+	t.Run("response.Output is set with empty Url when template declares output without url", func(t *testing.T) {
+		// Pitfall guard: `output: {}` produces an OutputJSON of `{}`; the
+		// backend must surface DeploymentOutput{Url: ""} (present-but-empty)
+		// and let the frontend decide whether to render.
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		outputJSON := `{}`
+		renderer := &stubRenderer{outputJSON: &outputJSON}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Msg.Output == nil {
+			t.Fatal("expected response.Output to be set (non-nil) for empty output block, got nil")
+		}
+		if resp.Msg.Output.Url != "" {
+			t.Errorf("expected Output.Url to be empty, got %q", resp.Msg.Output.Url)
+		}
+	})
+
+	t.Run("response.Output is nil when OutputJSON is not valid JSON", func(t *testing.T) {
+		// Malformed OutputJSON must not fail the RPC; the handler logs a
+		// warning and leaves Output unset.
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
+		fakeClient := fake.NewClientset(ns, cm)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		k8s := NewK8sClient(fakeClient, testResolver())
+		bad := `not json`
+		renderer := &stubRenderer{outputJSON: &bad}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, renderer, &stubApplier{})
+
+		ctx := authedCtx("alice@example.com", nil)
+		req := connect.NewRequest(&consolev1.GetDeploymentRenderPreviewRequest{
+			Project: "my-project",
+			Name:    "web-app",
+		})
+		resp, err := handler.GetDeploymentRenderPreview(ctx, req)
+		if err != nil {
+			t.Fatalf("expected no error for malformed OutputJSON, got %v", err)
+		}
+		if resp.Msg.Output != nil {
+			t.Errorf("expected response.Output to be nil for malformed OutputJSON, got %+v", resp.Msg.Output)
+		}
+	})
 }
 
 // stubAncestorTemplateProvider implements AncestorTemplateProvider for tests.
@@ -1260,7 +1370,7 @@ func (r *trackingDeploymentRenderer) RenderGrouped(_ context.Context, _ string, 
 	r.calledRenderGrouped = true
 	r.lastPlatform = platform
 	r.lastProject = project
-	return &GroupedResources{Project: r.resources}, r.err
+	return &GroupedResources{Project: r.resources, OutputJSON: r.outputJSON}, r.err
 }
 
 func (r *trackingDeploymentRenderer) RenderGroupedWithAncestorTemplates(_ context.Context, _ string, sources []string, platform v1alpha2.PlatformInput, project v1alpha2.ProjectInput) (*GroupedResources, error) {
@@ -1268,7 +1378,7 @@ func (r *trackingDeploymentRenderer) RenderGroupedWithAncestorTemplates(_ contex
 	r.lastAncestorSources = sources
 	r.lastPlatform = platform
 	r.lastProject = project
-	return &GroupedResources{Project: r.resources}, r.err
+	return &GroupedResources{Project: r.resources, OutputJSON: r.outputJSON}, r.err
 }
 
 func TestRenderResourcesWithAncestorProvider(t *testing.T) {
