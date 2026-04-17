@@ -338,6 +338,41 @@ export enum Permission {
    * @generated from enum value: PERMISSION_TEMPLATES_LINK_FOLDER_WRITE = 46;
    */
   TEMPLATES_LINK_FOLDER_WRITE = 46,
+
+  /**
+   * PERMISSION_TEMPLATE_POLICIES_LIST allows listing template policies.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATE_POLICIES_LIST = 47;
+   */
+  TEMPLATE_POLICIES_LIST = 47,
+
+  /**
+   * PERMISSION_TEMPLATE_POLICIES_READ allows reading a template policy.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATE_POLICIES_READ = 48;
+   */
+  TEMPLATE_POLICIES_READ = 48,
+
+  /**
+   * PERMISSION_TEMPLATE_POLICIES_WRITE allows creating and updating template policies.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATE_POLICIES_WRITE = 49;
+   */
+  TEMPLATE_POLICIES_WRITE = 49,
+
+  /**
+   * PERMISSION_TEMPLATE_POLICIES_DELETE allows deleting template policies.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATE_POLICIES_DELETE = 50;
+   */
+  TEMPLATE_POLICIES_DELETE = 50,
+
+  /**
+   * PERMISSION_TEMPLATE_POLICIES_ADMIN allows administrative operations on template policies.
+   *
+   * @generated from enum value: PERMISSION_TEMPLATE_POLICIES_ADMIN = 51;
+   */
+  TEMPLATE_POLICIES_ADMIN = 51,
 }
 
 /**

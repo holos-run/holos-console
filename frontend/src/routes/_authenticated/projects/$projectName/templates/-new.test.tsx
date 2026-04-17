@@ -299,13 +299,16 @@ describe('CreateTemplatePage', () => {
       expect(checkboxes.length).toBe(3)
     })
 
-    it('mandatory template checkbox is checked and disabled', () => {
+    // HOL-555 removed the `mandatory` field on LinkableTemplate, so there is
+    // no longer any checkbox that is auto-checked or disabled on that basis.
+    // TemplatePolicy REQUIRE rules (HOL-558) will restore the behavior.
+    it('checkbox for former mandatory template is now a normal checkbox (HOL-555)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
       render(<CreateTemplatePage />)
-      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(mandatoryCheckbox).toBeChecked()
-      expect(mandatoryCheckbox).toBeDisabled()
+      const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
+      expect(checkbox).not.toBeChecked()
+      expect(checkbox).not.toBeDisabled()
     })
 
     it('non-mandatory template checkboxes are unchecked by default', () => {
@@ -317,12 +320,14 @@ describe('CreateTemplatePage', () => {
       expect(httpbinCheckbox).not.toBeDisabled()
     })
 
-    it('shows read-only view for EDITOR with mandatory templates and permission note', () => {
+    // HOL-555 removed the auto-listed mandatory templates in the read-only
+    // view; the permission note remains. TemplatePolicy REQUIRE rules
+    // (HOL-558) will re-introduce the listing.
+    it('shows read-only view for EDITOR with permission note (HOL-555)', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
       render(<CreateTemplatePage />)
       expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
-      expect(screen.getByText(/reference grant/i)).toBeInTheDocument()
       expect(screen.getByText(/only owners can link/i)).toBeInTheDocument()
     })
 

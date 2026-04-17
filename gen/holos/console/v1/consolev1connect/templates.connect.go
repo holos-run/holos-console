@@ -101,12 +101,12 @@ type TemplateServiceClient interface {
 	// the given scope may link against. For a project scope, this is all enabled
 	// templates in parent folders and the organization. For a folder scope, it is
 	// all enabled templates in parent folders and the organization above it.
-	// Mandatory templates are included so the UI can display them as always-on.
 	// Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
 	ListLinkableTemplates(context.Context, *connect.Request[v1.ListLinkableTemplatesRequest]) (*connect.Response[v1.ListLinkableTemplatesResponse], error)
 	// ListAncestorTemplates returns templates from all ancestor scopes of the
-	// given scope, including mandatory and enabled non-linked templates. Used by
-	// the renderer to compute the effective template set.
+	// given scope. Used by the renderer to compute the effective template set;
+	// TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
+	// templates are forced onto the project.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
 	// CreateRelease publishes a new versioned release of a template, capturing
 	// the CUE source, defaults, changelog, and upgrade advice at a specific
@@ -343,12 +343,12 @@ type TemplateServiceHandler interface {
 	// the given scope may link against. For a project scope, this is all enabled
 	// templates in parent folders and the organization. For a folder scope, it is
 	// all enabled templates in parent folders and the organization above it.
-	// Mandatory templates are included so the UI can display them as always-on.
 	// Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
 	ListLinkableTemplates(context.Context, *connect.Request[v1.ListLinkableTemplatesRequest]) (*connect.Response[v1.ListLinkableTemplatesResponse], error)
 	// ListAncestorTemplates returns templates from all ancestor scopes of the
-	// given scope, including mandatory and enabled non-linked templates. Used by
-	// the renderer to compute the effective template set.
+	// given scope. Used by the renderer to compute the effective template set;
+	// TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
+	// templates are forced onto the project.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
 	// CreateRelease publishes a new versioned release of a template, capturing
 	// the CUE source, defaults, changelog, and upgrade advice at a specific

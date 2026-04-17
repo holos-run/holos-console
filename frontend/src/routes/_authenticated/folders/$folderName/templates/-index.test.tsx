@@ -80,10 +80,12 @@ describe('FolderTemplatesIndexPage', () => {
     expect(screen.getByText('optional-template')).toBeInTheDocument()
   })
 
-  it('shows mandatory badge for mandatory templates', () => {
+  // HOL-555 removed the Mandatory badge from the list view. TemplatePolicy
+  // REQUIRE rules (HOL-558) will re-introduce an "always applied" affordance.
+  it('does not show Mandatory badge (removed in HOL-555)', () => {
     setupMocks()
     render(<FolderTemplatesIndexPage folderName="test-folder" />)
-    expect(screen.getByText('Mandatory')).toBeInTheDocument()
+    expect(screen.queryByText('Mandatory')).not.toBeInTheDocument()
   })
 
   it('shows enabled badge for enabled templates', () => {

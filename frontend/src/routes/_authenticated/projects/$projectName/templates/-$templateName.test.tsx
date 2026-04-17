@@ -567,8 +567,10 @@ describe('DeploymentTemplateDetailPage', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       render(<DeploymentTemplateDetailPage />)
-      // mandatory template is always shown even when linkedTemplates is empty
-      expect(screen.getByText('Reference Grant')).toBeInTheDocument()
+      // HOL-555 removed the auto-always-on behavior tied to `mandatory`.
+      // TemplatePolicy REQUIRE rules (HOL-557) will re-introduce it. Until
+      // then, no templates are forced on.
+      expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
     })
 
     it('shows linked template names as badges', () => {
@@ -618,15 +620,18 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
-    it('mandatory template checkbox is checked and disabled in dialog', async () => {
+    // HOL-555 removed the `mandatory` field on LinkableTemplate, so there is
+    // no longer any checkbox that is auto-checked or disabled on that basis.
+    // TemplatePolicy REQUIRE rules (HOL-557) will restore the behavior.
+    it('checkbox for former mandatory template is now a normal checkbox (HOL-555)', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
-      const mandatoryCheckbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(mandatoryCheckbox).toBeChecked()
-      expect(mandatoryCheckbox).toBeDisabled()
+      const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
+      expect(checkbox).not.toBeChecked()
+      expect(checkbox).not.toBeDisabled()
     })
 
     it('saving calls updateMutation with selected linkedTemplates and updateLinkedTemplates: true', async () => {

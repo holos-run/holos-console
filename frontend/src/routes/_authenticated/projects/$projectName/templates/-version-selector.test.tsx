@@ -286,12 +286,13 @@ describe('Version selector — CreateTemplatePage', () => {
     })
   })
 
-  it('mandatory template version selector is disabled', () => {
+  // HOL-555 removed the `mandatory` field, so version selectors are no
+  // longer disabled based on it. TemplatePolicy REQUIRE rules (HOL-558) will
+  // restore the behavior through a different mechanism.
+  it('version selectors are no longer disabled based on mandatory (HOL-555)', () => {
     render(<CreateTemplatePage />)
     const selects = screen.getAllByTestId('version-select') as HTMLSelectElement[]
-    // The first select is for mandatory reference-grant and should be disabled
-    expect(selects[0]).toBeDisabled()
-    // The second (httpbin-platform) should not be disabled
+    expect(selects[0]).not.toBeDisabled()
     expect(selects[1]).not.toBeDisabled()
   })
 
@@ -409,7 +410,10 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     expect(selects[1].value === '' || selects[1].value === '__latest__').toBe(true)
   })
 
-  it('mandatory template version selector is disabled in edit dialog', async () => {
+  // HOL-555 removed the `mandatory` field, so version selectors in the edit
+  // dialog are no longer disabled based on it. TemplatePolicy REQUIRE rules
+  // (HOL-558) will restore the behavior through a different mechanism.
+  it('version selectors in edit dialog are no longer disabled based on mandatory (HOL-555)', async () => {
     setupDetailMocks(Role.OWNER)
     const user = userEvent.setup()
     render(<DeploymentTemplateDetailPage />)
@@ -417,8 +421,7 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
     const dialog = screen.getByRole('dialog')
     const selects = within(dialog).getAllByTestId('version-select') as HTMLSelectElement[]
-    // First select is for mandatory reference-grant
-    expect(selects[0]).toBeDisabled()
+    expect(selects[0]).not.toBeDisabled()
   })
 
   it('switching from a pinned version to Latest sends empty version_constraint', async () => {

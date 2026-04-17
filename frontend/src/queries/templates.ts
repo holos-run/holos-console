@@ -127,6 +127,9 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       displayName: string
       description: string
       cueTemplate: string
+      // `mandatory` is accepted for backwards compatibility with existing
+      // call sites but ignored. HOL-555 removed the proto field; the
+      // TemplatePolicy UI (HOL-558) will take over this concept.
       mandatory?: boolean
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
@@ -139,7 +142,6 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
           displayName: params.displayName,
           description: params.description,
           cueTemplate: params.cueTemplate,
-          mandatory: params.mandatory ?? false,
           enabled: params.enabled ?? false,
           linkedTemplates: params.linkedTemplates ?? [],
         },
@@ -159,6 +161,9 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       displayName?: string
       description?: string
       cueTemplate?: string
+      // `mandatory` is accepted for backwards compatibility with existing
+      // call sites but ignored. HOL-555 removed the proto field; the
+      // TemplatePolicy UI (HOL-558) will take over this concept.
       mandatory?: boolean
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
@@ -173,7 +178,6 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           cueTemplate: params.cueTemplate ?? '',
-          mandatory: params.mandatory ?? false,
           enabled: params.enabled ?? false,
           linkedTemplates: params.linkedTemplates ?? [],
         },

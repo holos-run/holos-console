@@ -109,23 +109,24 @@ func TestConfigMapToTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("org scope fields populated with mandatory and enabled", func(t *testing.T) {
+	t.Run("org scope fields populated with enabled", func(t *testing.T) {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ref-grant",
 				Namespace: "org-acme",
 				Annotations: map[string]string{
 					v1alpha2.AnnotationDisplayName: "ReferenceGrant",
-					v1alpha2.AnnotationMandatory:   "true",
-					v1alpha2.AnnotationEnabled:     "true",
+					// AnnotationMandatory is retained in ConfigMap storage but
+					// no longer projected into the Template proto (HOL-555).
+					// Semantic coverage returns once TemplatePolicy REQUIRE
+					// rules land in HOL-557.
+					v1alpha2.AnnotationMandatory: "true",
+					v1alpha2.AnnotationEnabled:   "true",
 				},
 			},
 			Data: map[string]string{},
 		}
 		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "acme")
-		if !tmpl.Mandatory {
-			t.Error("expected mandatory=true")
-		}
 		if !tmpl.Enabled {
 			t.Error("expected enabled=true")
 		}

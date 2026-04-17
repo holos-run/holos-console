@@ -449,13 +449,12 @@ type Template struct {
 	Defaults *TemplateDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
 	// linked_templates lists templates in ancestor scopes to unify with this
 	// template at render time. Replaces linked_org_templates from v1alpha1.
-	// Mandatory+enabled ancestor templates always unify regardless of this list.
+	// Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
+	// always unify regardless of this list.
 	LinkedTemplates []*LinkedTemplateRef `protobuf:"bytes,7,rep,name=linked_templates,json=linkedTemplates,proto3" json:"linked_templates,omitempty"`
-	// mandatory indicates the template is automatically applied to every project
-	// namespace at project creation time. Applicable to org and folder scopes.
-	Mandatory bool `protobuf:"varint,8,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
 	// enabled indicates whether this template is active. Disabled templates are
-	// not applied to new project namespaces even if mandatory is true.
+	// not applied to projects by any TemplatePolicy REQUIRE rule and are
+	// filtered out of render-time unification.
 	Enabled bool `protobuf:"varint,9,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// version is the current semver version string (e.g. "1.2.3") of this
 	// template. Empty means the template has no published version yet.
@@ -541,13 +540,6 @@ func (x *Template) GetLinkedTemplates() []*LinkedTemplateRef {
 		return x.LinkedTemplates
 	}
 	return nil
-}
-
-func (x *Template) GetMandatory() bool {
-	if x != nil {
-		return x.Mandatory
-	}
-	return false
 }
 
 func (x *Template) GetEnabled() bool {
@@ -1478,9 +1470,6 @@ type LinkableTemplate struct {
 	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// description explains what the template produces.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	// mandatory indicates this template is always unified regardless of linking.
-	// The UI renders mandatory templates as always-selected and disabled.
-	Mandatory bool `protobuf:"varint,5,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
 	// releases carries the available published releases for this template, sorted
 	// descending by version (newest first). Populated by ListLinkableTemplates so
 	// the linking UI can display version choices without a separate RPC call.
@@ -1545,13 +1534,6 @@ func (x *LinkableTemplate) GetDescription() string {
 		return x.Description
 	}
 	return ""
-}
-
-func (x *LinkableTemplate) GetMandatory() bool {
-	if x != nil {
-		return x.Mandatory
-	}
-	return false
 }
 
 func (x *LinkableTemplate) GetReleases() []*Release {
@@ -2347,7 +2329,7 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"]\n" +
 	"\x1bGetTemplateDefaultsResponse\x12>\n" +
-	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\xa9\x03\n" +
+	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\x9c\x03\n" +
 	"\bTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
 	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12!\n" +
@@ -2355,11 +2337,10 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12>\n" +
 	"\bdefaults\x18\x06 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\x12N\n" +
-	"\x10linked_templates\x18\a \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\x12\x1c\n" +
-	"\tmandatory\x18\b \x01(\bR\tmandatory\x12\x18\n" +
+	"\x10linked_templates\x18\a \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\x12\x18\n" +
 	"\aenabled\x18\t \x01(\bR\aenabled\x12\x18\n" +
 	"\aversion\x18\n" +
-	" \x01(\tR\aversion\"P\n" +
+	" \x01(\tR\aversionJ\x04\b\b\x10\tR\tmandatory\"P\n" +
 	"\x14ListTemplatesRequest\x128\n" +
 	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"Q\n" +
 	"\x15ListTemplatesResponse\x128\n" +
@@ -2416,14 +2397,13 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x15CloneTemplateResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"X\n" +
 	"\x1cListLinkableTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\x81\x02\n" +
+	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"\xf4\x01\n" +
 	"\x10LinkableTemplate\x12?\n" +
 	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x1c\n" +
-	"\tmandatory\x18\x05 \x01(\bR\tmandatory\x125\n" +
-	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\"a\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x125\n" +
+	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleasesJ\x04\b\x05\x10\x06R\tmandatory\"a\n" +
 	"\x1dListLinkableTemplatesResponse\x12@\n" +
 	"\ttemplates\x18\x01 \x03(\v2\".holos.console.v1.LinkableTemplateR\ttemplates\"X\n" +
 	"\x1cListAncestorTemplatesRequest\x128\n" +

@@ -22,7 +22,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Lock } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, makeFolderScope } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
@@ -31,7 +30,6 @@ import { useGetFolder } from '@/queries/folders'
 type TemplateRow = {
   name: string
   description: string
-  mandatory: boolean
   enabled: boolean
 }
 
@@ -78,7 +76,6 @@ export function FolderTemplatesIndexPage({
     return templates.map((t) => ({
       name: t.name,
       description: t.description ?? '',
-      mandatory: t.mandatory ?? false,
       enabled: t.enabled ?? false,
     }))
   }, [templates])
@@ -106,14 +103,10 @@ export function FolderTemplatesIndexPage({
       columnHelper.display({
         id: 'badges',
         header: 'Status',
+        // HOL-555 removed the Mandatory badge; TemplatePolicy REQUIRE rules
+        // (HOL-558) will re-introduce an "always applied" affordance.
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            {row.original.mandatory && (
-              <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                <Lock className="h-3 w-3" />
-                Mandatory
-              </Badge>
-            )}
             {row.original.enabled ? (
               <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">
                 Enabled

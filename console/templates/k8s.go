@@ -536,7 +536,9 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 		if !enabled {
 			continue
 		}
-		mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
+		// The `mandatory` annotation is no longer surfaced on LinkableTemplate;
+		// HOL-555 removed the proto field. TemplatePolicy REQUIRE rules
+		// (HOL-557) will drive "always applied" UI state.
 		result = append(result, &consolev1.LinkableTemplate{
 			ScopeRef: &consolev1.TemplateScopeRef{
 				Scope:     scope,
@@ -545,7 +547,6 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 			Name:        cm.Name,
 			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 			Description: cm.Annotations[v1alpha2.AnnotationDescription],
-			Mandatory:   mandatory,
 		})
 	}
 	return result, nil
@@ -813,14 +814,16 @@ func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope consolev1.
 // in the namespace (which the ConfigMap stores but the proto carries explicitly).
 func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.Template {
 	cueSource := cm.Data[CueTemplateKey]
-	mandatory, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationMandatory])
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
+	// The `mandatory` field was removed from Template in HOL-555; the
+	// annotation remains in ConfigMap storage to avoid a mass migration here,
+	// but it is no longer projected into the proto. TemplatePolicy REQUIRE
+	// rules (HOL-557) become the only mechanism for "always apply".
 	tmpl := &consolev1.Template{
 		Name:        cm.Name,
 		DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha2.AnnotationDescription],
 		CueTemplate: cueSource,
-		Mandatory:   mandatory,
 		Enabled:     enabled,
 		ScopeRef: &consolev1.TemplateScopeRef{
 			Scope:     scope,
