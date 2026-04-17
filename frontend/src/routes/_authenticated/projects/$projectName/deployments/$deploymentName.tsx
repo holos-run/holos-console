@@ -109,6 +109,22 @@ function isContainerError(cs: ContainerStatus): boolean {
   return false
 }
 
+/**
+ * Returns true only when `value` parses as a URL with an http: or https:
+ * scheme. Used to guard rendering of template-authored URLs (such as
+ * `output.url` from the render preview) into anchor hrefs so that unsafe
+ * schemes like `javascript:`, `data:`, `vbscript:`, and `file:` never
+ * reach the DOM. Parse failures (malformed URLs) also return false.
+ */
+export function isSafeHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function DeploymentDetailRoute() {
   const { projectName, deploymentName } = Route.useParams()
   return <DeploymentDetailPage projectName={projectName} deploymentName={deploymentName} />
@@ -305,11 +321,14 @@ export function DeploymentDetailPage({
                 {/*
                   App URL row — surfaces the template-authored deployment URL
                   from the render preview (`output.url`). Rendered only when
-                  the preview has resolved with a non-empty URL; while the
-                  preview is pending, `preview` is undefined so nothing
-                  renders (deliberate: avoids a flash on first load).
+                  the preview has resolved with a non-empty URL that parses
+                  as an http:/https: URL. Non-HTTP(S) schemes (including
+                  javascript:, data:, vbscript:, file:) are dropped so they
+                  cannot reach an anchor href and execute script on click.
+                  While the preview is pending, `preview` is undefined so
+                  nothing renders (deliberate: avoids a flash on first load).
                 */}
-                {!isPreviewPending && preview?.output?.url ? (
+                {!isPreviewPending && preview?.output?.url && isSafeHttpUrl(preview.output.url) ? (
                   <div
                     data-testid="deployment-output-url"
                     className="flex items-center gap-2 text-sm"
