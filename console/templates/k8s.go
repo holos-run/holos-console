@@ -9,6 +9,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -294,28 +295,23 @@ func (k *K8sClient) ListTemplatesInNamespace(ctx context.Context, ns string) ([]
 	return list.Items, nil
 }
 
-// TargetKind identifies the kind of render target driving a call to
-// ListEffectiveTemplateSources. In this phase it is purely descriptive — both
-// values exercise the same resolution logic — but Phase 4 will key
-// PolicyResolver evaluation off this discriminator so the signature is stable
-// across call sites today.
-type TargetKind int
+// TargetKind is re-exported from console/policyresolver so existing call
+// sites in this package and its tests keep compiling after the PolicyResolver
+// seam moved out (HOL-566). The underlying type and constants live in the
+// policyresolver package because TargetKind is part of the PolicyResolver
+// contract — handlers and helpers that own resolution decisions consume
+// both together.
+type TargetKind = policyresolver.TargetKind
 
 const (
 	// TargetKindProjectTemplate is the preview render path for project-scope
 	// templates (the RenderTemplate RPC and the project-scope Create/Update
 	// template handlers once they grow a render step).
-	TargetKindProjectTemplate TargetKind = iota
+	TargetKindProjectTemplate = policyresolver.TargetKindProjectTemplate
 	// TargetKindDeployment is the apply render path for deployments
 	// (AncestorTemplateProvider on the deployments handler).
-	TargetKindDeployment
+	TargetKindDeployment = policyresolver.TargetKindDeployment
 )
-
-// PolicyResolver is a forward-declared placeholder for the TemplatePolicy
-// resolver interface introduced in Phase 4 (HOL-566). Every call site passes
-// nil today; Phase 4 replaces the alias with a concrete interface without
-// touching call sites.
-type PolicyResolver = any
 
 // RenderHierarchyWalker walks the namespace hierarchy for render-time ancestor
 // template resolution. This mirrors HierarchyWalker from apply.go but is
@@ -353,14 +349,13 @@ type RenderHierarchyWalker interface {
 // nil (no ancestor sources). If the walker returns an error, the method
 // degrades gracefully to an empty slice — callers render project-only.
 //
-// policyResolver is currently an untyped nil placeholder (Phase 2 of
-// HOL-562). Phase 4 (HOL-566) replaces the PolicyResolver alias with a real
-// interface and wires evaluation through this function; every call site
-// passes nil today so that phase swap is internal.
-//
-// targetKind is accepted but not yet consulted — Phase 4 keys
-// PolicyResolver.Evaluate off it. Every call site already passes the
-// appropriate discriminator so no call site touching is needed later.
+// resolver evaluates TemplatePolicy REQUIRE/EXCLUDE rules against the
+// caller's explicitRefs before the ancestor walk. Phase 4 (HOL-566) threads
+// the PolicyResolver seam through every call site with a no-op
+// implementation that returns explicitRefs unchanged; Phase 5 (HOL-567)
+// swaps in a real policy-backed implementation. When resolver is nil the
+// call site predates the seam — the function falls back to using
+// explicitRefs directly so tests that have not been updated keep working.
 //
 // Storage-isolation note (HOL-554): the walk deliberately skips the starting
 // namespace (ancestors[0]) and only reads templates, releases, and — once
@@ -374,15 +369,25 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	targetName string,
 	explicitRefs []*consolev1.LinkedTemplateRef,
 	walker RenderHierarchyWalker,
-	_ PolicyResolver,
+	resolver policyresolver.PolicyResolver,
 ) ([]string, error) {
-	// targetKind and targetName are accepted for a stable signature; both
-	// become load-bearing in Phase 4 when PolicyResolver evaluates per target.
-	_ = targetKind
-	_ = targetName
-
 	if walker == nil {
 		return nil, nil
+	}
+
+	// Resolve the caller's explicit refs through the PolicyResolver seam
+	// before walking ancestors. Phase 4 (HOL-566) wires a no-op resolver at
+	// every call site; Phase 5 swaps in real REQUIRE/EXCLUDE evaluation.
+	// A nil resolver means the call site predates the seam — fall back to
+	// explicitRefs unchanged so tests that were written before HOL-566 keep
+	// exercising the ancestor walk without modification.
+	effectiveRefs := explicitRefs
+	if resolver != nil {
+		resolved, resolveErr := resolver.Resolve(ctx, projectNs, targetKind, targetName, explicitRefs)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("resolving template policy for %q: %w", targetName, resolveErr)
+		}
+		effectiveRefs = resolved
 	}
 
 	ancestors, err := walker.WalkAncestors(ctx, projectNs)
@@ -396,8 +401,8 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 
 	// Build a lookup from (scope, scopeName, name) -> linked ref so linked
 	// templates with version constraints resolve their release source.
-	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(explicitRefs))
-	for _, ref := range explicitRefs {
+	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(effectiveRefs))
+	for _, ref := range effectiveRefs {
 		if ref == nil {
 			continue
 		}
@@ -936,24 +941,30 @@ func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScop
 	return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, ""
 }
 
-// AncestorTemplateResolver adapts K8sClient + a walker into a single-method
-// interface suitable for the deployments package (which cannot import templates
-// directly due to the avoid-import-cycle convention). The walker is closed over
-// at construction time so the caller only needs to pass project namespace and
+// AncestorTemplateResolver adapts K8sClient + a walker + a PolicyResolver
+// into a single-method interface suitable for the deployments package (which
+// cannot import templates directly due to the avoid-import-cycle
+// convention). The walker and resolver are closed over at construction time
+// so the caller only needs to pass project namespace, deployment name, and
 // linked refs.
 type AncestorTemplateResolver struct {
-	k8s    *K8sClient
-	walker RenderHierarchyWalker
+	k8s      *K8sClient
+	walker   RenderHierarchyWalker
+	resolver policyresolver.PolicyResolver
 }
 
-// NewAncestorTemplateResolver creates an AncestorTemplateResolver.
-func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker) *AncestorTemplateResolver {
-	return &AncestorTemplateResolver{k8s: k8s, walker: walker}
+// NewAncestorTemplateResolver creates an AncestorTemplateResolver. resolver
+// is the TemplatePolicy resolution seam (HOL-566 Phase 4). Callers should
+// pass policyresolver.NewNoopResolver() until Phase 5 wires a real
+// implementation; nil is accepted for backwards compatibility in tests
+// written before HOL-566.
+func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker, resolver policyresolver.PolicyResolver) *AncestorTemplateResolver {
+	return &AncestorTemplateResolver{k8s: k8s, walker: walker, resolver: resolver}
 }
 
 // ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
-// The targetName is unused in this phase; Phase 4 (HOL-566) will key policy
-// evaluation off it.
-func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
-	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, "", linkedRefs, a.walker, nil)
+// The targetName identifies the deployment driving the render so Phase 5
+// REQUIRE/EXCLUDE evaluation can key off it.
+func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs, targetName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error) {
+	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, targetName, linkedRefs, a.walker, a.resolver)
 }

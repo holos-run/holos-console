@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -135,7 +136,7 @@ func makeReleaseCMWithData(ns, templateName, version, cue, defaults string) *cor
 func newLinkableTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string, walker AncestorWalker) *Handler {
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 	k8s := NewK8sClient(fakeClient, r)
-	handler := NewHandler(k8s, r, &stubRenderer{})
+	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 	handler.WithAncestorWalker(walker)
 	return handler
@@ -384,7 +385,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		fakeClient := fake.NewClientset(orgNsObj, folderNsObj, orgTemplate, folderTemplate)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := NewK8sClient(fakeClient, r)
-		handler := NewHandler(k8s, r, &stubRenderer{})
+		handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(&stubAncestorWalker{ancestors: ancestors})
 		// Wire whichever grant resolver matches the request scope so
 		// checkAccess passes.

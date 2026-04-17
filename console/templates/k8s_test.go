@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -516,7 +517,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		fakeClient := fake.NewClientset(orgNsObj)
 		k8s := NewK8sClient(fakeClient, testResolver())
 
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -535,7 +536,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -560,7 +561,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -585,7 +586,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -603,7 +604,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -641,7 +642,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			folderLinkedRefWithConstraint("payments", "payments-policy", ">=1.0.0"),
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -661,7 +662,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("expected graceful degradation, got error: %v", err)
 		}
@@ -677,7 +678,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -705,7 +706,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			{Scope: orgScope, ScopeName: "my-org", Name: sharedName},
 			{Scope: folderScope, ScopeName: "payments", Name: sharedName},
 		}
-		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		sources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -736,11 +737,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
 		}
 
-		deploymentSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, nil)
+		deploymentSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error (deployment): %v", err)
 		}
-		projectSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindProjectTemplate, "tmpl", refs, walker, nil)
+		projectSources, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindProjectTemplate, "tmpl", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error (project template): %v", err)
 		}

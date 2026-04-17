@@ -15,6 +15,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -157,7 +158,7 @@ func TestRequiredTemplateApplier(t *testing.T) {
 			applier := &recordingApplier{err: tc.applyErr}
 			resolver := &stubRequireRuleResolver{matches: tc.matches, err: tc.resolveErr}
 
-			rta := NewRequiredTemplateApplier(k8s, walker, &deployments.CueRenderer{}, applier, resolver)
+			rta := NewRequiredTemplateApplier(k8s, walker, &deployments.CueRenderer{}, applier, resolver, policyresolver.NewNoopResolver())
 
 			claims := &rpc.Claims{Sub: "alice", Email: "alice@example.com"}
 			err := rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", claims)
@@ -199,7 +200,7 @@ func TestRequiredTemplateApplier_NilResolverIsNoOp(t *testing.T) {
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 	k8s := NewK8sClient(fake.NewClientset(), r)
 	applier := &recordingApplier{}
-	rta := NewRequiredTemplateApplier(k8s, nil, &deployments.CueRenderer{}, applier, nil)
+	rta := NewRequiredTemplateApplier(k8s, nil, &deployments.CueRenderer{}, applier, nil, policyresolver.NewNoopResolver())
 
 	if err := rta.ApplyRequiredTemplates(context.Background(), "acme", "new-prj", "prj-new-prj", nil); err != nil {
 		t.Fatalf("expected no error with nil resolver, got %v", err)

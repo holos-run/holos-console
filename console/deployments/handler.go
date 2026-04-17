@@ -79,9 +79,11 @@ type AncestorWalker interface {
 
 // AncestorTemplateProvider resolves platform template CUE sources from the
 // full ancestor chain (org + folders) for render. The projectNs is the
-// starting namespace for the ancestor walk.
+// starting namespace for the ancestor walk; deploymentName identifies the
+// render target so the underlying PolicyResolver can key REQUIRE/EXCLUDE
+// evaluation off it (HOL-566 Phase 4).
 type AncestorTemplateProvider interface {
-	ListAncestorTemplateSources(ctx context.Context, projectNs string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
+	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -159,17 +161,20 @@ func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
 
 // resolveAncestorTemplateSources resolves platform template CUE sources from
 // the full ancestor chain when an AncestorTemplateProvider is configured.
-// Returns (sources, true) on success, or (nil, false) when no provider is
-// configured or the walk fails.
-func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
+// deploymentName identifies the render target so the underlying
+// PolicyResolver (HOL-566 Phase 4) can key REQUIRE/EXCLUDE evaluation off
+// it in Phase 5. Returns (sources, true) on success, or (nil, false) when no
+// provider is configured or the walk fails.
+func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, bool) {
 	if h.ancestorTemplateProvider == nil {
 		return nil, false
 	}
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	sources, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, linkedRefs)
+	sources, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, linkedRefs)
 	if err != nil {
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
+			slog.String("deployment", deploymentName),
 			slog.Any("error", err),
 		)
 		return nil, false
@@ -193,8 +198,12 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project st
 //
 // This helper flattens the grouped render result into a single list. Callers
 // that need the per-origin split should use renderResourcesGrouped.
-func (h *Handler) renderResources(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	grouped, err := h.renderResourcesGrouped(ctx, project, cueSource, platform, projectInput, linkedRefs)
+//
+// deploymentName is the render target name plumbed through to the
+// PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
+// evaluation off it; until then it is observational.
+func (h *Handler) renderResources(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
+	grouped, err := h.renderResourcesGrouped(ctx, project, deploymentName, cueSource, platform, projectInput, linkedRefs)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +222,14 @@ func (h *Handler) renderResources(ctx context.Context, project, cueSource string
 // ancestor chain returns zero sources, so a deployment template authored with
 // its own platformResources still emits them. When no provider is configured
 // we fall back to a project-level render (ADR 016 Decision 8).
-func (h *Handler) renderResourcesGrouped(ctx context.Context, project, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
+//
+// deploymentName is the render target name plumbed through to the
+// PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
+// evaluation off it; until then it is observational.
+func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, error) {
 	var ancestorSources []string
 	readPlatformResources := false
-	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, linkedRefs); ok {
+	if sources, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
 		ancestorSources = sources
 		readPlatformResources = true
 	}
@@ -443,7 +456,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplates)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplates)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -603,7 +616,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, renderErr := h.renderResourcesGrouped(ctx, project, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
+		grouped, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -905,7 +918,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	var grouped *GroupedResources
 	if h.renderer != nil {
 		var renderErr error
-		grouped, renderErr = h.renderResourcesGrouped(ctx, project, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		grouped, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),

@@ -9,6 +9,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -74,28 +75,34 @@ func NewEmptyRequireRuleResolver() RequireRuleResolver {
 // source. This matches ADR 021 Decision 3 and replaces the v1alpha1-era
 // parallel render path deleted in HOL-565.
 type RequiredTemplateApplier struct {
-	k8s      *K8sClient
-	walker   RenderHierarchyWalker
-	renderer *deployments.CueRenderer
-	applier  ResourceApplier
-	resolver RequireRuleResolver
+	k8s            *K8sClient
+	walker         RenderHierarchyWalker
+	renderer       *deployments.CueRenderer
+	applier        ResourceApplier
+	resolver       RequireRuleResolver
+	policyResolver policyresolver.PolicyResolver
 }
 
 // NewRequiredTemplateApplier creates a RequiredTemplateApplier. resolver must
 // not be nil — use NewEmptyRequireRuleResolver for the Phase 3 placeholder.
+// policyResolver is the HOL-566 Phase 4 TemplatePolicy resolution seam;
+// callers should pass policyresolver.NewNoopResolver() until Phase 5 wires
+// a real implementation.
 func NewRequiredTemplateApplier(
 	k8s *K8sClient,
 	walker RenderHierarchyWalker,
 	renderer *deployments.CueRenderer,
 	applier ResourceApplier,
 	resolver RequireRuleResolver,
+	policyResolver policyresolver.PolicyResolver,
 ) *RequiredTemplateApplier {
 	return &RequiredTemplateApplier{
-		k8s:      k8s,
-		walker:   walker,
-		renderer: renderer,
-		applier:  applier,
-		resolver: resolver,
+		k8s:            k8s,
+		walker:         walker,
+		renderer:       renderer,
+		applier:        applier,
+		resolver:       resolver,
+		policyResolver: policyResolver,
 	}
 }
 
@@ -176,7 +183,7 @@ func (a *RequiredTemplateApplier) applyMatch(
 		match.TemplateName,
 		[]*consolev1.LinkedTemplateRef{templateRef},
 		a.walker,
-		nil,
+		a.policyResolver,
 	)
 	if err != nil {
 		return fmt.Errorf("listing ancestor sources for required template %q (%s/%s): %w",
