@@ -1059,15 +1059,13 @@ func assertClusterState(t *testing.T, client *fake.Clientset, want assertions) {
 			continue
 		}
 		for i, rule := range rules {
-			// A cleared target is either the empty struct or the
-			// migrator's placeholder shape (project_pattern="*",
-			// deployment_pattern=""). Anything else still carries
-			// a real glob and the migration failed to translate
-			// it.
-			pp := rule.Target.ProjectPattern
-			dp := rule.Target.DeploymentPattern
-			cleared := dp == "" && (pp == "" || pp == clearedProjectPatternPlaceholder)
-			if !cleared {
+			// Both globs must be the empty string after the
+			// migration. A literal "*" is NOT acceptable — it
+			// would be indistinguishable from a legitimate
+			// pre-migration wildcard rule and would also keep
+			// the legacy resolver path active for uncovered
+			// render targets.
+			if rule.Target.ProjectPattern != "" || rule.Target.DeploymentPattern != "" {
 				t.Errorf("policy %s/%s rule[%d]: Target still populated (%+v)", ns, name, i, rule.Target)
 			}
 		}

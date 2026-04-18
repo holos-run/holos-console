@@ -117,11 +117,14 @@ Typical recovery steps:
 
 The synthesized binding name is always `<policy-name>-migrated`. A policy whose name is longer than 54 characters produces a binding name over the 63-character Kubernetes DNS-label limit; the migrator flags such policies as a conflict during planning so the dry-run output makes the problem visible before an `--apply` run. Rename the policy (or create the binding by hand) and re-run the migration.
 
-## Cleared target shape
+## Cleared target shape and the HOL-598 → HOL-600 transition window
 
-On `--apply` the migrator rewrites every rule's `target` to the placeholder shape `{project_pattern: "*", deployment_pattern: ""}` rather than the empty struct. The reason is practical: the pre-HOL-600 `TemplatePolicy` validator still requires a non-empty `project_pattern`, so a policy cleared to `{}` would be read-only through the UI/API until HOL-600 lands and removes the validator. The `"*"` placeholder satisfies the validator, and the resolver honors the binding (HOL-596) as the authoritative selector for covered render targets. When HOL-600 lands and the legacy evaluation path goes away, the placeholder is inert.
+On `--apply` the migrator rewrites every rule's `target` to the empty struct `{project_pattern: "", deployment_pattern: ""}` — the shape the ticket's AC specifies. That shape has two important interactions with the transition window between HOL-598 (UI glob-input removal, already merged) and HOL-600 (validator + legacy-evaluation-path removal, follows this PR):
 
-Re-running the migration after the cleared state is a no-op: the idempotency short-circuit treats both `project_pattern=""` and `project_pattern="*"` (with empty `deployment_pattern`) as "already migrated" and skips the policy entirely.
+1. The pre-HOL-600 `TemplatePolicy` validator still rejects a rule with `project_pattern=""` on UI/API updates. That means a migrated policy cannot be updated through the UI or the `UpdateTemplatePolicy` RPC until HOL-600 lands. This is NOT a regression introduced by the migration: HOL-598 already removed the UI inputs that could supply a non-empty `project_pattern`, so the UI cannot update ANY policy during the transition window regardless of whether the migration has run. HOL-600 is the paired patch that removes the validator and restores UI updatability.
+2. Using any non-empty placeholder (e.g. `"*"`) would have two bad consequences during the same window. First, the pre-HOL-600 resolver only bypasses a rule's glob for render targets a matching binding specifically covers — a `"*"` placeholder would therefore broaden the policy's effective set to every render target not named by the binding (new projects, new deployments). Second, `"*"` is a legitimate pre-migration wildcard, so the idempotency classifier would be unable to tell a legacy wildcard rule apart from a migrator-cleared rule, silently skipping policies that actually still need translation.
+
+Re-running the migration is still a no-op: a policy whose rules are all literally empty is classified as "already migrated" and skipped.
 
 ## Semantic caveat
 

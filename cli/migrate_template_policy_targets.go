@@ -619,15 +619,15 @@ func buildPolicyPlan(
 
 // policyHasNonEmptyTargets reports whether any rule on the policy still
 // carries a Target glob that the migrator needs to translate. A policy
-// whose rules are all cleared is already migrated and the migrator skips it
-// entirely — the canonical idempotency short-circuit.
+// whose rules are all cleared (both project_pattern and
+// deployment_pattern are the empty string) is already migrated and the
+// migrator skips it entirely — the canonical idempotency short-circuit.
 //
-// "Cleared" means either the Target is literally empty (project_pattern=""
-// and deployment_pattern="") or the migrator's placeholder shape
-// (project_pattern="*" and deployment_pattern=""). Both forms are
-// treated as "no migration work left" so a second run of this command is
-// a no-op regardless of whether an earlier version wrote an empty string
-// or this version's placeholder.
+// A rule with project_pattern="*" (a legitimate legacy pre-migration
+// glob) is NOT treated as cleared: the `"*"` token is what an operator
+// would write to target every project, and the migrator must translate
+// it into an explicit binding rather than mistaking it for the post-
+// migration shape.
 func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
 	for _, rule := range rules {
 		if rule == nil {
@@ -637,14 +637,9 @@ func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
 		if t == nil {
 			continue
 		}
-		if t.GetDeploymentPattern() != "" {
+		if t.GetProjectPattern() != "" || t.GetDeploymentPattern() != "" {
 			return true
 		}
-		pp := t.GetProjectPattern()
-		if pp == "" || pp == clearedProjectPatternPlaceholder {
-			continue
-		}
-		return true
 	}
 	return false
 }
@@ -1098,30 +1093,33 @@ type targetWire struct {
 	DeploymentPattern string `json:"deployment_pattern,omitempty"`
 }
 
-// clearedProjectPatternPlaceholder is the stand-in project_pattern written
-// on every rule when the migration clears a policy's Target globs. The
-// runtime validator (templatepolicies.validatePolicyRules, pre-HOL-600)
-// still rejects empty project_pattern strings, so a migration that wrote
-// project_pattern="" would leave affected policies effectively read-only
-// through the UI/API until HOL-600 deletes the validator. Using the
-// universal glob "*" satisfies the validator without changing the
-// semantic meaning: a binding that covers the render target overrides
-// the glob (HOL-596 resolver contract), and for targets with no
-// covering binding the "*" glob is an accurate statement that the
-// policy applies everywhere — which is also what HOL-600 will
-// implicitly assume when it removes the glob path entirely.
+// marshalClearedRules serializes the in-memory rules with BOTH Target
+// globs set to the empty string — the shape the AC requires. The function
+// intentionally does NOT call out into templatepolicies.marshalRules —
+// that helper is unexported, and duplicating the wire struct keeps the
+// migrator independent from templatepolicies' internal refactors.
 //
-// Tests that assert the glob fields are cleared check for either ""
-// or "*" and ignore deployment_pattern (which stays empty — the
-// validator does not require it).
-const clearedProjectPatternPlaceholder = "*"
-
-// marshalClearedRules serializes the in-memory rules with
-// project_pattern set to the placeholder constant and deployment_pattern
-// set to the empty string. The function intentionally does NOT call
-// out into templatepolicies.marshalRules — that helper is unexported, and
-// duplicating the wire struct keeps the migrator independent from
-// templatepolicies' internal refactors.
+// A `project_pattern: ""` placeholder is chosen over `"*"` for two
+// reasons. First, a literal `"*"` would still be evaluated by the pre-
+// HOL-600 resolver for render targets the binding does NOT cover (new
+// projects, new deployments), broadening the policy's effective set
+// during the transition window — the HOL-596 resolver only bypasses the
+// glob for the specific render targets named by a matching binding, not
+// for every target that shares the policy. Second, `"*"` is a legitimate
+// pre-migration glob value, so a placeholder that picks the same token
+// would make the idempotency classifier unable to tell a legacy wildcard
+// rule apart from a migrator-cleared rule, silently skipping migration
+// of policies that actually still need one.
+//
+// The empty-string form does mean the current
+// templatepolicies.validatePolicyRules rejects UI/API updates of
+// migrated policies until HOL-600 removes the validator. That window is
+// already in effect today because HOL-598 removed the UI inputs that
+// could supply a non-empty project_pattern — i.e., the UI cannot update
+// any TemplatePolicy right now regardless of whether the migration has
+// run. HOL-600 is the paired patch that removes the validator, at which
+// point all policies become UI-updatable again. The runbook calls this
+// out explicitly.
 func marshalClearedRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
 	out := make([]ruleWire, 0, len(rules))
 	for _, r := range rules {
@@ -1137,12 +1135,10 @@ func marshalClearedRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) 
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
 		}
-		// project_pattern is set to the universal-match placeholder so
-		// the existing validator accepts subsequent UpdatePolicy
-		// calls from the UI during the HOL-599 → HOL-600 transition
-		// window. deployment_pattern stays empty — the validator
-		// does not require it.
-		wire.Target = targetWire{ProjectPattern: clearedProjectPatternPlaceholder}
+		// Target fields deliberately left zero — this is the whole
+		// point of the migration. Post-apply the policy carries no
+		// meaningful Target data so HOL-600 can delete the
+		// evaluation path without surprise.
 		out = append(out, wire)
 	}
 	b, err := json.Marshal(out)
