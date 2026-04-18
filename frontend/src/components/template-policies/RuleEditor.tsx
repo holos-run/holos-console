@@ -35,10 +35,9 @@ export type RuleEditorProps = {
   disabled?: boolean
 }
 
-// Kind options shown in the kind picker. The long REQUIRE/EXCLUDE copy is
-// rendered once in a tooltip next to the Kind label (see JSX below) rather
-// than inlined into every popover row — previously the inline description
-// overflowed the `<Select>` popover at narrow widths (HOL-588).
+// Intentionally only the short enum label — the long REQUIRE/EXCLUDE copy is
+// sourced from `platform-template-copy` and surfaced once via the tooltip next
+// to the Kind `<Label>` so it does not overflow the Radix Select popover.
 const KIND_OPTIONS: Array<{ value: TemplatePolicyKind; label: string }> = [
   { value: TemplatePolicyKind.REQUIRE, label: 'REQUIRE' },
   { value: TemplatePolicyKind.EXCLUDE, label: 'EXCLUDE' },
