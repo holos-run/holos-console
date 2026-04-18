@@ -21,7 +21,17 @@ import (
 // Test helpers: build a fake namespace hierarchy matching the fixture
 // described in HOL-567 (org acme, folder eng, folder team-a under eng,
 // projects under each folder and under the org directly).
+//
+// HOL-600 removed the glob-based TemplatePolicyTarget path; render-time
+// selection now runs exclusively through TemplatePolicyBinding. These
+// tests therefore drive REQUIRE/EXCLUDE through bindings and also
+// assert that a legacy "target" payload lingering in the stored
+// annotation is ignored gracefully.
 
+// storedRuleTest mirrors the on-disk JSON wire shape of a
+// TemplatePolicyRule — including the legacy "target" field. Keeping the
+// field here lets tests seed stale ConfigMaps and assert the resolver
+// ignores them (see TestFolderResolver_IgnoresLegacyTargetField).
 type storedRuleTest struct {
 	Kind     string `json:"kind"`
 	Template struct {
@@ -30,16 +40,23 @@ type storedRuleTest struct {
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	} `json:"template"`
-	Target struct {
-		ProjectPattern    string `json:"project_pattern"`
-		DeploymentPattern string `json:"deployment_pattern,omitempty"`
-	} `json:"target"`
+	Target *legacyTargetForTest `json:"target,omitempty"`
 }
 
-// testUnmarshalRules mirrors templatepolicies.UnmarshalRules but avoids the
-// cross-package import in tests. The logic must match the production
-// unmarshaler exactly: a future drift between the two would silently change
-// test assertions, so we vendor the minimal decoder here.
+// legacyTargetForTest captures the pre-HOL-600 "target" payload that the
+// resolver is required to ignore gracefully. Keeping it optional via a
+// pointer means tests can seed both shapes (with and without a legacy
+// target) without changing the JSON shape of the other fields.
+type legacyTargetForTest struct {
+	ProjectPattern    string `json:"project_pattern"`
+	DeploymentPattern string `json:"deployment_pattern,omitempty"`
+}
+
+// testUnmarshalRules mirrors templatepolicies.UnmarshalRules but avoids
+// the cross-package import in tests. The legacy `target` field is parsed
+// defensively by storedRuleTest above so pre-migration annotations still
+// decode cleanly; the decoded value is discarded because the runtime
+// proto no longer carries a Target field.
 func testUnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 	if raw == "" {
 		return nil, nil
@@ -73,10 +90,6 @@ func testUnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 				ScopeName:         s.Template.ScopeName,
 				Name:              s.Template.Name,
 				VersionConstraint: s.Template.VersionConstraint,
-			},
-			Target: &consolev1.TemplatePolicyTarget{
-				ProjectPattern:    s.Target.ProjectPattern,
-				DeploymentPattern: s.Target.DeploymentPattern,
 			},
 		})
 	}
@@ -190,6 +203,66 @@ func policyCM(namespace, name string, rules []storedRuleTest, t *testing.T) core
 	}
 }
 
+// requireRuleStored builds a REQUIRE-kind stored rule with no legacy
+// target. Bindings select which render targets the rule applies to.
+func requireRuleStored(scope, scopeName, name string) storedRuleTest {
+	sr := storedRuleTest{Kind: "require"}
+	sr.Template.Scope = scope
+	sr.Template.ScopeName = scopeName
+	sr.Template.Name = name
+	return sr
+}
+
+// excludeRuleStored is the EXCLUDE counterpart to requireRuleStored.
+func excludeRuleStored(scope, scopeName, name string) storedRuleTest {
+	sr := storedRuleTest{Kind: "exclude"}
+	sr.Template.Scope = scope
+	sr.Template.ScopeName = scopeName
+	sr.Template.Name = name
+	return sr
+}
+
+// withLegacyTarget attaches a pre-HOL-600 legacy target payload to a
+// stored rule so tests can assert the resolver ignores it.
+func withLegacyTarget(rule storedRuleTest, projectPattern, deploymentPattern string) storedRuleTest {
+	rule.Target = &legacyTargetForTest{
+		ProjectPattern:    projectPattern,
+		DeploymentPattern: deploymentPattern,
+	}
+	return rule
+}
+
+// orgPolicyRefStored builds an organization-scoped policy_ref wire value
+// for binding fixtures.
+func orgPolicyRefStored(policyName string) storedPolicyRefTest {
+	return storedPolicyRefTest{
+		Scope:     v1alpha2.TemplateScopeOrganization,
+		ScopeName: "acme",
+		Name:      policyName,
+	}
+}
+
+// folderPolicyRefStored is the folder-scoped counterpart of
+// orgPolicyRefStored.
+func folderPolicyRefStored(folder, policyName string) storedPolicyRefTest {
+	return storedPolicyRefTest{
+		Scope:     v1alpha2.TemplateScopeFolder,
+		ScopeName: folder,
+		Name:      policyName,
+	}
+}
+
+// deploymentTargetStored / projectTemplateTargetStored return the
+// binding-side target refs the table cases use. The binding handlers'
+// wire shape is the same one exercised by the bindings tests.
+func deploymentTargetStored(project, name string) storedTargetRefTest {
+	return storedTargetRefTest{Kind: "deployment", Name: name, ProjectName: project}
+}
+
+func projectTemplateTargetStored(project, name string) storedTargetRefTest {
+	return storedTargetRefTest{Kind: "project-template", Name: name, ProjectName: project}
+}
+
 func TestFolderResolver_Resolve(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
@@ -209,25 +282,6 @@ func TestFolderResolver_Resolve(t *testing.T) {
 		}
 	}
 
-	requireRule := func(scope, scopeName, name, projectPattern, deploymentPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "require"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = name
-		sr.Target.ProjectPattern = projectPattern
-		sr.Target.DeploymentPattern = deploymentPattern
-		return sr
-	}
-	excludeRule := func(scope, scopeName, name, projectPattern, deploymentPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "exclude"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = name
-		sr.Target.ProjectPattern = projectPattern
-		sr.Target.DeploymentPattern = deploymentPattern
-		return sr
-	}
-
 	type want struct {
 		names []string
 	}
@@ -239,10 +293,11 @@ func TestFolderResolver_Resolve(t *testing.T) {
 		targetName string
 		explicit   []*consolev1.LinkedTemplateRef
 		policies   map[string][]corev1.ConfigMap
+		bindings   map[string][]corev1.ConfigMap
 		want       want
 	}{
 		{
-			name:       "no policies — explicit refs pass through",
+			name:       "no policies, no bindings — explicit refs pass through",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
@@ -250,7 +305,7 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			want:       want{names: []string{"httproute"}},
 		},
 		{
-			name:       "REQUIRE-only — org policy injects template",
+			name:       "REQUIRE-only — org policy injects template via binding",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
@@ -258,58 +313,88 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
 					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "audit-bind",
+						orgPolicyRefStored("audit"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: []string{"audit-policy"}},
 		},
 		{
-			name:       "REQUIRE matches on project_pattern only",
+			name:       "policy with no binding contributes nothing",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
 			explicit:   nil,
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
-					policyCM(ns["org"], "lilies-only", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "lil*", ""),
+					policyCM(ns["org"], "audit", []storedRuleTest{
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 					}, t),
 				},
 			},
-			want: want{names: []string{"audit-policy"}},
+			bindings: nil,
+			want:     want{names: nil},
 		},
 		{
-			name:       "REQUIRE pattern does not match",
-			projectNs:  ns["projectRoses"],
+			name:       "binding targets peer, not current render target — no refs",
+			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
-			targetName: "api",
-			explicit:   nil,
+			targetName: "worker",
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
-					policyCM(ns["org"], "lilies-only", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "lilies", ""),
+					policyCM(ns["org"], "audit", []storedRuleTest{
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "audit-bind",
+						orgPolicyRefStored("audit"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: nil},
 		},
 		{
-			name:       "EXCLUDE-only on a require-injected template removes it",
+			name:       "EXCLUDE via binding removes a REQUIRE-injected template",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
 			explicit:   nil,
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
+					policyCM(ns["org"], "req", []storedRuleTest{
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+					}, t),
+					policyCM(ns["org"], "exc", []storedRuleTest{
+						excludeRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 					}, t),
 				},
-				ns["folderEng"]: {
-					policyCM(ns["folderEng"], "opt-out", []storedRuleTest{
-						excludeRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "lilies", ""),
-					}, t),
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "req-bind",
+						orgPolicyRefStored("req"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
+					bindingCM(ns["org"], "exc-bind",
+						orgPolicyRefStored("exc"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: nil},
@@ -323,8 +408,17 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			policies: map[string][]corev1.ConfigMap{
 				ns["folderEng"]: {
 					policyCM(ns["folderEng"], "block-httproute", []storedRuleTest{
-						excludeRule(v1alpha2.TemplateScopeOrganization, "acme", "httproute", "*", ""),
+						excludeRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "httproute"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["folderEng"]: {
+					bindingCM(ns["folderEng"], "block-bind",
+						folderPolicyRefStored("eng", "block-httproute"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: []string{"httproute"}},
@@ -338,20 +432,36 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
 					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "extra", "*", ""),
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "extra"),
 					}, t),
 				},
 				ns["folderEng"]: {
 					policyCM(ns["folderEng"], "drop-extra", []storedRuleTest{
-						excludeRule(v1alpha2.TemplateScopeOrganization, "acme", "extra", "*", ""),
+						excludeRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "extra"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "audit-bind",
+						orgPolicyRefStored("audit"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
+				},
+				ns["folderEng"]: {
+					bindingCM(ns["folderEng"], "drop-extra-bind",
+						folderPolicyRefStored("eng", "drop-extra"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: []string{"httproute", "audit-policy"}},
 		},
 		{
-			name:       "multi-folder hierarchy: folder policy applies to nested project",
+			name:       "multi-folder hierarchy: folder policy applies to nested project via binding",
 			projectNs:  ns["projectRoses"],
 			target:     TargetKindDeployment,
 			targetName: "api",
@@ -359,59 +469,23 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			policies: map[string][]corev1.ConfigMap{
 				ns["folderEng"]: {
 					policyCM(ns["folderEng"], "eng-audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeFolder, "eng", "eng-audit", "*", ""),
+						requireRuleStored(v1alpha2.TemplateScopeFolder, "eng", "eng-audit"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["folderEng"]: {
+					bindingCM(ns["folderEng"], "eng-audit-bind",
+						folderPolicyRefStored("eng", "eng-audit"),
+						[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
+						t,
+					),
 				},
 			},
 			want: want{names: []string{"eng-audit"}},
 		},
 		{
-			name:       "REQUIRE-equivalent-to-old-mandatory across all projects",
-			projectNs:  ns["projectOrchids"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			explicit:   nil,
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "all-projects", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "reference-grant", "*", ""),
-					}, t),
-				},
-			},
-			want: want{names: []string{"reference-grant"}},
-		},
-		{
-			name:       "deployment_pattern narrows REQUIRE to matching deployment",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			explicit:   nil,
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "api-only", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "api-template", "*", "api"),
-					}, t),
-				},
-			},
-			want: want{names: []string{"api-template"}},
-		},
-		{
-			name:       "deployment_pattern not matching skips REQUIRE",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "worker",
-			explicit:   nil,
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "api-only", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "api-template", "*", "api"),
-					}, t),
-				},
-			},
-			want: want{names: nil},
-		},
-		{
-			name:       "REQUIRE on ProjectTemplate target kind (no deployment pattern)",
+			name:       "REQUIRE on ProjectTemplate target kind via binding",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindProjectTemplate,
 			targetName: "my-template",
@@ -419,34 +493,84 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
 					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
+						requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "audit-bind",
+						orgPolicyRefStored("audit"),
+						[]storedTargetRefTest{projectTemplateTargetStored("lilies", "my-template")},
+						t,
+					),
 				},
 			},
 			want: want{names: []string{"baseline", "audit-policy"}},
 		},
 		{
-			name:       "REQUIRE with deployment_pattern never matches ProjectTemplate",
+			// AC (HOL-600): legacy "target" payloads lingering on a
+			// stored ConfigMap must be ignored. This seeds a stale
+			// rule with project_pattern="*" that the pre-HOL-600
+			// resolver would have injected everywhere; without a
+			// matching binding post-HOL-600, nothing contributes.
+			name:       "legacy rule.target annotation is ignored without a covering binding",
 			projectNs:  ns["projectLilies"],
-			target:     TargetKindProjectTemplate,
-			targetName: "my-template",
+			target:     TargetKindDeployment,
+			targetName: "api",
 			explicit:   nil,
 			policies: map[string][]corev1.ConfigMap{
 				ns["org"]: {
-					policyCM(ns["org"], "api-only", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "api-template", "*", "api"),
+					policyCM(ns["org"], "stale", []storedRuleTest{
+						withLegacyTarget(
+							requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "stale-tmpl"),
+							"*", "",
+						),
 					}, t),
 				},
 			},
-			want: want{names: nil},
+			bindings: nil,
+			want:     want{names: nil},
+		},
+		{
+			// Companion to the previous case: the stale rule.target
+			// payload is still ignored when a matching binding
+			// exists. The rule contributes because the binding
+			// selected it — the legacy glob had no bearing.
+			name:       "legacy rule.target is ignored even when a binding selects the rule",
+			projectNs:  ns["projectLilies"],
+			target:     TargetKindDeployment,
+			targetName: "api",
+			explicit:   nil,
+			policies: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					policyCM(ns["org"], "stale", []storedRuleTest{
+						withLegacyTarget(
+							requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "stale-tmpl"),
+							"nomatch", "nomatch",
+						),
+					}, t),
+				},
+			},
+			bindings: map[string][]corev1.ConfigMap{
+				ns["org"]: {
+					bindingCM(ns["org"], "stale-bind",
+						orgPolicyRefStored("stale"),
+						[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+						t,
+					),
+				},
+			},
+			want: want{names: []string{"stale-tmpl"}},
 		},
 	}
 
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			lister := &policyListerFromClient{items: tc.policies}
-			fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+			pl := &policyListerFromClient{items: tc.policies}
+			bl := &bindingListerFromMap{items: tc.bindings}
+			fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
 			got, err := fr.Resolve(context.Background(), tc.projectNs, tc.target, tc.targetName, tc.explicit)
 			if err != nil {
@@ -489,28 +613,36 @@ func equalStringSlices(a, b []string) bool {
 // TestFolderResolver_IgnoresProjectNamespacePolicies is the HOL-554
 // storage-isolation guardrail: even when a synthetic (forbidden) policy
 // ConfigMap is seeded in a project namespace, the resolver must NOT pick it
-// up. This mirrors the acceptance-criteria bullet in HOL-567.
+// up. This mirrors the acceptance-criteria bullet in HOL-567 and
+// continues to hold after HOL-600 (bindings do not relax it; a binding
+// sitting in a folder namespace that points at a policy sitting in a
+// project namespace finds no such policy in the ancestor walk).
 func TestFolderResolver_IgnoresProjectNamespacePolicies(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	rules := []storedRuleTest{}
-	sr := storedRuleTest{Kind: "require"}
-	sr.Template.Scope = v1alpha2.TemplateScopeOrganization
-	sr.Template.ScopeName = "acme"
-	sr.Template.Name = "should-be-ignored"
-	sr.Target.ProjectPattern = "*"
-	rules = append(rules, sr)
-
 	// Put a (forbidden) policy ConfigMap directly in the project namespace.
-	// The resolver must not consume it.
+	// The resolver must not consume it — even if a binding in a legitimate
+	// (folder) namespace points at a policy with the same name.
 	policies := map[string][]corev1.ConfigMap{
 		ns["projectLilies"]: {
-			policyCM(ns["projectLilies"], "pwned", rules, t),
+			policyCM(ns["projectLilies"], "pwned", []storedRuleTest{
+				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "should-be-ignored"),
+			}, t),
 		},
 	}
-	lister := &policyListerFromClient{items: policies}
-	fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+	bindings := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			bindingCM(ns["org"], "pwned-bind",
+				orgPolicyRefStored("pwned"),
+				[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+				t,
+			),
+		},
+	}
+	pl := &policyListerFromClient{items: policies}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
 	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
 	if err != nil {
@@ -522,41 +654,57 @@ func TestFolderResolver_IgnoresProjectNamespacePolicies(t *testing.T) {
 }
 
 // TestFolderResolver_MultiFolderResolvesCorrectOwningFolder ensures that
-// projects nested under multiple folders pull policies from every folder in
-// the chain, not just the immediate parent.
+// projects nested under multiple folders pull policies from every folder
+// in the chain, not just the immediate parent. Bindings in each folder
+// select the nested project's deployment render target.
 func TestFolderResolver_MultiFolderResolvesCorrectOwningFolder(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	requireRule := func(scope, scopeName, name, projectPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "require"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = name
-		sr.Target.ProjectPattern = projectPattern
-		return sr
-	}
-
 	policies := map[string][]corev1.ConfigMap{
 		ns["org"]: {
 			policyCM(ns["org"], "org-p", []storedRuleTest{
-				requireRule(v1alpha2.TemplateScopeOrganization, "acme", "org-tmpl", "*"),
+				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "org-tmpl"),
 			}, t),
 		},
 		ns["folderEng"]: {
 			policyCM(ns["folderEng"], "eng-p", []storedRuleTest{
-				requireRule(v1alpha2.TemplateScopeFolder, "eng", "eng-tmpl", "*"),
+				requireRuleStored(v1alpha2.TemplateScopeFolder, "eng", "eng-tmpl"),
 			}, t),
 		},
 		ns["folderTeamA"]: {
 			policyCM(ns["folderTeamA"], "team-a-p", []storedRuleTest{
-				requireRule(v1alpha2.TemplateScopeFolder, "team-a", "team-a-tmpl", "*"),
+				requireRuleStored(v1alpha2.TemplateScopeFolder, "team-a", "team-a-tmpl"),
 			}, t),
 		},
 	}
+	bindings := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			bindingCM(ns["org"], "org-bind",
+				orgPolicyRefStored("org-p"),
+				[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
+				t,
+			),
+		},
+		ns["folderEng"]: {
+			bindingCM(ns["folderEng"], "eng-bind",
+				folderPolicyRefStored("eng", "eng-p"),
+				[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
+				t,
+			),
+		},
+		ns["folderTeamA"]: {
+			bindingCM(ns["folderTeamA"], "team-a-bind",
+				folderPolicyRefStored("team-a", "team-a-p"),
+				[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
+				t,
+			),
+		},
+	}
 
-	lister := &policyListerFromClient{items: policies}
-	fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+	pl := &policyListerFromClient{items: policies}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
 	// projectRoses is under team-a which is under eng which is under org.
 	got, err := fr.Resolve(context.Background(), ns["projectRoses"], TargetKindDeployment, "api", nil)
@@ -592,27 +740,56 @@ func TestFolderResolver_MisconfiguredFallsOpen(t *testing.T) {
 	}
 }
 
-// TestFolderResolver_PolicyListerErrorIsLogged verifies that a lister error
-// for one namespace does not break resolution in other namespaces in the
-// chain.
-func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
+// TestFolderResolver_NoBindingWireupIsFailOpen is the direct AC for the
+// post-HOL-600 resolver: constructing a resolver via NewFolderResolver
+// (without binding deps) means no rule can contribute. A policy sitting
+// in the ancestor chain is simply ignored and the caller's explicit
+// refs pass through unchanged. This locks in the fail-open contract so
+// a future refactor cannot accidentally revive the legacy glob path
+// without touching this test.
+func TestFolderResolver_NoBindingWireupIsFailOpen(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	requireRule := func(scope, scopeName, name, projectPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "require"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = name
-		sr.Target.ProjectPattern = projectPattern
-		return sr
+	policies := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			policyCM(ns["org"], "audit", []storedRuleTest{
+				// Seed a legacy target that would have matched
+				// every project pre-HOL-600.
+				withLegacyTarget(
+					requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+					"*", "",
+				),
+			}, t),
+		},
 	}
+	pl := &policyListerFromClient{items: policies}
+	// NewFolderResolver (no bindings) — post-HOL-600 this means "no
+	// rules contribute".
+	fr := NewFolderResolver(pl, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no refs without binding wire-up, got %v", refNames(got))
+	}
+}
+
+// TestFolderResolver_PolicyListerErrorIsLogged verifies that a lister
+// error for one namespace does not break resolution in other namespaces
+// in the chain. The rule that survives still needs a covering binding to
+// contribute, matching the post-HOL-600 selection contract.
+func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
+	client, r, ns := buildFixture()
+	walker := &resolver.Walker{Client: client, Resolver: r}
 
 	inner := &policyListerFromClient{
 		items: map[string][]corev1.ConfigMap{
 			ns["org"]: {
 				policyCM(ns["org"], "p", []storedRuleTest{
-					requireRule(v1alpha2.TemplateScopeOrganization, "acme", "org-tmpl", "*"),
+					requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "org-tmpl"),
 				}, t),
 			},
 		},
@@ -622,7 +799,17 @@ func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
 		failFor: ns["folderEng"],
 		err:     errors.New("boom"),
 	}
-	fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+	bindings := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			bindingCM(ns["org"], "p-bind",
+				orgPolicyRefStored("p"),
+				[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+				t,
+			),
+		},
+	}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(lister, bl, walker, r)
 
 	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
 	if err != nil {
@@ -633,9 +820,9 @@ func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
 	}
 }
 
-// TestFolderResolver_WalkerErrorReturnsExplicitRefs: if the walker fails, the
-// resolver must not error; it must return explicit refs so the render can
-// still produce a minimal output.
+// TestFolderResolver_WalkerErrorReturnsExplicitRefs: if the walker fails,
+// the resolver must not error; it must return explicit refs so the
+// render can still produce a minimal output.
 func TestFolderResolver_WalkerErrorReturnsExplicitRefs(t *testing.T) {
 	r := baseResolver()
 	walker := &failingWalker{err: errors.New("walker exploded")}
@@ -663,7 +850,9 @@ func (f *failingWalker) WalkAncestors(_ context.Context, _ string) ([]*corev1.Na
 }
 
 // TestFolderResolver_DedupRespectsExplicit: when an explicit ref matches a
-// REQUIRE rule, the explicit ref survives (version constraint is preserved).
+// REQUIRE rule (selected via binding), the explicit ref survives with
+// its version constraint intact. This guards the first-seen-wins dedup
+// contract.
 func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
@@ -676,22 +865,38 @@ func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 			VersionConstraint: ">=1.0.0",
 		},
 	}
-	rules := []storedRuleTest{}
-	sr := storedRuleTest{Kind: "require"}
-	sr.Template.Scope = v1alpha2.TemplateScopeOrganization
-	sr.Template.ScopeName = "acme"
-	sr.Template.Name = "httproute"
-	sr.Template.VersionConstraint = "<2.0.0"
-	sr.Target.ProjectPattern = "*"
-	rules = append(rules, sr)
-
 	policies := map[string][]corev1.ConfigMap{
 		ns["org"]: {
-			policyCM(ns["org"], "p", rules, t),
+			policyCM(ns["org"], "p", []storedRuleTest{
+				{
+					Kind: "require",
+					Template: struct {
+						Scope             string `json:"scope"`
+						ScopeName         string `json:"scope_name"`
+						Name              string `json:"name"`
+						VersionConstraint string `json:"version_constraint,omitempty"`
+					}{
+						Scope:             v1alpha2.TemplateScopeOrganization,
+						ScopeName:         "acme",
+						Name:              "httproute",
+						VersionConstraint: "<2.0.0",
+					},
+				},
+			}, t),
 		},
 	}
-	lister := &policyListerFromClient{items: policies}
-	fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
+	bindings := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			bindingCM(ns["org"], "p-bind",
+				orgPolicyRefStored("p"),
+				[]storedTargetRefTest{deploymentTargetStored("lilies", "api")},
+				t,
+			),
+		},
+	}
+	pl := &policyListerFromClient{items: policies}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
 	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", explicit)
 	if err != nil {

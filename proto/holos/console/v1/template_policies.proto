@@ -68,28 +68,30 @@ enum TemplatePolicyKind {
   TEMPLATE_POLICY_KIND_EXCLUDE = 2;
 }
 
-// TemplatePolicyTarget selects the set of projects (and, optionally,
-// deployments) a rule applies to. Patterns follow the same glob semantics as
-// filepath.Match: `*` matches any sequence of non-separator characters.
-message TemplatePolicyTarget {
-  // project_pattern matches project names. "*" matches every project.
-  string project_pattern = 1;
-  // deployment_pattern matches deployment names within a matched project.
-  // "*" matches every deployment. Empty string means "project-level only"
-  // (no deployment filtering applied by this rule).
-  string deployment_pattern = 2;
-}
+// HOL-590 removed the legacy glob-based TemplatePolicyTarget message and
+// TemplatePolicyRule.target field. Render-time selection now runs through
+// TemplatePolicyBinding (see template_policy_bindings.proto); a rule
+// contributes to a render target only when a matching binding names its
+// owning policy. The `TemplatePolicyTarget` message name and the
+// `TemplatePolicyRule.target` field number (3) are reserved here so they
+// are never reused in future revisions — any bytes left over from
+// pre-migration clients simply decode as unknown fields and are discarded.
+// See HOL-599 for the migration that translates legacy globs into
+// bindings, and HOL-600 for the final cleanup.
 
-// TemplatePolicyRule binds a kind, a template reference, and a target selector
-// into a single rule. A TemplatePolicy may carry many rules.
+// TemplatePolicyRule binds a kind and a template reference into a single
+// rule. A TemplatePolicy may carry many rules; which render targets a rule
+// applies to is decided entirely by TemplatePolicyBinding objects.
 message TemplatePolicyRule {
   // kind is REQUIRE or EXCLUDE.
   TemplatePolicyKind kind = 1;
   // template identifies the template this rule applies to. The referenced
   // template may live in any scope the policy's owning scope can reach.
   LinkedTemplateRef template = 2;
-  // target restricts which projects/deployments the rule matches.
-  TemplatePolicyTarget target = 3;
+  // Field 3 (target) was the legacy glob-based TemplatePolicyTarget that
+  // HOL-600 removed. It is reserved so the number is never reused.
+  reserved 3;
+  reserved "target";
 }
 
 // TemplatePolicy is a named resource that declares one or more rules

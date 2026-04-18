@@ -264,10 +264,23 @@ func scopeLabelValue(scope consolev1.TemplateScope) string {
 // storedRule is the JSON wire shape for a TemplatePolicyRule annotation entry.
 // Nested structs carry their own JSON representation so a hand-authored
 // ConfigMap without the latest generated types still round-trips.
+//
+// HOL-600 removed the legacy "target" glob selector from the proto; the
+// JSON key is no longer written by marshalRules. A best-effort "target"
+// field remains on the decode struct purely so unmarshalRules can consume
+// pre-migration annotations without returning a parse error — the decoded
+// value is discarded. New ConfigMaps written by the current console never
+// carry the key.
 type storedRule struct {
 	Kind     string            `json:"kind"`
 	Template storedTemplateRef `json:"template"`
-	Target   storedTarget      `json:"target"`
+	// LegacyTarget decodes the pre-HOL-600 "target" JSON field on best
+	// effort so stale ConfigMaps do not surface a parse error to the
+	// caller. The value is never inspected. The JSON tag must stay as
+	// "target" so the decoder accepts the legacy wire shape; the Go
+	// field name is deliberately distinct so callers reading this file
+	// are not tempted to re-read it.
+	LegacyTarget json.RawMessage `json:"target,omitempty"`
 }
 
 type storedTemplateRef struct {
@@ -277,18 +290,22 @@ type storedTemplateRef struct {
 	VersionConstraint string `json:"version_constraint,omitempty"`
 }
 
-type storedTarget struct {
-	ProjectPattern    string `json:"project_pattern"`
-	DeploymentPattern string `json:"deployment_pattern,omitempty"`
+// marshalOnlyRule mirrors storedRule for the write path but omits the
+// legacy "target" JSON field entirely. Keeping the encode and decode
+// shapes distinct means a future refactor cannot accidentally round-trip
+// a pre-migration "target" value back onto disk.
+type marshalOnlyRule struct {
+	Kind     string            `json:"kind"`
+	Template storedTemplateRef `json:"template"`
 }
 
 func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
-	stored := make([]storedRule, 0, len(rules))
+	stored := make([]marshalOnlyRule, 0, len(rules))
 	for _, r := range rules {
 		if r == nil {
 			continue
 		}
-		sr := storedRule{
+		sr := marshalOnlyRule{
 			Kind: kindToString(r.GetKind()),
 		}
 		if tmpl := r.GetTemplate(); tmpl != nil {
@@ -297,12 +314,6 @@ func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
 				ScopeName:         tmpl.GetScopeName(),
 				Name:              tmpl.GetName(),
 				VersionConstraint: tmpl.GetVersionConstraint(),
-			}
-		}
-		if tgt := r.GetTarget(); tgt != nil {
-			sr.Target = storedTarget{
-				ProjectPattern:    tgt.GetProjectPattern(),
-				DeploymentPattern: tgt.GetDeploymentPattern(),
 			}
 		}
 		stored = append(stored, sr)
@@ -324,6 +335,10 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 	}
 	rules := make([]*consolev1.TemplatePolicyRule, 0, len(stored))
 	for _, s := range stored {
+		// Any legacy "target" field on the stored ConfigMap is dropped
+		// here: HOL-600 removed the glob evaluator, so the decoded
+		// value has no downstream consumer. Render-time selection runs
+		// through TemplatePolicyBinding.
 		rule := &consolev1.TemplatePolicyRule{
 			Kind: kindFromString(s.Kind),
 			Template: &consolev1.LinkedTemplateRef{
@@ -331,10 +346,6 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 				ScopeName:         s.Template.ScopeName,
 				Name:              s.Template.Name,
 				VersionConstraint: s.Template.VersionConstraint,
-			},
-			Target: &consolev1.TemplatePolicyTarget{
-				ProjectPattern:    s.Target.ProjectPattern,
-				DeploymentPattern: s.Target.DeploymentPattern,
 			},
 		}
 		rules = append(rules, rule)

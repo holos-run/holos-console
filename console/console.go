@@ -388,17 +388,18 @@ func (s *Server) Serve(ctx context.Context) error {
 		// templatePoliciesK8s was constructed earlier so the folderResolver
 		// could be wired; reuse the same client here so there is exactly
 		// one policy reader+writer in the process.
-		// Topology resolver enumerates project namespaces + their
-		// ProjectTemplate / Deployment ConfigMaps under a policy's scope so
-		// CreateTemplatePolicy and UpdateTemplatePolicy can reject an
-		// EXCLUDE rule that would contradict an explicit
-		// console.holos.run/linked-templates annotation (HOL-570).
-		templatePolicyTopology := templatepolicies.NewK8sResourceTopology(k8sClientset, nsResolver, nsWalker)
+		//
+		// HOL-600 removed the HOL-570 EXCLUDE-vs-explicit-link guardrail
+		// and its K8sResourceTopology resolver: policies no longer carry
+		// a glob Target, and render-target selection runs entirely
+		// through TemplatePolicyBinding. Any equivalent guardrail now
+		// belongs on the binding create/update path (enforced by
+		// console/templatepolicybindings) rather than on the policy
+		// itself.
 		templatePoliciesHandler := templatepolicies.NewHandler(templatePoliciesK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
-			WithTemplateExistsResolver(templates.NewTemplateExistsAdapter(templatesK8s)).
-			WithResourceTopologyResolver(templatePolicyTopology)
+			WithTemplateExistsResolver(templates.NewTemplateExistsAdapter(templatesK8s))
 		templatePoliciesPath, templatePoliciesHTTPHandler := consolev1connect.NewTemplatePolicyServiceHandler(templatePoliciesHandler, protectedInterceptors)
 		mux.Handle(templatePoliciesPath, templatePoliciesHTTPHandler)
 

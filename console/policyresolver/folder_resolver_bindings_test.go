@@ -3,7 +3,6 @@ package policyresolver
 import (
 	"context"
 	"encoding/json"
-	"sort"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -134,11 +133,12 @@ func bindingCM(namespace, name string, policyRef storedPolicyRefTest, targets []
 	}
 }
 
-// newFolderResolverWithBindingsForTest constructs a resolver wired with both
-// rule-side and binding-side deps, so the tests in this file exercise the
-// HOL-596 binding evaluation path.
+// newFolderResolverWithBindingsForTest constructs a resolver wired with
+// both rule-side and binding-side deps, so the tests in this file and
+// folder_resolver_test.go exercise the post-HOL-600 binding evaluation
+// path.
 func newFolderResolverWithBindingsForTest(
-	policies *policyListerFromClient,
+	policies PolicyListerInNamespace,
 	bindings *bindingListerFromMap,
 	walker WalkerInterface,
 	r *resolver.Resolver,
@@ -156,401 +156,12 @@ func newFolderResolverWithBindingsForTest(
 	)
 }
 
-// TestFolderResolver_Bindings covers the HOL-596 acceptance criteria:
-//   - Binding + no rule.Target → binding matches.
-//   - Binding + matching rule.Target → binding wins (glob ignored).
-//   - No binding + matching rule.Target → glob still applies.
-//   - Binding targets nonexistent policy → resolver logs and no-ops.
-func TestFolderResolver_Bindings(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
-
-	requireRule := func(scope, scopeName, templateName, projectPattern, deploymentPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "require"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = templateName
-		sr.Target.ProjectPattern = projectPattern
-		sr.Target.DeploymentPattern = deploymentPattern
-		return sr
-	}
-	excludeRule := func(scope, scopeName, templateName, projectPattern, deploymentPattern string) storedRuleTest {
-		sr := storedRuleTest{Kind: "exclude"}
-		sr.Template.Scope = scope
-		sr.Template.ScopeName = scopeName
-		sr.Template.Name = templateName
-		sr.Target.ProjectPattern = projectPattern
-		sr.Target.DeploymentPattern = deploymentPattern
-		return sr
-	}
-	orgPolicyRef := func(policyName string) storedPolicyRefTest {
-		return storedPolicyRefTest{
-			Scope:     v1alpha2.TemplateScopeOrganization,
-			ScopeName: "acme",
-			Name:      policyName,
-		}
-	}
-	folderPolicyRef := func(folder, policyName string) storedPolicyRefTest {
-		return storedPolicyRefTest{
-			Scope:     v1alpha2.TemplateScopeFolder,
-			ScopeName: folder,
-			Name:      policyName,
-		}
-	}
-	deploymentTarget := func(project, name string) storedTargetRefTest {
-		return storedTargetRefTest{Kind: "deployment", Name: name, ProjectName: project}
-	}
-	projectTemplateTarget := func(project, name string) storedTargetRefTest {
-		return storedTargetRefTest{Kind: "project-template", Name: name, ProjectName: project}
-	}
-
-	type wantRes struct {
-		names []string
-	}
-
-	tests := []struct {
-		name       string
-		projectNs  string
-		target     TargetKind
-		targetName string
-		explicit   []*consolev1.LinkedTemplateRef
-		policies   map[string][]corev1.ConfigMap
-		bindings   map[string][]corev1.ConfigMap
-		want       wantRes
-	}{
-		{
-			// AC: Binding + no matching rule.Target → binding matches. The
-			// policy's glob Target is narrowed so the rule would NOT apply
-			// on its own; only the binding can select this render target.
-			// The test proves the binding path wires the policy onto the
-			// render target independently of the glob.
-			name:       "binding covers target with non-matching rule glob; REQUIRE injected via binding",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						// project_pattern that does not match lilies.
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "roses", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "audit-to-lilies-api",
-						orgPolicyRef("audit"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"audit-policy"}},
-		},
-		{
-			// AC: Binding covers a peer target but the current render
-			// target is not on the binding's target list. The policy
-			// has a non-matching glob (roses), so the legacy glob path
-			// contributes nothing either; the render target sees an
-			// empty set.
-			name:       "binding covers peer target and glob does not match; no refs",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "worker",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "roses", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "audit-to-lilies-api",
-						orgPolicyRef("audit"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: nil},
-		},
-		{
-			// AC: Binding + matching rule.Target → binding wins. The
-			// rule's glob Target is "different" than the binding's
-			// explicit selection — but because the binding covers the
-			// current target, the rule applies regardless of whether
-			// the glob would have matched. Using a glob that would
-			// otherwise NOT match this target proves "binding wins".
-			name:       "binding wins over rule glob that would not have matched",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "nomatch", "nomatch"),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "audit-to-lilies-api",
-						orgPolicyRef("audit"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"audit-policy"}},
-		},
-		{
-			// AC: No binding + matching rule.Target → glob still applies.
-			// The policy's rule names a template and carries a glob that
-			// matches the render target; no binding exists for this
-			// policy, so legacy evaluation runs.
-			name:       "no binding covering target; matching rule glob still applies",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
-					}, t),
-				},
-			},
-			bindings: nil,
-			want:     wantRes{names: []string{"audit-policy"}},
-		},
-		{
-			// AC: No binding + matching rule.Target → glob still applies
-			// even when a binding exists for a different policy. The
-			// binding for policy-A covers this target but does NOT cover
-			// policy-B, so policy-B's glob Target is consulted normally.
-			name:       "binding for other policy does not suppress a different policy's glob",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "policy-a", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "tmpl-a", "", ""),
-					}, t),
-					policyCM(ns["org"], "policy-b", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "tmpl-b", "*", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "a-only",
-						orgPolicyRef("policy-a"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"tmpl-a", "tmpl-b"}},
-		},
-		{
-			// AC: Binding targets nonexistent policy → no-op. The
-			// binding names "missing" which is not in the ancestor
-			// chain; the resolver logs a warning and contributes no
-			// refs. A legacy glob rule on an unrelated policy still
-			// applies — proving the bad binding did not short-circuit
-			// the whole evaluation.
-			name:       "binding references nonexistent policy; no-op and legacy glob still runs",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "legacy", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "legacy-tmpl", "*", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "bad-binding",
-						orgPolicyRef("missing"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"legacy-tmpl"}},
-		},
-		{
-			// PROJECT_TEMPLATE match semantics: a binding with
-			// project_name matches only when the render target's
-			// project matches.
-			name:       "binding matches PROJECT_TEMPLATE by name+project",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindProjectTemplate,
-			targetName: "baseline",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "prj-audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "baseline-policy", "", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "prj-audit-bind",
-						orgPolicyRef("prj-audit"),
-						[]storedTargetRefTest{projectTemplateTarget("lilies", "baseline")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"baseline-policy"}},
-		},
-		{
-			// PROJECT_TEMPLATE match semantics: wrong project_name does
-			// not match even when the template name matches. The policy's
-			// glob is narrowed to a project that does not include lilies,
-			// so the legacy fallback also contributes nothing; the render
-			// target sees an empty set.
-			name:       "binding PROJECT_TEMPLATE project_name mismatch does not apply",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindProjectTemplate,
-			targetName: "baseline",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "prj-audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "baseline-policy", "roses", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "prj-audit-bind",
-						orgPolicyRef("prj-audit"),
-						[]storedTargetRefTest{projectTemplateTarget("roses", "baseline")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: nil},
-		},
-		{
-			// DEPLOYMENT match semantics: wrong project_name does not
-			// match even when name matches. The policy's glob is narrowed
-			// to a project that does not include lilies, so the legacy
-			// fallback also contributes nothing.
-			name:       "binding DEPLOYMENT project_name mismatch does not apply",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "roses", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "audit-to-roses-api",
-						orgPolicyRef("audit"),
-						[]storedTargetRefTest{deploymentTarget("roses", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: nil},
-		},
-		{
-			// EXCLUDE via binding: a binding covers an EXCLUDE policy,
-			// so the EXCLUDE rule removes a REQUIRE-injected template
-			// regardless of the EXCLUDE rule's glob. This verifies the
-			// binding path applies to both rule kinds.
-			name:       "binding covers EXCLUDE policy; removes REQUIRE-added ref",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					policyCM(ns["org"], "req", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "*", ""),
-					}, t),
-					policyCM(ns["org"], "exc", []storedRuleTest{
-						excludeRule(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy", "nomatch", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["org"]: {
-					bindingCM(ns["org"], "exc-to-lilies-api",
-						orgPolicyRef("exc"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: nil},
-		},
-		{
-			// Folder-scoped binding and folder-scoped policy: a binding
-			// stored in the eng folder references a folder-scoped
-			// policy, covering a deployment in a project directly under
-			// that folder. Ancestor walk picks both up; binding
-			// evaluation unifies them.
-			name:       "folder-scoped binding and policy match nested project deployment",
-			projectNs:  ns["projectLilies"],
-			target:     TargetKindDeployment,
-			targetName: "api",
-			policies: map[string][]corev1.ConfigMap{
-				ns["folderEng"]: {
-					policyCM(ns["folderEng"], "eng-audit", []storedRuleTest{
-						requireRule(v1alpha2.TemplateScopeFolder, "eng", "eng-audit-tmpl", "", ""),
-					}, t),
-				},
-			},
-			bindings: map[string][]corev1.ConfigMap{
-				ns["folderEng"]: {
-					bindingCM(ns["folderEng"], "eng-bind",
-						folderPolicyRef("eng", "eng-audit"),
-						[]storedTargetRefTest{deploymentTarget("lilies", "api")},
-						t,
-					),
-				},
-			},
-			want: wantRes{names: []string{"eng-audit-tmpl"}},
-		},
-	}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			pl := &policyListerFromClient{items: tc.policies}
-			bl := &bindingListerFromMap{items: tc.bindings}
-			fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
-
-			got, err := fr.Resolve(context.Background(), tc.projectNs, tc.target, tc.targetName, tc.explicit)
-			if err != nil {
-				t.Fatalf("Resolve returned error: %v", err)
-			}
-			gotNames := refNames(got)
-			sort.Strings(gotNames)
-			wantNames := append([]string(nil), tc.want.names...)
-			sort.Strings(wantNames)
-			if !equalStringSlices(gotNames, wantNames) {
-				t.Errorf("names mismatch: got %v, want %v", gotNames, wantNames)
-			}
-		})
-	}
-}
-
-// TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError asserts
-// a binding whose policy_ref does not resolve to any policy in the ancestor
-// chain is treated as a no-op: the resolver does not error, no refs are
-// injected, and the explicit refs passed by the caller are returned
-// unchanged. This is the degrade-gracefully contract from the HOL-596 AC:
-// "resolver logs a warning and treats as no-op (does not fail render)".
+// TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError
+// asserts a binding whose policy_ref does not resolve to any policy in
+// the ancestor chain is treated as a no-op: the resolver does not
+// error, no refs are injected, and the explicit refs passed by the
+// caller are returned unchanged. This is the degrade-gracefully
+// contract inherited from HOL-596.
 func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
@@ -588,67 +199,19 @@ func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testin
 	}
 }
 
-// TestFolderResolver_BindingsBackwardCompatibleWithoutBindingWireup asserts
-// that a resolver constructed via NewFolderResolver (no binding lister or
-// unmarshaler) continues to behave exactly like the pre-HOL-596 resolver:
-// every rule is evaluated via its glob Target. This keeps pre-binding
-// fixtures and wire-ups working unchanged.
-func TestFolderResolver_BindingsBackwardCompatibleWithoutBindingWireup(t *testing.T) {
+// TestFolderResolver_BindingsEmptyTargetListContributesNothing asserts a
+// binding with no target_refs never covers any render target — an empty
+// target list declares intent to attach zero render targets. Post-
+// HOL-600 the bound policy's rules also contribute nothing because
+// selection runs exclusively through the binding target_refs.
+func TestFolderResolver_BindingsEmptyTargetListContributesNothing(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
 	policies := map[string][]corev1.ConfigMap{
 		ns["org"]: {
 			policyCM(ns["org"], "audit", []storedRuleTest{
-				{Kind: "require",
-					Template: struct {
-						Scope             string `json:"scope"`
-						ScopeName         string `json:"scope_name"`
-						Name              string `json:"name"`
-						VersionConstraint string `json:"version_constraint,omitempty"`
-					}{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy"},
-					Target: struct {
-						ProjectPattern    string `json:"project_pattern"`
-						DeploymentPattern string `json:"deployment_pattern,omitempty"`
-					}{ProjectPattern: "*"}},
-			}, t),
-		},
-	}
-
-	pl := &policyListerFromClient{items: policies}
-	fr := NewFolderResolver(pl, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
-
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if len(got) != 1 || got[0].GetName() != "audit-policy" {
-		t.Errorf("expected legacy glob to still apply: got %v", refNames(got))
-	}
-}
-
-// TestFolderResolver_BindingsEmptyTargetListNeverMatches asserts a binding
-// with no target_refs never covers any render target — an empty target list
-// contributes zero render targets. The bound policy's rules then fall
-// through to legacy glob evaluation.
-func TestFolderResolver_BindingsEmptyTargetListNeverMatches(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
-
-	policies := map[string][]corev1.ConfigMap{
-		ns["org"]: {
-			policyCM(ns["org"], "audit", []storedRuleTest{
-				{Kind: "require",
-					Template: struct {
-						Scope             string `json:"scope"`
-						ScopeName         string `json:"scope_name"`
-						Name              string `json:"name"`
-						VersionConstraint string `json:"version_constraint,omitempty"`
-					}{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy"},
-					Target: struct {
-						ProjectPattern    string `json:"project_pattern"`
-						DeploymentPattern string `json:"deployment_pattern,omitempty"`
-					}{ProjectPattern: "*"}},
+				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
 			}, t),
 		},
 	}
@@ -657,7 +220,7 @@ func TestFolderResolver_BindingsEmptyTargetListNeverMatches(t *testing.T) {
 	bindings := map[string][]corev1.ConfigMap{
 		ns["org"]: {
 			bindingCM(ns["org"], "empty-bind",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
+				orgPolicyRefStored("audit"),
 				nil, // zero targets
 				t,
 			),
@@ -672,9 +235,48 @@ func TestFolderResolver_BindingsEmptyTargetListNeverMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	// The empty binding does not cover the render target; legacy glob
-	// fallback fires for policy "audit" whose rule has project_pattern=*.
-	if len(got) != 1 || got[0].GetName() != "audit-policy" {
-		t.Errorf("expected legacy glob to fire when binding covers nothing: got %v", refNames(got))
+	if len(got) != 0 {
+		t.Errorf("expected no refs when binding covers zero targets, got %v", refNames(got))
+	}
+}
+
+// TestFolderResolver_BindingProjectNameMismatchContributesNothing: a
+// binding whose target_refs reference a different project than the
+// render target does not select the current target. The bound
+// policy's rules do not contribute because bindings are the sole
+// selector post-HOL-600.
+func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.T) {
+	client, r, ns := buildFixture()
+	walker := &resolver.Walker{Client: client, Resolver: r}
+
+	policies := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			policyCM(ns["org"], "audit", []storedRuleTest{
+				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+			}, t),
+		},
+	}
+	// Binding targets roses/api, render target is lilies/api — no
+	// match on project_name.
+	bindings := map[string][]corev1.ConfigMap{
+		ns["org"]: {
+			bindingCM(ns["org"], "audit-to-roses",
+				orgPolicyRefStored("audit"),
+				[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
+				t,
+			),
+		},
+	}
+
+	pl := &policyListerFromClient{items: policies}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
+
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no refs when binding names a different project, got %v", refNames(got))
 	}
 }

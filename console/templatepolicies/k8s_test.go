@@ -299,7 +299,11 @@ func TestUpdatePolicyPreservesExistingAnnotations(t *testing.T) {
 }
 
 // TestRulesAnnotationRoundtrip verifies the JSON wire format for a rules
-// annotation so external tooling (or future migrations) see a stable shape.
+// annotation so external tooling (or future migrations) see a stable
+// shape. HOL-600 removed the "target" glob field; marshalRules must not
+// emit it, and unmarshalRules must decode either shape without error so
+// stale pre-migration ConfigMaps parse cleanly (with the legacy value
+// dropped silently).
 func TestRulesAnnotationRoundtrip(t *testing.T) {
 	rules := []*consolev1.TemplatePolicyRule{
 		{
@@ -309,10 +313,6 @@ func TestRulesAnnotationRoundtrip(t *testing.T) {
 				ScopeName:         "acme",
 				Name:              "reference-grant",
 				VersionConstraint: ">=1.0",
-			},
-			Target: &consolev1.TemplatePolicyTarget{
-				ProjectPattern:    "*",
-				DeploymentPattern: "web-*",
 			},
 		},
 	}
@@ -335,9 +335,8 @@ func TestRulesAnnotationRoundtrip(t *testing.T) {
 	if tmpl["scope"] != "organization" || tmpl["name"] != "reference-grant" {
 		t.Errorf("template wire shape changed: %+v", tmpl)
 	}
-	target, _ := decoded[0]["target"].(map[string]any)
-	if target["project_pattern"] != "*" {
-		t.Errorf("target wire shape changed: %+v", target)
+	if _, hasTarget := decoded[0]["target"]; hasTarget {
+		t.Errorf("marshalRules must not emit the legacy \"target\" field: %+v", decoded[0])
 	}
 	// Round trip must yield semantically equal rules.
 	parsed, err := unmarshalRules(string(raw))
@@ -349,6 +348,28 @@ func TestRulesAnnotationRoundtrip(t *testing.T) {
 	}
 	if parsed[0].GetTemplate().GetVersionConstraint() != ">=1.0" {
 		t.Errorf("version constraint dropped on round trip")
+	}
+}
+
+// TestUnmarshalRulesIgnoresLegacyTarget asserts the graceful-ignore
+// contract for a pre-HOL-600 "target" payload stored on a ConfigMap.
+// The decoded rule must surface the Kind and Template exactly as
+// authored; the legacy target is dropped because the proto no longer
+// carries a Target field.
+func TestUnmarshalRulesIgnoresLegacyTarget(t *testing.T) {
+	const raw = `[{"kind":"require","template":{"scope":"organization","scope_name":"acme","name":"legacy"},"target":{"project_pattern":"*","deployment_pattern":"api"}}]`
+	rules, err := unmarshalRules(raw)
+	if err != nil {
+		t.Fatalf("unmarshalRules should accept legacy target payload: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rules))
+	}
+	if rules[0].GetKind() != consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE {
+		t.Errorf("kind: want REQUIRE, got %v", rules[0].GetKind())
+	}
+	if rules[0].GetTemplate().GetName() != "legacy" {
+		t.Errorf("template name: want legacy, got %q", rules[0].GetTemplate().GetName())
 	}
 }
 
@@ -400,6 +421,9 @@ func TestPackageDoesNotCallProjectNamespace(t *testing.T) {
 }
 
 // sampleRule returns a minimal valid rule suitable for fixtures.
+// HOL-600 removed the glob-based Target; a rule is now just
+// (kind, template), with TemplatePolicyBinding carrying the render-target
+// selector.
 func sampleRule() *consolev1.TemplatePolicyRule {
 	return &consolev1.TemplatePolicyRule{
 		Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
@@ -407,9 +431,6 @@ func sampleRule() *consolev1.TemplatePolicyRule {
 			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
 			ScopeName: "acme",
 			Name:      "reference-grant",
-		},
-		Target: &consolev1.TemplatePolicyTarget{
-			ProjectPattern: "*",
 		},
 	}
 }

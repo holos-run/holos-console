@@ -297,7 +297,6 @@ func TestCreatePolicyValidation(t *testing.T) {
 							ScopeName: "acme",
 							Name:      "t",
 						},
-						Target: &consolev1.TemplatePolicyTarget{ProjectPattern: "*"},
 					},
 				},
 			},
@@ -314,47 +313,10 @@ func TestCreatePolicyValidation(t *testing.T) {
 							Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
 							ScopeName: "acme",
 						},
-						Target: &consolev1.TemplatePolicyTarget{ProjectPattern: "*"},
 					},
 				},
 			},
 			wantMsg: "template.name",
-		},
-		{
-			name: "invalid project pattern",
-			policy: &consolev1.TemplatePolicy{
-				Name: "bad-glob",
-				Rules: []*consolev1.TemplatePolicyRule{
-					{
-						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-						Template: &consolev1.LinkedTemplateRef{
-							Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-							ScopeName: "acme",
-							Name:      "t",
-						},
-						Target: &consolev1.TemplatePolicyTarget{ProjectPattern: "[abc"},
-					},
-				},
-			},
-			wantMsg: "invalid project_pattern",
-		},
-		{
-			name: "empty project pattern",
-			policy: &consolev1.TemplatePolicy{
-				Name: "empty-pattern",
-				Rules: []*consolev1.TemplatePolicyRule{
-					{
-						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-						Template: &consolev1.LinkedTemplateRef{
-							Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-							ScopeName: "acme",
-							Name:      "t",
-						},
-						Target: &consolev1.TemplatePolicyTarget{},
-					},
-				},
-			},
-			wantMsg: "project_pattern is required",
 		},
 		{
 			name: "invalid name",

@@ -13,39 +13,9 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 export declare const file_holos_console_v1_template_policies: GenFile;
 
 /**
- * TemplatePolicyTarget selects the set of projects (and, optionally,
- * deployments) a rule applies to. Patterns follow the same glob semantics as
- * filepath.Match: `*` matches any sequence of non-separator characters.
- *
- * @generated from message holos.console.v1.TemplatePolicyTarget
- */
-export declare type TemplatePolicyTarget = Message<"holos.console.v1.TemplatePolicyTarget"> & {
-  /**
-   * project_pattern matches project names. "*" matches every project.
-   *
-   * @generated from field: string project_pattern = 1;
-   */
-  projectPattern: string;
-
-  /**
-   * deployment_pattern matches deployment names within a matched project.
-   * "*" matches every deployment. Empty string means "project-level only"
-   * (no deployment filtering applied by this rule).
-   *
-   * @generated from field: string deployment_pattern = 2;
-   */
-  deploymentPattern: string;
-};
-
-/**
- * Describes the message holos.console.v1.TemplatePolicyTarget.
- * Use `create(TemplatePolicyTargetSchema)` to create a new message.
- */
-export declare const TemplatePolicyTargetSchema: GenMessage<TemplatePolicyTarget>;
-
-/**
- * TemplatePolicyRule binds a kind, a template reference, and a target selector
- * into a single rule. A TemplatePolicy may carry many rules.
+ * TemplatePolicyRule binds a kind and a template reference into a single
+ * rule. A TemplatePolicy may carry many rules; which render targets a rule
+ * applies to is decided entirely by TemplatePolicyBinding objects.
  *
  * @generated from message holos.console.v1.TemplatePolicyRule
  */
@@ -64,13 +34,6 @@ export declare type TemplatePolicyRule = Message<"holos.console.v1.TemplatePolic
    * @generated from field: holos.console.v1.LinkedTemplateRef template = 2;
    */
   template?: LinkedTemplateRef;
-
-  /**
-   * target restricts which projects/deployments the rule matches.
-   *
-   * @generated from field: holos.console.v1.TemplatePolicyTarget target = 3;
-   */
-  target?: TemplatePolicyTarget;
 };
 
 /**
