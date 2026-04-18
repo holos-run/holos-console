@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
@@ -684,6 +686,41 @@ func TestListDeploymentResources_PartialScan(t *testing.T) {
 	// partial view if it chooses.
 	if len(got) != 1 || got[0].GetKind() != "Deployment" {
 		t.Errorf("expected Deployment item to surface despite partial failure, got %+v", got)
+	}
+}
+
+// TestListDeploymentResources_OptionalCRDsNotPartialScan verifies that
+// per-kind NotFound (or NoKindMatch) errors — which the API server
+// returns when an optional CRD like HTTPRoute or ReferenceGrant is not
+// installed on the cluster — do NOT trigger ErrPartialScan. Treating a
+// missing optional CRD as a partial scan would prevent the cache from
+// ever being seeded on clusters without Gateway API installed (HOL-574
+// review round 4).
+func TestListDeploymentResources_OptionalCRDsNotPartialScan(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	owned := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), owned)
+	// Simulate a cluster without the Gateway API CRDs — list calls
+	// for HTTPRoute / ReferenceGrant return NotFound from the API
+	// server. The aggregator must treat this as "kind is absent" not
+	// "partial scan".
+	dyn.PrependReactor("list", "httproutes", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "gateway.networking.k8s.io", Resource: "httproutes"}, "")
+	})
+	dyn.PrependReactor("list", "referencegrants", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "gateway.networking.k8s.io", Resource: "referencegrants"}, "")
+	})
+
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+	got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+	if err != nil {
+		t.Fatalf("optional missing CRDs must not surface as ErrPartialScan, got %v", err)
+	}
+	if len(got) != 1 || got[0].GetKind() != "Deployment" {
+		t.Errorf("expected only the Deployment surfaced, got %+v", got)
 	}
 }
 

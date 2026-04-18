@@ -12,6 +12,8 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
@@ -269,13 +271,24 @@ func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deploy
 			LabelSelector: labelSelector,
 		})
 		if err != nil {
-			// Some optional CRDs may not be installed and some
-			// transient errors are recoverable; record and continue
-			// rather than aborting the whole aggregator (mirrors the
-			// apply.go Cleanup / Reconcile orphan-scan precedent of
-			// skip-and-log on per-kind list failures). Track the
-			// error so the caller can downgrade authority on the
-			// returned slice (see ErrPartialScan).
+			// Optional CRDs (HTTPRoute, ReferenceGrant, etc.) may
+			// not be installed on every cluster: the API server
+			// returns NotFound or NoKindMatchError for those GVRs.
+			// Treat that as a successful empty result rather than a
+			// partial-scan signal, otherwise the cache would never
+			// be seeded in clusters without Gateway API installed
+			// (HOL-574 review round 4). Other errors (transient
+			// connectivity, RBAC) still downgrade authority via
+			// ErrPartialScan so the cache is preserved.
+			if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+				slog.DebugContext(ctx, "list deployment resources: optional kind absent, skipping",
+					slog.String("kind", kind),
+					slog.String("namespace", ns),
+					slog.String("project", project),
+					slog.String("deployment", deployment),
+				)
+				continue
+			}
 			slog.DebugContext(ctx, "list deployment resources: skipping kind",
 				slog.String("kind", kind),
 				slog.String("namespace", ns),
