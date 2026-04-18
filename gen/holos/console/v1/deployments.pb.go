@@ -2502,9 +2502,12 @@ func (x *GetDeploymentRenderPreviewResponse) GetOutput() *DeploymentOutput {
 type DeploymentOutput struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// url is the primary URL the UI should show for the deployment. Empty when
-	// the template has no meaningful URL to publish. Preserved unchanged from
-	// the pre-HOL-572 wire format; treated as the canonical primary link when
-	// no entry in `links` is flagged as primary.
+	// the template has no meaningful URL to publish. The backend populates this
+	// field from (in order of precedence) the `console.holos.run/primary-url`
+	// annotation harvested from any owned resource, the cached
+	// `console.holos.run/output-url` annotation written from the template's
+	// `output.url`, or the rendered `output.url` itself when no annotation is
+	// available.
 	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
 	// links carries the full set of external links surfaced for a deployment,
 	// aggregated from both Holos-authored annotations

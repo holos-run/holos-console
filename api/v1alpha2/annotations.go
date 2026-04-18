@@ -131,36 +131,49 @@ const (
 	// prefix for external links surfaced on a deployment. Links are keyed
 	// by suffix (for example, `console.holos.run/external-link.logs`),
 	// where the suffix serves as a stable per-deployment identity for
-	// de-duplication across resources. The annotation value is the link
-	// URL; optional title and description can be supplied via
-	// `<prefix><name>.title` and `<prefix><name>.description` variants
-	// (the aggregator, added in HOL-573, is the canonical consumer of this
-	// convention). Introduced in HOL-572 as part of the parent deployment
-	// links plan HOL-550.
+	// de-duplication across resources. The annotation value is a JSON
+	// object of the form `{"url": "...", "title": "...", "description":
+	// "..."}`; only `url` is required. Title falls back to the suffix when
+	// omitted; description is optional. Parsed by `console/links` and
+	// aggregated by `console/deployments` (the cached set is stored on the
+	// deployment ConfigMap as AnnotationAggregatedLinks). See ADR 028 in
+	// the cartographer repo for the design rationale and HOL-550 for the
+	// parent plan.
 	AnnotationExternalLinkPrefix = "console.holos.run/external-link."
 	// AnnotationPrimaryURL names the single "primary" deployment URL a
-	// template wants the UI to treat as canonical when more than one link
-	// is available. Attached to the deployment ConfigMap. Optional — when
-	// unset, the aggregator falls back to the legacy `DeploymentOutput.url`
-	// value and then to the first Holos-authored link in annotation order.
-	// Introduced in HOL-572.
+	// template wants the UI to treat as canonical. May be attached to any
+	// resource owned by the deployment (the aggregator picks the first
+	// occurrence in scan order and warns on conflicts). The value is a
+	// JSON object of the form `{"url": "...", "title": "...",
+	// "description": "..."}`; only `url` is required. The promoted URL
+	// fills `DeploymentOutput.url` so list-page renderers that only
+	// consume the primary URL keep working. When no resource publishes a
+	// primary-url annotation, `DeploymentOutput.url` is whatever the
+	// template's `output.url` (cached as `console.holos.run/output-url` on
+	// the deployment ConfigMap) holds. See ADR 028 in the cartographer
+	// repo and HOL-550 for the parent plan.
 	AnnotationPrimaryURL = "console.holos.run/primary-url"
 	// AnnotationAggregatedLinks is the optional JSON cache of the fully
 	// resolved Link list for a deployment, written onto the deployment
 	// ConfigMap by the Create/UpdateDeployment handlers so list-view RPCs
 	// (ListDeployments, GetDeploymentStatusSummary) can return links
-	// without re-walking the workload annotations. Treated as a cache, not
+	// without re-walking the workload annotations. The cached payload is
+	// `{"links": [...], "primary_url": "..."}`. Treated as a cache, not
 	// the source of truth: the authoritative links still live on the
-	// resources themselves. Introduced in HOL-572.
+	// resources themselves and the GetDeployment refresh path
+	// re-aggregates and rewrites this annotation when it disagrees with
+	// the live resources.
 	AnnotationAggregatedLinks = "console.holos.run/links"
 	// AnnotationArgoCDLinkPrefix is the annotation-key prefix Argo CD uses
-	// to attach external links to Kubernetes resources. Values are URLs
-	// (see https://argo-cd.readthedocs.io/en/stable/user-guide/external-url/
-	// and the `link.argocd.argoproj.io/*` convention). Holos harvests
-	// these alongside its own
-	// `console.holos.run/external-link.*` annotations so clusters running
-	// both tools do not force template authors to duplicate links.
-	// Introduced in HOL-572.
+	// to attach external links to Kubernetes resources. Values are bare
+	// URL strings (no JSON envelope); the suffix doubles as the link
+	// title. See
+	// https://argo-cd.readthedocs.io/en/stable/user-guide/external-url/
+	// for the upstream convention. Holos harvests these alongside its own
+	// `console.holos.run/external-link.*` annotations on read; templates
+	// MUST NOT write to this prefix from Holos because Argo CD would
+	// render Holos's JSON-valued external-link annotations as broken
+	// URLs.
 	AnnotationArgoCDLinkPrefix = "link.argocd.argoproj.io/"
 
 	// Release ConfigMap labels and annotations (ADR 024).

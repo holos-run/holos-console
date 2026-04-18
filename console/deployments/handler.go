@@ -1134,12 +1134,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 // object (e.g. `{}`) produces a non-nil DeploymentOutput with zero values so
 // the frontend — not the backend — decides whether to render.
 //
-// Both the primary `url` and the additive `links` list (HOL-572) are
-// preserved: templates that publish `output.links` alongside `output.url`
-// have the full list surfaced on the render-preview path without requiring
-// the HOL-573/HOL-574 aggregator to be in place. The links are passed
-// through verbatim; normalization and annotation harvesting belong to the
-// follow-on aggregator.
+// Both the primary `url` and the additive `links` list are preserved:
+// templates that publish `output.links` alongside `output.url` have the
+// full list surfaced on the render-preview path even before the
+// annotation aggregator runs. The links are passed through verbatim;
+// normalization and live-resource annotation harvesting belong to the
+// `console/links` parser and the aggregator helpers in this package
+// (`aggregateLinksFromResources`, `applyAggregatedLinks`).
 func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJSON *string) *consolev1.DeploymentOutput {
 	if outputJSON == nil {
 		return nil
