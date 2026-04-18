@@ -35,20 +35,13 @@ export type RuleEditorProps = {
   disabled?: boolean
 }
 
-// Kind options shown in the kind picker. Descriptions describe render-time
-// inclusion semantics and come from the shared platform-template copy module
-// so the wording stays in sync with the rest of the UI.
-const KIND_OPTIONS: Array<{ value: TemplatePolicyKind; label: string; description: string }> = [
-  {
-    value: TemplatePolicyKind.REQUIRE,
-    label: 'REQUIRE',
-    description: REQUIRE_RULE_DESCRIPTION,
-  },
-  {
-    value: TemplatePolicyKind.EXCLUDE,
-    label: 'EXCLUDE',
-    description: EXCLUDE_RULE_DESCRIPTION,
-  },
+// Kind options shown in the kind picker. The long REQUIRE/EXCLUDE copy is
+// rendered once in a tooltip next to the Kind label (see JSX below) rather
+// than inlined into every popover row — previously the inline description
+// overflowed the `<Select>` popover at narrow widths (HOL-588).
+const KIND_OPTIONS: Array<{ value: TemplatePolicyKind; label: string }> = [
+  { value: TemplatePolicyKind.REQUIRE, label: 'REQUIRE' },
+  { value: TemplatePolicyKind.EXCLUDE, label: 'EXCLUDE' },
 ]
 
 /**
@@ -142,7 +135,26 @@ export function RuleEditor({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label htmlFor={`rule-kind-${index}`}>Kind</Label>
+                <Label htmlFor={`rule-kind-${index}`} className="flex items-center gap-1">
+                  Kind
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Explain REQUIRE and EXCLUDE"
+                          className="inline-flex"
+                        >
+                          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-sm space-y-2">
+                        <p>{REQUIRE_RULE_DESCRIPTION}</p>
+                        <p>{EXCLUDE_RULE_DESCRIPTION}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
                 <Select
                   value={String(rule.kind)}
                   onValueChange={(v) => handleUpdate(index, { kind: Number(v) as TemplatePolicyKind })}
@@ -154,10 +166,7 @@ export function RuleEditor({
                   <SelectContent>
                     {KIND_OPTIONS.map((opt) => (
                       <SelectItem key={opt.value} value={String(opt.value)}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="text-xs text-muted-foreground">{opt.description}</span>
-                        </div>
+                        {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
