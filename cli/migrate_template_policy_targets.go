@@ -534,18 +534,39 @@ func buildPolicyPlan(
 	// means the binding side is already migrated and only the
 	// policy-side clear still needs to run; a differing set is a
 	// conflict an operator must resolve.
+	//
+	// Organization and folder namespaces also host Template and
+	// TemplatePolicy ConfigMaps, so we must verify the resource-type
+	// label before treating the matched object as a binding. Without
+	// that check a Template named "<policy>-migrated" (or any other
+	// ConfigMap that happened to share the synthesized binding name)
+	// would make the migrator report a permanent conflict that no
+	// operator action on the binding side could resolve.
 	existing, err := client.CoreV1().ConfigMaps(policy.Namespace).Get(ctx, bindingName, metav1.GetOptions{})
 	if err == nil {
-		plan.BindingExists = true
-		existingRefs, parseErr := templatepolicybindings.UnmarshalTargetRefs(existing.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs])
-		if parseErr != nil {
+		if existing.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicyBinding {
 			plan.Notes = append(plan.Notes,
-				fmt.Sprintf("existing binding %q has unparseable target_refs: %v", bindingName, parseErr))
-		} else if targetSetsEqual(existingRefs, plan.TargetRefs) {
-			plan.BindingTargetsMatch = true
+				fmt.Sprintf("ConfigMap %q exists in %q but is not a TemplatePolicyBinding (resource-type=%q); binding cannot be written without colliding — resolve by hand before re-running",
+					bindingName, policy.Namespace, existing.Labels[v1alpha2.LabelResourceType]))
+			// Record the blocker as a conflict-shaped plan so the
+			// apply loop skips both the binding create and the
+			// policy clear. BindingExists=true combined with
+			// BindingTargetsMatch=false routes through the
+			// conflict branch, leaving the policy untouched until
+			// an operator removes the offending ConfigMap.
+			plan.BindingExists = true
 		} else {
-			plan.Notes = append(plan.Notes,
-				fmt.Sprintf("existing binding %q has different target_refs; leaving untouched", bindingName))
+			plan.BindingExists = true
+			existingRefs, parseErr := templatepolicybindings.UnmarshalTargetRefs(existing.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs])
+			if parseErr != nil {
+				plan.Notes = append(plan.Notes,
+					fmt.Sprintf("existing binding %q has unparseable target_refs: %v", bindingName, parseErr))
+			} else if targetSetsEqual(existingRefs, plan.TargetRefs) {
+				plan.BindingTargetsMatch = true
+			} else {
+				plan.Notes = append(plan.Notes,
+					fmt.Sprintf("existing binding %q has different target_refs; leaving untouched", bindingName))
+			}
 		}
 	} else if !k8serrors.IsNotFound(err) {
 		return nil, fmt.Errorf("checking for existing binding %q in %q: %w",
@@ -605,6 +626,16 @@ func templateScopeFromNamespace(r *resolver.Resolver, ns string) (consolev1.Temp
 // topology treats a terminating namespace as already unreachable, so the
 // migration must not bind targets in namespaces that will never activate
 // under the legacy glob path the binding is replacing.
+//
+// Ancestry walk failures (missing parent label, missing parent namespace,
+// cycle, depth exceeded) propagate to the caller. Silently dropping an
+// unreachable project would be a data-loss path: the migrator would skip
+// targets that legitimately match the policy's globs, clear the policy's
+// Target fields, and leave the project permanently uncovered once
+// HOL-600 removes the legacy evaluation. Failing loudly forces the
+// operator to fix the ancestry before the migration runs, which matches
+// the fail-closed behavior `K8sResourceTopology.ListProjectsUnderScope`
+// uses at render time.
 func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace) ([]*corev1.Namespace, error) {
 	wantNs := scopeNs.Name
 	out := make([]*corev1.Namespace, 0)
@@ -612,7 +643,11 @@ func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace
 		if projNs.DeletionTimestamp != nil {
 			continue
 		}
-		if ancestorChainContains(nsIndex, projNs, wantNs) {
+		contained, err := ancestorChainContains(nsIndex, projNs, wantNs)
+		if err != nil {
+			return nil, fmt.Errorf("walking ancestors of %q: %w", projNs.Name, err)
+		}
+		if contained {
 			out = append(out, projNs)
 		}
 	}
@@ -625,26 +660,44 @@ func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace
 // hierarchy, returning true when wantNs appears on the chain. The walk is
 // bounded by the number of known namespaces so a mis-labeled parent chain
 // cannot cause an infinite loop at migration time.
-func ancestorChainContains(nsIndex *classifiedNamespaces, startNs *corev1.Namespace, wantNs string) bool {
+//
+// An organization namespace is a legitimate terminal: reaching it without
+// finding wantNs means wantNs is not on the chain, and the walker returns
+// (false, nil). Every other "cannot continue" situation — a non-
+// organization namespace with no parent label, a parent label that points
+// at a namespace not in the managed index, or a cycle — is an ancestry
+// error propagated to the caller so the migration fails loudly rather
+// than silently dropping a project.
+func ancestorChainContains(nsIndex *classifiedNamespaces, startNs *corev1.Namespace, wantNs string) (bool, error) {
+	if startNs == nil {
+		return false, fmt.Errorf("nil start namespace")
+	}
 	current := startNs
+	visited := make(map[string]struct{}, len(nsIndex.byName))
 	for depth := 0; depth < len(nsIndex.byName)+1; depth++ {
-		if current == nil {
-			return false
-		}
 		if current.Name == wantNs {
-			return true
+			return true, nil
+		}
+		if _, seen := visited[current.Name]; seen {
+			return false, fmt.Errorf("cycle detected at %q (starting from %q)", current.Name, startNs.Name)
+		}
+		visited[current.Name] = struct{}{}
+		// Reaching an organization namespace means the chain is
+		// complete; wantNs is definitively not on it.
+		if current.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeOrganization {
+			return false, nil
 		}
 		parent := current.Labels[v1alpha2.AnnotationParent]
 		if parent == "" {
-			return false
+			return false, fmt.Errorf("namespace %q is missing required parent annotation %q", current.Name, v1alpha2.AnnotationParent)
 		}
 		next, ok := nsIndex.byName[parent]
 		if !ok {
-			return false
+			return false, fmt.Errorf("parent namespace %q of %q is not in the managed index", parent, current.Name)
 		}
 		current = next
 	}
-	return false
+	return false, fmt.Errorf("namespace hierarchy depth exceeded limit starting from %q", startNs.Name)
 }
 
 // listProjectTemplates returns every managed project-scope Template ConfigMap

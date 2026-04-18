@@ -101,6 +101,18 @@ A `CONFLICT` row means an existing binding has the expected name but different t
 - If the existing binding is correct, rename or delete the policy's `Target` fields by hand and re-run this migration — the policy will then be classified as "already migrated" and skipped.
 - If the existing binding is wrong, delete it and re-run with `--apply` to have the migrator recreate it.
 
+A conflict row can also indicate a **name collision with a non-binding ConfigMap** (for example a leftover Template named `<policy>-migrated`). The plan note identifies this case explicitly and names the colliding `resource-type`. Delete or rename the offending ConfigMap and re-run the migration; the migrator does not overwrite objects it did not create.
+
+## Operator actions after an ancestry error
+
+The command fails fast when a managed project namespace's parent chain is broken — missing `console.holos.run/parent` label, a parent that is not in the managed namespace index, or a cycle. Fixing the error before the migration runs is required because silently dropping the project from the descendant set would allow the migrator to clear policy `Target` globs while skipping legitimate bindings, which would permanently remove policy coverage once HOL-600 lands.
+
+Typical recovery steps:
+
+- Inspect the failing namespace reported in the error message (`walking ancestors of "holos-prj-<slug>"`).
+- Restore the missing or cyclic `console.holos.run/parent` label so the chain terminates at the owning organization namespace.
+- Re-run the migration — the migrator re-walks the chain and proceeds once the ancestry is consistent.
+
 ## Semantic caveat
 
 Pre-HOL-590 rule-level `Target` globs could select a narrower set per rule than the policy as a whole. The binding model is per-policy: a single binding covers all of its bound policy's rules for every target it names. If a policy has multiple rules with disjoint `Target` globs, the migration produces one binding with the union of all matched targets. Post-migration every rule applies to every target named on that union — which may broaden some rules relative to their pre-migration glob. In practice platform engineers author policy rules to cover the same target set, so this broadening is uncommon; if your cluster has exotic per-rule targets, review the printed plan before running `--apply` and split the policy into multiple narrower policies beforehand.

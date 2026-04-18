@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -209,6 +210,44 @@ func withDeployment(ns, name string) fixtureOption {
 	}
 }
 
+// withProjectNamespaceOrphan adds a managed project namespace whose parent
+// label is missing. This is an ancestry-error fixture: the migrator must
+// refuse to enumerate descendants for policies that could be affected by
+// the broken chain rather than silently dropping the project.
+func withProjectNamespaceOrphan(name string) fixtureOption {
+	return func(b *fixtureBuilder) {
+		b.objects = append(b.objects, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: b.r.ProjectNamespace(name),
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					// No AnnotationParent — this is the
+					// orphan we are testing against.
+				},
+			},
+		})
+	}
+}
+
+// withCollidingConfigMap adds a ConfigMap in ns whose name matches what
+// the migrator synthesizes for a binding but whose resource-type label
+// identifies it as something else (e.g. a leftover Template).
+func withCollidingConfigMap(ns, name, resourceType string) fixtureOption {
+	return func(b *fixtureBuilder) {
+		b.objects = append(b.objects, &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: resourceType,
+				},
+			},
+		})
+	}
+}
+
 // withTerminatingProjectNamespace adds a managed project namespace whose
 // metadata.deletionTimestamp is non-nil — i.e. the namespace is in the
 // process of being deleted. The migrator must skip such namespaces to
@@ -342,6 +381,13 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 		// twoRuns triggers a second apply pass with the same fixture
 		// after the first pass mutates it. Used by the idempotency row.
 		twoRuns bool
+		// wantError asserts the first pass returns an error; use
+		// errorMatch to pin the error message substring. When set, no
+		// assertions run against the (nil) MigrationResult, but the
+		// cluster-state assertions on `first` still run so tests can
+		// confirm nothing was mutated before the error surfaced.
+		wantError  bool
+		errorMatch string
 		// first describes the first-pass expectations. Every scenario
 		// has exactly one first-pass assertion. Idempotent scenarios
 		// add a second.
@@ -673,6 +719,77 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 			},
 		},
 		{
+			// Codex round-2 review HOL-599: a ConfigMap named
+			// "<policy>-migrated" that is NOT a
+			// TemplatePolicyBinding (e.g. a leftover Template by
+			// the same name) must not be confused for a pre-
+			// existing binding. Without the resource-type check
+			// the migrator would report a permanent conflict that
+			// no binding-side operator action could resolve.
+			name: "non-binding ConfigMap with the same name as the target binding is a conflict",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withProjectNamespace("lilies", "acme"),
+				withDeployment(r.ProjectNamespace("lilies"), "api"),
+				withPolicy(r.OrgNamespace("acme"), "audit", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "*", DeploymentPattern: "api"},
+					},
+				}),
+				withCollidingConfigMap(
+					r.OrgNamespace("acme"),
+					"audit"+migrateBindingNameSuffix,
+					v1alpha2.ResourceTypeTemplate,
+				),
+			},
+			run: runArgs{apply: true},
+			first: assertions{
+				bindingsCreated:     0,
+				policiesUpdated:     0,
+				conflicts:           1,
+				wantPlans:           1,
+				wantPolicyUnchanged: [][2]string{{r.OrgNamespace("acme"), "audit"}},
+			},
+		},
+		{
+			// Codex round-2 review HOL-599: a project namespace
+			// whose parent label references a namespace not in
+			// the managed index is an ancestry error. Silently
+			// dropping the project would let the migrator clear
+			// policy Target globs while skipping legitimate
+			// bindings — a permanent coverage-loss path once
+			// HOL-600 lands. Fail loudly so the operator fixes
+			// ancestry before the migration proceeds.
+			name: "broken parent label fails loudly instead of dropping the project",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withProjectNamespace("lilies", "acme"),
+				withProjectNamespaceOrphan("roses"),
+				withDeployment(r.ProjectNamespace("lilies"), "api"),
+				withDeployment(r.ProjectNamespace("roses"), "api"),
+				withPolicy(r.OrgNamespace("acme"), "audit", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "*", DeploymentPattern: "api"},
+					},
+				}),
+			},
+			run:        runArgs{apply: true},
+			wantError:  true,
+			errorMatch: "parent annotation",
+			first: assertions{
+				// No assertions run when wantError is true.
+				wantPolicyUnchanged: [][2]string{{r.OrgNamespace("acme"), "audit"}},
+			},
+		},
+		{
 			// Codex round-1 review HOL-599: a namespace with a
 			// non-nil DeletionTimestamp is being reclaimed, so
 			// K8sResourceTopology.ListProjectsUnderScope excludes
@@ -731,6 +848,19 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 				Out:      &buf,
 			}
 			res, err := MigrateTemplatePolicyTargets(context.Background(), opts)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("migrate succeeded; wanted error matching %q", tt.errorMatch)
+				}
+				if tt.errorMatch != "" && !strings.Contains(err.Error(), tt.errorMatch) {
+					t.Fatalf("migrate error = %q, want substring %q", err.Error(), tt.errorMatch)
+				}
+				// Cluster-state assertions still apply: an
+				// error must not have left partial mutations
+				// behind.
+				assertClusterState(t, client, tt.first)
+				return
+			}
 			if err != nil {
 				t.Fatalf("migrate failed: %v", err)
 			}
