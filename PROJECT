@@ -1,0 +1,44 @@
+# Hand-authored Kubebuilder PROJECT file. See docs/adrs/030-template-crds-controller-runtime.md
+# in holos-console-docs for the full rationale. In short: the holos-console
+# binary is a web application that embeds a controller manager, so
+# `kubebuilder init` is NOT run against this tree (it would clobber
+# cmd/main.go, Makefile, Dockerfile, README.md, .gitignore, and the CI
+# workflows). The PROJECT file exists purely as a recognizable anchor for
+# Kubebuilder-literate reviewers. Future API additions in the
+# templates.holos.run group are hand-authored: add a new types file under
+# api/<group>/<version>/, append a resource entry here, then run
+# `make manifests`.
+domain: holos.run
+layout:
+- go.kubebuilder.io/v4
+projectName: holos-console
+repo: github.com/holos-run/holos-console
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: templates
+  kind: Template
+  path: github.com/holos-run/holos-console/api/templates/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: templates
+  kind: TemplatePolicy
+  path: github.com/holos-run/holos-console/api/templates/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: templates
+  kind: TemplatePolicyBinding
+  path: github.com/holos-run/holos-console/api/templates/v1alpha1
+  version: v1alpha1
+version: "3"
