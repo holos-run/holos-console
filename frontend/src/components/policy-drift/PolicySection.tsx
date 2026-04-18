@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -95,17 +95,30 @@ function RefList({ refs, testid }: { refs: LinkedTemplateRef[]; testid: string }
  * Using the native element keeps keyboard and screen-reader behavior
  * correct without pulling in a third-party collapsible primitive.
  *
- * Open state is UNCONTROLLED: we set the initial `open` attribute once on
- * mount via a ref callback and never touch it again from React. This is
- * important because the deployment detail page polls
- * `useGetDeploymentStatus` on a 5-second refetchInterval, which re-renders
- * this component; a controlled `open={defaultOpen}` prop would force the
- * disclosure back to the initial state on every poll, stomping the user's
- * toggle. The ref-callback approach lets the browser own the `open`
- * attribute after mount while still seeding the initial value from props.
+ * Open-state management has to satisfy two requirements simultaneously:
+ *   1. The user's toggle must be preserved across parent re-renders.
+ *      The deployment detail page polls `useGetDeploymentStatus` every
+ *      five seconds; naïvely passing `open={defaultOpen}` would make
+ *      React reconcile the attribute back to the initial value on every
+ *      poll, stomping a user-initiated collapse/expand.
+ *   2. The open default must track `defaultOpen` until the user
+ *      interacts. On first mount the section is typically rendered in
+ *      its loading state (defaultOpen=false), and only after the
+ *      policy-state RPC resolves does `defaultOpen` flip to true for a
+ *      drifted target. If the shell captured `open` exactly once on
+ *      mount the section would stay collapsed on first paint even when
+ *      drift is present, hiding the attention signal until the user
+ *      manually expands it.
+ *
+ * The implementation tracks whether the user has toggled the disclosure
+ * via the <details> `onToggle` event + a sentinel ref. While the user
+ * has NOT toggled, a useEffect syncs `el.open` to `defaultOpen` whenever
+ * `defaultOpen` changes. Once the user toggles, the sentinel flips and
+ * subsequent `defaultOpen` changes are ignored — the user's choice wins
+ * for the lifetime of the component instance.
  *
  * The Reconcile button is rendered outside the <summary> (absolutely
- * positioned on the right of the header row) so that nested interactive
+ * positioned on the right of the header row) so nested interactive
  * elements inside <summary> do not interfere with the native
  * click-to-toggle behavior.
  */
@@ -122,20 +135,45 @@ function CollapsibleShell({
   defaultOpen: boolean
   children: React.ReactNode
 }) {
-  const initialisedRef = useRef(false)
-  const setInitialOpen = (el: HTMLDetailsElement | null) => {
-    // Set the initial open attribute exactly once, on the first mount of
-    // this component instance. Subsequent re-renders must not touch
-    // `el.open` so that the user's toggle is preserved across parent
-    // re-renders (e.g. the deployment status poll).
-    if (el && !initialisedRef.current) {
-      el.open = defaultOpen
-      initialisedRef.current = true
+  const detailsRef = useRef<HTMLDetailsElement | null>(null)
+  // Tracks whether the user has manually toggled the disclosure. Once
+  // true, defaultOpen changes are ignored so the user's preference wins
+  // over the prop-driven default.
+  const userToggledRef = useRef(false)
+  // Suppresses the `onToggle` handler when we set `el.open` ourselves,
+  // so our programmatic sync does not count as a user toggle. <details>
+  // fires `toggle` on every state change, including attribute writes.
+  const suppressToggleRef = useRef(false)
+
+  // Sync `open` to `defaultOpen` until the user interacts. The effect
+  // runs every time `defaultOpen` changes, and no-ops after the user
+  // toggles. This means: on first mount the disclosure follows the
+  // prop; when the policy-state RPC resolves and flips `defaultOpen`
+  // from false to true (drift), the disclosure opens automatically;
+  // after the user clicks to collapse/expand, the prop stops driving.
+  useEffect(() => {
+    if (!userToggledRef.current && detailsRef.current && detailsRef.current.open !== defaultOpen) {
+      suppressToggleRef.current = true
+      detailsRef.current.open = defaultOpen
     }
+  }, [defaultOpen])
+
+  const handleToggle = () => {
+    // Swallow the synthetic toggle event that fires when we set
+    // `el.open` programmatically above; otherwise the first prop-driven
+    // sync would mark the disclosure as user-toggled and lock out any
+    // subsequent prop-driven auto-open on drift.
+    if (suppressToggleRef.current) {
+      suppressToggleRef.current = false
+      return
+    }
+    userToggledRef.current = true
   }
+
   return (
     <details
-      ref={setInitialOpen}
+      ref={detailsRef}
+      onToggle={handleToggle}
       className="space-y-4 group relative"
       data-testid="policy-section"
     >

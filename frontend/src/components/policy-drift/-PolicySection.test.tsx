@@ -190,8 +190,8 @@ describe('PolicySection', () => {
     })
 
     // Regression for codex review round-2 finding: the details element
-    // must be UNCONTROLLED after mount so that a parent re-render (for
-    // example the deployment detail page's 5s status poll) does not
+    // must not be a naively controlled element, so a parent re-render
+    // (for example the deployment detail page's 5s status poll) cannot
     // stomp the user's toggle. If the component passed `open` as a
     // controlled prop, simulating the user collapsing the disclosure and
     // then re-rendering with the same props would reset `open` to the
@@ -202,11 +202,51 @@ describe('PolicySection', () => {
       const section = screen.getByTestId('policy-section') as HTMLDetailsElement
       // Drift-by-default opens the disclosure.
       expect(section.open).toBe(true)
-      // Simulate the user collapsing it.
+      // Simulate the user collapsing it; the <details> element fires a
+      // native toggle event when `open` changes.
       section.open = false
+      section.dispatchEvent(new Event('toggle'))
       expect(section.open).toBe(false)
       // A parent re-render with the same props must NOT reopen it.
       rerender(<PolicySection state={state} />)
+      const after = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(after.open).toBe(false)
+    })
+
+    // Regression for codex review round-3 finding: when the section
+    // mounts in its loading state (defaultOpen=false) and the policy-
+    // state RPC later resolves with drift=true, the disclosure MUST
+    // auto-open so the attention signal is visible without the user
+    // having to click. A shell that captures `open` exactly once on
+    // mount (the round-2 approach) fails this test because the user
+    // would see the section collapsed on first paint after loading
+    // resolves.
+    it('auto-opens when defaultOpen flips after mount and user has not toggled', () => {
+      // First mount: loading state (state undefined → defaultOpen=false).
+      const { rerender } = render(<PolicySection isPending={true} />)
+      const loading = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(loading.open).toBe(false)
+      // Policy-state RPC resolves with drift=true → defaultOpen becomes true.
+      const drifted = makeState({ hasAppliedState: true, drift: true, addedRefs: [makeRef({})], currentSet: [makeRef({})] })
+      rerender(<PolicySection state={drifted} />)
+      const after = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(after.open).toBe(true)
+    })
+
+    // The auto-open sync must stop once the user interacts. If a user
+    // has already collapsed the drifted section, a later prop change
+    // (for example a refetch that still reports drift=true) must not
+    // reopen the section against the user's intent.
+    it('does not auto-reopen after the user collapses a drifted section', () => {
+      const drifted = makeState({ hasAppliedState: true, drift: true, addedRefs: [makeRef({})], currentSet: [makeRef({})] })
+      const { rerender } = render(<PolicySection state={drifted} />)
+      const section = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(section.open).toBe(true)
+      // User collapses.
+      section.open = false
+      section.dispatchEvent(new Event('toggle'))
+      // A later re-render with the same drift=true props must not reopen.
+      rerender(<PolicySection state={drifted} />)
       const after = screen.getByTestId('policy-section') as HTMLDetailsElement
       expect(after.open).toBe(false)
     })
