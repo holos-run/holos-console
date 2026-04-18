@@ -3,6 +3,7 @@ package deployments
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -11,7 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
@@ -339,13 +340,14 @@ func (h *Handler) ListDeployments(
 		dep := configMapToDeployment(cm, project)
 		summary, ok := h.summaryFromCache(ns, cm.Name)
 		if !ok {
-			// Synthesize a minimal summary so the cached output-url annotation
-			// still reaches the client even before the informer has observed
-			// the apps/v1.Deployment (first render, empty cluster, etc.).
+			// Synthesize a minimal summary so cached annotation-driven
+			// metadata (output-url, aggregated links) still reaches the
+			// client even before the informer has observed the
+			// apps/v1.Deployment (first render, empty cluster, etc.).
 			// Phase stays UNSPECIFIED exactly as GetDeploymentStatusSummary
 			// does on a cache miss so listing and single-row polling share
 			// the same derivation path.
-			if cm.Annotations[OutputURLAnnotation] != "" {
+			if cm.Annotations[OutputURLAnnotation] != "" || cm.Annotations[v1alpha2.AnnotationAggregatedLinks] != "" {
 				summary = &consolev1.DeploymentStatusSummary{
 					Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
 				}
@@ -353,6 +355,7 @@ func (h *Handler) ListDeployments(
 		}
 		if summary != nil {
 			mergeOutputURLAnnotation(summary, cm)
+			mergeAggregatedLinksAnnotation(summary, cm)
 			dep.StatusSummary = summary
 		}
 		deployments = append(deployments, dep)
@@ -409,17 +412,27 @@ func (h *Handler) GetDeployment(
 
 	deployment := configMapToDeployment(cm, project)
 	ns := h.k8s.Resolver.ProjectNamespace(project)
+	// Refresh the aggregated-links cache by scanning owned resources so
+	// links stamped on workloads after the last apply (e.g. an operator
+	// adding `link.argocd.argoproj.io/*` annotations out-of-band) appear
+	// without waiting for the next render. The refresh is best-effort:
+	// scan/write failures fall back to whatever the cached annotation
+	// already held. Compute fresh values up front so they are available
+	// regardless of whether the status cache fired.
+	freshLinks, freshPrimary := h.refreshAggregatedLinksCache(ctx, project, name, cm)
 	summary, ok := h.summaryFromCache(ns, cm.Name)
-	if !ok && cm.Annotations[OutputURLAnnotation] != "" {
-		// Cache miss, but we have a cached output URL to surface. Mirror
+	if !ok && (cm.Annotations[OutputURLAnnotation] != "" || len(freshLinks) > 0 || freshPrimary != "") {
+		// Cache miss, but we have cached metadata to surface (output URL,
+		// aggregated links, or a freshly promoted primary URL). Mirror
 		// ListDeployments and GetDeploymentStatusSummary by synthesizing
-		// an UNSPECIFIED summary so the frontend still receives the URL.
+		// an UNSPECIFIED summary so the frontend still receives them.
 		summary = &consolev1.DeploymentStatusSummary{
 			Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_UNSPECIFIED,
 		}
 	}
 	if summary != nil {
 		mergeOutputURLAnnotation(summary, cm)
+		applyAggregatedLinks(summary, freshLinks, freshPrimary)
 		deployment.StatusSummary = summary
 	}
 
@@ -586,6 +599,12 @@ func (h *Handler) CreateDeployment(
 				)
 			}
 		}
+		// Aggregate `external-link.*`, `primary-url`, and ArgoCD
+		// `link.*` annotations across owned resources and cache the
+		// merged set on the deployment ConfigMap. Sibling of the
+		// SetOutputURLAnnotation cache; failures are logged and
+		// non-fatal for the same reason.
+		h.stampAggregatedLinks(ctx, project, name)
 	}
 
 	slog.InfoContext(ctx, "deployment created",
@@ -777,6 +796,11 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", err),
 			)
 		}
+		// Refresh the aggregated-links cache so a template change that
+		// adds, removes, or renames link annotations on the rendered
+		// resources is reflected on the next read without waiting for
+		// the GetDeployment refresh path.
+		h.stampAggregatedLinks(ctx, project, name)
 	}
 
 	slog.InfoContext(ctx, "deployment updated",
@@ -1204,6 +1228,115 @@ func mergeOutputURLAnnotation(summary *consolev1.DeploymentStatusSummary, cm *co
 	summary.Output = &consolev1.DeploymentOutput{Url: url}
 }
 
+// mergeAggregatedLinksAnnotation populates summary.Output.Links and (when
+// promoted) summary.Output.Url from the cached AnnotationAggregatedLinks
+// JSON blob on cm. Sibling of mergeOutputURLAnnotation: the two helpers are
+// invoked in sequence so the legacy `output-url` cache fills the URL when
+// no `primary-url` was promoted, and the link aggregator extends the same
+// Output with `links`. Safe to call after mergeOutputURLAnnotation; it
+// allocates Output lazily when the prior helper did not.
+func mergeAggregatedLinksAnnotation(summary *consolev1.DeploymentStatusSummary, cm *corev1.ConfigMap) {
+	if summary == nil || cm == nil {
+		return
+	}
+	links, primaryURL := deserializeAggregatedLinks(cm)
+	applyAggregatedLinks(summary, links, primaryURL)
+}
+
+// refreshAggregatedLinksCache scans every owned resource for the deployment,
+// re-derives the aggregated link set, and rewrites the cached annotation on
+// the deployment ConfigMap when it disagrees with the fresh scan. This is
+// the GetDeployment-time refresh path that lets resources annotated out-of-
+// band (after the last render) surface without requiring a re-render. It is
+// best-effort: any scan/write failure is logged and the previously cached
+// state is returned unchanged so a transient API error never blocks the
+// read RPC. Returns the (links, primaryURL) the caller should use when
+// populating the wire DeploymentOutput.
+//
+// When the K8sClient has no dynamic client configured (local/dev wiring),
+// the cache is treated as authoritative: there is no way to scan, so a
+// preserve-cache policy avoids wiping legitimate cached metadata simply
+// because the cluster is unreachable. When a dynamic client IS configured
+// and the scan returns zero resources, that is a meaningful "no links"
+// signal — the aggregator clears any stale cached entries so deletions
+// or annotation removals propagate without requiring a re-render.
+//
+// Partial-scan handling: if `ListDeploymentResources` returns an error
+// wrapping `ErrPartialScan`, at least one per-kind list failed and the
+// returned slice is incomplete. The fresh aggregation is therefore not
+// authoritative — the cache is preserved so a transient API error or a
+// missing optional CRD never silently wipes legitimate cached links
+// (HOL-574 review round 2 P1).
+func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name string, cm *corev1.ConfigMap) ([]*consolev1.Link, string) {
+	cachedLinks, cachedPrimary := deserializeAggregatedLinks(cm)
+	if !h.k8s.HasDynamicClient() {
+		// No way to scan; keep serving the cache so the dev/local
+		// path (no cluster) still surfaces previously-stamped links.
+		return cachedLinks, cachedPrimary
+	}
+	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
+	if err != nil {
+		// Partial-scan errors mean some kinds were not observed; the
+		// returned slice is therefore not a faithful view of the
+		// cluster. Preserve the cache rather than wiping it on what
+		// might be a transient or RBAC-shaped failure. Total scan
+		// failures (no slice at all) take the same path.
+		level := slog.LevelWarn
+		if errors.Is(err, ErrPartialScan) {
+			level = slog.LevelDebug
+		}
+		slog.Log(ctx, level, "could not fully list owned resources for link refresh; using cached set",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return cachedLinks, cachedPrimary
+	}
+	freshLinks, freshPrimary := aggregateLinksFromResources(ctx, project, name, resources)
+	if linksEqual(cachedLinks, freshLinks) && cachedPrimary == freshPrimary {
+		return cachedLinks, cachedPrimary
+	}
+	// Drift detected — empty fresh result clears the annotation; a
+	// non-empty fresh result overwrites it. Either way the cache
+	// converges on what the live cluster actually says.
+	payload := serializeAggregatedLinks(ctx, project, name, freshLinks, freshPrimary)
+	if err := h.k8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
+		slog.WarnContext(ctx, "failed to update aggregated links cache after drift",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+	}
+	return freshLinks, freshPrimary
+}
+
+// stampAggregatedLinks scans every owned resource for the deployment after
+// a successful Apply/Reconcile, derives the aggregated link set, and writes
+// it to the deployment ConfigMap as `console.holos.run/links`. Mirrors the
+// SetOutputURLAnnotation precedent on the create/update write path: a
+// failure here is logged at warn but does not fail the RPC because the
+// deployment itself was applied successfully.
+func (h *Handler) stampAggregatedLinks(ctx context.Context, project, name string) {
+	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to list owned resources for aggregated links cache",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+		return
+	}
+	aggregated, primaryURL := aggregateLinksFromResources(ctx, project, name, resources)
+	payload := serializeAggregatedLinks(ctx, project, name, aggregated, primaryURL)
+	if err := h.k8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
+		slog.WarnContext(ctx, "failed to set aggregated links annotation after apply",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", err),
+		)
+	}
+}
+
 // checkProjectAccess verifies that the user has the given permission via project cascade grants.
 func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, permission rbac.Permission) error {
 	if h.projectResolver == nil {
@@ -1534,13 +1667,13 @@ func scopeFromLabel(label string) consolev1.TemplateScope {
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.
 func mapK8sError(err error) error {
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	if errors.IsAlreadyExists(err) {
+	if k8serrors.IsAlreadyExists(err) {
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	}
-	if errors.IsForbidden(err) {
+	if k8serrors.IsForbidden(err) {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)

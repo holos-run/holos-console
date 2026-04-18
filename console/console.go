@@ -394,6 +394,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		var deploymentsApplier deployments.ResourceApplier
 		if dynamicClient != nil {
 			deploymentsApplier = deployments.NewApplier(dynamicClient)
+			// Wire the same dynamic client onto the K8sClient so the
+			// link aggregator (HOL-574) can scan owned resources
+			// across every kind apply.go writes.
+			deploymentsK8s = deploymentsK8s.WithDynamicClient(dynamicClient)
 		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
 		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker, policyResolverSeam)

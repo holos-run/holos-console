@@ -68,9 +68,14 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// shows. The handler reads the ConfigMap directly (cheap single GET) —
 	// the status cache stays focused on apps/v1.Deployment state only. A
 	// missing ConfigMap or annotation simply leaves summary.Output unset.
+	// Aggregated links (HOL-574) are merged from the same cache so polling
+	// clients receive the same `output.links` and promoted primary URL
+	// the list/detail RPCs serve, keeping the three read paths
+	// observably consistent.
 	var explicitRefs []*consolev1.LinkedTemplateRef
 	if cm, cmErr := h.k8s.GetDeployment(ctx, project, name); cmErr == nil {
 		mergeOutputURLAnnotation(summary, cm)
+		mergeAggregatedLinksAnnotation(summary, cm)
 		explicitRefs = linkedTemplateRefsFromAnnotation(cm)
 	} else {
 		slog.DebugContext(ctx, "could not read deployment ConfigMap for output-url merge",

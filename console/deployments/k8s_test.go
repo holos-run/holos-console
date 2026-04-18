@@ -3,11 +3,19 @@ package deployments
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -444,6 +452,343 @@ func TestDeleteDeployment(t *testing.T) {
 		err := k8s.DeleteDeployment(context.Background(), "my-project", "does-not-exist")
 		if err == nil {
 			t.Fatal("expected error for non-existent deployment")
+		}
+	})
+}
+
+// TestSetAggregatedLinksAnnotation covers the cache-write path used by the
+// link aggregator (HOL-574). Mirrors the SetOutputURLAnnotation tests:
+// non-empty payload writes, empty payload clears, identical payload is a
+// no-op (avoids a needless Update), and a missing ConfigMap surfaces an
+// error so the handler can decide what to log.
+func TestSetAggregatedLinksAnnotation(t *testing.T) {
+	t.Run("writes payload to annotation when previously absent", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "", "")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		err := k8s.SetAggregatedLinksAnnotation(context.Background(), "my-project", "web-app", `{"primary_url":"https://app.example.com"}`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got, err := k8s.GetDeployment(context.Background(), "my-project", "web-app")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Annotations[v1alpha2.AnnotationAggregatedLinks] != `{"primary_url":"https://app.example.com"}` {
+			t.Errorf("annotation mismatch, got %q", got.Annotations[v1alpha2.AnnotationAggregatedLinks])
+		}
+	})
+
+	t.Run("empty payload clears existing annotation", func(t *testing.T) {
+		ns := projectNS("my-project")
+		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "", "")
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = `{"primary_url":"https://stale.example.com"}`
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+
+		err := k8s.SetAggregatedLinksAnnotation(context.Background(), "my-project", "web-app", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got, err := k8s.GetDeployment(context.Background(), "my-project", "web-app")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := got.Annotations[v1alpha2.AnnotationAggregatedLinks]; ok {
+			t.Errorf("expected annotation to be cleared, got %q", got.Annotations[v1alpha2.AnnotationAggregatedLinks])
+		}
+	})
+
+	t.Run("missing deployment surfaces an error", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		err := k8s.SetAggregatedLinksAnnotation(context.Background(), "my-project", "missing", "payload")
+		if err == nil {
+			t.Fatal("expected error for missing deployment")
+		}
+	})
+}
+
+// fakeDynamicSchemeForK8sTest builds a scheme that knows about every kind
+// the dynamic client may be asked to list. It mirrors fakeDynamicScheme in
+// apply_test.go but lives next to the k8s tests so this file does not
+// reach into apply test fixtures.
+func fakeDynamicSchemeForK8sTest() *runtime.Scheme {
+	return fakeDynamicScheme()
+}
+
+// makeOwnedUnstructured constructs an Unstructured with the deployment
+// ownership labels and the supplied per-resource annotations. Used by the
+// ListDeploymentResources tests so the same selector apply.go writes is
+// exercised by the read path.
+func makeOwnedUnstructured(apiVersion, kind, namespace, name, project, deployment string, annotations map[string]string) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetAPIVersion(apiVersion)
+	u.SetKind(kind)
+	u.SetNamespace(namespace)
+	u.SetName(name)
+	u.SetLabels(map[string]string{
+		v1alpha2.LabelProject:         project,
+		v1alpha2.AnnotationDeployment: deployment,
+	})
+	if annotations != nil {
+		u.SetAnnotations(annotations)
+	}
+	return u
+}
+
+// TestListDeploymentResources covers the HOL-574 multi-kind scan. The scan
+// must (a) return resources matching the project + deployment labels, (b)
+// span every kind apply.go writes, (c) ignore resources that do not match
+// the ownership selector, and (d) return (nil, nil) when no dynamic client
+// is configured (local/dev wiring).
+func TestListDeploymentResources(t *testing.T) {
+	t.Run("nil dynamic client returns nil without error", func(t *testing.T) {
+		ns := projectNS("my-project")
+		fakeClient := fake.NewClientset(ns)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		got, err := k8s.ListDeploymentResources(context.Background(), "my-project", "web-app")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil resources, got %v", got)
+		}
+	})
+
+	t.Run("validates project and deployment", func(t *testing.T) {
+		fakeClient := fake.NewClientset()
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest())
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		if _, err := k8s.ListDeploymentResources(context.Background(), "", "x"); err == nil {
+			t.Error("expected error for empty project")
+		}
+		if _, err := k8s.ListDeploymentResources(context.Background(), "x", ""); err == nil {
+			t.Error("expected error for empty deployment")
+		}
+	})
+
+	t.Run("returns owned resources matching the selector", func(t *testing.T) {
+		project := "my-project"
+		deployment := "web-app"
+		namespace := "prj-my-project"
+
+		owned := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "logs": `{"url":"https://logs.example.com","title":"Logs"}`})
+		ownedSvc := makeOwnedUnstructured("v1", "Service", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationArgoCDLinkPrefix + "grafana": "https://grafana.example.com"})
+		// Same labels but different deployment — must not appear.
+		other := makeOwnedUnstructured("apps/v1", "Deployment", namespace, "other", project, "other-deployment", nil)
+
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), owned, ownedSvc, other)
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+
+		got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Two resources match (Deployment + Service); the "other"
+		// deployment must be filtered out by the label selector.
+		if len(got) != 2 {
+			t.Fatalf("expected 2 owned resources, got %d: %+v", len(got), got)
+		}
+		// Verify both kinds are represented.
+		kinds := map[string]bool{}
+		for _, r := range got {
+			kinds[r.GetKind()] = true
+		}
+		if !kinds["Deployment"] || !kinds["Service"] {
+			t.Errorf("expected both Deployment and Service, got kinds %v", kinds)
+		}
+	})
+
+	t.Run("returns empty when no resources match", func(t *testing.T) {
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest())
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		got, err := k8s.ListDeploymentResources(context.Background(), "p", "d")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected 0 resources, got %d", len(got))
+		}
+	})
+
+	t.Run("uses the ownership label selector with project+deployment", func(t *testing.T) {
+		// Stamp the deployment label but a different project — must not
+		// surface (HOL-571 disjoint-selector semantics).
+		other := makeOwnedUnstructured("apps/v1", "Deployment", "prj-other", "web-app", "other-project", "web-app", nil)
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), other)
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		got, err := k8s.ListDeploymentResources(context.Background(), "my-project", "web-app")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected 0 cross-project matches, got %d", len(got))
+		}
+	})
+
+	t.Run("scoped to project namespace - cross-namespace resources are not surfaced", func(t *testing.T) {
+		// Same project + deployment labels but in a different
+		// namespace (e.g. an HTTPRoute landing in istio-ingress).
+		// The scan is namespace-scoped to align with the existing
+		// console RBAC posture (HOL-574 review round 1 P1) — cross-
+		// namespace resources are intentionally not harvested.
+		project := "my-project"
+		deployment := "web-app"
+		inProj := makeOwnedUnstructured("apps/v1", "Deployment", "prj-my-project", deployment, project, deployment, nil)
+		crossNS := makeOwnedUnstructured("apps/v1", "Deployment", "istio-ingress", deployment, project, deployment, nil)
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), inProj, crossNS)
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected exactly 1 in-namespace resource, got %d (cross-NS leak?): %+v", len(got), got)
+		}
+		if got[0].GetNamespace() != "prj-my-project" {
+			t.Errorf("expected resource in prj-my-project, got %q", got[0].GetNamespace())
+		}
+	})
+}
+
+// TestListDeploymentResources_PartialScan verifies that ListDeployment
+// Resources signals a partial scan (via ErrPartialScan) when at least
+// one per-kind list call fails. Without this the GetDeployment refresh
+// path would treat a transient failure as authoritative drift and wipe
+// legitimate cached links (HOL-574 review round 2 P1).
+func TestListDeploymentResources_PartialScan(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	owned := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), owned)
+	// Make Service list calls fail to simulate a transient API error
+	// or RBAC gap on a single resource type. The Deployment list
+	// should still succeed, so the returned slice carries the
+	// successful items but the error wraps ErrPartialScan.
+	dyn.PrependReactor("list", "services", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated transient failure")
+	})
+
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+	got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+	if !errors.Is(err, ErrPartialScan) {
+		t.Fatalf("expected ErrPartialScan, got %v", err)
+	}
+	// Successful kinds still surface so the caller may render a
+	// partial view if it chooses.
+	if len(got) != 1 || got[0].GetKind() != "Deployment" {
+		t.Errorf("expected Deployment item to surface despite partial failure, got %+v", got)
+	}
+}
+
+// TestListDeploymentResources_OptionalCRDsNotPartialScan verifies that
+// per-kind NotFound (or NoKindMatch) errors — which the API server
+// returns when an optional CRD like HTTPRoute or ReferenceGrant is not
+// installed on the cluster — do NOT trigger ErrPartialScan. Treating a
+// missing optional CRD as a partial scan would prevent the cache from
+// ever being seeded on clusters without Gateway API installed (HOL-574
+// review round 4).
+func TestListDeploymentResources_OptionalCRDsNotPartialScan(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	owned := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), owned)
+	// Simulate a cluster without the Gateway API CRDs — list calls
+	// for HTTPRoute / ReferenceGrant return NotFound from the API
+	// server. The aggregator must treat this as "kind is absent" not
+	// "partial scan".
+	dyn.PrependReactor("list", "httproutes", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "gateway.networking.k8s.io", Resource: "httproutes"}, "")
+	})
+	dyn.PrependReactor("list", "referencegrants", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "gateway.networking.k8s.io", Resource: "referencegrants"}, "")
+	})
+
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+	got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+	if err != nil {
+		t.Fatalf("optional missing CRDs must not surface as ErrPartialScan, got %v", err)
+	}
+	if len(got) != 1 || got[0].GetKind() != "Deployment" {
+		t.Errorf("expected only the Deployment surfaced, got %+v", got)
+	}
+}
+
+// TestListDeploymentResources_DeterministicOrder verifies that the
+// resource slice ordering does not depend on Go's randomized map
+// iteration (HOL-574 review round 2 P2). A stable order keeps the
+// aggregator's first-wins de-duplication and primary-url promotion
+// repeatable so cached values do not flap across requests.
+func TestListDeploymentResources_DeterministicOrder(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	// Seed one resource per kind we care about. Stable iteration
+	// across allowedKinds means the slice ordering is identical from
+	// run to run.
+	dep := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	svc := makeOwnedUnstructured("v1", "Service", namespace, deployment, project, deployment, nil)
+	sa := makeOwnedUnstructured("v1", "ServiceAccount", namespace, deployment, project, deployment, nil)
+
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), dep, svc, sa)
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+
+	// Run the scan multiple times; the slice ordering must be
+	// identical across calls. If allowedKinds were iterated as a map
+	// this would flake under -count.
+	const runs = 8
+	var first []string
+	for i := 0; i < runs; i++ {
+		got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+		if err != nil {
+			t.Fatalf("run %d: unexpected error: %v", i, err)
+		}
+		order := make([]string, 0, len(got))
+		for _, r := range got {
+			order = append(order, r.GetKind())
+		}
+		if i == 0 {
+			first = order
+			continue
+		}
+		if len(order) != len(first) {
+			t.Fatalf("run %d: ordering length differs from run 0", i)
+		}
+		for j := range order {
+			if order[j] != first[j] {
+				t.Errorf("run %d: ordering differs at index %d (got %q, want %q from run 0)", i, j, order[j], first[j])
+				break
+			}
+		}
+	}
+}
+
+// TestHasDynamicClient covers the boolean accessor used by the handler to
+// distinguish "no scan possible" (preserve cache) from "scan returned
+// nothing" (clear cache). HOL-574 review round 1 P2.
+func TestHasDynamicClient(t *testing.T) {
+	t.Run("returns false when no dynamic client is configured", func(t *testing.T) {
+		k8s := NewK8sClient(fake.NewClientset(), testResolver())
+		if k8s.HasDynamicClient() {
+			t.Error("expected HasDynamicClient to return false on default constructor")
+		}
+	})
+	t.Run("returns true after WithDynamicClient", func(t *testing.T) {
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest())
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		if !k8s.HasDynamicClient() {
+			t.Error("expected HasDynamicClient to return true after WithDynamicClient")
 		}
 	})
 }
