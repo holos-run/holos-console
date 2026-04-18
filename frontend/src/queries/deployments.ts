@@ -65,6 +65,12 @@ export function useUpdateDeployment(project: string, name: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deploymentListKey(project) })
       queryClient.invalidateQueries({ queryKey: deploymentGetKey(project, name) })
+      // HOL-559: a successful UpdateDeployment re-renders against the
+      // current TemplatePolicy chain and records a fresh applied render
+      // set on the backend. Invalidate the policy-state query so the
+      // UI's drift badge + diff refresh from the authoritative state
+      // rather than continuing to show the stale "drifted" snapshot.
+      queryClient.invalidateQueries({ queryKey: deploymentPolicyStateKey(project, name) })
     },
   })
 }

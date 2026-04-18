@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react'
+import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,9 +9,12 @@ import type {
 } from '@/gen/holos/console/v1/policy_state_pb'
 
 // PolicySection renders the TemplatePolicy drift snapshot for a render
-// target — either a Deployment or a project-scope Template — and exposes a
-// Reconcile action slot so callers can wire in the appropriate Update
-// mutation (useUpdateDeployment / useUpdateTemplate).
+// target — either a Deployment or a project-scope Template — inside a
+// native <details>/<summary> disclosure, and exposes a caller-supplied
+// Reconcile action slot so both surfaces share identical visual treatment
+// and tests. HOL-559 requires the section be collapsible on both detail
+// views; this component provides that via the native element so no Radix
+// dependency is needed and screen readers get built-in a11y semantics.
 //
 // IMPORTANT: PolicyState is sourced exclusively from the
 // GetDeploymentPolicyState / GetProjectTemplatePolicyState RPCs. Both RPCs
@@ -39,6 +42,12 @@ export interface PolicySectionProps {
    * for instance to "TemplatePolicy" or similar.
    */
   heading?: string
+  /**
+   * When true the disclosure is expanded by default. Defaults to "open
+   * only when drifted" so the attention signal is visible without the
+   * user having to click.
+   */
+  defaultOpen?: boolean
 }
 
 /**
@@ -80,43 +89,91 @@ function RefList({ refs, testid }: { refs: LinkedTemplateRef[]; testid: string }
   )
 }
 
+/**
+ * CollapsibleShell wraps the section in a native <details> disclosure.
+ * Using the native element keeps keyboard and screen-reader behavior
+ * correct without pulling in a third-party collapsible primitive.
+ *
+ * The Reconcile button is rendered outside the <summary> (absolutely
+ * positioned on the right of the header row) so that nested interactive
+ * elements inside <summary> do not interfere with the native
+ * click-to-toggle behavior.
+ */
+function CollapsibleShell({
+  heading,
+  summaryExtra,
+  headerAction,
+  defaultOpen,
+  children,
+}: {
+  heading: string
+  summaryExtra?: React.ReactNode
+  headerAction?: React.ReactNode
+  defaultOpen: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <details
+      className="space-y-4 group relative"
+      data-testid="policy-section"
+      open={defaultOpen}
+    >
+      <summary
+        className="flex items-center gap-2 cursor-pointer list-none select-none pr-36"
+        data-testid="policy-section-summary"
+      >
+        <h3 className="text-sm font-medium flex items-center gap-2">
+          <ChevronRight
+            aria-hidden="true"
+            className="h-4 w-4 transition-transform group-open:rotate-90"
+          />
+          {heading}
+          {summaryExtra}
+        </h3>
+      </summary>
+      {headerAction && (
+        <div className="absolute top-0 right-0">{headerAction}</div>
+      )}
+      <Separator />
+      {children}
+    </details>
+  )
+}
+
 export function PolicySection({
   state,
   isPending = false,
   error,
   reconcileAction,
   heading = 'Policy',
+  defaultOpen,
 }: PolicySectionProps) {
-  // Error state — surface the message inline.
+  // Error state — surface the message inline. Open by default so the
+  // error is visible without requiring the user to click.
   if (error) {
     return (
-      <div className="space-y-4" data-testid="policy-section">
-        <h3 className="text-sm font-medium">{heading}</h3>
-        <Separator />
+      <CollapsibleShell heading={heading} defaultOpen={defaultOpen ?? true}>
         <p className="text-sm text-destructive">{error.message}</p>
-      </div>
+      </CollapsibleShell>
     )
   }
 
   if (isPending || !state) {
     return (
-      <div className="space-y-4" data-testid="policy-section">
-        <h3 className="text-sm font-medium">{heading}</h3>
-        <Separator />
+      <CollapsibleShell heading={heading} defaultOpen={defaultOpen ?? false}>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-24 w-full" />
-      </div>
+      </CollapsibleShell>
     )
   }
 
   // "Never applied" state — the target has not been rendered through the
-  // HOL-567 applied-state path yet, so drift is not meaningful. Show a note
-  // so the user understands why no diff is rendered.
+  // HOL-567 applied-state path yet, so drift is not meaningful. Collapsed
+  // by default so it stays visually quiet for the common "new target"
+  // case.
   if (!state.hasAppliedState) {
     return (
-      <div className="space-y-4" data-testid="policy-section">
-        <h3 className="text-sm font-medium">{heading}</h3>
-        <Separator />
+      <CollapsibleShell heading={heading} defaultOpen={defaultOpen ?? false}>
         <p className="text-sm text-muted-foreground" data-testid="policy-never-applied">
           No applied state recorded yet. Drift will be reported after the next render.
         </p>
@@ -126,32 +183,30 @@ export function PolicySection({
           </p>
           <RefList refs={state.currentSet} testid="policy-current-set" />
         </div>
-      </div>
+      </CollapsibleShell>
     )
   }
 
+  // Drifted — expand by default so the attention signal is visible
+  // without the user having to click. In-sync → collapsed by default.
+  const summaryExtra = state.drift ? (
+    <PolicyDriftBadge />
+  ) : (
+    <span className="text-xs text-muted-foreground" data-testid="policy-in-sync">
+      In sync
+    </span>
+  )
+  const headerAction =
+    state.drift && reconcileAction ? (
+      <div data-testid="policy-reconcile-slot">{reconcileAction}</div>
+    ) : null
   return (
-    <div className="space-y-4" data-testid="policy-section">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium flex items-center gap-2">
-          {heading}
-          {state.drift ? (
-            <PolicyDriftBadge />
-          ) : (
-            <span
-              className="text-xs text-muted-foreground"
-              data-testid="policy-in-sync"
-            >
-              In sync
-            </span>
-          )}
-        </h3>
-        {state.drift && reconcileAction ? (
-          <div data-testid="policy-reconcile-slot">{reconcileAction}</div>
-        ) : null}
-      </div>
-      <Separator />
-
+    <CollapsibleShell
+      heading={heading}
+      summaryExtra={summaryExtra}
+      headerAction={headerAction}
+      defaultOpen={defaultOpen ?? state.drift}
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
@@ -173,7 +228,7 @@ export function PolicySection({
         </p>
         <RefList refs={state.currentSet} testid="policy-current-set" />
       </div>
-    </div>
+    </CollapsibleShell>
   )
 }
 

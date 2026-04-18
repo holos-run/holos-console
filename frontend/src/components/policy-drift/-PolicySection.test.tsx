@@ -155,4 +155,38 @@ describe('PolicySection', () => {
     render(<PolicySection state={state} heading="TemplatePolicy" />)
     expect(screen.getByRole('heading', { name: /templatepolicy/i })).toBeInTheDocument()
   })
+
+  // HOL-559 AC: the Policy section must be collapsible on both detail
+  // surfaces. The shared component uses a native <details>/<summary>
+  // disclosure to satisfy this.
+  describe('collapsible', () => {
+    it('renders a <details>/<summary> disclosure wrapper', () => {
+      const state = makeState({ hasAppliedState: true })
+      render(<PolicySection state={state} />)
+      const section = screen.getByTestId('policy-section')
+      expect(section.tagName.toLowerCase()).toBe('details')
+      expect(screen.getByTestId('policy-section-summary').tagName.toLowerCase()).toBe('summary')
+    })
+
+    it('is collapsed by default when drift is false (in sync)', () => {
+      const state = makeState({ hasAppliedState: true, drift: false })
+      render(<PolicySection state={state} />)
+      const section = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(section.open).toBe(false)
+    })
+
+    it('is expanded by default when drift is true', () => {
+      const state = makeState({ hasAppliedState: true, drift: true, currentSet: [makeRef({})] })
+      render(<PolicySection state={state} />)
+      const section = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(section.open).toBe(true)
+    })
+
+    it('respects defaultOpen prop override', () => {
+      const state = makeState({ hasAppliedState: true, drift: false })
+      render(<PolicySection state={state} defaultOpen={true} />)
+      const section = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(section.open).toBe(true)
+    })
+  })
 })

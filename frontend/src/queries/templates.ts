@@ -183,6 +183,13 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       // Invalidate all check-updates queries for this scope so upgrade badges
       // and dialogs reflect the new state immediately after a template update.
       queryClient.invalidateQueries({ queryKey: ['templates', 'checkUpdates'] })
+      // HOL-559: a successful UpdateTemplate re-renders against the
+      // current TemplatePolicy chain and records a fresh applied render
+      // set on the backend. Invalidate all policy-state queries for this
+      // scope so the list-row drift badge and the detail PolicySection
+      // both refresh from the authoritative state rather than showing
+      // the stale "drifted" snapshot after reconcile.
+      queryClient.invalidateQueries({ queryKey: ['templates', 'policy-state', scope.scope, scope.scopeName] })
     },
   })
 }
