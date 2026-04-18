@@ -11,6 +11,8 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -27,13 +29,30 @@ const (
 
 // K8sClient wraps Kubernetes client operations for deployments.
 type K8sClient struct {
-	client   kubernetes.Interface
+	client kubernetes.Interface
+	// dynamic, when non-nil, enables multi-kind queries used by the link
+	// aggregator (HOL-574) to scan resources owned by a deployment across
+	// every kind apply.go writes. A nil dynamic client makes
+	// ListDeploymentResources a no-op so local/dev wiring without a cluster
+	// dynamic client (and unit tests that only need typed reads) keep
+	// working.
+	dynamic  dynamic.Interface
 	Resolver *resolver.Resolver
 }
 
 // NewK8sClient creates a client for deployment operations.
 func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
+}
+
+// WithDynamicClient configures the K8sClient with a dynamic client used by
+// ListDeploymentResources to scan owned resources across every allowed kind
+// (HOL-574). Returns the receiver for fluent chaining alongside the existing
+// constructor so callers do not have to thread a new positional arg through
+// every test that builds a K8sClient.
+func (k *K8sClient) WithDynamicClient(d dynamic.Interface) *K8sClient {
+	k.dynamic = d
+	return k
 }
 
 // ListDeployments returns all deployment ConfigMaps in the project namespace.
@@ -163,6 +182,94 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 		}
 	}
 	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+}
+
+// ListDeploymentResources returns every resource currently owned by the given
+// deployment, scanned across every kind apply.go writes. The lookup uses the
+// same `LabelProject=<project>,console.holos.run/deployment=<deployment>`
+// selector applied at apply time so results are exactly the set Reconcile and
+// Cleanup operate on. Returned objects are the live cluster representation —
+// each carries its own annotations, labels, kind, namespace, and name — and
+// are intended to be passed straight to links.ParseAnnotations by the
+// aggregator (HOL-574).
+//
+// When no dynamic client is configured the method returns (nil, nil) so the
+// handler degrades gracefully on local/dev wiring without a cluster (mirrors
+// the SetOutputURLAnnotation precedent of "best-effort cache, never block
+// the RPC"). List failures for individual GVRs are logged and skipped — some
+// CRDs may be absent from the cluster — so a missing optional kind never
+// breaks aggregation for the kinds that are present.
+func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deployment string) ([]unstructured.Unstructured, error) {
+	if k.dynamic == nil {
+		return nil, nil
+	}
+	if project == "" || deployment == "" {
+		return nil, fmt.Errorf("project and deployment are required")
+	}
+	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
+		v1alpha2.LabelProject, project,
+		v1alpha2.AnnotationDeployment, deployment)
+
+	var out []unstructured.Unstructured
+	for kind, gvr := range allowedKinds {
+		// List across all namespaces — apply.go places resources in their
+		// own metadata.namespace, so cross-namespace fans-out (e.g. an
+		// HTTPRoute landing in istio-ingress) are surfaced too.
+		list, err := k.dynamic.Resource(gvr).List(ctx, metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		if err != nil {
+			// Some optional CRDs may not be installed; treat as empty
+			// and continue rather than failing the whole aggregator
+			// (mirrors the apply.go DiscoverNamespaces / Reconcile
+			// orphan-scan precedent).
+			slog.DebugContext(ctx, "list deployment resources: skipping kind",
+				slog.String("kind", kind),
+				slog.String("project", project),
+				slog.String("deployment", deployment),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		out = append(out, list.Items...)
+	}
+	return out, nil
+}
+
+// SetAggregatedLinksAnnotation sets (or clears) the aggregated-links cache
+// annotation on the deployment ConfigMap. An empty payload removes the
+// annotation so stale link sets from previous renders do not persist when a
+// template edit drops every link source. A missing ConfigMap surfaces the
+// underlying NotFound so the handler can decide whether to log or surface
+// the error. Mirrors SetOutputURLAnnotation exactly so the two cached
+// surfaces share one operational shape (HOL-574).
+func (k *K8sClient) SetAggregatedLinksAnnotation(ctx context.Context, project, name, payload string) error {
+	ns := k.Resolver.ProjectNamespace(project)
+	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("getting deployment for aggregated-links annotation update: %w", err)
+	}
+	if cm.Annotations == nil {
+		cm.Annotations = map[string]string{}
+	}
+	if payload == "" {
+		if _, ok := cm.Annotations[v1alpha2.AnnotationAggregatedLinks]; !ok {
+			// No-op: annotation not present and nothing to clear.
+			return nil
+		}
+		delete(cm.Annotations, v1alpha2.AnnotationAggregatedLinks)
+	} else {
+		if cm.Annotations[v1alpha2.AnnotationAggregatedLinks] == payload {
+			// Already up to date; avoid a needless write.
+			return nil
+		}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = payload
+	}
+	_, err = k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("updating deployment aggregated-links annotation: %w", err)
+	}
+	return nil
 }
 
 // SetOutputURLAnnotation sets (or clears) the output-url annotation on the

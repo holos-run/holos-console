@@ -10,6 +10,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 
@@ -1786,6 +1788,343 @@ func TestHandler_OutputURLAnnotation(t *testing.T) {
 		}
 		if resp.Msg.Summary.Output.Url != "https://web-app.example.com" {
 			t.Errorf("output.url: got %q, want %q", resp.Msg.Summary.Output.Url, "https://web-app.example.com")
+		}
+	})
+}
+
+// handlerWithLinks builds a Handler primed with a fake dynamic client so
+// the link aggregator can scan and write the cache annotation. dynObjs is
+// the seed for the dynamic fake; statusEntries seeds the statusCache so
+// summaries are present without needing a live informer.
+func handlerWithLinks(t *testing.T, ns *corev1.Namespace, depCM *corev1.ConfigMap, dynObjs []runtime.Object, statusEntries map[string]*consolev1.DeploymentStatusSummary) (*Handler, *fake.Clientset) {
+	t.Helper()
+	fakeClient := fake.NewClientset(ns, depCM)
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicScheme(), dynObjs...)
+	k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+	cache := newFakeStatusCache()
+	for nsName, summary := range statusEntries {
+		cache.set(nsName, depCM.Name, summary)
+	}
+	handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+	return handler, fakeClient
+}
+
+// makeOwnedDynamicResource constructs an Unstructured carrying the
+// project+deployment ownership labels and the supplied annotations. Used
+// to seed the fake dynamic client for the aggregator integration tests.
+func makeOwnedDynamicResource(apiVersion, kind, namespace, name, project, deployment string, annotations map[string]string) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetAPIVersion(apiVersion)
+	u.SetKind(kind)
+	u.SetNamespace(namespace)
+	u.SetName(name)
+	u.SetLabels(map[string]string{
+		v1alpha2.LabelProject:         project,
+		v1alpha2.AnnotationDeployment: deployment,
+	})
+	if annotations != nil {
+		u.SetAnnotations(annotations)
+	}
+	return u
+}
+
+// dynamicWithListPanic returns a dynamic.Interface whose List reactor
+// fails the test if invoked. Used to assert ListDeployments stays purely
+// on the cached annotation and never falls through to a per-resource scan.
+func dynamicWithListPanic(t *testing.T) dynamic.Interface {
+	t.Helper()
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicScheme())
+	dyn.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		t.Errorf("ListDeployments must not list dynamic resources; got %s on %s", action.GetVerb(), action.GetResource().Resource)
+		return true, nil, fmt.Errorf("list not allowed on ListDeployments path")
+	})
+	return dyn
+}
+
+// TestHandler_AggregatedLinks exercises the full HOL-574 contract:
+// ListDeployments and GetDeployment surface links and a promoted primary
+// URL from the cache annotation, GetDeployment refreshes by scanning owned
+// resources when they drift from the cache, and ListDeployments stays
+// purely on the cache (no dynamic List calls on the hot path).
+func TestHandler_AggregatedLinks(t *testing.T) {
+	const project = "my-project"
+	const deployment = "web-app"
+	namespace := "prj-my-project"
+
+	t.Run("ListDeployments: no link annotations leaves output.links nil", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// Use a dynamic client whose List would panic — proves the list
+		// path does not scan resources.
+		fakeClient := fake.NewClientset(ns, cm)
+		dyn := dynamicWithListPanic(t)
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.ListDeployments(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: project}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil {
+			t.Fatal("expected statusSummary populated from cache")
+		}
+		if summary.Output != nil && len(summary.Output.Links) > 0 {
+			t.Errorf("expected output.links nil, got %+v", summary.Output.Links)
+		}
+	})
+
+	t.Run("ListDeployments: cached aggregated links surface on output.links", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// Pre-stamp the cache annotation with a single holos link.
+		links := []*consolev1.Link{{Url: "https://logs.example.com", Title: "Logs", Source: "holos", Name: "logs"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, links, "")
+		dyn := dynamicWithListPanic(t)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.ListDeployments(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: project}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil || summary.Output == nil {
+			t.Fatal("expected output populated from cache annotation")
+		}
+		if len(summary.Output.Links) != 1 || summary.Output.Links[0].GetUrl() != "https://logs.example.com" {
+			t.Errorf("output.links: got %+v, want one logs link", summary.Output.Links)
+		}
+	})
+
+	t.Run("ListDeployments: cached primary_url promotes into output.url over output-url annotation", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// Both caches present: the primary-url should win on the wire.
+		cm.Annotations[OutputURLAnnotation] = "https://output-url.example.com"
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, nil, "https://primary.example.com")
+		dyn := dynamicWithListPanic(t)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.ListDeployments(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: project}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil || summary.Output == nil {
+			t.Fatal("expected output populated")
+		}
+		if summary.Output.Url != "https://primary.example.com" {
+			t.Errorf("primary-url should override output-url annotation: got %q", summary.Output.Url)
+		}
+	})
+
+	t.Run("ListDeployments: only cache annotation present synthesizes UNSPECIFIED summary", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		links := []*consolev1.Link{{Url: "https://l.example.com", Name: "l", Source: "holos"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, links, "")
+		dyn := dynamicWithListPanic(t)
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		// No status cache entry — verify ListDeployments still synthesizes a summary.
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(newFakeStatusCache())
+
+		resp, err := handler.ListDeployments(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: project}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployments[0].StatusSummary
+		if summary == nil {
+			t.Fatal("expected synthesized summary on cache miss when annotation is present")
+		}
+		if summary.Output == nil || len(summary.Output.Links) != 1 {
+			t.Errorf("expected output.links populated from cache, got %+v", summary.Output)
+		}
+	})
+
+	t.Run("GetDeployment: link from one resource refreshes cache and surfaces", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// No cached annotation — fresh scan must populate it.
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "logs": `{"url":"https://logs.example.com","title":"Logs"}`})
+		handler, fakeClient := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployment.StatusSummary
+		if summary == nil || summary.Output == nil {
+			t.Fatal("expected output populated by fresh scan")
+		}
+		if len(summary.Output.Links) != 1 || summary.Output.Links[0].GetUrl() != "https://logs.example.com" {
+			t.Errorf("expected one logs link, got %+v", summary.Output.Links)
+		}
+		// Verify the cache annotation was written.
+		got, _ := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		if got.Annotations[v1alpha2.AnnotationAggregatedLinks] == "" {
+			t.Error("expected GetDeployment to write the aggregated links cache annotation")
+		}
+	})
+
+	t.Run("GetDeployment: links spread across multiple resources are aggregated", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "zeta": `{"url":"https://zeta.example.com","title":"Zeta"}`})
+		svc := makeOwnedDynamicResource("v1", "Service", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "alpha": `{"url":"https://alpha.example.com","title":"Alpha"}`})
+		handler, _ := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep, svc},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployment.StatusSummary
+		if summary == nil || summary.Output == nil || len(summary.Output.Links) != 2 {
+			t.Fatalf("expected 2 aggregated links, got %+v", summary)
+		}
+		if summary.Output.Links[0].GetName() != "alpha" || summary.Output.Links[1].GetName() != "zeta" {
+			t.Errorf("expected sorted alpha,zeta; got %q,%q", summary.Output.Links[0].GetName(), summary.Output.Links[1].GetName())
+		}
+	})
+
+	t.Run("GetDeployment: primary-url annotation promotes into output.url", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationPrimaryURL: `{"url":"https://app.example.com","title":"App"}`})
+		handler, _ := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		summary := resp.Msg.Deployment.StatusSummary
+		if summary == nil || summary.Output == nil {
+			t.Fatal("expected output populated")
+		}
+		if summary.Output.Url != "https://app.example.com" {
+			t.Errorf("expected primary URL promoted: got %q", summary.Output.Url)
+		}
+	})
+
+	t.Run("GetDeployment: primary-url overrides cached output-url annotation", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		cm.Annotations[OutputURLAnnotation] = "https://output-url.example.com"
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationPrimaryURL: `{"url":"https://primary.example.com","title":"Primary"}`})
+		handler, _ := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := resp.Msg.Deployment.StatusSummary.Output.Url
+		if got != "https://primary.example.com" {
+			t.Errorf("primary-url should win over output-url; got %q", got)
+		}
+	})
+
+	t.Run("GetDeployment: argocd annotation surfaces with source=argocd", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationArgoCDLinkPrefix + "grafana": "https://grafana.example.com"})
+		handler, _ := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		links := resp.Msg.Deployment.StatusSummary.Output.Links
+		if len(links) != 1 || links[0].GetSource() != "argocd" {
+			t.Errorf("expected one argocd-source link, got %+v", links)
+		}
+	})
+
+	t.Run("CreateDeployment stamps aggregated links from owned resources after apply", func(t *testing.T) {
+		ns := projectNS(project)
+		fakeClient := fake.NewClientset(ns)
+		// Pre-seed the dynamic client with a resource carrying the
+		// ownership labels and a holos external-link annotation so the
+		// post-apply scan finds something to cache.
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "logs": `{"url":"https://logs.example.com","title":"Logs"}`})
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicScheme(), dep)
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{})
+
+		_, err := handler.CreateDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.CreateDeploymentRequest{
+			Project: project, Name: deployment, Image: "nginx", Tag: "1.25", Template: "default",
+		}))
+		if err != nil {
+			t.Fatalf("CreateDeployment failed: %v", err)
+		}
+		got, err := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("getting created ConfigMap: %v", err)
+		}
+		links, _ := deserializeAggregatedLinks(got)
+		if len(links) != 1 || links[0].GetUrl() != "https://logs.example.com" {
+			t.Errorf("expected logs link in cache, got %+v", links)
+		}
+	})
+
+	t.Run("GetDeployment: drift between cache and live resources rewrites cache", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// Cache holds an outdated link.
+		stale := []*consolev1.Link{{Url: "https://stale.example.com", Title: "Stale", Source: "holos", Name: "stale"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, stale, "")
+		// Live resource carries a different link.
+		dep := makeOwnedDynamicResource("apps/v1", "Deployment", namespace, deployment, project, deployment,
+			map[string]string{v1alpha2.AnnotationExternalLinkPrefix + "fresh": `{"url":"https://fresh.example.com","title":"Fresh"}`})
+		handler, fakeClient := handlerWithLinks(t, ns, cm,
+			[]runtime.Object{dep},
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		links := resp.Msg.Deployment.StatusSummary.Output.Links
+		if len(links) != 1 || links[0].GetUrl() != "https://fresh.example.com" {
+			t.Errorf("fresh scan should win: got %+v", links)
+		}
+		// Cache was rewritten with the fresh set.
+		got, _ := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		gotLinks, _ := deserializeAggregatedLinks(got)
+		if len(gotLinks) != 1 || gotLinks[0].GetUrl() != "https://fresh.example.com" {
+			t.Errorf("expected cache rewritten to fresh link, got %+v", gotLinks)
 		}
 	})
 }
