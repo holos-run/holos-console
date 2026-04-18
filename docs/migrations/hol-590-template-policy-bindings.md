@@ -76,12 +76,14 @@ Summary: 3 created bindings; cleared targets on 3 policies; 1 skipped (already m
    - Matches `project_pattern` against each descendant project slug.
    - When `deployment_pattern` is empty, selects every project-scope template and every deployment in the matched projects.
    - When `deployment_pattern` is non-empty, selects only deployments whose name matches the pattern in the matched projects.
-6. Deduplicates the collected `(kind, project_name, name)` triples into a sorted target list.
-7. Looks up any existing binding named `<policy-name>-migrated` in the policy's namespace:
+6. Skips project namespaces carrying a non-nil `metadata.deletionTimestamp` so the migrator's descendant set matches the runtime topology's (HOL-570). Binding targets that live in terminating namespaces would never have activated under the legacy glob evaluation path.
+7. Deduplicates the collected `(kind, project_name, name)` triples into a sorted target list.
+8. If the target list is empty (the globs currently match no live render targets), skips binding creation — the binding handler rejects an empty `target_refs` list and writing one would leave an uneditable ConfigMap artifact. The policy's `Target` fields are still cleared on `--apply` because the globs matched nothing under the legacy path either, so clearing is semantics-preserving.
+9. Looks up any existing binding named `<policy-name>-migrated` in the policy's namespace:
    - If the binding already exists with the same target set, leaves it alone (and only clears the policy's `Target` fields on `--apply`).
    - If the binding exists with a different target set, records a `CONFLICT` in the plan and leaves the policy untouched.
-   - If no binding exists, creates one on `--apply`.
-8. On `--apply`, creates the binding first, then clears the policy's `Target` fields.
+   - If no binding exists (and the target list is non-empty), creates one on `--apply`.
+10. On `--apply`, creates the binding first (when needed), then clears the policy's `Target` fields.
 
 ## Idempotency
 
@@ -90,6 +92,7 @@ Re-running the command is always safe:
 - A policy whose `Target` fields are already empty is skipped entirely. The command reports it under `N skipped (already migrated)`.
 - A binding with the deterministic name `<policy-name>-migrated` that already carries the expected target set is re-used. The command does not attempt to recreate it and does not attempt to mutate it.
 - A partial run that created the binding but failed before clearing the policy retries cleanly: the next invocation finds the binding, verifies the target set matches, and proceeds directly to clearing the policy.
+- A policy whose globs match no live render targets is cleared without producing a binding. A subsequent run sees the cleared Target fields and classifies the policy as already migrated.
 
 ## Operator actions after a conflict
 

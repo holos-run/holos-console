@@ -168,6 +168,15 @@ type PolicyMigrationPlan struct {
 	// empty Target on at least one rule. When false the policy is
 	// already cleared and the migrator skips the UpdatePolicy call.
 	ClearPolicyTargets bool
+	// EmptyTargets is true when the rule globs currently match no
+	// render targets in the cluster. The migrator skips binding
+	// creation in that case (the binding handler rejects an empty
+	// target_refs list, so writing one would produce an
+	// uneditable artifact) but still clears the policy's Target
+	// globs so HOL-600 can remove the evaluation path safely — the
+	// globs matched nothing under the legacy path either, so clearing
+	// them is semantics-preserving.
+	EmptyTargets bool
 	// Notes accumulates per-plan warnings or informational messages
 	// (e.g. conflict notices) so the printed summary can surface them
 	// without forcing every caller to re-derive them.
@@ -269,11 +278,17 @@ func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolic
 	// after a successful binding-create is retryable too because the
 	// existing binding is detected and re-used next time.
 	for _, plan := range result.Plans {
-		if len(plan.Notes) > 0 && plan.BindingExists && !plan.BindingTargetsMatch {
+		if plan.BindingExists && !plan.BindingTargetsMatch {
+			// Existing binding with different target set — an
+			// operator must decide whether to delete the binding
+			// or keep the policy globs. We leave everything
+			// untouched in that case, including the policy's
+			// Target globs, so the next dry-run reproduces the
+			// same conflict until the operator intervenes.
 			result.Conflicts++
 			continue
 		}
-		if !plan.BindingExists {
+		if !plan.BindingExists && !plan.EmptyTargets {
 			if err := createBindingFromPlan(ctx, opts.Client, plan); err != nil {
 				return result, fmt.Errorf("creating binding %q in %q: %w",
 					plan.BindingName, plan.PolicyNamespace, err)
@@ -499,14 +514,20 @@ func buildPolicyPlan(
 	}
 
 	bindingName := policy.Name + migrateBindingNameSuffix
+	resolvedTargets := targetSet.Sorted()
 	plan := &PolicyMigrationPlan{
 		PolicyNamespace:    policy.Namespace,
 		PolicyName:         policy.Name,
 		BindingName:        bindingName,
 		Scope:              scope,
 		ScopeName:          scopeName,
-		TargetRefs:         targetSet.Sorted(),
+		TargetRefs:         resolvedTargets,
 		ClearPolicyTargets: true,
+		EmptyTargets:       len(resolvedTargets) == 0,
+	}
+	if plan.EmptyTargets {
+		plan.Notes = append(plan.Notes,
+			"glob patterns matched no live project templates or deployments; skipping binding creation (an empty target_refs list is rejected by the binding handler) while still clearing the policy Target globs")
 	}
 
 	// Inspect any pre-existing binding by BindingName. A matching set
@@ -578,10 +599,19 @@ func templateScopeFromNamespace(r *resolver.Resolver, ns string) (consolev1.Temp
 // chain passes through scopeNs. The walk uses the parent label index built
 // in classifyNamespaces so the helper never touches the K8s API — all the
 // metadata it needs is already in memory.
+//
+// Projects carrying a non-nil DeletionTimestamp are skipped to mirror
+// K8sResourceTopology.ListProjectsUnderScope (HOL-570): the runtime
+// topology treats a terminating namespace as already unreachable, so the
+// migration must not bind targets in namespaces that will never activate
+// under the legacy glob path the binding is replacing.
 func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace) ([]*corev1.Namespace, error) {
 	wantNs := scopeNs.Name
 	out := make([]*corev1.Namespace, 0)
 	for _, projNs := range nsIndex.project {
+		if projNs.DeletionTimestamp != nil {
+			continue
+		}
 		if ancestorChainContains(nsIndex, projNs, wantNs) {
 			out = append(out, projNs)
 		}
@@ -1008,6 +1038,8 @@ func printMigrationPlan(w io.Writer, plans []*PolicyMigrationPlan) {
 			_, _ = fmt.Fprintln(w, "  status: binding already exists with matching targets; will clear policy Target globs only")
 		case plan.BindingExists && !plan.BindingTargetsMatch:
 			_, _ = fmt.Fprintln(w, "  status: CONFLICT — existing binding has different targets; no changes will be made")
+		case plan.EmptyTargets:
+			_, _ = fmt.Fprintln(w, "  status: globs matched no live render targets; will clear policy Target globs only (no binding is written because the binding handler rejects an empty target_refs list)")
 		default:
 			_, _ = fmt.Fprintln(w, "  status: will create new binding and clear policy Target globs")
 		}

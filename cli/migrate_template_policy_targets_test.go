@@ -209,6 +209,33 @@ func withDeployment(ns, name string) fixtureOption {
 	}
 }
 
+// withTerminatingProjectNamespace adds a managed project namespace whose
+// metadata.deletionTimestamp is non-nil — i.e. the namespace is in the
+// process of being deleted. The migrator must skip such namespaces to
+// mirror K8sResourceTopology.ListProjectsUnderScope (HOL-570).
+func withTerminatingProjectNamespace(name, parent string) fixtureOption {
+	return func(b *fixtureBuilder) {
+		now := metav1.Now()
+		b.objects = append(b.objects, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              b.r.ProjectNamespace(name),
+				DeletionTimestamp: &now,
+				// Kubernetes requires a finalizer when
+				// DeletionTimestamp is set; the fake client
+				// does not enforce this, but a real cluster
+				// would.
+				Finalizers: []string{"kubernetes"},
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.AnnotationParent:  parentNamespace(b.r, parent),
+					v1alpha2.LabelOrganization: rootOrgFromParent(parent),
+				},
+			},
+		})
+	}
+}
+
 // withBinding adds a pre-existing TemplatePolicyBinding ConfigMap. Used by
 // the idempotency test to simulate "the migration already ran once".
 func withBinding(ns, name, policyRefJSON, targetRefsJSON string) fixtureOption {
@@ -612,6 +639,78 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 					},
 				},
 				wantPolicyCleared: [][2]string{{r.OrgNamespace("acme"), "audit"}},
+			},
+		},
+		{
+			// Codex round-1 review HOL-599: a policy whose globs
+			// match no live render targets must not produce a
+			// binding with target_refs=[] (the binding handler
+			// rejects empty lists and the resulting artifact would
+			// be uneditable). The migrator still clears the policy
+			// globs because they matched nothing under the legacy
+			// path either — clearing is semantics-preserving.
+			name: "globs matching no targets skip binding creation but still clear policy",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withProjectNamespace("lilies", "acme"),
+				withPolicy(r.OrgNamespace("acme"), "audit", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "nonexistent", DeploymentPattern: "nothing"},
+					},
+				}),
+			},
+			run: runArgs{apply: true},
+			first: assertions{
+				bindingsCreated:   0,
+				policiesUpdated:   1,
+				wantPlans:         1,
+				wantPolicyCleared: [][2]string{{r.OrgNamespace("acme"), "audit"}},
+				wantNoBindingIn:   [][2]string{{r.OrgNamespace("acme"), "audit" + migrateBindingNameSuffix}},
+			},
+		},
+		{
+			// Codex round-1 review HOL-599: a namespace with a
+			// non-nil DeletionTimestamp is being reclaimed, so
+			// K8sResourceTopology.ListProjectsUnderScope excludes
+			// it. The migrator must match the topology contract so
+			// it does not bind targets the legacy glob evaluation
+			// path would never have activated.
+			name: "terminating project namespaces are excluded from target enumeration",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withProjectNamespace("lilies", "acme"),
+				withTerminatingProjectNamespace("roses", "acme"),
+				withDeployment(r.ProjectNamespace("lilies"), "api"),
+				// The terminating project still has a live
+				// deployment ConfigMap — the migrator must
+				// skip the whole project because the runtime
+				// topology does, not cherry-pick its
+				// deployments.
+				withDeployment(r.ProjectNamespace("roses"), "api"),
+				withPolicy(r.OrgNamespace("acme"), "audit", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "*", DeploymentPattern: "api"},
+					},
+				}),
+			},
+			run: runArgs{apply: true},
+			first: assertions{
+				bindingsCreated: 1,
+				policiesUpdated: 1,
+				wantPlans:       1,
+				wantTargets: map[string][]wantTarget{
+					r.OrgNamespace("acme") + "/audit" + migrateBindingNameSuffix: {
+						{Kind: consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT, Name: "api", Project: "lilies"},
+					},
+				},
 			},
 		},
 	}
