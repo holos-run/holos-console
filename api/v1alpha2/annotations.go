@@ -38,6 +38,15 @@ const (
 	// because a project owner could otherwise tamper with the very policy the
 	// platform meant to constrain them with.
 	ResourceTypeTemplatePolicy = "template-policy"
+	// ResourceTypeTemplatePolicyBinding is the resource type label value for
+	// TemplatePolicyBinding ConfigMaps. A TemplatePolicyBinding attaches a
+	// single TemplatePolicy to an explicit list of project templates and/or
+	// deployments, replacing the glob-based target selector on
+	// TemplatePolicyRule (ADR 029, HOL-590). Like TemplatePolicy, bindings
+	// live only in organization or folder namespaces; project-scope storage
+	// is forbidden because a project owner could otherwise tamper with the
+	// very binding the platform meant to constrain them with (HOL-554).
+	ResourceTypeTemplatePolicyBinding = "template-policy-binding"
 	// ResourceTypeRenderState is the resource type label value for
 	// applied-render-set ConfigMaps (HOL-557/HOL-567). A render-state
 	// ConfigMap records the effective set of LinkedTemplateRef values last
@@ -126,6 +135,22 @@ const (
 	// this mirrors the AnnotationLinkedTemplates pattern used on Template
 	// ConfigMaps (HOL-556).
 	AnnotationTemplatePolicyRules = "console.holos.run/template-policy-rules"
+	// AnnotationTemplatePolicyBindingPolicyRef stores the JSON-serialized
+	// scope-qualified reference to the TemplatePolicy a
+	// TemplatePolicyBinding attaches. The wire shape is
+	// `{"scope":"organization|folder","scopeName":"<slug>","name":"<slug>"}`.
+	// A binding always references exactly one policy; use multiple
+	// bindings to attach multiple policies to overlapping target sets
+	// (ADR 029, HOL-590).
+	AnnotationTemplatePolicyBindingPolicyRef = "console.holos.run/template-policy-binding-policy-ref"
+	// AnnotationTemplatePolicyBindingTargetRefs stores the JSON-serialized
+	// list of explicit render targets a TemplatePolicyBinding applies its
+	// policy to. The wire shape is a JSON array of
+	// `{"kind":"project-template|deployment","name":"<slug>","projectName":"<slug>"}`
+	// entries. Handlers MUST reject duplicates — two entries with the
+	// same (kind, projectName, name) triple — and MUST reject
+	// UNSPECIFIED kind. Order is not significant (ADR 029, HOL-590).
+	AnnotationTemplatePolicyBindingTargetRefs = "console.holos.run/template-policy-binding-target-refs"
 
 	// AnnotationExternalLinkPrefix is the Holos-authored annotation-key
 	// prefix for external links surfaced on a deployment. Links are keyed
