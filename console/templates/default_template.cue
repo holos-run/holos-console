@@ -105,6 +105,41 @@ projectResources: {
 			}
 
 			// Deployment runs the container image.
+			//
+			// External links (HOL-550) can be attached to any rendered
+			// resource by adding `console.holos.run/external-link.<name>`
+			// annotations whose values are JSON `{url, title, description}`.
+			// A `console.holos.run/primary-url` annotation marks the single
+			// primary link surfaced on the deployment list page (and fills
+			// `DeploymentOutput.url`). Argo CD's
+			// `link.argocd.argoproj.io/<suffix>` convention is honored
+			// read-only; never write that key from Holos templates.
+			//
+			// Uncomment the block below to publish a primary URL plus
+			// "Logs" and "Metrics" links on this Deployment. The console
+			// aggregator will surface them on both the list and detail
+			// pages. See ADR 028 for the design rationale and the CUE
+			// Template Guide ("External Links") for the full reference:
+			//   https://github.com/holos-run/cartographer/blob/main/docs/adrs/028-external-link-annotations.md
+			//   https://github.com/holos-run/cartographer/blob/main/docs/cue-template-guide.md#external-links
+			//
+			// The annotation values are the JSON-encoded link objects
+			// themselves — written as CUE raw strings (`#"..."#`) so inner
+			// double-quotes don't need backslash escapes. `\#(input.name)`
+			// is CUE raw-string interpolation; it splices the deployment
+			// name into the URL at render time. Templates cannot add
+			// `import "encoding/json"` here because the renderer prepends
+			// the generated schema before compiling, so the raw-string
+			// pattern is the idiomatic form:
+			//
+			//   Deployment: (input.name): metadata: annotations: _annotations & {
+			//       "console.holos.run/primary-url":
+			//           #"{"url":"https://\#(input.name).apps.example.com","title":"\#(input.name)","description":"Application URL"}"#
+			//       "console.holos.run/external-link.logs":
+			//           #"{"url":"https://logs.example.com/deployments/\#(input.name)","title":"Logs","description":"Application logs in Datadog"}"#
+			//       "console.holos.run/external-link.metrics":
+			//           #"{"url":"https://grafana.example.com/d/\#(input.name)","title":"Metrics","description":"Service-level metrics dashboard"}"#
+			//   }
 			Deployment: (input.name): {
 				apiVersion: "apps/v1"
 				kind:       "Deployment"

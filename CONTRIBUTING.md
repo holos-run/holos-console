@@ -206,6 +206,16 @@ curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
 
 See [docs/dev-token-endpoint.md](docs/dev-token-endpoint.md) for the full API reference.
 
+## Annotation Keys for External Links
+
+When working in `console/deployments/` or `console/links/`, refer to
+[ADR 028: External Link Annotations on Deployment Resources](https://github.com/holos-run/cartographer/blob/main/docs/adrs/028-external-link-annotations.md)
+and the template-author guide at
+[CUE Template Guide → External Links](https://github.com/holos-run/cartographer/blob/main/docs/cue-template-guide.md#external-links).
+The annotation key constants — `AnnotationExternalLinkPrefix`,
+`AnnotationPrimaryURL`, `AnnotationAggregatedLinks`,
+`AnnotationArgoCDLinkPrefix` — live in `api/v1alpha2/annotations.go`.
+
 ## Commit Messages
 
 All commit messages must follow this format and include the root-cause analysis for why the issue happened, with citations to sources (for example, deep links to GitHub issues that describe the problem and its cause):
