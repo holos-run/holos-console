@@ -6,10 +6,7 @@ import {
   linkableKey,
   parseLinkableKey,
 } from '@/queries/templates'
-import {
-  TemplatePolicyRuleSchema,
-  TemplatePolicyTargetSchema,
-} from '@/gen/holos/console/v1/template_policies_pb.js'
+import { TemplatePolicyRuleSchema } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 /**
@@ -17,13 +14,16 @@ import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.
  * intentionally flatter than the proto TemplatePolicyRule message so inputs
  * can be bound to strings, and only gets converted into proto messages when
  * the form is submitted.
+ *
+ * HOL-598: the `projectPattern` and `deploymentPattern` glob fields were
+ * removed from the UI. Attachment is now expressed exclusively via
+ * TemplatePolicyBinding. The draft therefore no longer carries glob fields,
+ * and `ruleDraftToProto` emits a rule with `target` unset.
  */
 export type RuleDraft = {
   kind: TemplatePolicyKind
   templateKey: string // composite key built by linkableKey(...)
   versionConstraint: string
-  projectPattern: string
-  deploymentPattern: string
 }
 
 export function newEmptyRule(): RuleDraft {
@@ -31,12 +31,14 @@ export function newEmptyRule(): RuleDraft {
     kind: TemplatePolicyKind.REQUIRE,
     templateKey: '',
     versionConstraint: '',
-    projectPattern: '*',
-    deploymentPattern: '*',
   }
 }
 
-/** Convert a draft into a proto rule message suitable for submission. */
+/**
+ * Convert a draft into a proto rule message suitable for submission. The
+ * resulting rule has `target` unset — HOL-598 routes all attachment through
+ * TemplatePolicyBinding.
+ */
 export function ruleDraftToProto(draft: RuleDraft): TemplatePolicyRule {
   const { scope, scopeName, name } = parseLinkableKey(draft.templateKey)
   return create(TemplatePolicyRuleSchema, {
@@ -47,14 +49,16 @@ export function ruleDraftToProto(draft: RuleDraft): TemplatePolicyRule {
       name,
       versionConstraint: draft.versionConstraint,
     }),
-    target: create(TemplatePolicyTargetSchema, {
-      projectPattern: draft.projectPattern,
-      deploymentPattern: draft.deploymentPattern,
-    }),
+    // target is intentionally omitted. HOL-598 removed UI authoring of the
+    // glob Target fields; bindings now carry attachment exclusively.
   })
 }
 
-/** Convert a proto rule back into a draft for the editor. */
+/**
+ * Convert a proto rule back into a draft for the editor. Any legacy `target`
+ * field present on the server-side message is discarded — the editor cannot
+ * author globs, so the draft does not surface them.
+ */
 export function ruleProtoToDraft(rule: TemplatePolicyRule): RuleDraft {
   const tmpl = rule.template
   return {
@@ -63,33 +67,19 @@ export function ruleProtoToDraft(rule: TemplatePolicyRule): RuleDraft {
       ? linkableKey(tmpl.scope, tmpl.scopeName, tmpl.name)
       : '',
     versionConstraint: tmpl?.versionConstraint ?? '',
-    projectPattern: rule.target?.projectPattern ?? '',
-    deploymentPattern: rule.target?.deploymentPattern ?? '',
   }
 }
 
 /**
  * validateRuleDraft returns a human-readable error string when the draft is
  * not submittable, or null when it is valid for the client. The backend
- * performs authoritative validation (e.g. glob compilation, EXCLUDE-vs-linked
- * checks).
+ * performs authoritative validation (e.g. EXCLUDE-vs-linked checks). With
+ * HOL-598 the only client-side requirement is a selected template — glob
+ * patterns no longer exist in the draft.
  */
 export function validateRuleDraft(draft: RuleDraft): string | null {
   if (!draft.templateKey) {
     return 'Template selection is required.'
-  }
-  if (!draft.projectPattern) {
-    return 'Project pattern is required (use "*" to match every project).'
-  }
-  // filepath.Match uses "\" as an escape character. Detect unpaired escapes
-  // early so the user sees feedback before the backend round-trip.
-  const patterns = [draft.projectPattern, draft.deploymentPattern]
-  for (const p of patterns) {
-    if (!p) continue
-    // Reject bare backslash at end of string or unmatched brackets as common
-    // mistakes. Backend remains authoritative.
-    if (/\\$/.test(p)) return 'Invalid glob pattern: trailing backslash.'
-    if (/\[[^\]]*$/.test(p)) return 'Invalid glob pattern: unmatched "[".'
   }
   return null
 }

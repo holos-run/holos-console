@@ -22,11 +22,13 @@ import {
 } from '@/queries/templatePolicies'
 import { makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
   PolicyForm,
   type PolicyScope,
 } from '@/components/template-policies/PolicyForm'
 import { ruleProtoToDraft } from '@/components/template-policies/rule-draft'
+import { PolicyBindingsSection } from '@/components/template-policies/PolicyBindingsSection'
 
 export const Route = createFileRoute(
   '/_authenticated/orgs/$orgName/template-policies/$policyName',
@@ -77,6 +79,10 @@ export function OrgTemplatePolicyDetailPage({
   } = useGetTemplatePolicy(scope, policyName)
   const updateMutation = useUpdateTemplatePolicy(scope, policyName)
   const deleteMutation = useDeleteTemplatePolicy(scope)
+  // HOL-598: surface TemplatePolicyBindings that reference this policy. The
+  // list RPC returns every binding at the org scope; the section filters to
+  // ones whose `policyRef.name` matches the current policy.
+  const bindingsQuery = useListTemplatePolicyBindings(scope)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -169,6 +175,15 @@ export function OrgTemplatePolicyDetailPage({
                 params: { orgName },
               })
             }}
+          />
+          <Separator className="my-6" />
+          <PolicyBindingsSection
+            scopeType="organization"
+            orgName={orgName}
+            policyName={policyName}
+            bindings={bindingsQuery.data ?? []}
+            isPending={bindingsQuery.isPending}
+            error={bindingsQuery.error}
           />
         </CardContent>
       </Card>

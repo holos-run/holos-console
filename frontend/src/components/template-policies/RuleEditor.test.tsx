@@ -9,17 +9,6 @@ import {
   EXCLUDE_RULE_DESCRIPTION,
 } from '@/components/platform-template-copy'
 
-// RED (HOL-588): The verbose REQUIRE/EXCLUDE copy previously rendered inside
-// each `<SelectItem>` and overflowed the popover. The tooltip on a button
-// trigger next to the Kind `<Label>` is now the single surface for that copy.
-// These tests pin:
-//
-//   1. Kind <SelectItem> rows render only the short `REQUIRE` / `EXCLUDE`
-//      label and do not carry any fragment of the long rule descriptions.
-//   2. A focusable `<button>` sits next to the Kind label with
-//      `aria-label="Explain REQUIRE and EXCLUDE"`, and its tooltip surfaces
-//      text from both REQUIRE_RULE_DESCRIPTION and EXCLUDE_RULE_DESCRIPTION.
-//
 // Polyfills for jsdom — Radix Select / Tooltip use pointer capture APIs that
 // are absent in jsdom and must exist for `userEvent` interactions to dispatch
 // cleanly. We also polyfill scrollIntoView (already installed globally by
@@ -39,8 +28,6 @@ function makeRule(overrides: Partial<RuleDraft> = {}): RuleDraft {
     kind: TemplatePolicyKind.REQUIRE,
     templateKey: '',
     versionConstraint: '',
-    projectPattern: '*',
-    deploymentPattern: '*',
     ...overrides,
   }
 }
@@ -114,5 +101,58 @@ describe('RuleEditor — Kind help tooltip (HOL-588)', () => {
     const tooltip = await screen.findByRole('tooltip')
     expect(tooltip).toHaveTextContent(REQUIRE_RULE_DESCRIPTION)
     expect(tooltip).toHaveTextContent(EXCLUDE_RULE_DESCRIPTION)
+  })
+})
+
+// HOL-598: Attachment is now expressed exclusively via TemplatePolicyBinding
+// rows. The glob pattern inputs on each rule have been removed so admins stop
+// authoring opaque globs. These tests pin the new contract: the RuleEditor
+// MUST NOT render a "Project pattern" or "Deployment pattern" input, and any
+// `projectPattern`/`deploymentPattern` field carried on a pre-existing rule is
+// ignored at render time.
+describe('RuleEditor — glob target inputs removed (HOL-598)', () => {
+  it('does not render Project pattern or Deployment pattern inputs', () => {
+    render(
+      <RuleEditor
+        rules={[makeRule()]}
+        onChange={vi.fn()}
+        linkableTemplates={[]}
+      />,
+    )
+
+    const row = screen.getByTestId('rule-editor-row-0')
+    expect(within(row).queryByLabelText(/project pattern/i)).toBeNull()
+    expect(within(row).queryByLabelText(/deployment pattern/i)).toBeNull()
+    expect(within(row).queryByText(/project pattern/i)).toBeNull()
+    expect(within(row).queryByText(/deployment pattern/i)).toBeNull()
+  })
+
+  it('does not emit a projectPattern/deploymentPattern when adding a new rule', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    const onChange = vi.fn<(rules: RuleDraft[]) => void>()
+
+    render(
+      <RuleEditor
+        rules={[]}
+        onChange={onChange}
+        linkableTemplates={[]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /add rule/i }))
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const emitted = onChange.mock.calls[0][0]
+    expect(emitted).toHaveLength(1)
+    const draft = emitted[0] as Partial<RuleDraft> & {
+      projectPattern?: string
+      deploymentPattern?: string
+    }
+    // The RuleDraft shape is pruned; the add-rule handler must not introduce
+    // either glob field on the new draft.
+    expect(draft.projectPattern).toBeUndefined()
+    expect(draft.deploymentPattern).toBeUndefined()
   })
 })

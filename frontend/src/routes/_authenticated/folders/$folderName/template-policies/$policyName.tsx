@@ -22,11 +22,13 @@ import {
 } from '@/queries/templatePolicies'
 import { makeFolderScope } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
   PolicyForm,
   type PolicyScope,
 } from '@/components/template-policies/PolicyForm'
 import { ruleProtoToDraft } from '@/components/template-policies/rule-draft'
+import { PolicyBindingsSection } from '@/components/template-policies/PolicyBindingsSection'
 
 export const Route = createFileRoute(
   '/_authenticated/folders/$folderName/template-policies/$policyName',
@@ -80,6 +82,10 @@ export function FolderTemplatePolicyDetailPage({
   } = useGetTemplatePolicy(scope, policyName)
   const updateMutation = useUpdateTemplatePolicy(scope, policyName)
   const deleteMutation = useDeleteTemplatePolicy(scope)
+  // HOL-598: list folder-scope bindings and filter to those referencing this
+  // policy by name. Folder-scope bindings live in the same namespace as the
+  // folder-scope policy itself; binding detail links target the folder route.
+  const bindingsQuery = useListTemplatePolicyBindings(scope)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -184,6 +190,15 @@ export function FolderTemplatePolicyDetailPage({
                 params: { folderName },
               })
             }}
+          />
+          <Separator className="my-6" />
+          <PolicyBindingsSection
+            scopeType="folder"
+            folderName={folderName}
+            policyName={policyName}
+            bindings={bindingsQuery.data ?? []}
+            isPending={bindingsQuery.isPending}
+            error={bindingsQuery.error}
           />
         </CardContent>
       </Card>
