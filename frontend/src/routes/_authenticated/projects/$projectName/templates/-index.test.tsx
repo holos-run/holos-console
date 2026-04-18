@@ -22,6 +22,7 @@ vi.mock('@/queries/templates', () => ({
   useCloneTemplate: vi.fn(),
   useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   useGetTemplate: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
+  useGetProjectTemplatePolicyState: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
@@ -36,7 +37,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListTemplates, useDeleteTemplate, useCloneTemplate } from '@/queries/templates'
+import { useListTemplates, useDeleteTemplate, useCloneTemplate, useGetProjectTemplatePolicyState } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplatesPage } from './index'
@@ -191,6 +192,56 @@ describe('DeploymentTemplatesPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       const mutateAsync = (useCloneTemplate as Mock).mock.results[0].value.mutateAsync
       expect(mutateAsync).not.toHaveBeenCalled()
+    })
+  })
+
+  // HOL-559: the project templates list surfaces policy drift for project-
+  // scope templates via the per-row ProjectTemplateDriftBadge, which fetches
+  // GetProjectTemplatePolicyState. Project-scope templates do not carry a
+  // ProjectTemplateStatusSummary surface (HOL-567 scope decision).
+  describe('policy drift badge', () => {
+    it('renders the Policy Drift badge on rows whose state.drift is true', () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')])
+      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
+        data: { drift: true, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentTemplatesPage />)
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+    })
+
+    it('does not render the Policy Drift badge when state.drift is false', () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')])
+      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
+        data: { drift: false, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentTemplatesPage />)
+      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+    })
+
+    it('does not render the Policy Drift badge when state is undefined (pending/error)', () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')])
+      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
+        data: undefined,
+        isPending: true,
+        error: null,
+      })
+      render(<DeploymentTemplatesPage />)
+      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+    })
+
+    it('renders the Policy Drift badge for viewers as well (read-only signal)', () => {
+      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.VIEWER)
+      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
+        data: { drift: true, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentTemplatesPage />)
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
     })
   })
 })

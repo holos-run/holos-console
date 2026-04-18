@@ -183,6 +183,13 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       // Invalidate all check-updates queries for this scope so upgrade badges
       // and dialogs reflect the new state immediately after a template update.
       queryClient.invalidateQueries({ queryKey: ['templates', 'checkUpdates'] })
+      // HOL-559: a successful UpdateTemplate re-renders against the
+      // current TemplatePolicy chain and records a fresh applied render
+      // set on the backend. Invalidate all policy-state queries for this
+      // scope so the list-row drift badge and the detail PolicySection
+      // both refresh from the authoritative state rather than showing
+      // the stale "drifted" snapshot after reconcile.
+      queryClient.invalidateQueries({ queryKey: ['templates', 'policy-state', scope.scope, scope.scopeName] })
     },
   })
 }
@@ -330,6 +337,37 @@ export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', opti
       return response.updates
     },
     enabled: isAuthenticated && !!scope.scopeName && callerEnabled,
+  })
+}
+
+// useGetProjectTemplatePolicyState fetches the TemplatePolicy drift snapshot
+// for a project-scope template (HOL-567). PolicyState is sourced from the
+// folder-namespace render-state store — see PolicySection's component-level
+// comment for the storage-isolation guarantee. This RPC is the sole read
+// path used by the drift UI for project-scope templates; never infer drift
+// from other template fields.
+//
+// The request uses TEMPLATE_SCOPE_PROJECT; the backend validates the scope
+// and rejects non-project scopes with InvalidArgument.
+function projectTemplatePolicyStateKey(scope: TemplateScopeRef, name: string) {
+  return ['templates', 'policy-state', scope.scope, scope.scopeName, name] as const
+}
+
+export function useGetProjectTemplatePolicyState(scope: TemplateScopeRef, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: projectTemplatePolicyStateKey(scope, name),
+    queryFn: async () => {
+      const response = await client.getProjectTemplatePolicyState({ scope, name })
+      return response.state
+    },
+    enabled:
+      isAuthenticated &&
+      !!scope.scopeName &&
+      !!name &&
+      scope.scope === TemplateScope.PROJECT,
   })
 }
 

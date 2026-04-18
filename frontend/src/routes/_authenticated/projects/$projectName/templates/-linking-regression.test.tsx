@@ -45,6 +45,7 @@ vi.mock('@/queries/templates', () => ({
   useRenderTemplate: vi.fn(),
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
+  useGetProjectTemplatePolicyState: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
   makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
   TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
   linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>

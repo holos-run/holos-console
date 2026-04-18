@@ -22,12 +22,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
 import { UpgradeDialog } from '@/components/template-updates'
+import { PolicySection } from '@/components/policy-drift/PolicySection'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/$templateName')({
   component: DeploymentTemplateDetailRoute,
@@ -79,6 +80,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   // status indicator on each pill badge.
   const { data: templateUpdates = [] } = useCheckUpdates(scope, templateName, { includeCurrent: true })
 
+  // Fetch the TemplatePolicy drift snapshot for this project-scope template
+  // (HOL-567). PolicyState is sourced from the folder-namespace render-state
+  // store — never read drift state directly from project-namespace resources.
+  const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetProjectTemplatePolicyState(scope, templateName)
+
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
       setCueTemplate(template.cueTemplate)
@@ -92,6 +98,27 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
+
+  // handleReconcile triggers an UpdateTemplate with the template's current
+  // fields (display name, description, CUE body, enabled flag, linked
+  // templates). The backend treats this as a re-render against the current
+  // TemplatePolicy chain, which clears drift on success. No functional
+  // changes are made to the template.
+  const handleReconcile = async () => {
+    try {
+      await updateMutation.mutateAsync({
+        displayName: template?.displayName,
+        description: template?.description,
+        cueTemplate,
+        enabled: template?.enabled,
+        linkedTemplates: template?.linkedTemplates ?? [],
+        updateLinkedTemplates: true,
+      })
+      toast.success('Reconcile requested')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const handleSave = async () => {
     try {
@@ -381,6 +408,34 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               </div>
             </div>
           </div>
+
+          {/*
+            Policy section — renders the TemplatePolicy drift snapshot for
+            this project-scope template (HOL-567 / HOL-559). The data is
+            fetched via GetProjectTemplatePolicyState, which reads
+            PolicyState from the folder-namespace render-state store. The UI
+            never reads drift state directly from project-namespace
+            resources. Reconcile is gated on PERMISSION_TEMPLATES_WRITE at
+            project scope (role OWNER or EDITOR); viewers see the badge but
+            no button.
+          */}
+          <PolicySection
+            state={policyState}
+            isPending={isPolicyPending}
+            error={policyError}
+            reconcileAction={
+              canWrite ? (
+                <Button
+                  size="sm"
+                  onClick={handleReconcile}
+                  disabled={updateMutation.isPending}
+                  aria-label="Reconcile policy drift"
+                >
+                  {updateMutation.isPending ? 'Reconciling...' : 'Reconcile'}
+                </Button>
+              ) : undefined
+            }
+          />
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">

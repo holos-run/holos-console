@@ -65,6 +65,12 @@ export function useUpdateDeployment(project: string, name: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deploymentListKey(project) })
       queryClient.invalidateQueries({ queryKey: deploymentGetKey(project, name) })
+      // HOL-559: a successful UpdateDeployment re-renders against the
+      // current TemplatePolicy chain and records a fresh applied render
+      // set on the backend. Invalidate the policy-state query so the
+      // UI's drift badge + diff refresh from the authoritative state
+      // rather than continuing to show the stale "drifted" snapshot.
+      queryClient.invalidateQueries({ queryKey: deploymentPolicyStateKey(project, name) })
     },
   })
 }
@@ -165,6 +171,30 @@ export function useGetDeploymentRenderPreview(project: string, name: string) {
     queryFn: async () => {
       const response = await client.getDeploymentRenderPreview({ project, name })
       return response
+    },
+    enabled: isAuthenticated && !!project && !!name,
+  })
+}
+
+// useGetDeploymentPolicyState fetches the TemplatePolicy drift snapshot for
+// a deployment (HOL-567). The response's PolicyState is sourced from the
+// folder-namespace render-state store — see PolicySection's component-level
+// comment for the storage-isolation guarantee. This hook is the sole read
+// path used by the drift UI; never infer drift from other deployment
+// fields.
+function deploymentPolicyStateKey(project: string, name: string) {
+  return ['deployments', 'policy-state', project, name] as const
+}
+
+export function useGetDeploymentPolicyState(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentPolicyStateKey(project, name),
+    queryFn: async () => {
+      const response = await client.getDeploymentPolicyState({ project, name })
+      return response.state
     },
     enabled: isAuthenticated && !!project && !!name,
   })

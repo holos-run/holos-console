@@ -28,6 +28,7 @@ import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate, makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { UpdatesAvailableBadge, UpgradeDialog } from '@/components/template-updates'
+import { ProjectTemplateDriftBadge } from '@/components/policy-drift/ProjectTemplateDriftBadge'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
   component: DeploymentTemplatesRoute,
@@ -189,6 +190,18 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
                           templateName={template.name}
                           onClick={() => handleOpenUpgrade(template.name)}
                         />
+                        {/*
+                          Policy drift badge — HOL-567 surfaces project-
+                          template drift via GetProjectTemplatePolicyState
+                          rather than a status_summary field (project-scope
+                          templates have no live-status concept). The
+                          per-row component issues its own small query and
+                          renders nothing when drift is false or the RPC is
+                          pending/errored, so list rendering stays fast for
+                          in-sync templates. PolicyState is sourced from
+                          the folder-namespace render-state store.
+                        */}
+                        <ProjectTemplateDriftBadge scope={scope} templateName={template.name} />
                       </div>
                     </TableCell>
                     <TableCell>

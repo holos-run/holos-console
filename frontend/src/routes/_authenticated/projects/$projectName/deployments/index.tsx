@@ -24,6 +24,8 @@ import {
 import { ExternalLink, Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { PhaseBadge } from '@/components/phase-badge'
+import { PolicyDriftBadge } from '@/components/policy-drift/PolicySection'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
@@ -145,7 +147,31 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                     <TableCell className="font-mono text-sm">{deployment.image}</TableCell>
                     <TableCell className="font-mono text-sm">{deployment.tag}</TableCell>
                     <TableCell>
-                      <PhaseBadge summary={deployment.statusSummary} />
+                      <div className="inline-flex items-center gap-2 flex-wrap">
+                        <PhaseBadge summary={deployment.statusSummary} />
+                        {/*
+                          Policy drift badge — surfaces the status_summary.policy_drift
+                          flag populated by the backend (HOL-567 / HOL-557).
+                          The flag is sourced from the folder-namespace
+                          render-state store; callers needing the full diff
+                          invoke GetDeploymentPolicyState (see the Policy
+                          section on the deployment detail page).
+                        */}
+                        {deployment.statusSummary?.policyDrift ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <PolicyDriftBadge />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                The deployment was rendered before a template policy changed; click Reconcile to re-render.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       {/*
