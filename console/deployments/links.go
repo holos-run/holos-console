@@ -150,32 +150,44 @@ func deserializeAggregatedLinks(cm *corev1.ConfigMap) ([]*consolev1.Link, string
 }
 
 // applyAggregatedLinks mirrors mergeOutputURLAnnotation but for the link
-// aggregator: it populates summary.Output.Links from the cached set and
-// promotes a non-empty primary URL into summary.Output.Url. The promoted
-// URL takes precedence over an existing Output.Url because the
-// `primary-url` annotation is a deliberate per-resource override published
-// by a template author who wants the UI to highlight a specific link
-// regardless of what the rendered `output.url` claims; an empty primaryURL
-// preserves whatever Url the prior caller set so the legacy
-// `OutputURLAnnotation` cache continues to work for templates that have
-// not adopted `primary-url`.
+// aggregator: it populates summary.Output.Links from the aggregated set and
+// promotes a non-empty primary URL into summary.Output.Url. The aggregated
+// list is the authoritative source for `Output.Links` — if it is empty
+// (a deployment that never had link annotations or one whose annotations
+// were just removed) the field is reset to nil so a previously-served
+// link list cannot leak across requests when the caller reuses a
+// `DeploymentStatusSummary` pointer (HOL-574 review round 3 P1).
 //
-// If no Output exists yet on the summary one is allocated lazily so a
-// caller does not have to check for nil before invoking this helper. A nil
-// summary or empty inputs are no-ops.
+// URL precedence: a non-empty primaryURL ALWAYS wins over whatever Url
+// the prior caller (e.g. mergeOutputURLAnnotation) set, because the
+// `primary-url` annotation is a deliberate per-resource override.
+// An empty primaryURL preserves the existing Url so the legacy
+// `OutputURLAnnotation` cache continues to work for templates that have
+// not adopted `primary-url`. Callers that need to clear a stale
+// promoted URL must do so before invoking this helper (the legacy URL
+// has multiple sources, so a per-call clear here would wipe legitimate
+// `OutputURLAnnotation` content).
+//
+// If no Output exists yet on the summary, one is allocated only when
+// there is something to populate; a nil summary or no aggregated links
+// AND no primaryURL on a summary with no existing Output is a no-op so
+// callers do not have to special-case the "nothing to do" path.
 func applyAggregatedLinks(summary *consolev1.DeploymentStatusSummary, aggregated []*consolev1.Link, primaryURL string) {
 	if summary == nil {
 		return
 	}
-	if len(aggregated) == 0 && primaryURL == "" {
+	// Nothing to write and nothing to clear — leave the summary
+	// entirely untouched. This avoids allocating an empty Output
+	// just to record "no links" for a deployment that never had any.
+	if len(aggregated) == 0 && primaryURL == "" && summary.Output == nil {
 		return
 	}
 	if summary.Output == nil {
 		summary.Output = &consolev1.DeploymentOutput{}
 	}
-	if len(aggregated) > 0 {
-		summary.Output.Links = aggregated
-	}
+	// Links: aggregated is authoritative — assign even when empty so
+	// a previously-promoted list does not persist across calls.
+	summary.Output.Links = aggregated
 	if primaryURL != "" {
 		summary.Output.Url = primaryURL
 	}

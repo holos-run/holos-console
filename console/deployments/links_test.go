@@ -249,6 +249,28 @@ func TestApplyAggregatedLinks(t *testing.T) {
 			t.Errorf("expected existing URL to survive, got %q", s.Output.Url)
 		}
 	})
+
+	t.Run("empty aggregated clears previously-set Links on shared summary", func(t *testing.T) {
+		// Regression for HOL-574 review round 3 P1: callers that
+		// reuse a *DeploymentStatusSummary across requests (test
+		// fakes, future cache implementations) MUST observe a fresh
+		// empty link set instead of a stale list lingering from a
+		// prior call.
+		s := &consolev1.DeploymentStatusSummary{
+			Output: &consolev1.DeploymentOutput{
+				Url:   "https://output-url.example.com",
+				Links: []*consolev1.Link{{Url: "https://stale.example.com", Name: "stale"}},
+			},
+		}
+		applyAggregatedLinks(s, nil, "")
+		if len(s.Output.Links) != 0 {
+			t.Errorf("expected stale Links cleared, got %+v", s.Output.Links)
+		}
+		// Existing Url preserved (legacy OutputURLAnnotation source).
+		if s.Output.Url != "https://output-url.example.com" {
+			t.Errorf("expected legacy Url preserved, got %q", s.Output.Url)
+		}
+	})
 }
 
 // TestLinksEqual exercises the comparison used by the GetDeployment
