@@ -8,7 +8,6 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -29,7 +28,7 @@ import {
 import { useGetFolder } from '@/queries/folders'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
-import { enabledToggleDescription } from '@/components/platform-template-copy'
+import { PlatformTemplateEnabledToggle } from '@/components/platform-template-enabled-toggle'
 
 export const Route = createFileRoute(
   '/_authenticated/folders/$folderName/templates/$templateName',
@@ -245,18 +244,12 @@ export function FolderTemplateDetailPage({
               </div>
             )}
 
-            <div className="flex items-center gap-2">
-              <span className="w-36 text-sm text-muted-foreground shrink-0">Enabled</span>
-              <Switch
-                aria-label="Enabled"
-                checked={template?.enabled ?? false}
-                onCheckedChange={handleToggleEnabled}
-                disabled={!canWrite || updateMutation.isPending}
-              />
-              <span className="text-sm text-muted-foreground">
-                {enabledToggleDescription(template?.enabled ?? false)}
-              </span>
-            </div>
+            <PlatformTemplateEnabledToggle
+              enabled={template?.enabled ?? false}
+              canWrite={canWrite}
+              isUpdating={updateMutation.isPending}
+              onChange={handleToggleEnabled}
+            />
           </div>
 
           <div className="space-y-4">
