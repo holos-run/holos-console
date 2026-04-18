@@ -92,14 +92,6 @@ const (
 	AnnotationDefaultShareRoles = "console.holos.run/default-share-roles"
 	AnnotationDeployment        = "console.holos.run/deployment"
 	AnnotationDeployerEmail     = "console.holos.run/deployer-email"
-	// AnnotationRequiredTemplate stamps ownership on resources that were
-	// applied by the project-creation-time REQUIRE-rule evaluator
-	// (HOL-571). It lives in a separate namespace from AnnotationDeployment
-	// so that a project's deployment whose name happens to match a
-	// required-template name cannot adopt, delete, or otherwise collide
-	// with required-template resources via the deployment reconcile/cleanup
-	// label selector (`project=X,deployment=Y`).
-	AnnotationRequiredTemplate = "console.holos.run/required-template"
 	AnnotationURL               = "console.holos.run/url"
 	AnnotationEnabled           = "console.holos.run/enabled"
 	AnnotationSettings          = "console.holos.run/project-settings"

@@ -34,38 +34,16 @@ type OrgDefaultShareResolver interface {
 	GetOrgDefaultGrants(ctx context.Context, org string) (defaultUsers, defaultRoles []secrets.AnnotationGrant, err error)
 }
 
-// RequiredTemplateApplier evaluates TemplatePolicy REQUIRE rules at project
-// creation time and applies each matched template to the project namespace via
-// the unified Render + Apply path.
-//
-// Phase 3 of HOL-562 deletes the legacy MandatoryTemplateApplier (which walked
-// the ancestor chain looking for the `mandatory` annotation) in favor of this
-// interface. Phase 5 (HOL-567) plugs in the real REQUIRE-rule resolver; until
-// then every concrete implementation returns nil because no REQUIRE rules
-// exist in production.
-type RequiredTemplateApplier interface {
-	ApplyRequiredTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error
-}
-
 // Handler implements the ProjectService.
 type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
-	k8s                     *K8sClient
-	orgResolver             OrgResolver
-	requiredTemplateApplier RequiredTemplateApplier
+	k8s         *K8sClient
+	orgResolver OrgResolver
 }
 
 // NewHandler creates a new ProjectService handler.
 func NewHandler(k8s *K8sClient, orgResolver OrgResolver) *Handler {
 	return &Handler{k8s: k8s, orgResolver: orgResolver}
-}
-
-// WithRequiredTemplateApplier sets the RequiredTemplateApplier for the handler.
-// When set, templates selected by TemplatePolicy REQUIRE rules are applied to
-// new project namespaces at creation time.
-func (h *Handler) WithRequiredTemplateApplier(applier RequiredTemplateApplier) *Handler {
-	h.requiredTemplateApplier = applier
-	return h
 }
 
 // ListProjects returns all projects the user has access to.
@@ -298,28 +276,6 @@ func (h *Handler) CreateProject(
 		name, err = v1alpha2.GenerateIdentifier(ctx, req.Msg.DisplayName, prefix, exists)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("regenerating project identifier: %w", err))
-		}
-	}
-
-	// Apply any templates selected by TemplatePolicy REQUIRE rules to the new
-	// project namespace. On failure, attempt a best-effort cleanup of the
-	// project namespace to avoid leaving orphaned resources, then return the
-	// error.
-	if h.requiredTemplateApplier != nil && req.Msg.Organization != "" {
-		projectNamespace := h.k8s.Resolver.ProjectNamespace(name)
-		if err := h.requiredTemplateApplier.ApplyRequiredTemplates(ctx, req.Msg.Organization, name, projectNamespace, claims); err != nil {
-			slog.ErrorContext(ctx, "required template apply failed, cleaning up project",
-				slog.String("project", name),
-				slog.String("organization", req.Msg.Organization),
-				slog.Any("error", err),
-			)
-			if cleanupErr := h.k8s.DeleteProject(ctx, name); cleanupErr != nil {
-				slog.WarnContext(ctx, "failed to clean up project after required template apply failure",
-					slog.String("project", name),
-					slog.Any("cleanup_error", cleanupErr),
-				)
-			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying required templates to project %q: %w", name, err))
 		}
 	}
 

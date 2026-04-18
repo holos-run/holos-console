@@ -295,11 +295,13 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// TemplatePolicy resolution seam (HOL-566 Phase 4, wired in HOL-567
 		// Phase 5). The real folderResolver is threaded through every render
-		// path — deployments, project-scope templates, and required-template
-		// application — so Phase 5 (HOL-567) swapped the Phase 4 no-op for
-		// the TemplatePolicy-backed implementation. TemplatePolicy reads
-		// route through a namespace-direct lister that never consults a
-		// project namespace (HOL-554 storage-isolation).
+		// path — deployments and project-scope templates — so Phase 5
+		// (HOL-567) swapped the Phase 4 no-op for the TemplatePolicy-backed
+		// implementation. HOL-582 removed the creation-time
+		// required-template application path; render-time is now the sole
+		// enforcement site for REQUIRE rules. TemplatePolicy reads route
+		// through a namespace-direct lister that never consults a project
+		// namespace (HOL-554 storage-isolation).
 		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
 		policyResolverSeam := policyresolver.NewFolderResolver(
 			templatePoliciesK8s,
@@ -327,39 +329,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectPrefix := nsResolver.NamespacePrefix + nsResolver.ProjectPrefix
 		orgsHandler.WithDefaultsSeeder(templatesK8s, &projects.ProjectCreatorAdapter{K8s: projectsK8s}, projectPrefix)
 
-		// Required template applier for project creation: evaluates
-		// TemplatePolicy REQUIRE rules and applies matched templates to the new
-		// project namespace via the unified Render + Apply path (ADR 021
-		// Decision 3). Phase 9 of HOL-562 (HOL-571) swaps the Phase 3 empty
-		// resolver for the real TemplatePolicy-backed resolver wired below.
-		// The empty resolver remains available for tests and for local/dev
-		// wiring paths that do not have a live K8s client.
-		requireRuleResolver := templates.NewPolicyRequireRuleResolver(
-			policyresolver.NewAncestorPolicyLister(
-				templatePoliciesK8s,
-				nsWalker,
-				nsResolver,
-				policyresolver.RuleUnmarshalerFunc(templatepolicies.UnmarshalRules),
-			),
-			nsResolver.ProjectNamespace,
-		)
-		var requiredTmplApplier projects.RequiredTemplateApplier
-		if dynamicClient != nil {
-			requiredTmplApplier = templates.NewRequiredTemplateApplier(
-				templatesK8s,
-				nsWalker,
-				&deployments.CueRenderer{},
-				deployments.NewApplier(dynamicClient),
-				requireRuleResolver,
-				policyResolverSeam,
-			)
-		}
-
-		// Project service with org grant fallback
+		// Project service with org grant fallback. HOL-582 removed the
+		// creation-time RequiredTemplateApplier (Layer B in the HOL-580
+		// analysis); REQUIRE rules are now enforced exclusively at render
+		// time via folderResolver (Layer A).
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
-		if requiredTmplApplier != nil {
-			projectsHandler = projectsHandler.WithRequiredTemplateApplier(requiredTmplApplier)
-		}
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
