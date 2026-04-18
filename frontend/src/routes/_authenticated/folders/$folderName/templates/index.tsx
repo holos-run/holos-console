@@ -25,6 +25,7 @@ import {
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, makeFolderScope } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
+import { FOLDER_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
 /** Row type for the template table. */
 type TemplateRow = {
@@ -190,9 +191,7 @@ export function FolderTemplatesIndexPage({
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Platform templates at folder scope are applied to projects within this folder hierarchy.
-          </p>
+          <p className="text-sm text-muted-foreground">{FOLDER_SCOPE_INDEX_DESCRIPTION}</p>
           <Alert>
             <AlertDescription>
               To require or exclude a template from matching projects and deployments, create a{' '}

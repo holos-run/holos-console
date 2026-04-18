@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplates, makeOrgScope } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
+import { ORG_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/org-templates/')({
   component: OrgTemplatesListRoute,
@@ -73,10 +74,7 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Platform templates are authored at organization scope and are applied to projects in
-          this organization.
-        </p>
+        <p className="text-sm text-muted-foreground">{ORG_SCOPE_INDEX_DESCRIPTION}</p>
         <Alert>
           <AlertDescription>
             To require or exclude a template from matching projects and deployments, create a{' '}

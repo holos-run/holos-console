@@ -29,6 +29,7 @@ import {
 import { useGetFolder } from '@/queries/folders'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
+import { enabledToggleDescription } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute(
   '/_authenticated/folders/$folderName/templates/$templateName',
@@ -253,9 +254,7 @@ export function FolderTemplateDetailPage({
                 disabled={!canWrite || updateMutation.isPending}
               />
               <span className="text-sm text-muted-foreground">
-                {template?.enabled
-                  ? 'Active — applied to projects in this folder'
-                  : 'Inactive — not applied to projects in this folder'}
+                {enabledToggleDescription(template?.enabled ?? false)}
               </span>
             </div>
           </div>

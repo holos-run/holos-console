@@ -23,6 +23,7 @@ import { useGetTemplate, useUpdateTemplate, useCloneTemplate, makeOrgScope } fro
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
+import { enabledToggleDescription } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/org-templates/$templateName')({
   component: OrgTemplateDetailRoute,
@@ -191,7 +192,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
                 disabled={!canWrite || updateMutation.isPending}
               />
               <span className="text-sm text-muted-foreground">
-                {template?.enabled ? 'Active — applied to new project namespaces' : 'Inactive — not applied to new project namespaces'}
+                {enabledToggleDescription(template?.enabled ?? false)}
               </span>
             </div>
           </div>
