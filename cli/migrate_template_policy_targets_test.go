@@ -480,6 +480,11 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 			},
 		},
 		{
+			// Dry-run semantics: the summary counters reflect the
+			// planned work (what --apply WOULD do), matching the
+			// "would create N bindings" wording printed to stdout.
+			// Cluster-state assertions below confirm no actual
+			// mutation happened in dry-run mode.
 			name: "dry-run plans but does not mutate",
 			options: []fixtureOption{
 				withOrgNamespace("acme"),
@@ -497,8 +502,8 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 			},
 			run: runArgs{apply: false},
 			first: assertions{
-				bindingsCreated:     0,
-				policiesUpdated:     0,
+				bindingsCreated:     1,
+				policiesUpdated:     1,
 				wantPlans:           1,
 				wantNoBindingIn:     [][2]string{{r.OrgNamespace("acme"), "audit" + migrateBindingNameSuffix}},
 				wantPolicyUnchanged: [][2]string{{r.OrgNamespace("acme"), "audit"}},

@@ -241,6 +241,14 @@ func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolic
 	// fail-open contract on a single per-namespace list error (log and
 	// continue) that matches the K8sClient.ListPoliciesInNamespace shape
 	// used at runtime.
+	//
+	// Every count that the summary line reports — BindingsCreated,
+	// PoliciesUpdated, Conflicts, Skipped — is tallied here during
+	// planning, BEFORE any mutation runs. That way the dry-run preview
+	// matches what --apply would produce, which is what an operator
+	// looks for when deciding whether to re-run with --apply. The
+	// apply loop below only mutates the cluster; it never touches the
+	// counters.
 	result := &MigrationResult{}
 	for _, ns := range classified.policyBearing {
 		cms, err := listPoliciesInNamespace(ctx, opts.Client, ns.Name)
@@ -261,6 +269,23 @@ func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolic
 				continue
 			}
 			result.Plans = append(result.Plans, plan)
+			switch {
+			case plan.BindingExists && !plan.BindingTargetsMatch:
+				// An existing binding with a different target
+				// set — or a non-binding ConfigMap that
+				// collided on the synthesized name — is a
+				// conflict that only an operator can resolve.
+				// The apply loop leaves both the policy and
+				// the offending object untouched.
+				result.Conflicts++
+			default:
+				if !plan.BindingExists && !plan.EmptyTargets {
+					result.BindingsCreated++
+				}
+				if plan.ClearPolicyTargets {
+					result.PoliciesUpdated++
+				}
+			}
 		}
 	}
 
@@ -279,13 +304,6 @@ func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolic
 	// existing binding is detected and re-used next time.
 	for _, plan := range result.Plans {
 		if plan.BindingExists && !plan.BindingTargetsMatch {
-			// Existing binding with different target set — an
-			// operator must decide whether to delete the binding
-			// or keep the policy globs. We leave everything
-			// untouched in that case, including the policy's
-			// Target globs, so the next dry-run reproduces the
-			// same conflict until the operator intervenes.
-			result.Conflicts++
 			continue
 		}
 		if !plan.BindingExists && !plan.EmptyTargets {
@@ -293,14 +311,12 @@ func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolic
 				return result, fmt.Errorf("creating binding %q in %q: %w",
 					plan.BindingName, plan.PolicyNamespace, err)
 			}
-			result.BindingsCreated++
 		}
 		if plan.ClearPolicyTargets {
 			if err := clearPolicyTargets(ctx, opts.Client, plan); err != nil {
 				return result, fmt.Errorf("clearing targets on policy %q in %q: %w",
 					plan.PolicyName, plan.PolicyNamespace, err)
 			}
-			result.PoliciesUpdated++
 		}
 	}
 
