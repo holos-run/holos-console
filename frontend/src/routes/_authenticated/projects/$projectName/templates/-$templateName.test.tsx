@@ -542,10 +542,11 @@ describe('DeploymentTemplateDetailPage', () => {
   })
 
   describe('linked platform templates', () => {
-    // HOL-555: LinkableTemplate.mandatory was removed in favor of `forced`,
-    // which the linking UI uses to render "always applied" templates as
-    // checked + disabled until HOL-557 migrates the backend auto-inclusion
-    // to TemplatePolicy REQUIRE evaluation.
+    // LinkableTemplate.mandatory was removed in favor of `forced`, which the
+    // linking UI uses to render "always applied" templates as checked and
+    // disabled. `forced=true` is populated by TemplatePolicy REQUIRE-rule
+    // resolution at render time (via the folder resolver); the user cannot
+    // opt out via this form.
     const mockLinkable = [
       { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' } },
       { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' } },
@@ -576,11 +577,10 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(screen.getAllByText(/None linked/i).length).toBeGreaterThan(0)
     })
 
-    // HOL-555 -> HOL-557 transition: during this window the backend
-    // resolver still auto-unifies ancestor templates carrying the
-    // legacy mandatory annotation (surfaced via `forced=true`). The
-    // detail page MUST reflect that by rendering those templates in the
-    // read-only listing so the effective template set is accurate.
+    // `forced=true` flags ancestor templates that a TemplatePolicy REQUIRE
+    // rule pins onto this project at render time. The detail page MUST
+    // surface them in the read-only listing so the rendered template set
+    // the user sees matches what the backend will produce.
     it('shows forced ancestor template in read-only listing even when not explicitly linked', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })
@@ -656,9 +656,9 @@ describe('DeploymentTemplateDetailPage', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(3)
     })
 
-    // HOL-555: `forced` templates render checked and disabled so the UI
-    // reflects the backend's annotation-driven auto-inclusion until HOL-557
-    // migrates this behavior to TemplatePolicy REQUIRE.
+    // `forced` templates render checked and disabled in the dialog so the
+    // UI reflects that a TemplatePolicy REQUIRE rule will pin the template
+    // at render time; the user cannot opt out via this dialog.
     it('forced template checkbox in dialog is checked and disabled', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [] })

@@ -11,8 +11,9 @@ import (
 // TemplateExistsAdapter adapts a templates.K8sClient into the
 // TemplateExistsResolver interface consumed by console/templatepolicies.
 // Living in this package avoids a console/templatepolicies ->
-// console/templates import that would become a cycle once HOL-557 wires the
-// renderer to read policies.
+// console/templates import cycle, since the render-time resolver
+// (HOL-567) has the templates package consume templatepolicies
+// indirectly through policyresolver.
 type TemplateExistsAdapter struct {
 	k8s *K8sClient
 }

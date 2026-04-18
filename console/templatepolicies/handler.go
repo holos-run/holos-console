@@ -31,10 +31,12 @@
 //     the resolver and asserts it does not classify as a project namespace,
 //     catching any bug that routed a project scope through validation.
 //
-// Render-time integration (treating REQUIRE rules as the only source of
-// forced templates) is tracked by HOL-557. Until that lands, the existing
-// annotation-driven `mandatory` flag on Template ConfigMaps continues to
-// drive auto-inclusion at render time; see console/templates/k8s.go.
+// Render-time integration treats TemplatePolicy REQUIRE rules as the sole
+// source of forced templates: the policyresolver.FolderResolver consults
+// TemplatePolicy ConfigMaps during template resolution and unifies the
+// matching templates into the effective render set. See
+// console/policyresolver and console/templates/k8s.go for the resolver
+// call sites.
 package templatepolicies
 
 import (
@@ -72,7 +74,8 @@ var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 // block the write.
 //
 // This interface lets the handler decouple from console/templates to avoid an
-// import cycle (console/templates will depend on this package in HOL-557).
+// import cycle; console/templates consumes this package transitively via
+// policyresolver for the render-time resolver wired in HOL-567.
 type TemplateExistsResolver interface {
 	TemplateExists(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (bool, error)
 }
@@ -598,7 +601,7 @@ func validateGlob(pattern string) error {
 // failure is logged and ignored so the policy can still be written; only
 // definitive "does not exist" signals are logged as warnings. The function
 // intentionally does not return an error — enforcement happens at render time
-// (HOL-557).
+// via policyresolver.FolderResolver (HOL-567).
 func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*consolev1.TemplatePolicyRule) {
 	if h.templateResolver == nil {
 		return

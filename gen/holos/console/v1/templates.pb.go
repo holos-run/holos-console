@@ -1301,13 +1301,11 @@ type LinkableTemplate struct {
 	// descending by version (newest first). Populated by ListLinkableTemplates so
 	// the linking UI can display version choices without a separate RPC call.
 	Releases []*Release `protobuf:"bytes,6,rep,name=releases,proto3" json:"releases,omitempty"`
-	// forced signals that this template is unconditionally unified with every
-	// project at render time, so the linking UI MUST render it as selected and
-	// disabled. This is a transitional field for the HOL-555 -> HOL-557 window:
-	// the backend still auto-includes mandatory ancestor templates via the
-	// annotation-driven resolver. Once HOL-557 removes that auto-inclusion and
-	// TemplatePolicy REQUIRE rules become the only "always applied" mechanism,
-	// this field becomes server-populated from policy evaluation.
+	// forced signals that a TemplatePolicy REQUIRE rule will unconditionally
+	// unify this template with every matching project at render time, so the
+	// linking UI MUST render it as selected and disabled. The server populates
+	// this field from TemplatePolicy evaluation; clients MUST NOT infer it
+	// from any template annotation.
 	//
 	// Clients MUST NOT treat `forced=true` as a permission to author the
 	// template — it only describes render-time behavior for the UI.

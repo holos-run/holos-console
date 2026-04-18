@@ -542,9 +542,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
               </div>
             ) : (
               <div className="space-y-2">
-                {/* The read-only view previously listed mandatory templates
-                    that would be auto-applied. TemplatePolicy REQUIRE rules
-                    (HOL-558) will re-introduce this affordance. */}
                 <p className="text-xs text-muted-foreground">Only owners can link platform templates.</p>
               </div>
             )}

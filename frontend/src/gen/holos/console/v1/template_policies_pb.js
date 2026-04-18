@@ -133,9 +133,10 @@ export const TemplatePolicyKind = /*@__PURE__*/
  * value (defined in templates.proto) is explicitly unsupported for policies;
  * only TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
  *
- * This is the proto contract only. Backend handler wiring, storage
- * enforcement, and resolver integration land in later phases (HOL-556,
- * HOL-557).
+ * Backend handler wiring (HOL-556), storage enforcement, and render-time
+ * resolver integration (HOL-567) are complete; the resolver consults
+ * TemplatePolicy ConfigMaps to pin REQUIRE templates and suppress EXCLUDE
+ * templates for every matching project render.
  *
  * @generated from service holos.console.v1.TemplatePolicyService
  */

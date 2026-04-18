@@ -365,8 +365,8 @@ func kindFromString(s string) consolev1.TemplatePolicyKind {
 }
 
 // templateScopeLabel mirrors templates.scopeLabelValue but lives here so this
-// package does not import console/templates (which would be a dependency
-// cycle once HOL-557 wires templates to this package).
+// package does not import console/templates (avoiding a dependency cycle
+// with the render-time resolver wiring in HOL-567).
 func templateScopeLabel(scope consolev1.TemplateScope) string {
 	switch scope {
 	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:

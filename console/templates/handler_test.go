@@ -119,8 +119,8 @@ func TestConfigMapToTemplate(t *testing.T) {
 					v1alpha2.AnnotationDisplayName: "ReferenceGrant",
 					// The legacy `console.holos.run/mandatory` annotation was
 					// removed in HOL-565. Templates that must always apply to
-					// a project will be selected by TemplatePolicy REQUIRE
-					// rules in HOL-567 instead.
+					// a project are now selected by TemplatePolicy REQUIRE
+					// rules (wired in HOL-567).
 					v1alpha2.AnnotationEnabled: "true",
 				},
 			},

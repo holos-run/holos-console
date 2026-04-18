@@ -277,16 +277,16 @@ func (s *Server) Serve(ctx context.Context) error {
 		foldersPath, foldersHTTPHandler := consolev1connect.NewFolderServiceHandler(foldersHandler, protectedInterceptors)
 		mux.Handle(foldersPath, foldersHTTPHandler)
 
-		// Create dynamic client early so it can be shared by both the deployment
-		// service and the mandatory template applier.
+		// Dynamic client used by the deployment service's applier for
+		// Server-Side Apply onto project namespaces.
 		dynamicClient, err := deployments.NewDynamicClient()
 		if err != nil {
 			return fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
 		}
 
-		// Namespace hierarchy walker for ancestor chain resolution.
-		// Used by the required template applier, project grant resolver, and
-		// the unified TemplateService handler.
+		// Namespace hierarchy walker for ancestor chain resolution. Used by
+		// the project grant resolver, the unified TemplateService handler,
+		// and the TemplatePolicy REQUIRE-rule folder resolver.
 		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
 
 		// Unified templates K8s client (replaces both templates.K8sClient and

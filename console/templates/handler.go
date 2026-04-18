@@ -989,17 +989,18 @@ func (h *Handler) ListAncestorTemplates(
 // Results are returned in org→folders→project order for correct CUE
 // unification. If linkedRefs is empty, no ancestor templates are returned.
 // The "mandatory" annotation branch of the effective set was removed in
-// HOL-565; TemplatePolicy REQUIRE rules (wired in HOL-567) will reintroduce
-// unconditional ancestor inclusion via the policy resolver.
+// HOL-565; TemplatePolicy REQUIRE rules (wired in HOL-567) reintroduce
+// unconditional ancestor inclusion at render time via the policy resolver
+// that sits in front of ListEffectiveTemplateSources — not via this
+// helper, which only surfaces the caller's explicit linkedRefs.
 //
 // Storage-isolation note (HOL-554): the traversal only visits ancestor
 // namespaces — organization and folder — and never reads templates from a
-// project namespace even when the project itself is the starting scope. Any
-// future migration to a dedicated policy resolver (tracked by HOL-557) must
-// preserve this invariant. TemplatePolicy ConfigMaps and applied-render-set
-// state live exclusively in folder/organization namespaces precisely because
-// project owners can write to their project namespace and would otherwise be
-// able to tamper with the constraints the platform is enforcing.
+// project namespace even when the project itself is the starting scope.
+// TemplatePolicy ConfigMaps and applied-render-set state live exclusively
+// in folder/organization namespaces precisely because project owners can
+// write to their project namespace and would otherwise be able to tamper
+// with the constraints the platform is enforcing.
 func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil

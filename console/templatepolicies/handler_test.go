@@ -764,9 +764,9 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 
 // TestConsoleTemplatesHasNoRemainingMandatoryReads is a regression guard for
 // the audit step in HOL-556: console/templates and console/projects must not
-// read the removed Template.Mandatory proto field. The annotation may still
-// be present on ConfigMaps (we keep it until HOL-557 drops it), but proto
-// field accesses would indicate the `mandatory` shim came back.
+// read the removed Template.Mandatory proto field. The annotation key may
+// still linger on older ConfigMaps in the wild, but any proto field access
+// would indicate the `mandatory` shim came back.
 func TestConsoleTemplatesHasNoRemainingMandatoryReads(t *testing.T) {
 	// This test is defensive rather than exhaustive — it looks for common
 	// shapes (`.GetMandatory()`, `tmpl.Mandatory`) that would signal a
