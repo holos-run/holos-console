@@ -1,5 +1,7 @@
 # Contributing
 
+Working with Claude Code or another coding agent? Start with [AGENTS.md](AGENTS.md) for the repo-local guardrails and a pointer to the shared agent context in `holos-console-docs`.
+
 ## Prerequisites
 
 - Go 1.25.0 or later
