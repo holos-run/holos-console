@@ -1290,9 +1290,12 @@ export declare const GetDeploymentRenderPreviewResponseSchema: GenMessage<GetDep
 export declare type DeploymentOutput = Message<"holos.console.v1.DeploymentOutput"> & {
   /**
    * url is the primary URL the UI should show for the deployment. Empty when
-   * the template has no meaningful URL to publish. Preserved unchanged from
-   * the pre-HOL-572 wire format; treated as the canonical primary link when
-   * no entry in `links` is flagged as primary.
+   * the template has no meaningful URL to publish. The backend populates this
+   * field from (in order of precedence) the `console.holos.run/primary-url`
+   * annotation harvested from any owned resource, the cached
+   * `console.holos.run/output-url` annotation written from the template's
+   * `output.url`, or the rendered `output.url` itself when no annotation is
+   * available.
    *
    * @generated from field: string url = 1;
    */
