@@ -304,11 +304,26 @@ func (s *Server) Serve(ctx context.Context) error {
 		// through a namespace-direct lister that never consults a project
 		// namespace (HOL-554 storage-isolation).
 		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
-		policyResolverSeam := policyresolver.NewFolderResolver(
+		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(k8sClientset, nsResolver)
+		// HOL-596 wires the TemplatePolicyBinding evaluation path into the
+		// render-time resolver. Bindings take precedence on conflict: a
+		// binding whose target_refs match the current render target
+		// dereferences its policy_ref and injects (REQUIRE) / removes
+		// (EXCLUDE) the bound policy's template refs, and the rule's
+		// glob Target is ignored for that render target. Rules in
+		// policies with no matching binding for the target continue to
+		// use their glob Target fallback, so this is additive until
+		// HOL-599/HOL-600 complete the migration.
+		policyResolverSeam := policyresolver.NewFolderResolverWithBindings(
 			templatePoliciesK8s,
 			nsWalker,
 			nsResolver,
 			policyresolver.RuleUnmarshalerFunc(templatepolicies.UnmarshalRules),
+			templatePolicyBindingsK8s,
+			policyresolver.BindingUnmarshalerAdapter{
+				PolicyRefFunc:  templatepolicybindings.UnmarshalPolicyRef,
+				TargetRefsFunc: templatepolicybindings.UnmarshalTargetRefs,
+			},
 		)
 		// AppliedRenderStateClient persists the effective render set to the
 		// owning folder namespace on successful Create/Update of a deployment
@@ -397,8 +412,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		// project-exists) are wired via adapters that lean on the
 		// resources already constructed above — templatePoliciesK8s for
 		// policy lookups, nsWalker for ancestor chains, and the shared
-		// k8sClientset for project-namespace existence.
-		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(k8sClientset, nsResolver)
+		// k8sClientset for project-namespace existence. The K8sClient
+		// itself is constructed alongside the render-time resolver
+		// (HOL-596) so both the handler and the resolver share a single
+		// client instance.
 		templatePolicyBindingsHandler := templatepolicybindings.NewHandler(templatePolicyBindingsK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
