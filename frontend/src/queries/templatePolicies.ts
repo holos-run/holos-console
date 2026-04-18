@@ -11,13 +11,14 @@ import {
 import type {
   TemplatePolicy,
   TemplatePolicyRule,
-  TemplatePolicyTarget,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import type { TemplateScopeRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
 
-// Re-export generated types/enums used by UI consumers.
-export type { TemplatePolicy, TemplatePolicyRule, TemplatePolicyTarget }
+// Re-export generated types/enums used by UI consumers. HOL-600 removed
+// TemplatePolicyTarget from the proto — render-target selection now
+// lives on TemplatePolicyBinding.
+export type { TemplatePolicy, TemplatePolicyRule }
 export { TemplatePolicyKind }
 
 /** Query key helper for the template policies list at a given scope. */

@@ -13,39 +13,40 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 export declare const file_holos_console_v1_template_policies: GenFile;
 
 /**
- * TemplatePolicyTarget selects the set of projects (and, optionally,
- * deployments) a rule applies to. Patterns follow the same glob semantics as
- * filepath.Match: `*` matches any sequence of non-separator characters.
+ * HOL-590 removed the legacy glob-based TemplatePolicyTarget semantics
+ * and the TemplatePolicyRule.target field. Render-time selection now
+ * runs through TemplatePolicyBinding (see template_policy_bindings.proto);
+ * a rule contributes to a render target only when a matching binding
+ * names its owning policy.
+ *
+ * TemplatePolicyTarget is kept as an empty, deprecated message so the
+ * top-level symbol name stays reserved at the schema level — a future
+ * revision cannot reintroduce a different shape under the same name
+ * without an explicit rename. The message has no fields and must not be
+ * produced or consumed by any current client; it exists purely as a
+ * compatibility marker. The TemplatePolicyRule.target field number (3)
+ * is reserved at the message level so its wire slot is never reused.
+ *
+ * See HOL-599 for the migration that translates legacy globs into
+ * bindings, and HOL-600 for the final cleanup.
  *
  * @generated from message holos.console.v1.TemplatePolicyTarget
+ * @deprecated
  */
 export declare type TemplatePolicyTarget = Message<"holos.console.v1.TemplatePolicyTarget"> & {
-  /**
-   * project_pattern matches project names. "*" matches every project.
-   *
-   * @generated from field: string project_pattern = 1;
-   */
-  projectPattern: string;
-
-  /**
-   * deployment_pattern matches deployment names within a matched project.
-   * "*" matches every deployment. Empty string means "project-level only"
-   * (no deployment filtering applied by this rule).
-   *
-   * @generated from field: string deployment_pattern = 2;
-   */
-  deploymentPattern: string;
 };
 
 /**
  * Describes the message holos.console.v1.TemplatePolicyTarget.
  * Use `create(TemplatePolicyTargetSchema)` to create a new message.
+ * @deprecated
  */
 export declare const TemplatePolicyTargetSchema: GenMessage<TemplatePolicyTarget>;
 
 /**
- * TemplatePolicyRule binds a kind, a template reference, and a target selector
- * into a single rule. A TemplatePolicy may carry many rules.
+ * TemplatePolicyRule binds a kind and a template reference into a single
+ * rule. A TemplatePolicy may carry many rules; which render targets a rule
+ * applies to is decided entirely by TemplatePolicyBinding objects.
  *
  * @generated from message holos.console.v1.TemplatePolicyRule
  */
@@ -64,13 +65,6 @@ export declare type TemplatePolicyRule = Message<"holos.console.v1.TemplatePolic
    * @generated from field: holos.console.v1.LinkedTemplateRef template = 2;
    */
   template?: LinkedTemplateRef;
-
-  /**
-   * target restricts which projects/deployments the rule matches.
-   *
-   * @generated from field: holos.console.v1.TemplatePolicyTarget target = 3;
-   */
-  target?: TemplatePolicyTarget;
 };
 
 /**

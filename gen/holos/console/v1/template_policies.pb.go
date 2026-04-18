@@ -82,19 +82,28 @@ func (TemplatePolicyKind) EnumDescriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{0}
 }
 
-// TemplatePolicyTarget selects the set of projects (and, optionally,
-// deployments) a rule applies to. Patterns follow the same glob semantics as
-// filepath.Match: `*` matches any sequence of non-separator characters.
+// HOL-590 removed the legacy glob-based TemplatePolicyTarget semantics
+// and the TemplatePolicyRule.target field. Render-time selection now
+// runs through TemplatePolicyBinding (see template_policy_bindings.proto);
+// a rule contributes to a render target only when a matching binding
+// names its owning policy.
+//
+// TemplatePolicyTarget is kept as an empty, deprecated message so the
+// top-level symbol name stays reserved at the schema level — a future
+// revision cannot reintroduce a different shape under the same name
+// without an explicit rename. The message has no fields and must not be
+// produced or consumed by any current client; it exists purely as a
+// compatibility marker. The TemplatePolicyRule.target field number (3)
+// is reserved at the message level so its wire slot is never reused.
+//
+// See HOL-599 for the migration that translates legacy globs into
+// bindings, and HOL-600 for the final cleanup.
+//
+// Deprecated: Marked as deprecated in holos/console/v1/template_policies.proto.
 type TemplatePolicyTarget struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// project_pattern matches project names. "*" matches every project.
-	ProjectPattern string `protobuf:"bytes,1,opt,name=project_pattern,json=projectPattern,proto3" json:"project_pattern,omitempty"`
-	// deployment_pattern matches deployment names within a matched project.
-	// "*" matches every deployment. Empty string means "project-level only"
-	// (no deployment filtering applied by this rule).
-	DeploymentPattern string `protobuf:"bytes,2,opt,name=deployment_pattern,json=deploymentPattern,proto3" json:"deployment_pattern,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TemplatePolicyTarget) Reset() {
@@ -127,31 +136,16 @@ func (*TemplatePolicyTarget) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *TemplatePolicyTarget) GetProjectPattern() string {
-	if x != nil {
-		return x.ProjectPattern
-	}
-	return ""
-}
-
-func (x *TemplatePolicyTarget) GetDeploymentPattern() string {
-	if x != nil {
-		return x.DeploymentPattern
-	}
-	return ""
-}
-
-// TemplatePolicyRule binds a kind, a template reference, and a target selector
-// into a single rule. A TemplatePolicy may carry many rules.
+// TemplatePolicyRule binds a kind and a template reference into a single
+// rule. A TemplatePolicy may carry many rules; which render targets a rule
+// applies to is decided entirely by TemplatePolicyBinding objects.
 type TemplatePolicyRule struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// kind is REQUIRE or EXCLUDE.
 	Kind TemplatePolicyKind `protobuf:"varint,1,opt,name=kind,proto3,enum=holos.console.v1.TemplatePolicyKind" json:"kind,omitempty"`
 	// template identifies the template this rule applies to. The referenced
 	// template may live in any scope the policy's owning scope can reach.
-	Template *LinkedTemplateRef `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
-	// target restricts which projects/deployments the rule matches.
-	Target        *TemplatePolicyTarget `protobuf:"bytes,3,opt,name=target,proto3" json:"target,omitempty"`
+	Template      *LinkedTemplateRef `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,13 +190,6 @@ func (x *TemplatePolicyRule) GetKind() TemplatePolicyKind {
 func (x *TemplatePolicyRule) GetTemplate() *LinkedTemplateRef {
 	if x != nil {
 		return x.Template
-	}
-	return nil
-}
-
-func (x *TemplatePolicyRule) GetTarget() *TemplatePolicyTarget {
-	if x != nil {
-		return x.Target
 	}
 	return nil
 }
@@ -800,14 +787,11 @@ var File_holos_console_v1_template_policies_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_template_policies_proto_rawDesc = "" +
 	"\n" +
-	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\x1a holos/console/v1/templates.proto\"n\n" +
-	"\x14TemplatePolicyTarget\x12'\n" +
-	"\x0fproject_pattern\x18\x01 \x01(\tR\x0eprojectPattern\x12-\n" +
-	"\x12deployment_pattern\x18\x02 \x01(\tR\x11deploymentPattern\"\xcf\x01\n" +
+	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\x1a holos/console/v1/templates.proto\"\x1a\n" +
+	"\x14TemplatePolicyTarget:\x02\x18\x01\"\x9d\x01\n" +
 	"\x12TemplatePolicyRule\x128\n" +
 	"\x04kind\x18\x01 \x01(\x0e2$.holos.console.v1.TemplatePolicyKindR\x04kind\x12?\n" +
-	"\btemplate\x18\x02 \x01(\v2#.holos.console.v1.LinkedTemplateRefR\btemplate\x12>\n" +
-	"\x06target\x18\x03 \x01(\v2&.holos.console.v1.TemplatePolicyTargetR\x06target\"\xc6\x02\n" +
+	"\btemplate\x18\x02 \x01(\v2#.holos.console.v1.LinkedTemplateRefR\btemplateJ\x04\b\x03\x10\x04R\x06target\"\xc6\x02\n" +
 	"\x0eTemplatePolicy\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
 	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12!\n" +
@@ -886,34 +870,33 @@ var file_holos_console_v1_template_policies_proto_goTypes = []any{
 var file_holos_console_v1_template_policies_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.TemplatePolicyRule.kind:type_name -> holos.console.v1.TemplatePolicyKind
 	14, // 1: holos.console.v1.TemplatePolicyRule.template:type_name -> holos.console.v1.LinkedTemplateRef
-	1,  // 2: holos.console.v1.TemplatePolicyRule.target:type_name -> holos.console.v1.TemplatePolicyTarget
-	15, // 3: holos.console.v1.TemplatePolicy.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 4: holos.console.v1.TemplatePolicy.rules:type_name -> holos.console.v1.TemplatePolicyRule
-	16, // 5: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
-	15, // 6: holos.console.v1.ListTemplatePoliciesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 7: holos.console.v1.ListTemplatePoliciesResponse.policies:type_name -> holos.console.v1.TemplatePolicy
-	15, // 8: holos.console.v1.GetTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 9: holos.console.v1.GetTemplatePolicyResponse.policy:type_name -> holos.console.v1.TemplatePolicy
-	15, // 10: holos.console.v1.CreateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 11: holos.console.v1.CreateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
-	15, // 12: holos.console.v1.UpdateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 13: holos.console.v1.UpdateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
-	15, // 14: holos.console.v1.DeleteTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 15: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
-	6,  // 16: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
-	8,  // 17: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
-	10, // 18: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
-	12, // 19: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
-	5,  // 20: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
-	7,  // 21: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
-	9,  // 22: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
-	11, // 23: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
-	13, // 24: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
-	20, // [20:25] is the sub-list for method output_type
-	15, // [15:20] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	15, // 2: holos.console.v1.TemplatePolicy.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	2,  // 3: holos.console.v1.TemplatePolicy.rules:type_name -> holos.console.v1.TemplatePolicyRule
+	16, // 4: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
+	15, // 5: holos.console.v1.ListTemplatePoliciesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 6: holos.console.v1.ListTemplatePoliciesResponse.policies:type_name -> holos.console.v1.TemplatePolicy
+	15, // 7: holos.console.v1.GetTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 8: holos.console.v1.GetTemplatePolicyResponse.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 9: holos.console.v1.CreateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 10: holos.console.v1.CreateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 11: holos.console.v1.UpdateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 12: holos.console.v1.UpdateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 13: holos.console.v1.DeleteTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	4,  // 14: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
+	6,  // 15: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
+	8,  // 16: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
+	10, // 17: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
+	12, // 18: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
+	5,  // 19: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
+	7,  // 20: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
+	9,  // 21: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
+	11, // 22: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
+	13, // 23: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
+	19, // [19:24] is the sub-list for method output_type
+	14, // [14:19] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_template_policies_proto_init() }

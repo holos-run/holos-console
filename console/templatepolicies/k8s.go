@@ -195,6 +195,13 @@ func (k *K8sClient) CreatePolicy(ctx context.Context, scope consolev1.TemplateSc
 // UpdatePolicy updates an existing TemplatePolicy ConfigMap in place. Only
 // pointer fields that are non-nil are applied; callers can partial-update by
 // passing nil for fields they want preserved.
+//
+// When the existing ConfigMap still carries pre-HOL-600 legacy `target`
+// JSON payloads on its rules annotation, those payloads are preserved
+// on the rewrite so the HOL-599 migration CLI can still translate them
+// into TemplatePolicyBindings after a routine UpdatePolicy call. The
+// runtime resolver ignores the payload either way — preservation is
+// purely for migration safety.
 func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description *string, rules []*consolev1.TemplatePolicyRule, updateRules bool) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
@@ -214,7 +221,8 @@ func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateSc
 		cm.Annotations[v1alpha2.AnnotationDescription] = *description
 	}
 	if updateRules {
-		rulesJSON, err := marshalRules(rules)
+		legacyTargets := extractLegacyTargets(cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules])
+		rulesJSON, err := marshalRulesPreservingLegacy(rules, legacyTargets)
 		if err != nil {
 			return nil, err
 		}
@@ -261,13 +269,29 @@ func scopeLabelValue(scope consolev1.TemplateScope) string {
 	}
 }
 
-// storedRule is the JSON wire shape for a TemplatePolicyRule annotation entry.
-// Nested structs carry their own JSON representation so a hand-authored
-// ConfigMap without the latest generated types still round-trips.
+// storedRule is the JSON wire shape for a TemplatePolicyRule annotation
+// entry. Nested structs carry their own JSON representation so a
+// hand-authored ConfigMap without the latest generated types still
+// round-trips.
+//
+// HOL-600 removed the glob-based TemplatePolicyTarget from the proto,
+// but pre-migration ConfigMaps may still carry a "target" JSON key.
+// The decode struct preserves that payload as a raw message so a
+// routine policy update cannot silently destroy the only source of
+// truth the HOL-599 `migrate template-policy-targets` CLI needs to
+// translate legacy globs into TemplatePolicyBindings. The runtime
+// resolver never reads the value; it is only re-emitted on disk.
 type storedRule struct {
 	Kind     string            `json:"kind"`
 	Template storedTemplateRef `json:"template"`
-	Target   storedTarget      `json:"target"`
+	// LegacyTarget is the pre-HOL-600 "target" JSON payload stored on
+	// the ConfigMap. The runtime ignores it (render-target selection
+	// runs through TemplatePolicyBinding), but marshalRules preserves
+	// it verbatim so a routine UpdatePolicy call does not strip data
+	// the HOL-599 migration still needs. New policies written by the
+	// current console leave this field empty; the field is only ever
+	// populated by unmarshaling a pre-migration ConfigMap.
+	LegacyTarget json.RawMessage `json:"target,omitempty"`
 }
 
 type storedTemplateRef struct {
@@ -277,12 +301,88 @@ type storedTemplateRef struct {
 	VersionConstraint string `json:"version_constraint,omitempty"`
 }
 
-type storedTarget struct {
-	ProjectPattern    string `json:"project_pattern"`
-	DeploymentPattern string `json:"deployment_pattern,omitempty"`
+// legacyTargetQueue holds the pre-HOL-600 "target" JSON payloads
+// extracted from a stored rules annotation, keyed by (kind, template).
+// Each key maps to a FIFO queue so a policy with several rules that
+// share the same (kind, template) key but different legacy targets
+// round-trips each payload back to the matching position in the
+// rewritten annotation. Map-based preservation keyed by (kind,
+// template) alone would collapse those duplicates into a single
+// entry, silently corrupting the HOL-599 migrator's input.
+type legacyTargetQueue map[legacyRuleKey][]json.RawMessage
+
+type legacyRuleKey struct {
+	kind      string
+	scope     string
+	scopeName string
+	name      string
 }
 
+func legacyKeyForStoredRule(s storedRule) legacyRuleKey {
+	return legacyRuleKey{
+		kind:      s.Kind,
+		scope:     s.Template.Scope,
+		scopeName: s.Template.ScopeName,
+		name:      s.Template.Name,
+	}
+}
+
+func legacyKeyForProtoRule(r *consolev1.TemplatePolicyRule) legacyRuleKey {
+	tmpl := r.GetTemplate()
+	return legacyRuleKey{
+		kind:      kindToString(r.GetKind()),
+		scope:     templateScopeLabel(tmpl.GetScope()),
+		scopeName: tmpl.GetScopeName(),
+		name:      tmpl.GetName(),
+	}
+}
+
+// extractLegacyTargets decodes an existing rules annotation and returns a
+// FIFO queue of legacy "target" JSON payloads per (kind, template) key.
+// The caller consumes one payload from the front of the queue per
+// matching rule in the rewritten annotation so duplicate rules keep
+// their individual targets. The function is nil-safe: an empty
+// annotation or one without any legacy targets yields an empty queue
+// so marshalRulesPreservingLegacy can always be called unconditionally.
+func extractLegacyTargets(raw string) legacyTargetQueue {
+	out := make(legacyTargetQueue)
+	if raw == "" {
+		return out
+	}
+	var stored []storedRule
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return out
+	}
+	for _, s := range stored {
+		if len(s.LegacyTarget) == 0 {
+			continue
+		}
+		key := legacyKeyForStoredRule(s)
+		out[key] = append(out[key], s.LegacyTarget)
+	}
+	return out
+}
+
+// marshalRules serializes the supplied rules without any legacy target
+// payload. This is the correct shape for brand-new policies authored
+// after HOL-600: they carry no target data. For UpdatePolicy call
+// paths that might round-trip a pre-migration ConfigMap, use
+// marshalRulesPreservingLegacy instead so the HOL-599 migrator can
+// still recover the glob data.
 func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
+	return marshalRulesPreservingLegacy(rules, nil)
+}
+
+// marshalRulesPreservingLegacy serializes rules and re-emits any legacy
+// `target` JSON payload keyed by (kind, template) so a pre-migration
+// ConfigMap remains machine-readable to the HOL-599 migrator even
+// after an unrelated UpdatePolicy call. When a policy's rules contain
+// duplicate (kind, template) pairs, legacyTargets' FIFO queue hands
+// out payloads in the original order so each position keeps its own
+// target; rules whose key is absent (or whose queue is exhausted) are
+// written without a "target" field — identical to the post-HOL-600
+// shape.
+func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyTargets legacyTargetQueue) ([]byte, error) {
 	stored := make([]storedRule, 0, len(rules))
 	for _, r := range rules {
 		if r == nil {
@@ -299,10 +399,11 @@ func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
 		}
-		if tgt := r.GetTarget(); tgt != nil {
-			sr.Target = storedTarget{
-				ProjectPattern:    tgt.GetProjectPattern(),
-				DeploymentPattern: tgt.GetDeploymentPattern(),
+		if legacyTargets != nil {
+			key := legacyKeyForProtoRule(r)
+			if queue := legacyTargets[key]; len(queue) > 0 {
+				sr.LegacyTarget = queue[0]
+				legacyTargets[key] = queue[1:]
 			}
 		}
 		stored = append(stored, sr)
@@ -324,6 +425,10 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 	}
 	rules := make([]*consolev1.TemplatePolicyRule, 0, len(stored))
 	for _, s := range stored {
+		// Any legacy "target" payload is preserved on disk (see
+		// storedRule.LegacyTarget) but not surfaced on the proto —
+		// HOL-600 removed the glob evaluator and render-time
+		// selection runs through TemplatePolicyBinding.
 		rule := &consolev1.TemplatePolicyRule{
 			Kind: kindFromString(s.Kind),
 			Template: &consolev1.LinkedTemplateRef{
@@ -331,10 +436,6 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 				ScopeName:         s.Template.ScopeName,
 				Name:              s.Template.Name,
 				VersionConstraint: s.Template.VersionConstraint,
-			},
-			Target: &consolev1.TemplatePolicyTarget{
-				ProjectPattern:    s.Target.ProjectPattern,
-				DeploymentPattern: s.Target.DeploymentPattern,
 			},
 		}
 		rules = append(rules, rule)

@@ -3,7 +3,6 @@ package policyresolver
 import (
 	"context"
 	"log/slog"
-	"path"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -50,18 +49,12 @@ func (f RuleUnmarshalerFunc) UnmarshalRules(raw string) ([]*consolev1.TemplatePo
 // a project owner cannot tamper with the policies the platform means to
 // constrain them with (HOL-554 storage-isolation guardrail).
 //
-// HOL-596 extended the resolver to honor TemplatePolicyBinding objects
-// alongside the legacy glob-based TemplatePolicyRule.Target selector. A
-// binding whose target_refs match the current render target contributes
-// every rule in its bound policy; the bound policy's glob Target filter is
-// ignored for targets the binding covers (bindings win on conflict). Rules
-// in policies that are NOT covered by any matching binding for this target
-// continue to be evaluated via their glob Target, so the resolver is safely
-// additive against existing fixtures.
-//
-// Wildcard matching (legacy glob path) uses the same `path.Match` semantics
-// as validatePolicyRules so the resolver honors the glob forms already
-// accepted at policy-create time.
+// HOL-600 removed the legacy glob-based TemplatePolicyRule.Target
+// evaluation path. A rule contributes to the current render target only
+// when a TemplatePolicyBinding names its owning policy and selects that
+// target (matching on (kind, name, project_name)). Policies not covered
+// by any matching binding for the render target contribute nothing; an
+// annotated `target` field still present on a stale ConfigMap is ignored.
 type folderResolver struct {
 	policyLister       PolicyListerInNamespace
 	walker             WalkerInterface
@@ -80,24 +73,24 @@ type folderResolver struct {
 	// ancestorBindings encapsulates the same ancestor walk for
 	// TemplatePolicyBinding ConfigMaps. Nil when bindingLister or
 	// bindingUnmarshaler is nil; Resolve treats a nil ancestorBindings
-	// as "no bindings exist" and falls back to the pure legacy glob
-	// evaluation path. This lets the resolver stay backward-compatible
-	// with wire-ups that have not yet rolled in binding support (tests,
-	// pre-HOL-595 fixtures).
+	// as "no bindings exist", which post-HOL-600 means "no rules
+	// contribute". This is the safe fail-open behavior: a wire-up that
+	// forgot to provide a binding lister returns the caller's explicit
+	// refs unchanged rather than misapplying rules.
 	ancestorBindings *AncestorBindingLister
 }
 
-// NewFolderResolver returns a folderResolver wired with the given dependencies.
-// All four rule-side arguments are required; passing nil for any of them
-// yields a resolver that falls back to returning the caller's explicit refs
-// unchanged (equivalent to noopResolver) so tests and test-only wire-ups
-// continue to work without crashing.
+// NewFolderResolver returns a folderResolver wired with the policy
+// (rule-side) dependencies only. Post-HOL-600 this resolver degrades to
+// returning the caller's explicit refs unchanged: no binding lister is
+// wired, so no rule can contribute. The constructor is retained for
+// pre-binding test wire-ups that want to assert the fail-open behavior.
+// Production code must use NewFolderResolverWithBindings so the binding
+// evaluation path is live.
 //
-// For binding support, use NewFolderResolverWithBindings to additionally
-// attach a BindingListerInNamespace and BindingUnmarshaler. A resolver
-// constructed via NewFolderResolver skips the binding evaluation path
-// entirely and behaves exactly as it did before HOL-596 — every rule is
-// evaluated via its glob TemplatePolicyRule.Target.
+// Passing nil for any of the four rule-side arguments yields a resolver
+// that also returns the explicit refs unchanged (equivalent to
+// noopResolver), matching the fail-open contract in Resolve.
 func NewFolderResolver(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
@@ -113,19 +106,18 @@ func NewFolderResolver(
 	}
 }
 
-// NewFolderResolverWithBindings wires a resolver that evaluates both
-// TemplatePolicyBinding objects (HOL-596) and the legacy
-// TemplatePolicyRule.Target glob fallback. The binding path takes precedence:
-// any rule in a policy that a matching binding covers is evaluated as if
-// the binding re-selected its own targets, and the glob Target on that rule
-// is ignored for the render targets the binding names. Rules in policies
-// with no matching binding for the current render target continue to fall
-// back to the glob evaluation, so the two paths coexist through HOL-599 /
-// HOL-600 without breaking existing fixtures.
+// NewFolderResolverWithBindings wires a resolver that evaluates
+// TemplatePolicyBinding objects as the sole render-target selector
+// (HOL-600). A binding whose target_refs match the current render target
+// dereferences its policy_ref and injects (REQUIRE) / removes (EXCLUDE)
+// the bound policy's template refs. Policies that no matching binding
+// names for the current target contribute nothing — the pre-HOL-600
+// legacy glob Target path is gone.
 //
-// Passing a nil binding lister or unmarshaler degrades cleanly to the
-// legacy-only behavior returned by NewFolderResolver. Passing a nil rule
-// stack falls through to noopResolver semantics as before.
+// Passing a nil binding lister or unmarshaler reduces the resolver to
+// "no rules contribute"; the caller's explicit refs pass through
+// unchanged. Passing a nil rule stack falls through to noopResolver
+// semantics as before.
 func NewFolderResolverWithBindings(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
@@ -192,17 +184,13 @@ func (r *folderResolver) Resolve(
 		return explicitRefs, nil
 	}
 
-	// Resolve the project slug from the namespace so patterns can be
-	// matched against it. If the caller passed a non-project namespace
-	// (e.g. a preview of an org-level template), there is no project to
-	// match against; REQUIRE rules keyed on project_pattern only match a
-	// real project, so we still walk the ancestor chain but skip
-	// project-pattern matching.
+	// Resolve the project slug from the namespace. Bindings key targets
+	// on (kind, name, project_name); a non-project start (preview of an
+	// org/folder-scope template) has no project name to match, so the
+	// binding path also contributes nothing. The real render code paths
+	// that invoke Resolve always pass a project namespace today.
 	project, projectErr := r.resolver.ProjectFromNamespace(projectNs)
 	if projectErr != nil {
-		// Non-project start (preview or org/folder render). The real
-		// render code paths that invoke Resolve always pass a project
-		// namespace today, but keep the branch for completeness.
 		project = ""
 	}
 
@@ -229,65 +217,27 @@ func (r *folderResolver) Resolve(
 	}
 
 	// Collect the bindings from the same ancestor chain. A nil
-	// ancestorBindings (no WithBindings wire-up) means we skip the
-	// binding-driven path entirely and fall back to the legacy glob
-	// evaluation — behavior identical to the pre-HOL-596 resolver.
+	// ancestorBindings (no WithBindings wire-up) is the fail-open
+	// degenerate case: no rule can contribute, so the caller's
+	// explicit refs pass through unchanged.
 	var bindings []*ResolvedBinding
 	if r.ancestorBindings != nil {
 		bs, bErr := r.ancestorBindings.ListBindings(ctx, projectNs)
 		if bErr != nil {
-			slog.WarnContext(ctx, "ancestor binding walk failed during policy resolution; falling back to legacy glob path",
+			slog.WarnContext(ctx, "ancestor binding walk failed during policy resolution; returning explicit refs unchanged",
 				slog.String("projectNs", projectNs),
 				slog.Any("error", bErr),
 			)
-		} else {
-			bindings = bs
+			return explicitRefs, nil
 		}
+		bindings = bs
 	}
 
-	// Classify which (policy, binding) pairs select the current render
-	// target. coveredPolicies records every (policyScope, policyScopeName,
-	// policyName) triple that at least one matching binding names — those
-	// policies' rules are evaluated under binding semantics (glob Target
-	// ignored for this render target). Every other policy's rules fall
-	// back to their glob Target filter, preserving the legacy behavior
-	// until HOL-599 migrates existing globs and HOL-600 removes the
-	// fallback entirely.
+	// Classify which policies at least one matching binding names for
+	// the current render target. Only these policies contribute rules
+	// to the effective set — this is the sole selection mechanism
+	// post-HOL-600.
 	coveredPolicies := make(map[policyKey]struct{})
-	for _, b := range bindings {
-		if b == nil || b.PolicyRef == nil {
-			continue
-		}
-		if !bindingAppliesTo(b, project, targetKind, targetName) {
-			continue
-		}
-		scopeRef := b.PolicyRef.GetScopeRef()
-		if scopeRef == nil {
-			continue
-		}
-		coveredPolicies[policyKey{
-			scope:     scopeRef.GetScope(),
-			scopeName: scopeRef.GetScopeName(),
-			name:      b.PolicyRef.GetName(),
-		}] = struct{}{}
-	}
-
-	// Validate each covered-policy entry actually resolves to a real
-	// policy in the ancestor chain. A binding that points at a
-	// nonexistent policy is a misconfiguration; logging once per
-	// offending binding (rather than per-render) would require tracking
-	// recent warnings — the ticket's contract is that such a binding is
-	// a no-op and does not fail the render, which the per-render log
-	// here already satisfies. We do not remove the entry from
-	// coveredPolicies because a missing policy contributes no rules
-	// anyway; the loop below simply finds no matching ResolvedPolicy.
-	existingPolicyKeys := make(map[policyKey]struct{}, len(policies))
-	for _, p := range policies {
-		if p == nil {
-			continue
-		}
-		existingPolicyKeys[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}] = struct{}{}
-	}
 	for _, b := range bindings {
 		if b == nil || b.PolicyRef == nil {
 			continue
@@ -303,15 +253,27 @@ func (r *folderResolver) Resolve(
 			)
 			continue
 		}
-		key := policyKey{
+		coveredPolicies[policyKey{
 			scope:     scopeRef.GetScope(),
 			scopeName: scopeRef.GetScopeName(),
 			name:      b.PolicyRef.GetName(),
+		}] = struct{}{}
+	}
+
+	// Warn on dangling binding → missing policy references. A binding
+	// that names a policy not in the ancestor chain is a
+	// misconfiguration; contributing no rules (which the loop below
+	// already does for a missing policy key) is the contracted no-op.
+	existingPolicyKeys := make(map[policyKey]struct{}, len(policies))
+	for _, p := range policies {
+		if p == nil {
+			continue
 		}
+		existingPolicyKeys[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}] = struct{}{}
+	}
+	for key := range coveredPolicies {
 		if _, ok := existingPolicyKeys[key]; !ok {
 			slog.WarnContext(ctx, "template policy binding references a policy that does not exist in the ancestor chain; treating as no-op",
-				slog.String("bindingNamespace", b.Namespace),
-				slog.String("binding", b.Name),
 				slog.String("policyScope", key.scope.String()),
 				slog.String("policyScopeName", key.scopeName),
 				slog.String("policyName", key.name),
@@ -319,45 +281,31 @@ func (r *folderResolver) Resolve(
 		}
 	}
 
-	// Classify rules into REQUIRE and EXCLUDE lists. Rules are tagged
-	// with their parent policy so the evaluation loop below can decide
-	// whether to honor the glob Target filter (no covering binding) or
-	// ignore it (binding covers this target for this policy).
-	type scopedRule struct {
-		rule             *consolev1.TemplatePolicyRule
-		policyCoveredVia bool // true iff this rule's parent policy is covered by a matching binding
-	}
-	var requireRules []scopedRule
-	var excludeRules []scopedRule
+	// Collect REQUIRE and EXCLUDE rules only from policies a matching
+	// binding covers for this render target. Every other policy in the
+	// ancestor chain contributes nothing — pre-HOL-600 the legacy
+	// glob Target path would have evaluated those policies' rules
+	// against the rule's (project_pattern, deployment_pattern).
+	var requireRules []*consolev1.TemplatePolicyRule
+	var excludeRules []*consolev1.TemplatePolicyRule
 	for _, p := range policies {
 		if p == nil {
 			continue
 		}
-		_, covered := coveredPolicies[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}]
+		if _, covered := coveredPolicies[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}]; !covered {
+			continue
+		}
 		for _, rule := range p.Rules {
 			if rule == nil {
 				continue
 			}
-			sr := scopedRule{rule: rule, policyCoveredVia: covered}
 			switch rule.GetKind() {
 			case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
-				requireRules = append(requireRules, sr)
+				requireRules = append(requireRules, rule)
 			case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
-				excludeRules = append(excludeRules, sr)
+				excludeRules = append(excludeRules, rule)
 			}
 		}
-	}
-
-	// ruleAppliesForRender is the unified predicate: if a binding covers
-	// this policy for the current render target, the rule's own glob
-	// Target is bypassed and the rule applies unconditionally (the
-	// binding already made the selection decision). Otherwise fall
-	// back to legacy glob evaluation.
-	ruleAppliesForRender := func(sr scopedRule) bool {
-		if sr.policyCoveredVia {
-			return true
-		}
-		return ruleAppliesTo(sr.rule, project, targetKind, targetName)
 	}
 
 	// Start the effective set with the caller's explicit refs, deduped
@@ -365,17 +313,12 @@ func (r *folderResolver) Resolve(
 	// rule also matches stays in the set; we only add new entries.
 	effective, effectiveSet, explicitKeys := dedupRefs(explicitRefs)
 
-	// Inject REQUIRE matches. Each rule that applies to the current
-	// render target (either via a matching binding or via a matching
-	// glob Target) contributes its template ref. The injected ref
-	// carries the rule-author-declared version constraint (if any) so
-	// a REQUIRE rule can pin the platform-forced template to a specific
-	// semver band.
-	for _, sr := range requireRules {
-		if !ruleAppliesForRender(sr) {
-			continue
-		}
-		tmpl := sr.rule.GetTemplate()
+	// Inject REQUIRE matches. A REQUIRE rule selected by a binding
+	// contributes its template ref, carrying the rule-author-declared
+	// version constraint so a REQUIRE rule can pin the platform-forced
+	// template to a specific semver band.
+	for _, rule := range requireRules {
+		tmpl := rule.GetTemplate()
 		if tmpl == nil || tmpl.GetName() == "" {
 			continue
 		}
@@ -396,10 +339,8 @@ func (r *folderResolver) Resolve(
 	// Apply EXCLUDE rules. EXCLUDE only removes refs that REQUIRE
 	// added — the owner-linked refs in explicitKeys are protected.
 	// The resolver enforces this protection so a policy accidentally
-	// authored against an org-mandated linked template does not silently
-	// override the deliberate choice; CreateTemplatePolicy /
-	// UpdateTemplatePolicy is the place to raise a FailedPrecondition
-	// when such a collision is authored.
+	// authored against an org-mandated linked template does not
+	// silently override the deliberate choice.
 	if len(excludeRules) == 0 {
 		return effective, nil
 	}
@@ -409,18 +350,14 @@ func (r *folderResolver) Resolve(
 			continue
 		}
 		key := keyForRefProto(ref)
-		// Never remove an explicit (owner-linked) ref — the policy-
-		// author RPC already rejects this combination.
+		// Never remove an explicit (owner-linked) ref.
 		if _, ownerLinked := explicitKeys[key]; ownerLinked {
 			filtered = append(filtered, ref)
 			continue
 		}
 		excluded := false
-		for _, sr := range excludeRules {
-			if !ruleAppliesForRender(sr) {
-				continue
-			}
-			tmpl := sr.rule.GetTemplate()
+		for _, rule := range excludeRules {
+			tmpl := rule.GetTemplate()
 			if tmpl == nil {
 				continue
 			}
@@ -540,63 +477,3 @@ func dedupRefs(refs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplate
 	return out, set, explicit
 }
 
-// ruleAppliesTo reports whether a rule's target selects the render target at
-// `(project, targetKind, targetName)`. Rules that declare a non-empty
-// deployment pattern only apply when the render target is a deployment; a
-// project-template preview ignores those rules by design (a "mandatory
-// deployment template" has no meaning for the project-template render
-// surface).
-//
-// A rule whose deployment pattern is the empty string applies to both
-// target kinds, matching the original HOL-557 acceptance-criteria wording
-// that a project-level rule (no deployment filter) also forces templates
-// onto project-scope renders.
-func ruleAppliesTo(rule *consolev1.TemplatePolicyRule, project string, targetKind TargetKind, targetName string) bool {
-	target := rule.GetTarget()
-	if target == nil {
-		return false
-	}
-
-	projectPattern := target.GetProjectPattern()
-	if projectPattern == "" {
-		// No project filter means "every project". Treat an empty
-		// pattern the same as "*" so a hand-authored ConfigMap that
-		// omits the field still matches.
-		projectPattern = "*"
-	}
-	if !globMatch(projectPattern, project) {
-		return false
-	}
-
-	deploymentPattern := target.GetDeploymentPattern()
-	if deploymentPattern == "" {
-		// Applies to both deployments and project-template renders.
-		return true
-	}
-
-	// With a deployment pattern set, the rule only matches deployment
-	// render targets. Project-template previews are outside the rule's
-	// selection surface.
-	if targetKind != TargetKindDeployment {
-		return false
-	}
-	return globMatch(deploymentPattern, targetName)
-}
-
-// globMatch wraps path.Match and is tolerant of malformed patterns: a pattern
-// that fails to compile is treated as non-matching rather than propagated,
-// because the policy validator already rejects invalid patterns at write time
-// (per HOL-556), and a resolve-time error would surface as a cryptic render
-// failure for what is really a stale-data problem. The subjects here are DNS
-// labels (project/template/deployment names) so path.Match — which uses `/`
-// as the separator — is the correct (and only) matcher.
-func globMatch(pattern, subject string) bool {
-	if pattern == "" {
-		return false
-	}
-	ok, err := path.Match(pattern, subject)
-	if err != nil {
-		return false
-	}
-	return ok
-}

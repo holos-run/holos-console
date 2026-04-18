@@ -18,7 +18,6 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
-	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -439,12 +438,19 @@ func buildPolicyPlan(
 	policy *corev1.ConfigMap,
 ) (*PolicyMigrationPlan, error) {
 	rawRules := policy.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
-	rules, err := templatepolicies.UnmarshalRules(rawRules)
+	// HOL-600 removed the `target` field from the proto rule, so the
+	// proto-level unmarshaler (templatepolicies.UnmarshalRules) can no
+	// longer surface the legacy glob values the migrator needs to
+	// translate. Parse the annotation directly into the local
+	// ruleWire / targetWire shape so the migrator keeps working
+	// against pre-migration ConfigMaps regardless of the runtime
+	// proto's field set.
+	legacyRules, err := parseLegacyRules(rawRules)
 	if err != nil {
 		return nil, fmt.Errorf("parsing rules on policy %q in %q: %w",
 			policy.Name, policy.Namespace, err)
 	}
-	if !policyHasNonEmptyTargets(rules) {
+	if !policyHasNonEmptyTargets(legacyRules) {
 		return nil, nil
 	}
 
@@ -465,18 +471,14 @@ func buildPolicyPlan(
 	}
 
 	// Collect the render targets per rule. A rule with an empty
-	// project_pattern matches every descendant project (the resolver
-	// treats "" as "*"), and a rule with an empty deployment_pattern
-	// selects BOTH the project-scope templates and deployments within
-	// each matching project — the same semantics ruleAppliesTo
-	// encodes.
+	// project_pattern matches every descendant project (the pre-HOL-600
+	// resolver treated "" as "*"), and a rule with an empty
+	// deployment_pattern selects BOTH the project-scope templates and
+	// deployments within each matching project.
 	targetSet := newTargetRefSet()
-	for _, rule := range rules {
-		if rule == nil || rule.GetTarget() == nil {
-			continue
-		}
-		projectPattern := rule.GetTarget().GetProjectPattern()
-		deploymentPattern := rule.GetTarget().GetDeploymentPattern()
+	for _, rule := range legacyRules {
+		projectPattern := rule.Target.ProjectPattern
+		deploymentPattern := rule.Target.DeploymentPattern
 		if projectPattern == "" && deploymentPattern == "" {
 			continue
 		}
@@ -628,16 +630,9 @@ func buildPolicyPlan(
 // would write to target every project, and the migrator must translate
 // it into an explicit binding rather than mistaking it for the post-
 // migration shape.
-func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
+func policyHasNonEmptyTargets(rules []ruleWire) bool {
 	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
-		t := rule.GetTarget()
-		if t == nil {
-			continue
-		}
-		if t.GetProjectPattern() != "" || t.GetDeploymentPattern() != "" {
+		if rule.Target.ProjectPattern != "" || rule.Target.DeploymentPattern != "" {
 			return true
 		}
 	}
@@ -1040,8 +1035,14 @@ func marshalBindingTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) 
 // clearPolicyTargets updates the policy's rule annotation so every rule
 // carries empty project_pattern and deployment_pattern strings. The rest of
 // the rule — Kind, Template, VersionConstraint — is preserved verbatim.
-// Clearing happens in-place so HOL-600 can delete the legacy evaluation
-// path with a single follow-up release.
+// Clearing happens in-place so a follow-up runtime release (HOL-600) can
+// delete the legacy evaluation path without leaving stale glob values on
+// disk.
+//
+// The function parses the stored JSON directly rather than routing
+// through the proto-level templatepolicies.UnmarshalRules, because the
+// proto Target field was removed in HOL-600 and is no longer available
+// on the decoded rule.
 func clearPolicyTargets(ctx context.Context, client kubernetes.Interface, plan *PolicyMigrationPlan) error {
 	cm, err := client.CoreV1().ConfigMaps(plan.PolicyNamespace).Get(ctx, plan.PolicyName, metav1.GetOptions{})
 	if err != nil {
@@ -1051,23 +1052,35 @@ func clearPolicyTargets(ctx context.Context, client kubernetes.Interface, plan *
 		cm.Annotations = make(map[string]string)
 	}
 	raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
-	rules, err := templatepolicies.UnmarshalRules(raw)
+	rules, err := parseLegacyRules(raw)
 	if err != nil {
 		return fmt.Errorf("parsing rules for update: %w", err)
 	}
-	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
-		rule.Target = &consolev1.TemplatePolicyTarget{}
+	for i := range rules {
+		rules[i].Target = targetWire{}
 	}
-	clearedJSON, err := marshalClearedRules(rules)
+	clearedJSON, err := marshalClearedRuleWires(rules)
 	if err != nil {
 		return err
 	}
 	cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules] = string(clearedJSON)
 	_, err = client.CoreV1().ConfigMaps(plan.PolicyNamespace).Update(ctx, cm, metav1.UpdateOptions{})
 	return err
+}
+
+// parseLegacyRules decodes the JSON rules annotation into the migrator's
+// own ruleWire shape so the migration logic sees the pre-HOL-600 target
+// glob values the runtime proto no longer exposes. An empty or missing
+// annotation decodes to a nil slice (matching the pre-refactor behavior).
+func parseLegacyRules(raw string) ([]ruleWire, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var rules []ruleWire
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil, fmt.Errorf("decoding template policy rules: %w", err)
+	}
+	return rules, nil
 }
 
 // ruleWire mirrors the on-disk JSON shape stored by
@@ -1111,70 +1124,20 @@ type targetWire struct {
 // rule apart from a migrator-cleared rule, silently skipping migration
 // of policies that actually still need one.
 //
-// The empty-string form does mean the current
-// templatepolicies.validatePolicyRules rejects UI/API updates of
-// migrated policies until HOL-600 removes the validator. That window is
-// already in effect today because HOL-598 removed the UI inputs that
-// could supply a non-empty project_pattern — i.e., the UI cannot update
-// any TemplatePolicy right now regardless of whether the migration has
-// run. HOL-600 is the paired patch that removes the validator, at which
-// point all policies become UI-updatable again. The runbook calls this
-// out explicitly.
-func marshalClearedRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
-	out := make([]ruleWire, 0, len(rules))
-	for _, r := range rules {
-		if r == nil {
-			continue
-		}
-		wire := ruleWire{Kind: ruleKindWire(r.GetKind())}
-		if tmpl := r.GetTemplate(); tmpl != nil {
-			wire.Template = templateRefWire{
-				Scope:             templateScopeWire(tmpl.GetScope()),
-				ScopeName:         tmpl.GetScopeName(),
-				Name:              tmpl.GetName(),
-				VersionConstraint: tmpl.GetVersionConstraint(),
-			}
-		}
-		// Target fields deliberately left zero — this is the whole
-		// point of the migration. Post-apply the policy carries no
-		// meaningful Target data so HOL-600 can delete the
-		// evaluation path without surprise.
-		out = append(out, wire)
-	}
-	b, err := json.Marshal(out)
+// HOL-600 removed the validator that rejected empty project_pattern
+// values, so a migrated (cleared-Target) policy can be updated through
+// the UI/API again. The empty-string form is preferred over `"*"` for
+// the idempotency reasons above: it lets re-runs of the migrator
+// distinguish a cleared rule from a legacy wildcard one.
+func marshalClearedRuleWires(rules []ruleWire) ([]byte, error) {
+	// rules already carry their cleared Target. Re-use the wire shape
+	// so the marshaler emits the same JSON the runtime reads and the
+	// on-disk payload matches what the migrator originally parsed.
+	b, err := json.Marshal(rules)
 	if err != nil {
 		return nil, fmt.Errorf("serializing cleared template policy rules: %w", err)
 	}
 	return b, nil
-}
-
-// ruleKindWire duplicates templatepolicies.kindToString's encoding for the
-// reasons explained on ruleWire. UNSPECIFIED maps to the empty string,
-// which the runtime unmarshal also accepts as UNSPECIFIED.
-func ruleKindWire(k consolev1.TemplatePolicyKind) string {
-	switch k {
-	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
-		return "require"
-	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
-		return "exclude"
-	default:
-		return ""
-	}
-}
-
-// templateScopeWire duplicates templatepolicies.templateScopeLabel's encoding
-// for the reasons explained on ruleWire.
-func templateScopeWire(scope consolev1.TemplateScope) string {
-	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
-		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
-		return v1alpha2.TemplateScopeFolder
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
-		return v1alpha2.TemplateScopeProject
-	default:
-		return ""
-	}
 }
 
 // printMigrationPlan writes a human-readable plan to w. Operators diff the
