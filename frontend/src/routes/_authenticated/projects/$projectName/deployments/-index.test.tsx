@@ -53,8 +53,12 @@ function makeSummary(
   }
 }
 
-function makeOutput(url: string): DeploymentOutput {
-  return { $typeName: 'holos.console.v1.DeploymentOutput', url }
+function makeOutput(url: string, links: DeploymentOutput['links'] = []): DeploymentOutput {
+  return { $typeName: 'holos.console.v1.DeploymentOutput', url, links }
+}
+
+function makeLink(name: string, url: string, source: 'holos' | 'argocd' = 'holos'): DeploymentOutput['links'][number] {
+  return { $typeName: 'holos.console.v1.Link', url, title: name, description: '', source, name }
 }
 
 function makeDeployment(
@@ -324,6 +328,89 @@ describe('DeploymentsPage', () => {
       )
       render(<DeploymentsPage />)
       expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+    })
+  })
+
+  // HOL-575: when a deployment publishes more than the primary URL via
+  // `output.links`, surface a small "+N" indicator next to the existing
+  // open-link icon so operators can see at a glance that more links are
+  // available on the detail page. The indicator never appears when
+  // links is empty, when there is no primary URL, or when the link list
+  // length is below 1.
+  describe('extra links indicator (+N)', () => {
+    it('renders a "+N" links indicator when output.links has additional entries', () => {
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(
+            DeploymentPhase.RUNNING,
+            1,
+            1,
+            makeOutput('https://api.example.com', [
+              makeLink('logs', 'https://logs.example.com'),
+              makeLink('metrics', 'https://metrics.example.com', 'argocd'),
+            ]),
+          ),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.getByTestId('deployment-extra-links-api')).toHaveTextContent('+2')
+    })
+
+    it('does not render the "+N" indicator when output.links is empty', () => {
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('https://api.example.com', [])),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.queryByTestId('deployment-extra-links-api')).not.toBeInTheDocument()
+    })
+
+    it('does not render the "+N" indicator when output.url is empty', () => {
+      // The icon affordance is keyed off output.url; without a primary URL
+      // the icon does not render and the "+N" indicator has nothing to sit
+      // next to. Surfacing extra links without the open-link icon would
+      // be inconsistent with the contract documented on the icon.
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('', [makeLink('logs', 'https://logs.example.com')])),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.queryByTestId('deployment-extra-links-api')).not.toBeInTheDocument()
+    })
+
+    it('does not count secondary links whose URL is unsafe', () => {
+      // Defense-in-depth: links that fail the http/https allowlist do not
+      // render in the detail-page Links section, so they should not be
+      // counted by the list-page "+N" badge either.
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(
+            DeploymentPhase.RUNNING,
+            1,
+            1,
+            makeOutput('https://api.example.com', [
+              makeLink('bad', 'javascript:alert(1)'),
+              makeLink('good', 'https://good.example.com'),
+            ]),
+          ),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.getByTestId('deployment-extra-links-api')).toHaveTextContent('+1')
     })
   })
 })
