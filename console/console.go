@@ -44,6 +44,7 @@ import (
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
 	"github.com/holos-run/holos-console/console/templatepolicies"
+	"github.com/holos-run/holos-console/console/templatepolicybindings"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -386,6 +387,27 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatePoliciesPath, templatePoliciesHTTPHandler := consolev1connect.NewTemplatePolicyServiceHandler(templatePoliciesHandler, protectedInterceptors)
 		mux.Handle(templatePoliciesPath, templatePoliciesHTTPHandler)
 
+		// TemplatePolicyBindingService handler — manages the explicit,
+		// non-glob binding of a TemplatePolicy to a list of project
+		// templates and deployments (ADR 029 / HOL-590). Project scope
+		// is rejected for the same storage-isolation reason as policies
+		// (HOL-554): a project owner must not be able to tamper with
+		// the binding list the platform uses to constrain them. The
+		// handler's validation seams (policy-exists, ancestor-chain,
+		// project-exists) are wired via adapters that lean on the
+		// resources already constructed above — templatePoliciesK8s for
+		// policy lookups, nsWalker for ancestor chains, and the shared
+		// k8sClientset for project-namespace existence.
+		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(k8sClientset, nsResolver)
+		templatePolicyBindingsHandler := templatepolicybindings.NewHandler(templatePolicyBindingsK8s, nsResolver).
+			WithOrgGrantResolver(orgGrantResolver).
+			WithFolderGrantResolver(folderGrantResolver).
+			WithPolicyExistsResolver(templatepolicybindings.NewPolicyExistsAdapter(templatePoliciesK8s)).
+			WithAncestorChainResolver(templatepolicybindings.NewAncestorChainAdapter(nsWalker)).
+			WithProjectExistsResolver(templatepolicybindings.NewProjectExistsAdapter(k8sClientset, nsResolver))
+		templatePolicyBindingsPath, templatePolicyBindingsHTTPHandler := consolev1connect.NewTemplatePolicyBindingServiceHandler(templatePolicyBindingsHandler, protectedInterceptors)
+		mux.Handle(templatePolicyBindingsPath, templatePolicyBindingsHTTPHandler)
+
 		// Deployment service with project grant fallback.
 		// ancestorTemplateResolver wraps templatesK8s + nsWalker to satisfy
 		// AncestorTemplateProvider for full ancestor-chain template resolution
@@ -441,6 +463,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.TemplateServiceName,
 		consolev1connect.TemplatePolicyServiceName,
+		consolev1connect.TemplatePolicyBindingServiceName,
 		consolev1connect.FolderServiceName,
 		consolev1connect.DeploymentServiceName,
 	)
