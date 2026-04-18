@@ -1,0 +1,219 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "google/protobuf/timestamp.proto";
+import "holos/console/v1/policy_state.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// TemplatePolicyBindingService manages TemplatePolicyBinding resources, the
+// explicit, non-glob successor to TemplatePolicy's target-selector rules
+// (ADR 029 / HOL-590). A TemplatePolicyBinding names a single policy and
+// enumerates the project templates and deployments that policy applies to
+// via explicit TemplatePolicyBindingTargetRef entries — no wildcards, no
+// glob semantics. TemplatePolicy continues to declare the REQUIRE/EXCLUDE
+// rules; TemplatePolicyBinding declares the set of targets those rules apply
+// to.
+//
+// Storage MUST live in the folder or organization namespace identified by
+// scope_ref. Project-scope storage is forbidden for the same reason it is
+// forbidden for TemplatePolicy (HOL-554 storage-isolation design note); the
+// policy a binding references is always folder- or org-scoped, so the
+// binding lives in the same hierarchy level. Backend handlers MUST reject
+// any namespace whose resolver classification is `ResourceTypeProject`, and
+// MUST reject TEMPLATE_SCOPE_PROJECT on scope_ref.
+//
+// Handler wiring, RBAC enforcement, and ConnectRPC registration land in the
+// follow-on sub-ticket (HOL-595). This file defines only the proto contract
+// so subsequent phases have types to work against.
+service TemplatePolicyBindingService {
+  // ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
+  // visible in the given scope. Requires
+  // PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
+  // PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
+  // meaningless without its policy — anyone who can read/write the policy
+  // can read/write the set of targets it applies to (see HOL-595).
+  rpc ListTemplatePolicyBindings(ListTemplatePolicyBindingsRequest) returns (ListTemplatePolicyBindingsResponse);
+
+  // GetTemplatePolicyBinding retrieves a single binding by name within a
+  // scope. Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+  rpc GetTemplatePolicyBinding(GetTemplatePolicyBindingRequest) returns (GetTemplatePolicyBindingResponse);
+
+  // CreateTemplatePolicyBinding creates a new binding at the given scope.
+  // The scope MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER;
+  // TEMPLATE_SCOPE_PROJECT and any namespace the resolver classifies as
+  // `ResourceTypeProject` are rejected. Requires
+  // PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  rpc CreateTemplatePolicyBinding(CreateTemplatePolicyBindingRequest) returns (CreateTemplatePolicyBindingResponse);
+
+  // UpdateTemplatePolicyBinding updates an existing binding. Requires
+  // PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  rpc UpdateTemplatePolicyBinding(UpdateTemplatePolicyBindingRequest) returns (UpdateTemplatePolicyBindingResponse);
+
+  // DeleteTemplatePolicyBinding deletes a binding. Requires
+  // PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+  rpc DeleteTemplatePolicyBinding(DeleteTemplatePolicyBindingRequest) returns (DeleteTemplatePolicyBindingResponse);
+}
+
+// LinkedTemplatePolicyRef is a scope-qualified reference to a
+// TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) in intent,
+// but uses TemplateScopeRef directly as a nested message rather than
+// inlining separate scope and scope_name fields — the (scope, scope_name)
+// pair is always carried together, so the nested form removes a class of
+// "half-populated ref" bugs. A binding must reference exactly one policy;
+// the referenced policy must live in a scope the binding's owning scope
+// can reach (ancestor chain or same scope).
+message LinkedTemplatePolicyRef {
+  // scope_ref identifies the hierarchy level and name that owns the
+  // referenced TemplatePolicy. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid — TemplatePolicy cannot live at
+  // project scope.
+  TemplateScopeRef scope_ref = 1;
+  // name is the TemplatePolicy's DNS label slug within scope_ref.
+  string name = 2;
+}
+
+// TemplatePolicyBindingTargetKind discriminates between the two explicit
+// render targets a binding can name: a project-scope template (shared by
+// every deployment in a project) or a single deployment.
+enum TemplatePolicyBindingTargetKind {
+  TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED = 0;
+  // TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE targets a
+  // project-scope Template. `name` is the template's DNS label slug
+  // within its owning project; `project_name` is the project that owns
+  // the template (required — project templates are scoped per-project,
+  // so two projects may each host a template with the same name).
+  TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE = 1;
+  // TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT targets a single
+  // Deployment. `name` is the deployment's DNS label slug within its
+  // owning project; `project_name` is the project that owns the
+  // deployment (required — deployments are scoped per-project).
+  TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT = 2;
+}
+
+// TemplatePolicyBindingTargetRef identifies one explicit render target a
+// binding attaches its policy to. Project-scope: always paired with
+// `project_name` so the resolver can disambiguate identically-named
+// resources across projects.
+message TemplatePolicyBindingTargetRef {
+  // kind discriminates between PROJECT_TEMPLATE and DEPLOYMENT targets.
+  TemplatePolicyBindingTargetKind kind = 1;
+  // name is the target's DNS label slug within project_name.
+  string name = 2;
+  // project_name is the project that owns the target. Required for
+  // both PROJECT_TEMPLATE and DEPLOYMENT kinds — project-scope
+  // resources are disambiguated by (project_name, name). Left empty
+  // only on zero-valued UNSPECIFIED placeholders, which handlers MUST
+  // reject; UNSPECIFIED is not a legal resting state.
+  string project_name = 3;
+}
+
+// TemplatePolicyBinding is a named resource that binds a single
+// TemplatePolicy to an explicit list of project templates and/or
+// deployments. Introduces an explicit, non-glob target model that will
+// supersede the glob-based TemplatePolicyRule.Target selector in HOL-599 /
+// HOL-600 (ADR 029).
+//
+// Storage MUST live in the folder or organization namespace identified by
+// scope_ref. Project-scope storage is forbidden. Handlers MUST reject
+// TEMPLATE_SCOPE_PROJECT on scope_ref.
+message TemplatePolicyBinding {
+  // name is the unique identifier (DNS label slug) within the scope.
+  string name = 1;
+  // scope_ref identifies the owning scope (level + name). Only
+  // TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+  TemplateScopeRef scope_ref = 2;
+  // display_name is a human-readable name for UI presentation.
+  string display_name = 3;
+  // description explains what the binding attaches and why.
+  string description = 4;
+  // policy_ref identifies the TemplatePolicy this binding attaches. A
+  // binding references exactly one policy; use multiple bindings to
+  // attach multiple policies to overlapping target sets.
+  LinkedTemplatePolicyRef policy_ref = 5;
+  // target_refs enumerates every render target the referenced policy
+  // applies to. Order is not significant; duplicates MUST be rejected
+  // by handlers. A "duplicate" is two entries with identical
+  // (kind, project_name, name) triples. Two entries that share
+  // (project_name, name) but differ in kind (e.g., a PROJECT_TEMPLATE
+  // and a DEPLOYMENT with the same slug inside the same project) are
+  // permitted — they name distinct resources.
+  repeated TemplatePolicyBindingTargetRef target_refs = 6;
+  // creator_email is the email address of the user who created this
+  // binding. Server-populated from the authenticated caller on Create;
+  // client-supplied values on Create and Update requests are ignored.
+  string creator_email = 7;
+  // created_at is the timestamp when this binding was created.
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// ListTemplatePolicyBindingsRequest requests all bindings visible in the
+// given scope.
+message ListTemplatePolicyBindingsRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+}
+
+// ListTemplatePolicyBindingsResponse contains the list of bindings.
+message ListTemplatePolicyBindingsResponse {
+  repeated TemplatePolicyBinding bindings = 1;
+}
+
+// GetTemplatePolicyBindingRequest requests a single binding by name within
+// a scope.
+message GetTemplatePolicyBindingRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // name is the binding's DNS label slug.
+  string name = 2;
+}
+
+// GetTemplatePolicyBindingResponse contains the binding.
+message GetTemplatePolicyBindingResponse {
+  TemplatePolicyBinding binding = 1;
+}
+
+// CreateTemplatePolicyBindingRequest creates a new binding in the given
+// scope.
+message CreateTemplatePolicyBindingRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // binding is the binding to create. name, scope_ref, policy_ref, and
+  // target_refs are required.
+  TemplatePolicyBinding binding = 2;
+}
+
+// CreateTemplatePolicyBindingResponse contains the name of the created
+// binding.
+message CreateTemplatePolicyBindingResponse {
+  string name = 1;
+}
+
+// UpdateTemplatePolicyBindingRequest updates an existing binding.
+message UpdateTemplatePolicyBindingRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // binding carries the new values; name identifies which binding to
+  // update.
+  TemplatePolicyBinding binding = 2;
+}
+
+// UpdateTemplatePolicyBindingResponse is empty on success.
+message UpdateTemplatePolicyBindingResponse {}
+
+// DeleteTemplatePolicyBindingRequest deletes a binding.
+message DeleteTemplatePolicyBindingRequest {
+  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
+  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+  TemplateScopeRef scope = 1;
+  // name is the binding's DNS label slug.
+  string name = 2;
+}
+
+// DeleteTemplatePolicyBindingResponse is empty on success.
+message DeleteTemplatePolicyBindingResponse {}
