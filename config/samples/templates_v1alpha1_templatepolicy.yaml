@@ -1,0 +1,16 @@
+apiVersion: templates.holos.run/v1alpha1
+kind: TemplatePolicy
+metadata:
+  name: sample-require-istio-gateway
+  namespace: holos-org-acme
+  labels:
+    app.kubernetes.io/managed-by: holos-console
+spec:
+  displayName: Require istio-gateway
+  description: Forces every bound project template to unify istio-gateway at render time.
+  rules:
+  - kind: Require
+    template:
+      scope: organization
+      scopeName: acme
+      name: istio-gateway
