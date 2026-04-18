@@ -206,6 +206,12 @@ curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \
 
 See [docs/dev-token-endpoint.md](docs/dev-token-endpoint.md) for the full API reference.
 
+## Migrations
+
+Operator-facing migration runbooks live in [docs/migrations/](docs/migrations/). Each `holos-console migrate <subcommand>` shipped with a runbook under that path; re-read the matching file before running a migration in production.
+
+- [`docs/migrations/hol-590-template-policy-bindings.md`](docs/migrations/hol-590-template-policy-bindings.md) — translate legacy `TemplatePolicyRule.Target` globs into `TemplatePolicyBinding` objects before HOL-600 removes the glob evaluation path.
+
 ## Annotation Keys for External Links
 
 When working in `console/deployments/` or `console/links/`, refer to
