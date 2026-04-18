@@ -1,0 +1,1052 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"path"
+	"sort"
+	"strings"
+
+	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/secrets"
+	"github.com/holos-run/holos-console/console/templatepolicies"
+	"github.com/holos-run/holos-console/console/templatepolicybindings"
+	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+)
+
+// migrateBindingNameSuffix is appended to the policy name to derive the
+// TemplatePolicyBinding name produced by the migration. Keeping the suffix
+// deterministic is what makes the migration idempotent: re-running the
+// command finds the existing binding by name and leaves it alone.
+const migrateBindingNameSuffix = "-migrated"
+
+// newMigrateCommand returns the `holos-console migrate` parent command
+// grouping every migration subcommand in the tree.
+func newMigrateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Run in-place migrations against TemplatePolicy and related resources",
+		Long: "migrate groups one-shot migration commands that translate older " +
+			"TemplatePolicy storage shapes into the shapes expected by the " +
+			"current console. Each subcommand is idempotent and defaults to " +
+			"--dry-run; pass --apply to mutate cluster state.",
+	}
+	cmd.AddCommand(newMigrateTemplatePolicyTargetsCommand())
+	return cmd
+}
+
+// newMigrateTemplatePolicyTargetsCommand returns the `migrate
+// template-policy-targets` subcommand. The subcommand translates populated
+// TemplatePolicyRule.Target globs into TemplatePolicyBinding objects as a
+// prerequisite for HOL-600 (removal of the legacy glob evaluation path).
+func newMigrateTemplatePolicyTargetsCommand() *cobra.Command {
+	var apply bool
+	cmd := &cobra.Command{
+		Use:   "template-policy-targets",
+		Short: "Translate TemplatePolicyRule.Target globs into TemplatePolicyBindings",
+		Long: "template-policy-targets iterates every TemplatePolicy in the " +
+			"cluster, enumerates the concrete render targets that each rule's " +
+			"globs currently match (projects, project-scope templates, and " +
+			"deployments), and creates a TemplatePolicyBinding per policy " +
+			"with the union of those targets. After a binding lands, the " +
+			"policy's rule-level Target globs are cleared on the next Update " +
+			"so HOL-600 can remove the legacy evaluation path without " +
+			"surprise.\n\n" +
+			"The command is idempotent: re-running it produces no new bindings " +
+			"when the target sets have not changed, and a policy whose Target " +
+			"globs are already empty is skipped entirely.\n\n" +
+			"--dry-run is the default. Pass --apply to write bindings and " +
+			"clear the Target fields on the originating policies.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := secrets.NewClientset()
+			if err != nil {
+				return fmt.Errorf("building kubernetes client: %w", err)
+			}
+			if client == nil {
+				return fmt.Errorf("no kubernetes config available; set KUBECONFIG or run inside the cluster")
+			}
+			r := newResolverFromFlags()
+			opts := MigrateTemplatePolicyTargetsOptions{
+				Client:   client,
+				Resolver: r,
+				Apply:    apply,
+				Out:      cmd.OutOrStdout(),
+			}
+			res, err := MigrateTemplatePolicyTargets(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			printMigrationSummary(cmd.OutOrStdout(), res, apply)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&apply, "apply", false, "Apply changes (default dry-run prints the plan without mutating state)")
+	return cmd
+}
+
+// newResolverFromFlags builds a namespace resolver from the root command's
+// global prefix flags. The migration command runs inside the same process
+// the server uses at runtime, so the flags are already parsed into the
+// package-level variables by the time this helper is invoked.
+func newResolverFromFlags() *resolver.Resolver {
+	return &resolver.Resolver{
+		NamespacePrefix:    namespacePrefix,
+		OrganizationPrefix: organizationPrefix,
+		FolderPrefix:       folderPrefix,
+		ProjectPrefix:      projectPrefix,
+	}
+}
+
+// MigrateTemplatePolicyTargetsOptions wires the migrator to its Kubernetes
+// client and output sink. The struct is exported so the table-driven tests in
+// this package can construct the same contract without duplicating cobra flag
+// plumbing.
+type MigrateTemplatePolicyTargetsOptions struct {
+	// Client is the Kubernetes client used to list namespaces, ConfigMaps,
+	// and to write bindings / updated policies. Required.
+	Client kubernetes.Interface
+	// Resolver translates between user-facing names and Kubernetes
+	// namespace names. Required.
+	Resolver *resolver.Resolver
+	// Apply controls whether the migrator mutates cluster state. When
+	// false (the default), the migrator computes the plan and prints it
+	// but leaves the cluster untouched.
+	Apply bool
+	// Out is the sink for the plan/summary text. Required.
+	Out io.Writer
+}
+
+// PolicyMigrationPlan describes what the migrator intends to do for a single
+// TemplatePolicy. The migrator produces one plan per policy with non-empty
+// Target globs; policies whose Target globs are already empty are skipped
+// before a plan is generated.
+type PolicyMigrationPlan struct {
+	// PolicyNamespace is the folder or organization namespace that owns
+	// the policy ConfigMap.
+	PolicyNamespace string
+	// PolicyName is the policy ConfigMap's metadata.name.
+	PolicyName string
+	// BindingName is the deterministic name the migrator will use when
+	// creating (or verifying) the TemplatePolicyBinding that replaces
+	// this policy's Target globs. Re-running the migrator finds the
+	// same binding by this name — that is how idempotency is enforced.
+	BindingName string
+	// Scope is the TemplateScope derived from PolicyNamespace. Used to
+	// write the policy_ref on the binding and to route subsequent
+	// UpdatePolicy / CreateBinding calls through the correct K8s
+	// namespace.
+	Scope consolev1.TemplateScope
+	// ScopeName is the folder or organization slug derived from
+	// PolicyNamespace.
+	ScopeName string
+	// TargetRefs is the de-duplicated union of every render target
+	// selected by any rule's Target globs on this policy. The migrator
+	// creates a binding with this exact list.
+	TargetRefs []*consolev1.TemplatePolicyBindingTargetRef
+	// BindingExists records whether a TemplatePolicyBinding by BindingName
+	// already exists when the plan is built. Idempotency branches off
+	// this flag: an existing binding with the same targets is left alone,
+	// an existing binding with different targets is reported as a
+	// conflict (and the migrator refuses to touch it).
+	BindingExists bool
+	// BindingTargetsMatch is set when BindingExists is true and the
+	// existing binding's target_refs (set semantics) equal TargetRefs.
+	// When true the migrator considers the binding side already migrated
+	// and only proceeds with clearing the policy's Target fields.
+	BindingTargetsMatch bool
+	// ClearPolicyTargets is true when the policy still carries a non-
+	// empty Target on at least one rule. When false the policy is
+	// already cleared and the migrator skips the UpdatePolicy call.
+	ClearPolicyTargets bool
+	// Notes accumulates per-plan warnings or informational messages
+	// (e.g. conflict notices) so the printed summary can surface them
+	// without forcing every caller to re-derive them.
+	Notes []string
+}
+
+// MigrationResult aggregates the per-policy outcomes of a migration run.
+// Exported fields are zero-valued on fresh clusters (no policies to
+// migrate), which is the canonical "empty" shape the idempotency tests
+// assert against.
+type MigrationResult struct {
+	// Plans lists one entry per policy with non-empty Target globs. The
+	// order reflects the namespace list / per-namespace policy list order
+	// at the time of execution and is therefore not guaranteed stable
+	// across runs.
+	Plans []*PolicyMigrationPlan
+	// BindingsCreated counts the bindings the migrator wrote during this
+	// run. Always 0 for a dry-run.
+	BindingsCreated int
+	// PoliciesUpdated counts the policies whose Target globs the
+	// migrator cleared during this run. Always 0 for a dry-run.
+	PoliciesUpdated int
+	// Conflicts counts plans that were skipped because an existing
+	// binding by the same name carried different target_refs than the
+	// migrator would have written. A non-zero value indicates operator
+	// intervention is required before the migration can complete.
+	Conflicts int
+	// Skipped counts policies whose Target globs are already empty and
+	// therefore do not require migration. Always reported so an operator
+	// can see the migrator ran to completion and found no work.
+	Skipped int
+}
+
+// MigrateTemplatePolicyTargets is the package-level entry point tests and the
+// cobra subcommand share. It discovers every policy-bearing namespace in the
+// cluster, builds a PolicyMigrationPlan per policy with non-empty Target
+// globs, and (when Apply is true) writes the bindings and clears the Target
+// fields.
+func MigrateTemplatePolicyTargets(ctx context.Context, opts MigrateTemplatePolicyTargetsOptions) (*MigrationResult, error) {
+	if opts.Client == nil {
+		return nil, fmt.Errorf("kubernetes client is required")
+	}
+	if opts.Resolver == nil {
+		return nil, fmt.Errorf("namespace resolver is required")
+	}
+	if opts.Out == nil {
+		return nil, fmt.Errorf("output writer is required")
+	}
+
+	// Index every managed namespace up front so we can classify and walk
+	// without making per-policy round-trips to the K8s API. The selector
+	// keeps the list narrowly scoped to namespaces the console owns;
+	// unmanaged namespaces never appear in the traversal.
+	namespaces, err := listManagedNamespaces(ctx, opts.Client)
+	if err != nil {
+		return nil, err
+	}
+
+	classified := classifyNamespaces(opts.Resolver, namespaces)
+
+	// Walk the owning namespace for each policy; the helper handles the
+	// fail-open contract on a single per-namespace list error (log and
+	// continue) that matches the K8sClient.ListPoliciesInNamespace shape
+	// used at runtime.
+	result := &MigrationResult{}
+	for _, ns := range classified.policyBearing {
+		cms, err := listPoliciesInNamespace(ctx, opts.Client, ns.Name)
+		if err != nil {
+			// A transient list failure must not mask bindings we
+			// already wrote in prior iterations; surface it to the
+			// caller so the operator can retry.
+			return result, fmt.Errorf("listing policies in %q: %w", ns.Name, err)
+		}
+		for i := range cms {
+			cm := &cms[i]
+			plan, planErr := buildPolicyPlan(ctx, opts.Client, opts.Resolver, classified, ns, cm)
+			if planErr != nil {
+				return result, planErr
+			}
+			if plan == nil {
+				result.Skipped++
+				continue
+			}
+			result.Plans = append(result.Plans, plan)
+		}
+	}
+
+	// Print the plan before any mutation so operators see exactly what
+	// the migrator intends to do. A dry-run stops here.
+	printMigrationPlan(opts.Out, result.Plans)
+
+	if !opts.Apply {
+		return result, nil
+	}
+
+	// Apply phase: each plan is executed atomically per policy — binding
+	// first, then clear. A binding-create failure leaves the policy
+	// untouched so the next run retries cleanly; a policy-update failure
+	// after a successful binding-create is retryable too because the
+	// existing binding is detected and re-used next time.
+	for _, plan := range result.Plans {
+		if len(plan.Notes) > 0 && plan.BindingExists && !plan.BindingTargetsMatch {
+			result.Conflicts++
+			continue
+		}
+		if !plan.BindingExists {
+			if err := createBindingFromPlan(ctx, opts.Client, plan); err != nil {
+				return result, fmt.Errorf("creating binding %q in %q: %w",
+					plan.BindingName, plan.PolicyNamespace, err)
+			}
+			result.BindingsCreated++
+		}
+		if plan.ClearPolicyTargets {
+			if err := clearPolicyTargets(ctx, opts.Client, plan); err != nil {
+				return result, fmt.Errorf("clearing targets on policy %q in %q: %w",
+					plan.PolicyName, plan.PolicyNamespace, err)
+			}
+			result.PoliciesUpdated++
+		}
+	}
+
+	return result, nil
+}
+
+// listManagedNamespaces fetches every namespace carrying the
+// managed-by=console.holos.run label. The migrator never reads unmanaged
+// namespaces — an operator with a hand-authored ConfigMap in an unrelated
+// namespace should not have their data surfaced by a migration command.
+func listManagedNamespaces(ctx context.Context, client kubernetes.Interface) ([]corev1.Namespace, error) {
+	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue
+	list, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, fmt.Errorf("listing managed namespaces: %w", err)
+	}
+	return list.Items, nil
+}
+
+// classifiedNamespaces partitions managed namespaces by their resource-type
+// label so the migrator can cheaply answer "which projects descend from this
+// folder?" without re-listing the cluster per policy.
+type classifiedNamespaces struct {
+	byName       map[string]*corev1.Namespace
+	organization map[string]*corev1.Namespace // scopeName -> namespace
+	folder       map[string]*corev1.Namespace // scopeName -> namespace
+	project      map[string]*corev1.Namespace // project slug -> namespace
+	// policyBearing is the ordered union of organization + folder
+	// namespaces — the two kinds that can own a TemplatePolicy. Order
+	// is deterministic (organizations first, then folders, each in
+	// alphabetical namespace-name order) so the plan is reproducible
+	// enough for operators to diff between dry-run and apply.
+	policyBearing []*corev1.Namespace
+}
+
+// classifyNamespaces splits a managed-namespace listing by resource-type
+// label. Namespaces whose prefix does not resolve to one of the three
+// expected kinds are ignored — they may be render-state ConfigMaps'
+// companion namespaces or other managed resources that do not participate
+// in template-policy migration.
+func classifyNamespaces(r *resolver.Resolver, namespaces []corev1.Namespace) *classifiedNamespaces {
+	c := &classifiedNamespaces{
+		byName:       make(map[string]*corev1.Namespace, len(namespaces)),
+		organization: make(map[string]*corev1.Namespace),
+		folder:       make(map[string]*corev1.Namespace),
+		project:      make(map[string]*corev1.Namespace),
+	}
+	for i := range namespaces {
+		ns := &namespaces[i]
+		c.byName[ns.Name] = ns
+		kind, name, err := r.ResourceTypeFromNamespace(ns.Name)
+		if err != nil {
+			continue
+		}
+		switch kind {
+		case v1alpha2.ResourceTypeOrganization:
+			c.organization[name] = ns
+		case v1alpha2.ResourceTypeFolder:
+			c.folder[name] = ns
+		case v1alpha2.ResourceTypeProject:
+			c.project[name] = ns
+		}
+	}
+	// Deterministic order: organizations sorted by namespace name,
+	// folders next sorted by namespace name. The actual per-policy
+	// order within each namespace is driven by the K8s list response
+	// and is therefore not under our control, but cross-namespace order
+	// is.
+	orgNames := make([]string, 0, len(c.organization))
+	for name := range c.organization {
+		orgNames = append(orgNames, name)
+	}
+	sort.Strings(orgNames)
+	folderNames := make([]string, 0, len(c.folder))
+	for name := range c.folder {
+		folderNames = append(folderNames, name)
+	}
+	sort.Strings(folderNames)
+	for _, name := range orgNames {
+		c.policyBearing = append(c.policyBearing, c.organization[name])
+	}
+	for _, name := range folderNames {
+		c.policyBearing = append(c.policyBearing, c.folder[name])
+	}
+	return c
+}
+
+// listPoliciesInNamespace lists TemplatePolicy ConfigMaps in the given
+// namespace. The label selector mirrors
+// templatepolicies.K8sClient.listPoliciesInNamespace so the migrator reads
+// the same objects the runtime handler would.
+func listPoliciesInNamespace(ctx context.Context, client kubernetes.Interface, ns string) ([]corev1.ConfigMap, error) {
+	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplatePolicy
+	list, err := client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// buildPolicyPlan produces a PolicyMigrationPlan for a single policy, or
+// returns (nil, nil) when the policy has no non-empty Target globs and
+// therefore does not need migration. Any K8s error encountered while
+// enumerating candidate render targets propagates — a partial plan is
+// worse than no plan because the apply phase would under-bind.
+func buildPolicyPlan(
+	ctx context.Context,
+	client kubernetes.Interface,
+	r *resolver.Resolver,
+	nsIndex *classifiedNamespaces,
+	scopeNs *corev1.Namespace,
+	policy *corev1.ConfigMap,
+) (*PolicyMigrationPlan, error) {
+	rawRules := policy.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
+	rules, err := templatepolicies.UnmarshalRules(rawRules)
+	if err != nil {
+		return nil, fmt.Errorf("parsing rules on policy %q in %q: %w",
+			policy.Name, policy.Namespace, err)
+	}
+	if !policyHasNonEmptyTargets(rules) {
+		return nil, nil
+	}
+
+	scope, scopeName, err := templateScopeFromNamespace(r, scopeNs.Name)
+	if err != nil {
+		return nil, fmt.Errorf("classifying scope for %q: %w", scopeNs.Name, err)
+	}
+
+	// Enumerate the candidate projects reachable from this policy's
+	// owning scope. For an organization scope every managed project
+	// labeled with the org qualifies; for a folder scope only the
+	// projects whose ancestor chain passes through this folder
+	// qualify. The helper resolves ancestry via the parent label —
+	// the same seam the runtime walker uses at render time.
+	projects, err := descendantProjects(nsIndex, scopeNs)
+	if err != nil {
+		return nil, fmt.Errorf("enumerating descendant projects for %q: %w", scopeNs.Name, err)
+	}
+
+	// Collect the render targets per rule. A rule with an empty
+	// project_pattern matches every descendant project (the resolver
+	// treats "" as "*"), and a rule with an empty deployment_pattern
+	// selects BOTH the project-scope templates and deployments within
+	// each matching project — the same semantics ruleAppliesTo
+	// encodes.
+	targetSet := newTargetRefSet()
+	for _, rule := range rules {
+		if rule == nil || rule.GetTarget() == nil {
+			continue
+		}
+		projectPattern := rule.GetTarget().GetProjectPattern()
+		deploymentPattern := rule.GetTarget().GetDeploymentPattern()
+		if projectPattern == "" && deploymentPattern == "" {
+			continue
+		}
+		for _, projNs := range projects {
+			projectSlug, projErr := r.ProjectFromNamespace(projNs.Name)
+			if projErr != nil {
+				// Non-project namespace in the project index is
+				// a classification bug; skip defensively rather
+				// than crash the whole migration.
+				continue
+			}
+			if !patternMatches(projectPattern, projectSlug) {
+				continue
+			}
+			if deploymentPattern == "" {
+				// Empty deployment pattern selects both the
+				// project-scope templates and the deployments
+				// in the project — the renderer's unified
+				// semantic.
+				tmpls, tErr := listProjectTemplates(ctx, client, projNs.Name)
+				if tErr != nil {
+					return nil, fmt.Errorf("listing project templates in %q: %w", projNs.Name, tErr)
+				}
+				for _, tmpl := range tmpls {
+					targetSet.Add(&consolev1.TemplatePolicyBindingTargetRef{
+						Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+						Name:        tmpl.Name,
+						ProjectName: projectSlug,
+					})
+				}
+				deployments, dErr := listProjectDeployments(ctx, client, projNs.Name)
+				if dErr != nil {
+					return nil, fmt.Errorf("listing deployments in %q: %w", projNs.Name, dErr)
+				}
+				for _, dep := range deployments {
+					targetSet.Add(&consolev1.TemplatePolicyBindingTargetRef{
+						Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+						Name:        dep.Name,
+						ProjectName: projectSlug,
+					})
+				}
+				continue
+			}
+			deployments, dErr := listProjectDeployments(ctx, client, projNs.Name)
+			if dErr != nil {
+				return nil, fmt.Errorf("listing deployments in %q: %w", projNs.Name, dErr)
+			}
+			for _, dep := range deployments {
+				if !patternMatches(deploymentPattern, dep.Name) {
+					continue
+				}
+				targetSet.Add(&consolev1.TemplatePolicyBindingTargetRef{
+					Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+					Name:        dep.Name,
+					ProjectName: projectSlug,
+				})
+			}
+		}
+	}
+
+	bindingName := policy.Name + migrateBindingNameSuffix
+	plan := &PolicyMigrationPlan{
+		PolicyNamespace:    policy.Namespace,
+		PolicyName:         policy.Name,
+		BindingName:        bindingName,
+		Scope:              scope,
+		ScopeName:          scopeName,
+		TargetRefs:         targetSet.Sorted(),
+		ClearPolicyTargets: true,
+	}
+
+	// Inspect any pre-existing binding by BindingName. A matching set
+	// means the binding side is already migrated and only the
+	// policy-side clear still needs to run; a differing set is a
+	// conflict an operator must resolve.
+	existing, err := client.CoreV1().ConfigMaps(policy.Namespace).Get(ctx, bindingName, metav1.GetOptions{})
+	if err == nil {
+		plan.BindingExists = true
+		existingRefs, parseErr := templatepolicybindings.UnmarshalTargetRefs(existing.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs])
+		if parseErr != nil {
+			plan.Notes = append(plan.Notes,
+				fmt.Sprintf("existing binding %q has unparseable target_refs: %v", bindingName, parseErr))
+		} else if targetSetsEqual(existingRefs, plan.TargetRefs) {
+			plan.BindingTargetsMatch = true
+		} else {
+			plan.Notes = append(plan.Notes,
+				fmt.Sprintf("existing binding %q has different target_refs; leaving untouched", bindingName))
+		}
+	} else if !k8serrors.IsNotFound(err) {
+		return nil, fmt.Errorf("checking for existing binding %q in %q: %w",
+			bindingName, policy.Namespace, err)
+	}
+
+	return plan, nil
+}
+
+// policyHasNonEmptyTargets reports whether any rule on the policy still
+// carries a Target glob that the migrator needs to translate. A policy
+// whose rules are all cleared is already migrated and the migrator skips it
+// entirely — the canonical idempotency short-circuit.
+func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		t := rule.GetTarget()
+		if t == nil {
+			continue
+		}
+		if t.GetProjectPattern() != "" || t.GetDeploymentPattern() != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// templateScopeFromNamespace derives the TemplateScope + scope slug from a
+// policy-owning namespace. Only organization and folder namespaces reach
+// here; the classification helper already filtered project and unknown
+// kinds out of the policy-bearing slice.
+func templateScopeFromNamespace(r *resolver.Resolver, ns string) (consolev1.TemplateScope, string, error) {
+	kind, name, err := r.ResourceTypeFromNamespace(ns)
+	if err != nil {
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, "", err
+	}
+	switch kind {
+	case v1alpha2.ResourceTypeOrganization:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, name, nil
+	case v1alpha2.ResourceTypeFolder:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, name, nil
+	default:
+		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, "",
+			fmt.Errorf("namespace %q is not a policy-bearing scope (got %q)", ns, kind)
+	}
+}
+
+// descendantProjects returns every managed project namespace whose ancestor
+// chain passes through scopeNs. The walk uses the parent label index built
+// in classifyNamespaces so the helper never touches the K8s API — all the
+// metadata it needs is already in memory.
+func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace) ([]*corev1.Namespace, error) {
+	wantNs := scopeNs.Name
+	out := make([]*corev1.Namespace, 0)
+	for _, projNs := range nsIndex.project {
+		if ancestorChainContains(nsIndex, projNs, wantNs) {
+			out = append(out, projNs)
+		}
+	}
+	// Stable ordering keeps the printed plan reproducible across runs.
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// ancestorChainContains walks the parent label from startNs up the
+// hierarchy, returning true when wantNs appears on the chain. The walk is
+// bounded by the number of known namespaces so a mis-labeled parent chain
+// cannot cause an infinite loop at migration time.
+func ancestorChainContains(nsIndex *classifiedNamespaces, startNs *corev1.Namespace, wantNs string) bool {
+	current := startNs
+	for depth := 0; depth < len(nsIndex.byName)+1; depth++ {
+		if current == nil {
+			return false
+		}
+		if current.Name == wantNs {
+			return true
+		}
+		parent := current.Labels[v1alpha2.AnnotationParent]
+		if parent == "" {
+			return false
+		}
+		next, ok := nsIndex.byName[parent]
+		if !ok {
+			return false
+		}
+		current = next
+	}
+	return false
+}
+
+// listProjectTemplates returns every managed project-scope Template ConfigMap
+// in the project namespace. Selector semantics mirror
+// K8sResourceTopology.ListProjectTemplates so the migrator reads the same
+// objects the HOL-570 guardrail uses.
+func listProjectTemplates(ctx context.Context, client kubernetes.Interface, projectNs string) ([]corev1.ConfigMap, error) {
+	selector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplate + "," +
+		v1alpha2.LabelTemplateScope + "=" + v1alpha2.TemplateScopeProject
+	list, err := client.CoreV1().ConfigMaps(projectNs).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// listProjectDeployments returns every managed Deployment ConfigMap in the
+// project namespace. Selector semantics mirror
+// K8sResourceTopology.ListProjectDeployments so the migrator reads the same
+// objects the HOL-570 guardrail uses.
+func listProjectDeployments(ctx context.Context, client kubernetes.Interface, projectNs string) ([]corev1.ConfigMap, error) {
+	selector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
+		v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeDeployment
+	list, err := client.CoreV1().ConfigMaps(projectNs).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// patternMatches wraps path.Match with the same "empty pattern means *"
+// treatment folderResolver uses at render time. Matching semantics are kept
+// in lock-step so the migration enumerates exactly the set the runtime
+// currently activates — an operator who dry-runs today sees the same
+// targets the resolver selected yesterday.
+func patternMatches(pattern, subject string) bool {
+	if pattern == "" {
+		pattern = "*"
+	}
+	ok, err := path.Match(pattern, subject)
+	if err != nil {
+		return false
+	}
+	return ok
+}
+
+// targetRefSet is a deterministic, de-duplicating collector for
+// (kind, projectName, name) triples. The sorted output is what the
+// migrator writes to the binding's annotation and compares against the
+// existing binding for idempotency.
+type targetRefSet struct {
+	byKey map[string]*consolev1.TemplatePolicyBindingTargetRef
+}
+
+func newTargetRefSet() *targetRefSet {
+	return &targetRefSet{byKey: map[string]*consolev1.TemplatePolicyBindingTargetRef{}}
+}
+
+// Add inserts a target ref into the set if it is not already present. The
+// key is the "kind|projectName|name" triple — exactly the shape the binding
+// handler rejects duplicates on, so the migration never produces a binding
+// the handler would reject.
+func (s *targetRefSet) Add(ref *consolev1.TemplatePolicyBindingTargetRef) {
+	if ref == nil {
+		return
+	}
+	k := targetRefKey(ref)
+	if _, ok := s.byKey[k]; ok {
+		return
+	}
+	s.byKey[k] = ref
+}
+
+// Sorted returns the set's contents sorted by the composite key. The
+// deterministic order is what lets the idempotency check in
+// targetSetsEqual use slice equality instead of hashing.
+func (s *targetRefSet) Sorted() []*consolev1.TemplatePolicyBindingTargetRef {
+	out := make([]*consolev1.TemplatePolicyBindingTargetRef, 0, len(s.byKey))
+	keys := make([]string, 0, len(s.byKey))
+	for k := range s.byKey {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out = append(out, s.byKey[k])
+	}
+	return out
+}
+
+// targetRefKey produces the composite key used by the set and by
+// targetSetsEqual. Keeping a single key function eliminates the risk of
+// an idempotency-check/Add-key divergence that would resurrect a binding
+// the migrator thought it had already written.
+func targetRefKey(ref *consolev1.TemplatePolicyBindingTargetRef) string {
+	return bindingTargetKindString(ref.GetKind()) + "|" + ref.GetProjectName() + "|" + ref.GetName()
+}
+
+// targetSetsEqual reports whether two target-ref lists are equal under set
+// semantics. The migrator uses this to decide whether an existing binding
+// matches the plan it would write; a mismatch is a conflict an operator
+// must resolve.
+func targetSetsEqual(a, b []*consolev1.TemplatePolicyBindingTargetRef) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	want := make(map[string]struct{}, len(a))
+	for _, ref := range a {
+		want[targetRefKey(ref)] = struct{}{}
+	}
+	for _, ref := range b {
+		if _, ok := want[targetRefKey(ref)]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// bindingTargetKindString mirrors templatepolicybindings.targetKindToString.
+// The migration command cannot import the unexported helper, but the
+// annotation contract it protects is identical — both encode PROJECT_TEMPLATE
+// as "project-template" and DEPLOYMENT as "deployment".
+func bindingTargetKindString(k consolev1.TemplatePolicyBindingTargetKind) string {
+	switch k {
+	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE:
+		return "project-template"
+	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT:
+		return "deployment"
+	default:
+		return ""
+	}
+}
+
+// templateScopeAnnotationValue is the scope label the binding's annotation
+// carries. Matches templatepolicybindings.scopeLabelValue one-for-one so
+// the runtime resolver decodes what the migrator writes.
+func templateScopeAnnotationValue(scope consolev1.TemplateScope) string {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return v1alpha2.TemplateScopeOrganization
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return v1alpha2.TemplateScopeFolder
+	default:
+		return ""
+	}
+}
+
+// createBindingFromPlan writes the TemplatePolicyBinding ConfigMap the plan
+// describes. The wire shape duplicates templatepolicybindings.CreateBinding's
+// annotation layout so the runtime handler reads exactly what the migration
+// wrote — there is no separate binding-handler code path for migrated
+// bindings.
+func createBindingFromPlan(ctx context.Context, client kubernetes.Interface, plan *PolicyMigrationPlan) error {
+	policyRef := &consolev1.LinkedTemplatePolicyRef{
+		ScopeRef: &consolev1.TemplateScopeRef{
+			Scope:     plan.Scope,
+			ScopeName: plan.ScopeName,
+		},
+		Name: plan.PolicyName,
+	}
+	policyJSON, err := marshalBindingPolicyRef(policyRef)
+	if err != nil {
+		return err
+	}
+	targetsJSON, err := marshalBindingTargetRefs(plan.TargetRefs)
+	if err != nil {
+		return err
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      plan.BindingName,
+			Namespace: plan.PolicyNamespace,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicyBinding,
+				v1alpha2.LabelTemplateScope: templateScopeAnnotationValue(plan.Scope),
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationDisplayName:                     plan.PolicyName + " (migrated targets)",
+				v1alpha2.AnnotationDescription:                     "Auto-generated by holos-console migrate template-policy-targets (HOL-599). Supersedes the legacy TemplatePolicyRule.Target globs on " + plan.PolicyName + ".",
+				v1alpha2.AnnotationCreatorEmail:                    "holos-console-migrate",
+				v1alpha2.AnnotationTemplatePolicyBindingPolicyRef:  string(policyJSON),
+				v1alpha2.AnnotationTemplatePolicyBindingTargetRefs: string(targetsJSON),
+			},
+		},
+	}
+	_, err = client.CoreV1().ConfigMaps(plan.PolicyNamespace).Create(ctx, cm, metav1.CreateOptions{})
+	return err
+}
+
+// storedPolicyRefWire mirrors templatepolicybindings.storedPolicyRef so the
+// migration package can round-trip the same JSON the runtime handler
+// expects without introducing a cross-package dependency cycle.
+type storedPolicyRefWire struct {
+	Scope     string `json:"scope"`
+	ScopeName string `json:"scopeName"`
+	Name      string `json:"name"`
+}
+
+// storedTargetRefWire mirrors templatepolicybindings.storedTargetRef for the
+// same reason storedPolicyRefWire mirrors its counterpart.
+type storedTargetRefWire struct {
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	ProjectName string `json:"projectName"`
+}
+
+func marshalBindingPolicyRef(ref *consolev1.LinkedTemplatePolicyRef) ([]byte, error) {
+	sr := storedPolicyRefWire{}
+	if ref != nil {
+		if s := ref.GetScopeRef(); s != nil {
+			sr.Scope = templateScopeAnnotationValue(s.GetScope())
+			sr.ScopeName = s.GetScopeName()
+		}
+		sr.Name = ref.GetName()
+	}
+	b, err := json.Marshal(sr)
+	if err != nil {
+		return nil, fmt.Errorf("serializing binding policy_ref: %w", err)
+	}
+	return b, nil
+}
+
+func marshalBindingTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) ([]byte, error) {
+	out := make([]storedTargetRefWire, 0, len(refs))
+	for _, r := range refs {
+		if r == nil {
+			continue
+		}
+		out = append(out, storedTargetRefWire{
+			Kind:        bindingTargetKindString(r.GetKind()),
+			Name:        r.GetName(),
+			ProjectName: r.GetProjectName(),
+		})
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("serializing binding target_refs: %w", err)
+	}
+	return b, nil
+}
+
+// clearPolicyTargets updates the policy's rule annotation so every rule
+// carries empty project_pattern and deployment_pattern strings. The rest of
+// the rule — Kind, Template, VersionConstraint — is preserved verbatim.
+// Clearing happens in-place so HOL-600 can delete the legacy evaluation
+// path with a single follow-up release.
+func clearPolicyTargets(ctx context.Context, client kubernetes.Interface, plan *PolicyMigrationPlan) error {
+	cm, err := client.CoreV1().ConfigMaps(plan.PolicyNamespace).Get(ctx, plan.PolicyName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("getting policy for update: %w", err)
+	}
+	if cm.Annotations == nil {
+		cm.Annotations = make(map[string]string)
+	}
+	raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
+	rules, err := templatepolicies.UnmarshalRules(raw)
+	if err != nil {
+		return fmt.Errorf("parsing rules for update: %w", err)
+	}
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		rule.Target = &consolev1.TemplatePolicyTarget{}
+	}
+	clearedJSON, err := marshalClearedRules(rules)
+	if err != nil {
+		return err
+	}
+	cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules] = string(clearedJSON)
+	_, err = client.CoreV1().ConfigMaps(plan.PolicyNamespace).Update(ctx, cm, metav1.UpdateOptions{})
+	return err
+}
+
+// ruleWire mirrors the on-disk JSON shape stored by
+// templatepolicies.marshalRules. The migrator must write back the exact
+// same fields the runtime handler reads — re-using the unexported helper
+// would introduce an import cycle, so the wire struct is duplicated here
+// with the same `json:` tags.
+type ruleWire struct {
+	Kind     string          `json:"kind"`
+	Template templateRefWire `json:"template"`
+	Target   targetWire      `json:"target"`
+}
+
+type templateRefWire struct {
+	Scope             string `json:"scope"`
+	ScopeName         string `json:"scope_name"`
+	Name              string `json:"name"`
+	VersionConstraint string `json:"version_constraint,omitempty"`
+}
+
+type targetWire struct {
+	ProjectPattern    string `json:"project_pattern"`
+	DeploymentPattern string `json:"deployment_pattern,omitempty"`
+}
+
+// marshalClearedRules serializes the in-memory rules with both Target
+// globs set to the empty string. The function intentionally does NOT call
+// out into templatepolicies.marshalRules — that helper is unexported, and
+// duplicating the wire struct keeps the migrator independent from
+// templatepolicies' internal refactors.
+func marshalClearedRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
+	out := make([]ruleWire, 0, len(rules))
+	for _, r := range rules {
+		if r == nil {
+			continue
+		}
+		wire := ruleWire{Kind: ruleKindWire(r.GetKind())}
+		if tmpl := r.GetTemplate(); tmpl != nil {
+			wire.Template = templateRefWire{
+				Scope:             templateScopeWire(tmpl.GetScope()),
+				ScopeName:         tmpl.GetScopeName(),
+				Name:              tmpl.GetName(),
+				VersionConstraint: tmpl.GetVersionConstraint(),
+			}
+		}
+		// Target fields deliberately left zero — this is the whole
+		// point of the migration: post-apply the policy carries no
+		// meaningful Target data so HOL-600 can delete the
+		// evaluation path.
+		out = append(out, wire)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("serializing cleared template policy rules: %w", err)
+	}
+	return b, nil
+}
+
+// ruleKindWire duplicates templatepolicies.kindToString's encoding for the
+// reasons explained on ruleWire. UNSPECIFIED maps to the empty string,
+// which the runtime unmarshal also accepts as UNSPECIFIED.
+func ruleKindWire(k consolev1.TemplatePolicyKind) string {
+	switch k {
+	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
+		return "require"
+	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
+		return "exclude"
+	default:
+		return ""
+	}
+}
+
+// templateScopeWire duplicates templatepolicies.templateScopeLabel's encoding
+// for the reasons explained on ruleWire.
+func templateScopeWire(scope consolev1.TemplateScope) string {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return v1alpha2.TemplateScopeOrganization
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return v1alpha2.TemplateScopeFolder
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+		return v1alpha2.TemplateScopeProject
+	default:
+		return ""
+	}
+}
+
+// printMigrationPlan writes a human-readable plan to w. Operators diff the
+// dry-run output against the --apply output to confirm nothing changed
+// between the two runs — the migrator renders the same text in both modes.
+// The write errors are intentionally discarded — the migrator is a CLI
+// subcommand and its output sink is stdout / a test bytes.Buffer; a write
+// failure on either is unrecoverable and not worth bubbling up over the
+// mutation-result return.
+func printMigrationPlan(w io.Writer, plans []*PolicyMigrationPlan) {
+	if len(plans) == 0 {
+		_, _ = fmt.Fprintln(w, "No TemplatePolicy objects carry non-empty Target globs; nothing to migrate.")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "Planning migration for %d policy/policies:\n", len(plans))
+	for _, plan := range plans {
+		_, _ = fmt.Fprintf(w, "\npolicy %s/%s -> binding %s/%s (scope=%s, scope_name=%s)\n",
+			plan.PolicyNamespace, plan.PolicyName,
+			plan.PolicyNamespace, plan.BindingName,
+			scopeDisplay(plan.Scope), plan.ScopeName,
+		)
+		if len(plan.TargetRefs) == 0 {
+			_, _ = fmt.Fprintln(w, "  targets: <none> (globs matched no render targets)")
+		} else {
+			_, _ = fmt.Fprintln(w, "  targets:")
+			for _, ref := range plan.TargetRefs {
+				_, _ = fmt.Fprintf(w, "    - kind=%s project=%s name=%s\n",
+					bindingTargetKindString(ref.GetKind()), ref.GetProjectName(), ref.GetName())
+			}
+		}
+		switch {
+		case plan.BindingExists && plan.BindingTargetsMatch:
+			_, _ = fmt.Fprintln(w, "  status: binding already exists with matching targets; will clear policy Target globs only")
+		case plan.BindingExists && !plan.BindingTargetsMatch:
+			_, _ = fmt.Fprintln(w, "  status: CONFLICT — existing binding has different targets; no changes will be made")
+		default:
+			_, _ = fmt.Fprintln(w, "  status: will create new binding and clear policy Target globs")
+		}
+		for _, note := range plan.Notes {
+			_, _ = fmt.Fprintf(w, "  note: %s\n", note)
+		}
+	}
+}
+
+// printMigrationSummary prints a final tally so operators can confirm the
+// run finished. The wording distinguishes dry-run from apply so a skimming
+// reader cannot confuse a preview with a completed mutation. Write errors
+// are discarded for the same reason as in printMigrationPlan.
+func printMigrationSummary(w io.Writer, res *MigrationResult, apply bool) {
+	if res == nil {
+		return
+	}
+	verb := "would create"
+	policyVerb := "would clear targets on"
+	if apply {
+		verb = "created"
+		policyVerb = "cleared targets on"
+	}
+	_, _ = fmt.Fprintf(w, "\nSummary: %d %s bindings; %s %d policies; %d skipped (already migrated); %d conflicts.\n",
+		res.BindingsCreated, verb, policyVerb, res.PoliciesUpdated, res.Skipped, res.Conflicts)
+	if !apply {
+		_, _ = fmt.Fprintln(w, "Re-run with --apply to mutate the cluster.")
+	}
+}
+
+// scopeDisplay returns a short, operator-friendly label for a TemplateScope.
+// Used only in the printed plan.
+func scopeDisplay(scope consolev1.TemplateScope) string {
+	switch scope {
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		return "organization"
+	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		return "folder"
+	default:
+		return strings.ToLower(scope.String())
+	}
+}
