@@ -14,10 +14,13 @@ export declare const file_holos_console_v1_template_policy_bindings: GenFile;
 
 /**
  * LinkedTemplatePolicyRef is a scope-qualified reference to a
- * TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) but names
- * a policy instead of a template. A binding must reference exactly one
- * policy; the referenced policy must live in a scope the binding's owning
- * scope can reach (ancestor chain or same scope).
+ * TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) in intent,
+ * but uses TemplateScopeRef directly as a nested message rather than
+ * inlining separate scope and scope_name fields — the (scope, scope_name)
+ * pair is always carried together, so the nested form removes a class of
+ * "half-populated ref" bugs. A binding must reference exactly one policy;
+ * the referenced policy must live in a scope the binding's owning scope
+ * can reach (ancestor chain or same scope).
  *
  * @generated from message holos.console.v1.LinkedTemplatePolicyRef
  */
@@ -73,7 +76,8 @@ export declare type TemplatePolicyBindingTargetRef = Message<"holos.console.v1.T
    * project_name is the project that owns the target. Required for
    * both PROJECT_TEMPLATE and DEPLOYMENT kinds — project-scope
    * resources are disambiguated by (project_name, name). Left empty
-   * when kind=UNSPECIFIED (which handlers MUST reject).
+   * only on zero-valued UNSPECIFIED placeholders, which handlers MUST
+   * reject; UNSPECIFIED is not a legal resting state.
    *
    * @generated from field: string project_name = 3;
    */
@@ -89,8 +93,9 @@ export declare const TemplatePolicyBindingTargetRefSchema: GenMessage<TemplatePo
 /**
  * TemplatePolicyBinding is a named resource that binds a single
  * TemplatePolicy to an explicit list of project templates and/or
- * deployments. Replaces the glob-based target selectors carried on
- * TemplatePolicyRule with enumerated refs (ADR 027).
+ * deployments. Introduces an explicit, non-glob target model that will
+ * supersede the glob-based TemplatePolicyRule.Target selector in HOL-599 /
+ * HOL-600 (ADR 029).
  *
  * Storage MUST live in the folder or organization namespace identified by
  * scope_ref. Project-scope storage is forbidden. Handlers MUST reject
@@ -140,7 +145,11 @@ export declare type TemplatePolicyBinding = Message<"holos.console.v1.TemplatePo
   /**
    * target_refs enumerates every render target the referenced policy
    * applies to. Order is not significant; duplicates MUST be rejected
-   * by handlers.
+   * by handlers. A "duplicate" is two entries with identical
+   * (kind, project_name, name) triples. Two entries that share
+   * (project_name, name) but differ in kind (e.g., a PROJECT_TEMPLATE
+   * and a DEPLOYMENT with the same slug inside the same project) are
+   * permitted — they name distinct resources.
    *
    * @generated from field: repeated holos.console.v1.TemplatePolicyBindingTargetRef target_refs = 6;
    */
@@ -148,7 +157,8 @@ export declare type TemplatePolicyBinding = Message<"holos.console.v1.TemplatePo
 
   /**
    * creator_email is the email address of the user who created this
-   * binding.
+   * binding. Server-populated from the authenticated caller on Create;
+   * client-supplied values on Create and Update requests are ignored.
    *
    * @generated from field: string creator_email = 7;
    */
@@ -432,7 +442,7 @@ export declare const TemplatePolicyBindingTargetKindSchema: GenEnum<TemplatePoli
 /**
  * TemplatePolicyBindingService manages TemplatePolicyBinding resources, the
  * explicit, non-glob successor to TemplatePolicy's target-selector rules
- * (ADR 027 / HOL-590). A TemplatePolicyBinding names a single policy and
+ * (ADR 029 / HOL-590). A TemplatePolicyBinding names a single policy and
  * enumerates the project templates and deployments that policy applies to
  * via explicit TemplatePolicyBindingTargetRef entries — no wildcards, no
  * glob semantics. TemplatePolicy continues to declare the REQUIRE/EXCLUDE
@@ -457,8 +467,10 @@ export declare const TemplatePolicyBindingService: GenService<{
   /**
    * ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
    * visible in the given scope. Requires
-   * PERMISSION_TEMPLATE_POLICIES_LIST on the scope (bindings inherit the
-   * policy permission model — see HOL-595).
+   * PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
+   * PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
+   * meaningless without its policy — anyone who can read/write the policy
+   * can read/write the set of targets it applies to (see HOL-595).
    *
    * @generated from rpc holos.console.v1.TemplatePolicyBindingService.ListTemplatePolicyBindings
    */

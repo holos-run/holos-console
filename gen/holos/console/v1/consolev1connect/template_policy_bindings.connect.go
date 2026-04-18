@@ -56,8 +56,10 @@ const (
 type TemplatePolicyBindingServiceClient interface {
 	// ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
 	// visible in the given scope. Requires
-	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope (bindings inherit the
-	// policy permission model — see HOL-595).
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
+	// PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
+	// meaningless without its policy — anyone who can read/write the policy
+	// can read/write the set of targets it applies to (see HOL-595).
 	ListTemplatePolicyBindings(context.Context, *connect.Request[v1.ListTemplatePolicyBindingsRequest]) (*connect.Response[v1.ListTemplatePolicyBindingsResponse], error)
 	// GetTemplatePolicyBinding retrieves a single binding by name within a
 	// scope. Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
@@ -165,8 +167,10 @@ func (c *templatePolicyBindingServiceClient) DeleteTemplatePolicyBinding(ctx con
 type TemplatePolicyBindingServiceHandler interface {
 	// ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
 	// visible in the given scope. Requires
-	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope (bindings inherit the
-	// policy permission model — see HOL-595).
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
+	// PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
+	// meaningless without its policy — anyone who can read/write the policy
+	// can read/write the set of targets it applies to (see HOL-595).
 	ListTemplatePolicyBindings(context.Context, *connect.Request[v1.ListTemplatePolicyBindingsRequest]) (*connect.Response[v1.ListTemplatePolicyBindingsResponse], error)
 	// GetTemplatePolicyBinding retrieves a single binding by name within a
 	// scope. Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.

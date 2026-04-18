@@ -84,10 +84,13 @@ func (TemplatePolicyBindingTargetKind) EnumDescriptor() ([]byte, []int) {
 }
 
 // LinkedTemplatePolicyRef is a scope-qualified reference to a
-// TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) but names
-// a policy instead of a template. A binding must reference exactly one
-// policy; the referenced policy must live in a scope the binding's owning
-// scope can reach (ancestor chain or same scope).
+// TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) in intent,
+// but uses TemplateScopeRef directly as a nested message rather than
+// inlining separate scope and scope_name fields — the (scope, scope_name)
+// pair is always carried together, so the nested form removes a class of
+// "half-populated ref" bugs. A binding must reference exactly one policy;
+// the referenced policy must live in a scope the binding's owning scope
+// can reach (ancestor chain or same scope).
 type LinkedTemplatePolicyRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// scope_ref identifies the hierarchy level and name that owns the
@@ -158,7 +161,8 @@ type TemplatePolicyBindingTargetRef struct {
 	// project_name is the project that owns the target. Required for
 	// both PROJECT_TEMPLATE and DEPLOYMENT kinds — project-scope
 	// resources are disambiguated by (project_name, name). Left empty
-	// when kind=UNSPECIFIED (which handlers MUST reject).
+	// only on zero-valued UNSPECIFIED placeholders, which handlers MUST
+	// reject; UNSPECIFIED is not a legal resting state.
 	ProjectName   string `protobuf:"bytes,3,opt,name=project_name,json=projectName,proto3" json:"project_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -217,8 +221,9 @@ func (x *TemplatePolicyBindingTargetRef) GetProjectName() string {
 
 // TemplatePolicyBinding is a named resource that binds a single
 // TemplatePolicy to an explicit list of project templates and/or
-// deployments. Replaces the glob-based target selectors carried on
-// TemplatePolicyRule with enumerated refs (ADR 027).
+// deployments. Introduces an explicit, non-glob target model that will
+// supersede the glob-based TemplatePolicyRule.Target selector in HOL-599 /
+// HOL-600 (ADR 029).
 //
 // Storage MUST live in the folder or organization namespace identified by
 // scope_ref. Project-scope storage is forbidden. Handlers MUST reject
@@ -240,10 +245,15 @@ type TemplatePolicyBinding struct {
 	PolicyRef *LinkedTemplatePolicyRef `protobuf:"bytes,5,opt,name=policy_ref,json=policyRef,proto3" json:"policy_ref,omitempty"`
 	// target_refs enumerates every render target the referenced policy
 	// applies to. Order is not significant; duplicates MUST be rejected
-	// by handlers.
+	// by handlers. A "duplicate" is two entries with identical
+	// (kind, project_name, name) triples. Two entries that share
+	// (project_name, name) but differ in kind (e.g., a PROJECT_TEMPLATE
+	// and a DEPLOYMENT with the same slug inside the same project) are
+	// permitted — they name distinct resources.
 	TargetRefs []*TemplatePolicyBindingTargetRef `protobuf:"bytes,6,rep,name=target_refs,json=targetRefs,proto3" json:"target_refs,omitempty"`
 	// creator_email is the email address of the user who created this
-	// binding.
+	// binding. Server-populated from the authenticated caller on Create;
+	// client-supplied values on Create and Update requests are ignored.
 	CreatorEmail string `protobuf:"bytes,7,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`
 	// created_at is the timestamp when this binding was created.
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`

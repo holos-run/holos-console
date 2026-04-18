@@ -122,7 +122,7 @@ export const TemplatePolicyBindingTargetKind = /*@__PURE__*/
 /**
  * TemplatePolicyBindingService manages TemplatePolicyBinding resources, the
  * explicit, non-glob successor to TemplatePolicy's target-selector rules
- * (ADR 027 / HOL-590). A TemplatePolicyBinding names a single policy and
+ * (ADR 029 / HOL-590). A TemplatePolicyBinding names a single policy and
  * enumerates the project templates and deployments that policy applies to
  * via explicit TemplatePolicyBindingTargetRef entries — no wildcards, no
  * glob semantics. TemplatePolicy continues to declare the REQUIRE/EXCLUDE
