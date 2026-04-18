@@ -130,11 +130,13 @@ function linkDisplayText(link: { url: string; title: string; name: string }): st
 }
 
 /**
- * Single anchor row inside DeploymentLinksSection. Extracted so the primary
- * URL and the secondary `output.links` entries share the same href, target,
- * rel, and tooltip wiring. The `data-testid="deployment-link-row-<name>"`
- * attribute lets tests target a specific row and assert on rendered
- * indicators (e.g., the "argocd" pill) without depending on text proximity.
+ * Single anchor row inside DeploymentLinksSection. Used for every entry in
+ * `output.links` so anchor attributes (`target=_blank`,
+ * `rel=noopener noreferrer`), the description tooltip, and the ArgoCD
+ * source pill are wired identically across both Holos- and ArgoCD-sourced
+ * links. The `data-testid="deployment-link-row-<name>"` attribute lets
+ * tests target a specific row and assert on rendered indicators (e.g.,
+ * the "argocd" pill) without depending on text proximity.
  */
 function DeploymentLinkRow({
   href,
@@ -142,14 +144,12 @@ function DeploymentLinkRow({
   description,
   source,
   testId,
-  isPrimary,
 }: {
   href: string
   text: string
   description: string
   source: string
   testId: string
-  isPrimary: boolean
 }) {
   return (
     <div
@@ -164,13 +164,9 @@ function DeploymentLinkRow({
         // and bare-DOM consumers when description is present. Set to
         // undefined when empty so the attribute does not appear at all.
         title={description || undefined}
-        className={
-          isPrimary
-            ? 'inline-flex items-center gap-1 font-medium underline-offset-4 hover:underline break-all'
-            : 'inline-flex items-center gap-1 underline-offset-4 hover:underline break-all'
-        }
+        className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
       >
-        <span className={isPrimary ? 'font-mono' : ''}>{text}</span>
+        <span>{text}</span>
         <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       </a>
       {/*
@@ -191,42 +187,35 @@ function DeploymentLinkRow({
 
 /**
  * Renders the Status-tab Links section described in HOL-575. The section is
- * a thin wrapper around `DeploymentLinkRow` that prepends the primary URL
- * row (when `output.url` is a safe http(s) URL) and then walks
- * `output.links` in the order the backend supplied them — aggregator
- * already sorts by (name, source) so the wire order is deterministic and
- * the UI does not need to re-sort. Returns `null` when no link survives
- * the scheme allowlist so the section is hidden entirely (matching the
- * acceptance criterion that an empty `output` produces no DOM).
+ * a thin wrapper around `DeploymentLinkRow` that walks `output.links` in
+ * the order the backend supplied them — the aggregator already sorts by
+ * (name, source) so the wire order is deterministic and the UI does not
+ * need to re-sort. Returns `null` when no link survives the scheme
+ * allowlist so the section is hidden entirely (matching the acceptance
+ * criterion that an empty `output.links` produces no DOM).
  *
- * The legacy `data-testid="deployment-output-url"` is preserved on the
- * primary row so the existing App URL tests (HOL-546 / HOL-555) continue
- * to pass without modification.
+ * Sourced from `deployment.statusSummary.output.links` so live-resource
+ * link annotations harvested by the HOL-573 / HOL-574 aggregator surface
+ * here, not just template-evaluated links from the render preview.
+ *
+ * The primary URL is intentionally NOT included here — it continues to
+ * render in its own dedicated "App URL" row above the Links section so
+ * its visual treatment (font-mono, full URL displayed verbatim) and its
+ * legacy `data-testid="deployment-output-url"` are preserved unchanged.
  */
 function DeploymentLinksSection({
   output,
 }: {
-  output: { url: string; links?: DeploymentLink[] }
+  output: { links?: DeploymentLink[] }
 }) {
-  const primarySafe = output.url && isSafeHttpUrl(output.url)
   const safeLinks = (output.links ?? []).filter((l) => isSafeHttpUrl(l.url))
-  if (!primarySafe && safeLinks.length === 0) return null
+  if (safeLinks.length === 0) return null
 
   return (
     <div data-testid="deployment-links" className="space-y-2">
       <div className="flex items-baseline gap-2">
-        <span className="text-muted-foreground text-sm w-36 shrink-0">App URL</span>
+        <span className="text-muted-foreground text-sm w-36 shrink-0">Links</span>
         <div className="flex flex-col gap-1">
-          {primarySafe ? (
-            <DeploymentLinkRow
-              href={output.url}
-              text={output.url}
-              description=""
-              source="holos"
-              testId="deployment-output-url"
-              isPrimary={true}
-            />
-          ) : null}
           {safeLinks.map((l) => (
             <DeploymentLinkRow
               key={`${l.source}/${l.name}/${l.url}`}
@@ -235,7 +224,6 @@ function DeploymentLinksSection({
               description={l.description}
               source={l.source}
               testId={`deployment-link-row-${l.name}`}
-              isPrimary={false}
             />
           ))}
         </div>
@@ -462,21 +450,53 @@ export function DeploymentDetailPage({
                 <h3 className="text-sm font-medium">Status</h3>
                 <Separator />
                 {/*
-                  Links section (HOL-575) — surfaces both the template-authored
-                  primary URL (`output.url`, the canonical "App URL" preserved
-                  from the pre-HOL-572 wire format) and the full set of
-                  secondary links from `output.links` (aggregated by HOL-574
-                  from `console.holos.run/external-link.*` and
-                  `link.argocd.argoproj.io/*` annotations). Rendered only when
-                  the preview has resolved AND at least one link survives the
-                  http:/https: scheme allowlist enforced by `isSafeHttpUrl`.
-                  Non-HTTP(S) schemes (including javascript:, data:, vbscript:,
-                  file:) are dropped so they cannot reach an anchor href.
+                  App URL row — surfaces the template-authored deployment URL
+                  from the render preview (`output.url`). Rendered only when
+                  the preview has resolved with a non-empty URL that parses
+                  as an http:/https: URL. Non-HTTP(S) schemes (including
+                  javascript:, data:, vbscript:, file:) are dropped so they
+                  cannot reach an anchor href and execute script on click.
                   While the preview is pending, `preview` is undefined so
                   nothing renders (deliberate: avoids a flash on first load).
                 */}
-                {!isPreviewPending && preview?.output ? (
-                  <DeploymentLinksSection output={preview.output} />
+                {!isPreviewPending && preview?.output?.url && isSafeHttpUrl(preview.output.url) ? (
+                  <div
+                    data-testid="deployment-output-url"
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <span className="text-muted-foreground w-36 shrink-0">App URL</span>
+                    <a
+                      href={preview.output.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
+                    >
+                      <span className="font-mono">{preview.output.url}</span>
+                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                    </a>
+                  </div>
+                ) : null}
+                {/*
+                  Links section (HOL-575) — surfaces the secondary links
+                  aggregated from `console.holos.run/external-link.*` and
+                  `link.argocd.argoproj.io/*` annotations on owned resources.
+                  Sourced from `deployment.statusSummary.output.links`
+                  (populated by the HOL-573 / HOL-574 aggregator) so live
+                  resource-annotation links surface here even when they were
+                  added after the original render. The render-preview path
+                  only contains template-evaluated links and would miss
+                  anything harvested from a controller-stamped Service or
+                  Ingress annotation.
+                  Each anchor is gated through `isSafeHttpUrl` so unsafe
+                  schemes (javascript:, data:, vbscript:, file:) cannot
+                  reach an `href`; the section is hidden entirely when no
+                  entry survives the allowlist. The primary URL above
+                  intentionally remains its own row so its visual treatment
+                  and the legacy `deployment-output-url` test id are
+                  preserved unchanged.
+                */}
+                {deployment?.statusSummary?.output ? (
+                  <DeploymentLinksSection output={deployment.statusSummary.output} />
                 ) : null}
                 {status ? (
                   <div className="space-y-3">
