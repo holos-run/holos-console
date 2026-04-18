@@ -188,5 +188,27 @@ describe('PolicySection', () => {
       const section = screen.getByTestId('policy-section') as HTMLDetailsElement
       expect(section.open).toBe(true)
     })
+
+    // Regression for codex review round-2 finding: the details element
+    // must be UNCONTROLLED after mount so that a parent re-render (for
+    // example the deployment detail page's 5s status poll) does not
+    // stomp the user's toggle. If the component passed `open` as a
+    // controlled prop, simulating the user collapsing the disclosure and
+    // then re-rendering with the same props would reset `open` to the
+    // original defaultOpen value.
+    it('preserves the user toggle across parent re-renders', () => {
+      const state = makeState({ hasAppliedState: true, drift: true, addedRefs: [makeRef({})], currentSet: [makeRef({})] })
+      const { rerender } = render(<PolicySection state={state} />)
+      const section = screen.getByTestId('policy-section') as HTMLDetailsElement
+      // Drift-by-default opens the disclosure.
+      expect(section.open).toBe(true)
+      // Simulate the user collapsing it.
+      section.open = false
+      expect(section.open).toBe(false)
+      // A parent re-render with the same props must NOT reopen it.
+      rerender(<PolicySection state={state} />)
+      const after = screen.getByTestId('policy-section') as HTMLDetailsElement
+      expect(after.open).toBe(false)
+    })
   })
 })

@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -94,6 +95,15 @@ function RefList({ refs, testid }: { refs: LinkedTemplateRef[]; testid: string }
  * Using the native element keeps keyboard and screen-reader behavior
  * correct without pulling in a third-party collapsible primitive.
  *
+ * Open state is UNCONTROLLED: we set the initial `open` attribute once on
+ * mount via a ref callback and never touch it again from React. This is
+ * important because the deployment detail page polls
+ * `useGetDeploymentStatus` on a 5-second refetchInterval, which re-renders
+ * this component; a controlled `open={defaultOpen}` prop would force the
+ * disclosure back to the initial state on every poll, stomping the user's
+ * toggle. The ref-callback approach lets the browser own the `open`
+ * attribute after mount while still seeding the initial value from props.
+ *
  * The Reconcile button is rendered outside the <summary> (absolutely
  * positioned on the right of the header row) so that nested interactive
  * elements inside <summary> do not interfere with the native
@@ -112,11 +122,22 @@ function CollapsibleShell({
   defaultOpen: boolean
   children: React.ReactNode
 }) {
+  const initialisedRef = useRef(false)
+  const setInitialOpen = (el: HTMLDetailsElement | null) => {
+    // Set the initial open attribute exactly once, on the first mount of
+    // this component instance. Subsequent re-renders must not touch
+    // `el.open` so that the user's toggle is preserved across parent
+    // re-renders (e.g. the deployment status poll).
+    if (el && !initialisedRef.current) {
+      el.open = defaultOpen
+      initialisedRef.current = true
+    }
+  }
   return (
     <details
+      ref={setInitialOpen}
       className="space-y-4 group relative"
       data-testid="policy-section"
-      open={defaultOpen}
     >
       <summary
         className="flex items-center gap-2 cursor-pointer list-none select-none pr-36"
