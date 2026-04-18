@@ -195,6 +195,13 @@ func (k *K8sClient) CreatePolicy(ctx context.Context, scope consolev1.TemplateSc
 // UpdatePolicy updates an existing TemplatePolicy ConfigMap in place. Only
 // pointer fields that are non-nil are applied; callers can partial-update by
 // passing nil for fields they want preserved.
+//
+// When the existing ConfigMap still carries pre-HOL-600 legacy `target`
+// JSON payloads on its rules annotation, those payloads are preserved
+// on the rewrite so the HOL-599 migration CLI can still translate them
+// into TemplatePolicyBindings after a routine UpdatePolicy call. The
+// runtime resolver ignores the payload either way — preservation is
+// purely for migration safety.
 func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description *string, rules []*consolev1.TemplatePolicyRule, updateRules bool) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
@@ -214,7 +221,8 @@ func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateSc
 		cm.Annotations[v1alpha2.AnnotationDescription] = *description
 	}
 	if updateRules {
-		rulesJSON, err := marshalRules(rules)
+		legacyTargets := extractLegacyTargets(cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules])
+		rulesJSON, err := marshalRulesPreservingLegacy(rules, legacyTargets)
 		if err != nil {
 			return nil, err
 		}
@@ -261,25 +269,28 @@ func scopeLabelValue(scope consolev1.TemplateScope) string {
 	}
 }
 
-// storedRule is the JSON wire shape for a TemplatePolicyRule annotation entry.
-// Nested structs carry their own JSON representation so a hand-authored
-// ConfigMap without the latest generated types still round-trips.
+// storedRule is the JSON wire shape for a TemplatePolicyRule annotation
+// entry. Nested structs carry their own JSON representation so a
+// hand-authored ConfigMap without the latest generated types still
+// round-trips.
 //
-// HOL-600 removed the legacy "target" glob selector from the proto; the
-// JSON key is no longer written by marshalRules. A best-effort "target"
-// field remains on the decode struct purely so unmarshalRules can consume
-// pre-migration annotations without returning a parse error — the decoded
-// value is discarded. New ConfigMaps written by the current console never
-// carry the key.
+// HOL-600 removed the glob-based TemplatePolicyTarget from the proto,
+// but pre-migration ConfigMaps may still carry a "target" JSON key.
+// The decode struct preserves that payload as a raw message so a
+// routine policy update cannot silently destroy the only source of
+// truth the HOL-599 `migrate template-policy-targets` CLI needs to
+// translate legacy globs into TemplatePolicyBindings. The runtime
+// resolver never reads the value; it is only re-emitted on disk.
 type storedRule struct {
 	Kind     string            `json:"kind"`
 	Template storedTemplateRef `json:"template"`
-	// LegacyTarget decodes the pre-HOL-600 "target" JSON field on best
-	// effort so stale ConfigMaps do not surface a parse error to the
-	// caller. The value is never inspected. The JSON tag must stay as
-	// "target" so the decoder accepts the legacy wire shape; the Go
-	// field name is deliberately distinct so callers reading this file
-	// are not tempted to re-read it.
+	// LegacyTarget is the pre-HOL-600 "target" JSON payload stored on
+	// the ConfigMap. The runtime ignores it (render-target selection
+	// runs through TemplatePolicyBinding), but marshalRules preserves
+	// it verbatim so a routine UpdatePolicy call does not strip data
+	// the HOL-599 migration still needs. New policies written by the
+	// current console leave this field empty; the field is only ever
+	// populated by unmarshaling a pre-migration ConfigMap.
 	LegacyTarget json.RawMessage `json:"target,omitempty"`
 }
 
@@ -290,22 +301,87 @@ type storedTemplateRef struct {
 	VersionConstraint string `json:"version_constraint,omitempty"`
 }
 
-// marshalOnlyRule mirrors storedRule for the write path but omits the
-// legacy "target" JSON field entirely. Keeping the encode and decode
-// shapes distinct means a future refactor cannot accidentally round-trip
-// a pre-migration "target" value back onto disk.
-type marshalOnlyRule struct {
-	Kind     string            `json:"kind"`
-	Template storedTemplateRef `json:"template"`
+// legacyTargetsByRuleKey maps a (kind, template) triple to the raw
+// legacy `target` JSON payload that the caller-supplied rules do not
+// carry. marshalRules consults this map to preserve pre-migration data
+// across routine updates. The key is deliberately narrow: only rules
+// that match by (kind, template) are considered the "same" rule for
+// legacy-target preservation, which matches how the HOL-599 migrator
+// identifies rules.
+type legacyTargetsByRuleKey map[legacyRuleKey]json.RawMessage
+
+type legacyRuleKey struct {
+	kind      string
+	scope     string
+	scopeName string
+	name      string
 }
 
+func legacyKeyForStoredRule(s storedRule) legacyRuleKey {
+	return legacyRuleKey{
+		kind:      s.Kind,
+		scope:     s.Template.Scope,
+		scopeName: s.Template.ScopeName,
+		name:      s.Template.Name,
+	}
+}
+
+func legacyKeyForProtoRule(r *consolev1.TemplatePolicyRule) legacyRuleKey {
+	tmpl := r.GetTemplate()
+	return legacyRuleKey{
+		kind:      kindToString(r.GetKind()),
+		scope:     templateScopeLabel(tmpl.GetScope()),
+		scopeName: tmpl.GetScopeName(),
+		name:      tmpl.GetName(),
+	}
+}
+
+// extractLegacyTargets decodes an existing rules annotation and returns a
+// lookup of (kind, template) → raw "target" JSON for every rule that
+// still carries the legacy payload. The function is nil-safe: an empty
+// annotation or one without any legacy targets yields an empty map so
+// marshalRulesPreservingLegacy can always be called unconditionally.
+func extractLegacyTargets(raw string) legacyTargetsByRuleKey {
+	out := make(legacyTargetsByRuleKey)
+	if raw == "" {
+		return out
+	}
+	var stored []storedRule
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return out
+	}
+	for _, s := range stored {
+		if len(s.LegacyTarget) == 0 {
+			continue
+		}
+		out[legacyKeyForStoredRule(s)] = s.LegacyTarget
+	}
+	return out
+}
+
+// marshalRules serializes the supplied rules without any legacy target
+// payload. This is the correct shape for brand-new policies authored
+// after HOL-600: they carry no target data. For UpdatePolicy call
+// paths that might round-trip a pre-migration ConfigMap, use
+// marshalRulesPreservingLegacy instead so the HOL-599 migrator can
+// still recover the glob data.
 func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
-	stored := make([]marshalOnlyRule, 0, len(rules))
+	return marshalRulesPreservingLegacy(rules, nil)
+}
+
+// marshalRulesPreservingLegacy serializes rules and re-emits any legacy
+// `target` JSON payload keyed by (kind, template) so a pre-migration
+// ConfigMap remains machine-readable to the HOL-599 migrator even
+// after an unrelated UpdatePolicy call. Rules whose (kind, template)
+// key does not appear in legacyTargets are written without a "target"
+// field — identical to the post-HOL-600 shape.
+func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyTargets legacyTargetsByRuleKey) ([]byte, error) {
+	stored := make([]storedRule, 0, len(rules))
 	for _, r := range rules {
 		if r == nil {
 			continue
 		}
-		sr := marshalOnlyRule{
+		sr := storedRule{
 			Kind: kindToString(r.GetKind()),
 		}
 		if tmpl := r.GetTemplate(); tmpl != nil {
@@ -314,6 +390,11 @@ func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
 				ScopeName:         tmpl.GetScopeName(),
 				Name:              tmpl.GetName(),
 				VersionConstraint: tmpl.GetVersionConstraint(),
+			}
+		}
+		if legacyTargets != nil {
+			if raw, ok := legacyTargets[legacyKeyForProtoRule(r)]; ok {
+				sr.LegacyTarget = raw
 			}
 		}
 		stored = append(stored, sr)
@@ -335,10 +416,10 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 	}
 	rules := make([]*consolev1.TemplatePolicyRule, 0, len(stored))
 	for _, s := range stored {
-		// Any legacy "target" field on the stored ConfigMap is dropped
-		// here: HOL-600 removed the glob evaluator, so the decoded
-		// value has no downstream consumer. Render-time selection runs
-		// through TemplatePolicyBinding.
+		// Any legacy "target" payload is preserved on disk (see
+		// storedRule.LegacyTarget) but not surfaced on the proto —
+		// HOL-600 removed the glob evaluator and render-time
+		// selection runs through TemplatePolicyBinding.
 		rule := &consolev1.TemplatePolicyRule{
 			Kind: kindFromString(s.Kind),
 			Template: &consolev1.LinkedTemplateRef{

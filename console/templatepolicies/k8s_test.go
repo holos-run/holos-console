@@ -373,6 +373,130 @@ func TestUnmarshalRulesIgnoresLegacyTarget(t *testing.T) {
 	}
 }
 
+// TestUpdatePolicyPreservesLegacyTarget locks in the round-2 review
+// fix: a routine UpdatePolicy call must not silently drop the
+// pre-HOL-600 "target" JSON payload from a stored ConfigMap.
+// Stripping the payload would destroy the only source of truth the
+// HOL-599 `migrate template-policy-targets` CLI needs to translate
+// legacy globs into TemplatePolicyBindings, so UpdatePolicy re-emits
+// the payload on the rewrite whenever the incoming rule matches an
+// existing (kind, template) key.
+func TestUpdatePolicyPreservesLegacyTarget(t *testing.T) {
+	const legacyRules = `[{"kind":"require","template":{"scope":"organization","scope_name":"acme","name":"reference-grant"},"target":{"project_pattern":"lilies","deployment_pattern":"api"}}]`
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationCreatorEmail:        "creator@example.com",
+				v1alpha2.AnnotationTemplatePolicyRules: legacyRules,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(existing)
+	k := NewK8sClient(fakeClient, newTestResolver())
+
+	// Simulate a routine UI/API update that re-submits the rule
+	// through the proto boundary. The UI has no way to express the
+	// legacy target, so the proto rule arrives without one.
+	updated, err := k.UpdatePolicy(
+		context.Background(),
+		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		"payments",
+		"policy",
+		nil, nil,
+		[]*consolev1.TemplatePolicyRule{sampleRule()},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("UpdatePolicy: %v", err)
+	}
+	raw := updated.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
+	if raw == "" {
+		t.Fatal("expected non-empty rules annotation after update")
+	}
+	// Re-parse the stored annotation as a raw map so we can assert
+	// the "target" payload is still verbatim — the migrator reads
+	// the same JSON shape.
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("decode stored rules: %v", err)
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("expected 1 stored rule, got %d", len(decoded))
+	}
+	target, ok := decoded[0]["target"].(map[string]any)
+	if !ok {
+		t.Fatalf("stored rule lost legacy target payload: %+v", decoded[0])
+	}
+	if target["project_pattern"] != "lilies" {
+		t.Errorf("project_pattern dropped or mutated: %+v", target)
+	}
+	if target["deployment_pattern"] != "api" {
+		t.Errorf("deployment_pattern dropped or mutated: %+v", target)
+	}
+}
+
+// TestUpdatePolicyDoesNotInventLegacyTargetForNewRule asserts the
+// flip-side of TestUpdatePolicyPreservesLegacyTarget: if the caller
+// submits a brand-new rule that does not match any existing
+// (kind, template) key, the stored JSON must not fabricate a
+// "target" payload. That would surface stale migrator output for a
+// rule the operator never authored with a legacy shape.
+func TestUpdatePolicyDoesNotInventLegacyTargetForNewRule(t *testing.T) {
+	const legacyRules = `[{"kind":"require","template":{"scope":"organization","scope_name":"acme","name":"other-template"},"target":{"project_pattern":"lilies"}}]`
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationTemplatePolicyRules: legacyRules,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(existing)
+	k := NewK8sClient(fakeClient, newTestResolver())
+
+	// sampleRule() targets reference-grant; the existing legacy
+	// payload is keyed by other-template. The legacy data for
+	// other-template must be dropped since the new rule set no
+	// longer contains that rule, and reference-grant must be
+	// written without a fabricated target.
+	updated, err := k.UpdatePolicy(
+		context.Background(),
+		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		"payments",
+		"policy",
+		nil, nil,
+		[]*consolev1.TemplatePolicyRule{sampleRule()},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("UpdatePolicy: %v", err)
+	}
+	raw := updated.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("decode stored rules: %v", err)
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("expected 1 stored rule, got %d", len(decoded))
+	}
+	if _, hasTarget := decoded[0]["target"]; hasTarget {
+		t.Errorf("UpdatePolicy must not fabricate a legacy target for a rule that did not have one: %+v", decoded[0])
+	}
+}
+
 // TestPackageDoesNotCallProjectNamespace is the grep-based regression test
 // called out by the HOL-556 acceptance criteria. It walks every Go source
 // file in this package and fails if any file references
