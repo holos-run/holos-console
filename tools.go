@@ -12,4 +12,5 @@ import (
 	_ "github.com/fullstorydev/grpcurl/cmd/grpcurl"
 	_ "github.com/rogpeppe/go-internal/testscript"
 	_ "google.golang.org/protobuf/cmd/protoc-gen-go"
+	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 )

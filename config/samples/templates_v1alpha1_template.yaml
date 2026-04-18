@@ -1,0 +1,19 @@
+apiVersion: templates.holos.run/v1alpha1
+kind: Template
+metadata:
+  name: sample-project-template
+  namespace: holos-prj-sample
+  labels:
+    app.kubernetes.io/managed-by: holos-console
+spec:
+  displayName: Sample Project Template
+  description: Minimal project-scope template used for kind demos.
+  enabled: true
+  version: 0.1.0
+  cueTemplate: |
+    // Example CUE template body. Real templates emit v1alpha2.ResourceSet
+    // spec fields (defaults, platformInput, projectResources). The kind demo
+    // uses this stub to verify a Template round-trips through the API server.
+    package holos
+
+    greeting: "hello from sample-project-template"

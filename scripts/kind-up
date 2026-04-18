@@ -1,0 +1,51 @@
+#!/bin/bash
+# kind-up orchestrates a full local-cluster bootstrap so the holos-console
+# deployment can roll with the templates.holos.run CRDs, the CEL admission
+# policies, and the console service-account ClusterRole already in place.
+#
+# Apply order (locked in ADR 030):
+#   1. DNS + k3d cluster + mkcert root CA
+#   2. kubectl apply -f config/crd/
+#   3. kubectl apply -f config/admission/
+#   4. kubectl apply -f config/rbac/
+#   5. holos-console deployment rollout
+#
+# The ordering matters: CRDs must exist before admission policies reference
+# them; admission policies must exist before the first policy/binding is
+# created; RBAC must exist before the console pod starts (reconcilers need
+# list/watch permissions at manager startup).
+#
+# The rolling deployment step is intentionally a hook (HOLOS_CONSOLE_ROLLOUT).
+# The container image lifecycle lives in the user's own workflow — this script
+# only guarantees the CRD / admission / RBAC surface is installed before that
+# hook runs.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo ">>> (1/5) scripts/local-dns"
+./scripts/local-dns
+
+echo ">>> (2/5) scripts/local-k3d"
+./scripts/local-k3d
+
+echo ">>> (3/5) scripts/local-ca"
+./scripts/local-ca
+
+echo ">>> (4/5) kubectl apply CRDs, admission policies, RBAC"
+kubectl apply -f "${REPO_ROOT}/config/crd/"
+kubectl apply -f "${REPO_ROOT}/config/admission/"
+kubectl apply -f "${REPO_ROOT}/config/rbac/"
+
+echo ">>> (5/5) roll holos-console deployment"
+if [[ -n "${HOLOS_CONSOLE_ROLLOUT:-}" ]]; then
+  echo "running HOLOS_CONSOLE_ROLLOUT=${HOLOS_CONSOLE_ROLLOUT}"
+  eval "${HOLOS_CONSOLE_ROLLOUT}"
+else
+  echo "HOLOS_CONSOLE_ROLLOUT not set — skipping console deployment rollout."
+  echo "Set HOLOS_CONSOLE_ROLLOUT to the command that rolls the console image,"
+  echo "e.g. \"kubectl rollout restart deployment/holos-console -n holos-console\"."
+fi
+
+echo ">>> kind-up complete."

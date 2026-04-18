@@ -1,0 +1,18 @@
+apiVersion: templates.holos.run/v1alpha1
+kind: TemplatePolicyBinding
+metadata:
+  name: sample-bind-istio-to-gateway-deployments
+  namespace: holos-org-acme
+  labels:
+    app.kubernetes.io/managed-by: holos-console
+spec:
+  displayName: Bind sample-require-istio-gateway to the gateway deployments
+  description: Attaches the require-istio-gateway policy to the gateway deployment in project api.
+  policyRef:
+    scope: organization
+    scopeName: acme
+    name: sample-require-istio-gateway
+  targetRefs:
+  - kind: Deployment
+    projectName: api
+    name: gateway
