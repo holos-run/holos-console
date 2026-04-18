@@ -14,6 +14,7 @@ import {
   policyKey,
   validateBindingDraft,
   type BindingDraft,
+  type BindingMutationParams,
 } from './binding-draft'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import { TemplateScope } from '@/queries/templates'
@@ -40,7 +41,7 @@ export type BindingFormProps = {
   pendingLabel: string
   isPending?: boolean
   lockName?: boolean
-  onSubmit: (values: ReturnType<typeof draftToMutationParams>) => Promise<void>
+  onSubmit: (values: BindingMutationParams) => Promise<void>
   onCancel: () => void
 }
 

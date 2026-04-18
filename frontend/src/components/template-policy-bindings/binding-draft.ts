@@ -206,10 +206,24 @@ export function applyPolicyKey(
 }
 
 /**
- * Helper for the PolicyForm submit step: convert a validated draft into the
+ * BindingMutationParams is the payload shape consumed by
+ * useCreateTemplatePolicyBinding and useUpdateTemplatePolicyBinding. Exported
+ * so BindingForm's onSubmit prop and consumers can reference the type
+ * directly rather than recovering it via ReturnType<typeof>.
+ */
+export type BindingMutationParams = {
+  name: string
+  displayName: string
+  description: string
+  policyRef: LinkedTemplatePolicyRef
+  targetRefs: TemplatePolicyBindingTargetRef[]
+}
+
+/**
+ * Helper for the BindingForm submit step: convert a validated draft into the
  * set of values expected by the create/update mutation hook.
  */
-export function draftToMutationParams(draft: BindingDraft) {
+export function draftToMutationParams(draft: BindingDraft): BindingMutationParams {
   return {
     name: draft.name.trim(),
     displayName: draft.displayName.trim(),

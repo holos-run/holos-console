@@ -10,10 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Trash2 } from 'lucide-react'
-import {
-  TemplatePolicyBindingTargetKind,
-  type TemplatePolicyBinding,
-} from '@/queries/templatePolicyBindings'
+import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import type { TargetRefDraft } from './binding-draft'
 import { useListDeployments } from '@/queries/deployments'
 import { useListProjects } from '@/queries/projects'
@@ -128,8 +125,6 @@ function TargetRow({
   disabled,
 }: TargetRowProps) {
   const isDeployment = target.kind === TemplatePolicyBindingTargetKind.DEPLOYMENT
-  const isProjectTemplate =
-    target.kind === TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE
 
   const { data: projectsResponse } = useListProjects(organization)
   const projectItems: ComboboxItem[] = useMemo(() => {
@@ -141,30 +136,31 @@ function TargetRow({
   }, [projectsResponse])
 
   // Name picker: project-scope templates or deployments, both scoped to the
-  // selected project. Both hooks are called unconditionally — the hooks
-  // themselves guard on an empty project name via the `enabled` option, so
+  // selected project. Both hooks are called unconditionally — they gate on a
+  // non-empty project name via their `enabled` option (useListTemplates keys
+  // on scope.scopeName, useListDeployments keys on the project argument), so
   // no fetch occurs until a project is picked.
   const projectScope = makeProjectScope(target.projectName)
   const { data: projectTemplates = [] } = useListTemplates(projectScope)
   const { data: deployments = [] } = useListDeployments(target.projectName)
 
+  // KIND_OPTIONS omits UNSPECIFIED, so kind is always DEPLOYMENT or
+  // PROJECT_TEMPLATE. Branching on a single `isDeployment` flag keeps the
+  // contract explicit and avoids an unreachable fallthrough.
   const nameItems: ComboboxItem[] = useMemo(() => {
-    if (isProjectTemplate) {
-      return projectTemplates
-        .filter((t) => t.scopeRef?.scope === TemplateScope.PROJECT)
-        .map((t) => ({
-          value: t.name,
-          label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
-        }))
-    }
     if (isDeployment) {
       return deployments.map((d) => ({
         value: d.name,
         label: d.displayName ? `${d.displayName} (${d.name})` : d.name,
       }))
     }
-    return []
-  }, [isProjectTemplate, isDeployment, projectTemplates, deployments])
+    return projectTemplates
+      .filter((t) => t.scopeRef?.scope === TemplateScope.PROJECT)
+      .map((t) => ({
+        value: t.name,
+        label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
+      }))
+  }, [isDeployment, projectTemplates, deployments])
 
   return (
     <div
@@ -256,5 +252,3 @@ function TargetRow({
   )
 }
 
-// Re-export so consumers can import the binding proto type via this module.
-export type { TemplatePolicyBinding }
