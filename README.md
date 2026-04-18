@@ -8,6 +8,7 @@ exposes ConnectRPC services. The built UI is embedded into the Go binary via
 
 See `AGENTS.md` for project conventions and the `Makefile` for common tasks:
 
-- `make test` runs the full test suite
+- `make test` runs Go and UI unit tests (`test-go` and `test-ui`)
 - `make generate` regenerates code when proto or schema files change
-- `make test-e2e` runs end-to-end tests against a local k3d cluster
+- `make test-e2e` runs Playwright end-to-end tests; the Playwright config
+  starts the Go backend and Vite dev server automatically
