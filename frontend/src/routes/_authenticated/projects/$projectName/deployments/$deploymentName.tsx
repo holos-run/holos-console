@@ -450,32 +450,53 @@ export function DeploymentDetailPage({
                 <h3 className="text-sm font-medium">Status</h3>
                 <Separator />
                 {/*
-                  App URL row — surfaces the template-authored deployment URL
-                  from the render preview (`output.url`). Rendered only when
-                  the preview has resolved with a non-empty URL that parses
-                  as an http:/https: URL. Non-HTTP(S) schemes (including
-                  javascript:, data:, vbscript:, file:) are dropped so they
-                  cannot reach an anchor href and execute script on click.
-                  While the preview is pending, `preview` is undefined so
-                  nothing renders (deliberate: avoids a flash on first load).
+                  App URL row — surfaces the deployment's primary URL.
+                  Prefers the live aggregator's promoted URL on
+                  `deployment.statusSummary.output.url` (set by the
+                  HOL-574 path when a `console.holos.run/primary-url`
+                  annotation is present on an owned resource), falling
+                  back to the template-evaluated render preview
+                  (`preview.output.url`) when no live URL is available.
+                  This ordering matters: a deployment whose primary URL
+                  is published via a controller-stamped annotation must
+                  still render its App URL row, otherwise the Status tab
+                  could show secondary links but omit the canonical
+                  primary one (HOL-575 round-2 review finding P1).
+                  Both candidate URLs are gated through `isSafeHttpUrl`
+                  so non-HTTP(S) schemes (javascript:, data:, vbscript:,
+                  file:) cannot reach an anchor href. While the preview
+                  is pending and no live URL has been observed yet,
+                  nothing renders (deliberate: avoids a flash on first
+                  load).
                 */}
-                {!isPreviewPending && preview?.output?.url && isSafeHttpUrl(preview.output.url) ? (
-                  <div
-                    data-testid="deployment-output-url"
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <span className="text-muted-foreground w-36 shrink-0">App URL</span>
-                    <a
-                      href={preview.output.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
+                {(() => {
+                  const liveURL = deployment?.statusSummary?.output?.url
+                  const previewURL = !isPreviewPending ? preview?.output?.url : ''
+                  const primaryURL =
+                    (liveURL && isSafeHttpUrl(liveURL))
+                      ? liveURL
+                      : (previewURL && isSafeHttpUrl(previewURL))
+                        ? previewURL
+                        : ''
+                  if (!primaryURL) return null
+                  return (
+                    <div
+                      data-testid="deployment-output-url"
+                      className="flex items-center gap-2 text-sm"
                     >
-                      <span className="font-mono">{preview.output.url}</span>
-                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                    </a>
-                  </div>
-                ) : null}
+                      <span className="text-muted-foreground w-36 shrink-0">App URL</span>
+                      <a
+                        href={primaryURL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
+                      >
+                        <span className="font-mono">{primaryURL}</span>
+                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                      </a>
+                    </div>
+                  )
+                })()}
                 {/*
                   Links section (HOL-575) — surfaces the secondary links
                   aggregated from `console.holos.run/external-link.*` and

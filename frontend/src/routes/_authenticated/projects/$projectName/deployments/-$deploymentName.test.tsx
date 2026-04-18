@@ -1124,6 +1124,123 @@ describe('DeploymentDetailPage', () => {
       const link = screen.getByRole('link', { name: /http:\/\/example\.com\/app/ })
       expect(link.getAttribute('href')).toBe('http://example.com/app')
     })
+
+    // HOL-575 round-2 review finding P1: the App URL row must also pick up
+    // the live aggregator's promoted primary URL on
+    // `deployment.statusSummary.output.url`. Without this, deployments
+    // whose primary URL is published only via a
+    // `console.holos.run/primary-url` annotation on a live resource (and
+    // not present in the render preview) would render secondary links
+    // but no App URL — losing the canonical primary link.
+    it('renders the App URL from statusSummary.output.url when preview has no URL', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: '' } },
+        isPending: false,
+        error: null,
+      })
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: {
+          ...mockDeployment,
+          statusSummary: {
+            $typeName: 'holos.console.v1.DeploymentStatusSummary',
+            phase: DeploymentPhase.RUNNING,
+            readyReplicas: 1,
+            desiredReplicas: 1,
+            availableReplicas: 1,
+            updatedReplicas: 1,
+            observedGeneration: 0n,
+            message: '',
+            output: {
+              $typeName: 'holos.console.v1.DeploymentOutput',
+              url: 'https://promoted.example.com',
+              links: [],
+            },
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = screen.getByRole('link', { name: /https:\/\/promoted\.example\.com/ })
+      expect(link.getAttribute('href')).toBe('https://promoted.example.com')
+    })
+
+    it('prefers statusSummary.output.url over preview.output.url when both are present', () => {
+      // The live aggregator wins because the primary-url annotation is a
+      // deliberate per-resource override of whatever the template
+      // initially evaluated to. Mirrors the backend precedence in
+      // applyAggregatedLinks (HOL-574).
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: 'https://from-template.example.com' } },
+        isPending: false,
+        error: null,
+      })
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: {
+          ...mockDeployment,
+          statusSummary: {
+            $typeName: 'holos.console.v1.DeploymentStatusSummary',
+            phase: DeploymentPhase.RUNNING,
+            readyReplicas: 1,
+            desiredReplicas: 1,
+            availableReplicas: 1,
+            updatedReplicas: 1,
+            observedGeneration: 0n,
+            message: '',
+            output: {
+              $typeName: 'holos.console.v1.DeploymentOutput',
+              url: 'https://promoted.example.com',
+              links: [],
+            },
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = screen.getByRole('link', { name: /https:\/\/promoted\.example\.com/ })
+      expect(link.getAttribute('href')).toBe('https://promoted.example.com')
+      expect(screen.queryByRole('link', { name: /from-template/ })).not.toBeInTheDocument()
+    })
+
+    it('falls back to preview.output.url when statusSummary URL fails the scheme allowlist', () => {
+      // Defense-in-depth: even if a live annotation publishes an unsafe
+      // scheme, the App URL row falls back to a safe template URL rather
+      // than dropping the row entirely.
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: 'https://safe.example.com' } },
+        isPending: false,
+        error: null,
+      })
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: {
+          ...mockDeployment,
+          statusSummary: {
+            $typeName: 'holos.console.v1.DeploymentStatusSummary',
+            phase: DeploymentPhase.RUNNING,
+            readyReplicas: 1,
+            desiredReplicas: 1,
+            availableReplicas: 1,
+            updatedReplicas: 1,
+            observedGeneration: 0n,
+            message: '',
+            output: {
+              $typeName: 'holos.console.v1.DeploymentOutput',
+              url: 'javascript:alert(1)',
+              links: [],
+            },
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = screen.getByRole('link', { name: /https:\/\/safe\.example\.com/ })
+      expect(link.getAttribute('href')).toBe('https://safe.example.com')
+    })
   })
 
   // ── Links section tests (HOL-575) ────────────────────────────────────────
