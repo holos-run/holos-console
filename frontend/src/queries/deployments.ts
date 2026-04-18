@@ -170,6 +170,30 @@ export function useGetDeploymentRenderPreview(project: string, name: string) {
   })
 }
 
+// useGetDeploymentPolicyState fetches the TemplatePolicy drift snapshot for
+// a deployment (HOL-567). The response's PolicyState is sourced from the
+// folder-namespace render-state store — see PolicySection's component-level
+// comment for the storage-isolation guarantee. This hook is the sole read
+// path used by the drift UI; never infer drift from other deployment
+// fields.
+function deploymentPolicyStateKey(project: string, name: string) {
+  return ['deployments', 'policy-state', project, name] as const
+}
+
+export function useGetDeploymentPolicyState(project: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  return useQuery({
+    queryKey: deploymentPolicyStateKey(project, name),
+    queryFn: async () => {
+      const response = await client.getDeploymentPolicyState({ project, name })
+      return response.state
+    },
+    enabled: isAuthenticated && !!project && !!name,
+  })
+}
+
 function namespaceSecretsKey(project: string) {
   return ['deployments', 'namespace-secrets', project] as const
 }

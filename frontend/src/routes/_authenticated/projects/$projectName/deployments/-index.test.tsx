@@ -37,6 +37,7 @@ function makeSummary(
   readyReplicas = 0,
   desiredReplicas = 0,
   output?: DeploymentOutput,
+  policyDrift?: boolean,
 ): DeploymentStatusSummary {
   return {
     $typeName: 'holos.console.v1.DeploymentStatusSummary',
@@ -48,6 +49,7 @@ function makeSummary(
     observedGeneration: 0n,
     message: '',
     output,
+    policyDrift,
   }
 }
 
@@ -263,5 +265,65 @@ describe('DeploymentsPage', () => {
     ])
     render(<DeploymentsPage />)
     expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
+  })
+
+  describe('policy drift badge', () => {
+    // HOL-559: the deployment list surfaces policy drift when the backend
+    // populates status_summary.policy_drift. The flag is sourced from the
+    // folder-namespace render-state store via HOL-567.
+    it('renders the Policy Drift badge when policy_drift is true', () => {
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, true),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+    })
+
+    it('does not render the Policy Drift badge when policy_drift is false', () => {
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, false),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+    })
+
+    it('does not render the Policy Drift badge when policy_drift is undefined', () => {
+      setupMocks([
+        makeDeployment(
+          'api',
+          'ghcr.io/org/app',
+          'v1.0.0',
+          makeSummary(DeploymentPhase.RUNNING, 1, 1),
+        ),
+      ])
+      render(<DeploymentsPage />)
+      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+    })
+
+    it('renders the Policy Drift badge for viewers as well (read-only signal)', () => {
+      setupMocks(
+        [
+          makeDeployment(
+            'api',
+            'ghcr.io/org/app',
+            'v1.0.0',
+            makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, true),
+          ),
+        ],
+        Role.VIEWER,
+      )
+      render(<DeploymentsPage />)
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+    })
   })
 })

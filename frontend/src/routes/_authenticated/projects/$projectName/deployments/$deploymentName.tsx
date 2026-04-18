@@ -39,10 +39,11 @@ import {
 import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar, Event, ContainerStatus } from '@/gen/holos/console/v1/deployments_pb'
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
+import { PolicySection } from '@/components/policy-drift/PolicySection'
 
 type DeploymentTab = 'status' | 'logs' | 'template'
 
@@ -138,6 +139,7 @@ export function DeploymentDetailPage({
   const { data: status } = useGetDeploymentStatus(projectName, deploymentName, { refetchInterval: 5000 })
   const { data: project } = useGetProject(projectName)
   const { data: preview, isPending: isPreviewPending } = useGetDeploymentRenderPreview(projectName, deploymentName)
+  const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetDeploymentPolicyState(projectName, deploymentName)
 
   const [tailLines, setTailLines] = useState<number>(100)
   const [previous, setPrevious] = useState(false)
@@ -194,6 +196,29 @@ export function DeploymentDetailPage({
     setRedeployError(null)
     updateMutation.reset()
     setRedeployOpen(true)
+  }
+
+  // handleReconcile fires an UpdateDeployment with the deployment's current
+  // image/tag/port/command/args/env. The backend treats this as a re-render:
+  // the template is re-evaluated against the current TemplatePolicy chain
+  // and the applied render set is re-recorded, which clears drift on
+  // success. No functional changes are made to the running workload when
+  // the rendered manifest is unchanged.
+  const handleReconcile = async () => {
+    if (!deployment) return
+    try {
+      await updateMutation.mutateAsync({
+        image: deployment.image,
+        tag: deployment.tag,
+        port: deployment.port || 8080,
+        command: deployment.command ?? [],
+        args: deployment.args ?? [],
+        env: filterEnvVars(deployment.env ?? []),
+      })
+      toast.success('Reconcile requested')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
   }
 
   const handleRedeploy = async () => {
@@ -465,6 +490,33 @@ export function DeploymentDetailPage({
                   <p className="text-sm text-muted-foreground">No events.</p>
                 )}
               </div>
+
+              {/*
+                Policy section — renders the TemplatePolicy drift snapshot
+                for this deployment (HOL-567 / HOL-559). The data is fetched
+                via GetDeploymentPolicyState, which reads PolicyState from
+                the folder-namespace render-state store. The UI never reads
+                drift state directly from project-namespace resources.
+                Reconcile is gated on PERMISSION_DEPLOYMENTS_WRITE (role
+                OWNER or EDITOR); viewers see the badge but no button.
+              */}
+              <PolicySection
+                state={policyState}
+                isPending={isPolicyPending}
+                error={policyError}
+                reconcileAction={
+                  canWrite ? (
+                    <Button
+                      size="sm"
+                      onClick={handleReconcile}
+                      disabled={updateMutation.isPending}
+                      aria-label="Reconcile policy drift"
+                    >
+                      {updateMutation.isPending ? 'Reconciling...' : 'Reconcile'}
+                    </Button>
+                  ) : undefined
+                }
+              />
 
               {deployment && deployment.env && deployment.env.length > 0 && (
                 <div className="space-y-4">

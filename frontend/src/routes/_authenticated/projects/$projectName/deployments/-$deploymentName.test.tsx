@@ -32,6 +32,7 @@ vi.mock('@/queries/deployments', () => ({
   useListNamespaceSecrets: vi.fn(),
   useListNamespaceConfigMaps: vi.fn(),
   useGetDeploymentRenderPreview: vi.fn(),
+  useGetDeploymentPolicyState: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -45,7 +46,7 @@ vi.mock('@/queries/templates', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentRenderPreview } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentRenderPreview, useGetDeploymentPolicyState } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { useRenderTemplate } from '@/queries/templates'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -181,6 +182,7 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
+  ;(useGetDeploymentPolicyState as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
   ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: mockPreview.renderedYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
@@ -1121,6 +1123,125 @@ describe('DeploymentDetailPage', () => {
       render(<DeploymentDetailPage />)
       const link = screen.getByRole('link', { name: /http:\/\/example\.com\/app/ })
       expect(link.getAttribute('href')).toBe('http://example.com/app')
+    })
+  })
+
+  // HOL-559: drift badge + Reconcile action for the deployment detail page.
+  // The detail page fetches PolicyState via useGetDeploymentPolicyState and
+  // renders the shared PolicySection. Reconcile is gated on write
+  // permission (OWNER / EDITOR); viewers see the drift signal but no
+  // action. All RPCs are mocked.
+  describe('policy drift section', () => {
+    function setupDriftState(drift: boolean) {
+      ;(useGetDeploymentPolicyState as Mock).mockReturnValue({
+        data: {
+          $typeName: 'holos.console.v1.PolicyState',
+          appliedSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
+          currentSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
+          addedRefs: drift ? [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'sidecar', versionConstraint: '' }] : [],
+          removedRefs: [],
+          drift,
+          hasAppliedState: true,
+        },
+        isPending: false,
+        error: null,
+      })
+    }
+
+    it('renders the Policy Drift badge when drift is true', () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      render(<DeploymentDetailPage />)
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+    })
+
+    it('does not render the Policy Drift badge when drift is false', () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(false)
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+      expect(screen.getByTestId('policy-in-sync')).toBeInTheDocument()
+    })
+
+    it('renders the Reconcile button for owners when drift is true', () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      render(<DeploymentDetailPage />)
+      expect(screen.getByRole('button', { name: /reconcile policy drift/i })).toBeInTheDocument()
+    })
+
+    it('renders the Reconcile button for editors when drift is true', () => {
+      setupMocks(Role.EDITOR)
+      setupDriftState(true)
+      render(<DeploymentDetailPage />)
+      expect(screen.getByRole('button', { name: /reconcile policy drift/i })).toBeInTheDocument()
+    })
+
+    it('does not render the Reconcile button for viewers', () => {
+      setupMocks(Role.VIEWER)
+      setupDriftState(true)
+      render(<DeploymentDetailPage />)
+      // Viewers still see the drift badge — the read-only signal — but
+      // never see the Reconcile action.
+      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /reconcile policy drift/i })).not.toBeInTheDocument()
+    })
+
+    it('clicking Reconcile calls useUpdateDeployment with preserved fields', async () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      render(<DeploymentDetailPage />)
+      fireEvent.click(screen.getByRole('button', { name: /reconcile policy drift/i }))
+      const mutateAsync = (useUpdateDeployment as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            image: mockDeployment.image,
+            tag: mockDeployment.tag,
+            port: mockDeployment.port,
+          }),
+        )
+      })
+    })
+
+    it('Reconcile success shows a success toast', async () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      const { toast } = await import('sonner')
+      render(<DeploymentDetailPage />)
+      fireEvent.click(screen.getByRole('button', { name: /reconcile policy drift/i }))
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith('Reconcile requested')
+      })
+    })
+
+    it('Reconcile failure shows an error toast', async () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      ;(useUpdateDeployment as Mock).mockReturnValue({
+        mutateAsync: vi.fn().mockRejectedValue(new Error('boom')),
+        isPending: false,
+        reset: vi.fn(),
+      })
+      const { toast } = await import('sonner')
+      render(<DeploymentDetailPage />)
+      fireEvent.click(screen.getByRole('button', { name: /reconcile policy drift/i }))
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('boom')
+      })
+    })
+
+    it('Reconcile button is disabled while update mutation is pending', () => {
+      setupMocks(Role.OWNER)
+      setupDriftState(true)
+      ;(useUpdateDeployment as Mock).mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: true,
+        reset: vi.fn(),
+      })
+      render(<DeploymentDetailPage />)
+      const btn = screen.getByRole('button', { name: /reconcile policy drift/i })
+      expect(btn).toBeDisabled()
     })
   })
 })
