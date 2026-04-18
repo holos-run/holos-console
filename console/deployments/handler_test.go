@@ -2128,6 +2128,38 @@ func TestHandler_AggregatedLinks(t *testing.T) {
 		}
 	})
 
+	t.Run("GetDeploymentStatusSummary surfaces cached aggregated links", func(t *testing.T) {
+		// Polling clients use GetDeploymentStatusSummary; the
+		// aggregated-links cache must be merged here too so all three
+		// read paths (list / detail / status-summary) stay observably
+		// consistent (HOL-574 review round 5).
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		links := []*consolev1.Link{{Url: "https://l.example.com", Title: "L", Source: "holos", Name: "l"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, links, "https://primary.example.com")
+		fakeClient := fake.NewClientset(ns, cm)
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.GetDeploymentStatusSummary(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := resp.Msg.Summary.Output
+		if out == nil {
+			t.Fatal("expected output populated from cache")
+		}
+		if len(out.Links) != 1 || out.Links[0].GetUrl() != "https://l.example.com" {
+			t.Errorf("expected aggregated link surfaced, got %+v", out.Links)
+		}
+		if out.Url != "https://primary.example.com" {
+			t.Errorf("expected promoted primary URL, got %q", out.Url)
+		}
+	})
+
 	t.Run("GetDeployment: empty fresh scan clears stale cached links", func(t *testing.T) {
 		ns := projectNS(project)
 		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
