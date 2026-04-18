@@ -27,11 +27,17 @@ type TemplatePolicyKind int32
 
 const (
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED TemplatePolicyKind = 0
-	// TEMPLATE_POLICY_KIND_REQUIRE forces the referenced template onto every
-	// project matched by the rule's target.
+	// TEMPLATE_POLICY_KIND_REQUIRE causes the referenced template to be
+	// injected into the effective ref set when a deployment or project template
+	// matching the target is rendered. It does not itself create, apply, or
+	// delete any cluster resources — resources appear only as the output of the
+	// user's deployment or project-template render.
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE TemplatePolicyKind = 1
-	// TEMPLATE_POLICY_KIND_EXCLUDE blocks the referenced template from matching
-	// projects even when they explicitly link it.
+	// TEMPLATE_POLICY_KIND_EXCLUDE causes the referenced template to be
+	// removed from the effective ref set when a deployment or project template
+	// matching the target is rendered, even if it would otherwise be linked.
+	// Like REQUIRE, it does not itself create, apply, or delete any cluster
+	// resources — it only filters the render-time unification set.
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE TemplatePolicyKind = 2
 )
 

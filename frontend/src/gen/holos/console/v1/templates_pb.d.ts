@@ -198,9 +198,11 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
   linkedTemplates: LinkedTemplateRef[];
 
   /**
-   * enabled indicates whether this template is active. Disabled templates are
-   * not applied to projects by any TemplatePolicy REQUIRE rule and are
-   * filtered out of render-time unification.
+   * enabled controls whether this template is eligible to appear in selection
+   * lists and to participate in render-time unification. Disabled templates
+   * are filtered out of linkable-template pickers and out of the effective
+   * unification set computed when rendering a downstream template or
+   * deployment. The flag never causes resources to be created on its own.
    *
    * @generated from field: bool enabled = 9;
    */
