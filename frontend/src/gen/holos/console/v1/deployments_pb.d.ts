@@ -1290,11 +1290,29 @@ export declare const GetDeploymentRenderPreviewResponseSchema: GenMessage<GetDep
 export declare type DeploymentOutput = Message<"holos.console.v1.DeploymentOutput"> & {
   /**
    * url is the primary URL the UI should show for the deployment. Empty when
-   * the template has no meaningful URL to publish.
+   * the template has no meaningful URL to publish. Preserved unchanged from
+   * the pre-HOL-572 wire format; treated as the canonical primary link when
+   * no entry in `links` is flagged as primary.
    *
    * @generated from field: string url = 1;
    */
   url: string;
+
+  /**
+   * links carries the full set of external links surfaced for a deployment,
+   * aggregated from both Holos-authored annotations
+   * (`console.holos.run/external-link.<name>`) and Argo CD-style annotations
+   * (`link.argocd.argoproj.io/<name>`) on live Kubernetes resources owned by
+   * the deployment. Order is not significant on the wire; the UI is expected
+   * to apply its own ordering (e.g. primary first, then alphabetical by
+   * title). Empty when the template declares no output links and no linkable
+   * annotations are present on the deployment's resources. Strictly additive
+   * to the existing `url` (field 1); older clients that only read `url`
+   * continue to work unchanged.
+   *
+   * @generated from field: repeated holos.console.v1.Link links = 2;
+   */
+  links: Link[];
 };
 
 /**
@@ -1302,6 +1320,74 @@ export declare type DeploymentOutput = Message<"holos.console.v1.DeploymentOutpu
  * Use `create(DeploymentOutputSchema)` to create a new message.
  */
 export declare const DeploymentOutputSchema: GenMessage<DeploymentOutput>;
+
+/**
+ * Link represents a single external link surfaced for a deployment.
+ * Links may be authored by the platform (via
+ * `console.holos.run/external-link.<name>` annotations on workload resources)
+ * or harvested from Argo CD-style `link.argocd.argoproj.io/<name>` annotations.
+ * Both sources are normalized into this message before being returned to the
+ * UI so a single rendering path handles all link origins.
+ *
+ * @generated from message holos.console.v1.Link
+ */
+export declare type Link = Message<"holos.console.v1.Link"> & {
+  /**
+   * url is the absolute URL the link points to. Required; an empty url means
+   * the annotation was present but carried no value, and the aggregator
+   * should have dropped it before it ever reached the wire.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * title is the human-readable label the UI displays for this link. Falls
+   * back to the annotation suffix (`name`) when the authoring annotation did
+   * not supply a title.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * description is optional supplemental text the UI may render as a tooltip
+   * or secondary line. Empty when the authoring annotation omitted a
+   * description.
+   *
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * source identifies which annotation family produced this link.
+   * Expected values are `"holos"` (for `console.holos.run/external-link.*`
+   * annotations) and `"argocd"` (for `link.argocd.argoproj.io/*`
+   * annotations). The string form is preferred over an enum so future
+   * authoring conventions can be added without a proto migration, matching
+   * the convention already established for
+   * `DeploymentStatusSummary.message`.
+   *
+   * @generated from field: string source = 4;
+   */
+  source: string;
+
+  /**
+   * name is the annotation-suffix identity for this link (for example, the
+   * suffix `logs` in `console.holos.run/external-link.logs`). Used as a
+   * stable de-duplication key when the same logical link is discovered
+   * through multiple annotations on a deployment's resources.
+   *
+   * @generated from field: string name = 5;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.Link.
+ * Use `create(LinkSchema)` to create a new message.
+ */
+export declare const LinkSchema: GenMessage<Link>;
 
 /**
  * DeploymentPhase represents the lifecycle phase of a deployment.

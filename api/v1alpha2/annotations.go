@@ -135,6 +135,42 @@ const (
 	// ConfigMaps (HOL-556).
 	AnnotationTemplatePolicyRules = "console.holos.run/template-policy-rules"
 
+	// AnnotationExternalLinkPrefix is the Holos-authored annotation-key
+	// prefix for external links surfaced on a deployment. Links are keyed
+	// by suffix (for example, `console.holos.run/external-link.logs`),
+	// where the suffix serves as a stable per-deployment identity for
+	// de-duplication across resources. The annotation value is the link
+	// URL; optional title and description can be supplied via
+	// `<prefix><name>.title` and `<prefix><name>.description` variants
+	// (the aggregator, added in HOL-573, is the canonical consumer of this
+	// convention). Introduced in HOL-572 as part of the parent deployment
+	// links plan HOL-550.
+	AnnotationExternalLinkPrefix = "console.holos.run/external-link."
+	// AnnotationPrimaryURL names the single "primary" deployment URL a
+	// template wants the UI to treat as canonical when more than one link
+	// is available. Attached to the deployment ConfigMap. Optional — when
+	// unset, the aggregator falls back to the legacy `DeploymentOutput.url`
+	// value and then to the first Holos-authored link in annotation order.
+	// Introduced in HOL-572.
+	AnnotationPrimaryURL = "console.holos.run/primary-url"
+	// AnnotationAggregatedLinks is the optional JSON cache of the fully
+	// resolved Link list for a deployment, written onto the deployment
+	// ConfigMap by the Create/UpdateDeployment handlers so list-view RPCs
+	// (ListDeployments, GetDeploymentStatusSummary) can return links
+	// without re-walking the workload annotations. Treated as a cache, not
+	// the source of truth: the authoritative links still live on the
+	// resources themselves. Introduced in HOL-572.
+	AnnotationAggregatedLinks = "console.holos.run/links"
+	// AnnotationArgoCDLinkPrefix is the annotation-key prefix Argo CD uses
+	// to attach external links to Kubernetes resources. Values are URLs
+	// (see https://argo-cd.readthedocs.io/en/stable/user-guide/external-url/
+	// and the `link.argocd.argoproj.io/*` convention). Holos harvests
+	// these alongside its own
+	// `console.holos.run/external-link.*` annotations so clusters running
+	// both tools do not force template authors to duplicate links.
+	// Introduced in HOL-572.
+	AnnotationArgoCDLinkPrefix = "link.argocd.argoproj.io/"
+
 	// Release ConfigMap labels and annotations (ADR 024).
 
 	// ResourceTypeTemplateRelease is the resource type label value for release
