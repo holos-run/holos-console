@@ -168,9 +168,11 @@ message Template {
   reserved 8;
   reserved "mandatory";
 
-  // enabled indicates whether this template is active. Disabled templates are
-  // not applied to projects by any TemplatePolicy REQUIRE rule and are
-  // filtered out of render-time unification.
+  // enabled controls whether this template is eligible to appear in selection
+  // lists and to participate in render-time unification. Disabled templates
+  // are filtered out of linkable-template pickers and out of the effective
+  // unification set computed when rendering a downstream template or
+  // deployment. The flag never causes resources to be created on its own.
   bool enabled = 9;
   // version is the current semver version string (e.g. "1.2.3") of this
   // template. Empty means the template has no published version yet.

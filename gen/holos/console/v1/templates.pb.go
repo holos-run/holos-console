@@ -262,9 +262,11 @@ type Template struct {
 	// Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
 	// always unify regardless of this list.
 	LinkedTemplates []*LinkedTemplateRef `protobuf:"bytes,7,rep,name=linked_templates,json=linkedTemplates,proto3" json:"linked_templates,omitempty"`
-	// enabled indicates whether this template is active. Disabled templates are
-	// not applied to projects by any TemplatePolicy REQUIRE rule and are
-	// filtered out of render-time unification.
+	// enabled controls whether this template is eligible to appear in selection
+	// lists and to participate in render-time unification. Disabled templates
+	// are filtered out of linkable-template pickers and out of the effective
+	// unification set computed when rendering a downstream template or
+	// deployment. The flag never causes resources to be created on its own.
 	Enabled bool `protobuf:"varint,9,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// version is the current semver version string (e.g. "1.2.3") of this
 	// template. Empty means the template has no published version yet.
