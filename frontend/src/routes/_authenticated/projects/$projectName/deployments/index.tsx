@@ -184,20 +184,47 @@ export function DeploymentsPage({ projectName: propProjectName }: { projectName?
                         vbscript:, file:) never reach the DOM.
                       */}
                       {deployment.statusSummary?.output?.url && isSafeHttpUrl(deployment.statusSummary.output.url) && (
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`open ${deployment.name}`}
-                        >
-                          <a
-                            href={deployment.statusSummary.output.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <span className="inline-flex items-center">
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`open ${deployment.name}`}
                           >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
+                            <a
+                              href={deployment.statusSummary.output.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                          {/*
+                            Extra-links indicator (HOL-575) — when the
+                            deployment publishes additional secondary URLs
+                            via output.links, show a small "+N" pill so
+                            operators can see at a glance that the detail
+                            page has more than just the primary URL. The
+                            count reflects only safe (http/https) entries
+                            so it matches what the detail-page Links
+                            section will actually render.
+                          */}
+                          {(() => {
+                            const extras = (deployment.statusSummary.output.links ?? []).filter((l) =>
+                              isSafeHttpUrl(l.url),
+                            ).length
+                            if (extras === 0) return null
+                            return (
+                              <span
+                                data-testid={`deployment-extra-links-${deployment.name}`}
+                                className="text-xs text-muted-foreground tabular-nums ml-0.5"
+                                aria-label={`${extras} additional link${extras === 1 ? '' : 's'}`}
+                              >
+                                +{extras}
+                              </span>
+                            )
+                          })()}
+                        </span>
                       )}
                       {canDelete && (
                         <Button

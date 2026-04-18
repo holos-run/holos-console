@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import type { EnvVar, Event, ContainerStatus } from '@/gen/holos/console/v1/deployments_pb'
+import type { EnvVar, Event, ContainerStatus, Link as DeploymentLink } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { makeProjectScope } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
@@ -109,6 +109,139 @@ function isContainerError(cs: ContainerStatus): boolean {
   if (CONTAINER_ERROR_REASONS.has(cs.reason)) return true
   if (cs.state === 'terminated' && cs.restartCount > 0) return true
   return false
+}
+
+/**
+ * Returns the display text for an external link. Prefers the
+ * template-authored title, falls back to the annotation-suffix `name`, and
+ * finally to the URL host so the anchor never renders as an empty string.
+ * The host fallback uses `URL` parsing — callers are expected to have
+ * already gated the URL through `isSafeHttpUrl`, so a parse failure here
+ * means the value is malformed and the caller should not have asked.
+ */
+function linkDisplayText(link: { url: string; title: string; name: string }): string {
+  if (link.title) return link.title
+  if (link.name) return link.name
+  try {
+    return new URL(link.url).host
+  } catch {
+    return link.url
+  }
+}
+
+/**
+ * Single anchor row inside DeploymentLinksSection. Extracted so the primary
+ * URL and the secondary `output.links` entries share the same href, target,
+ * rel, and tooltip wiring. The `data-testid="deployment-link-row-<name>"`
+ * attribute lets tests target a specific row and assert on rendered
+ * indicators (e.g., the "argocd" pill) without depending on text proximity.
+ */
+function DeploymentLinkRow({
+  href,
+  text,
+  description,
+  source,
+  testId,
+  isPrimary,
+}: {
+  href: string
+  text: string
+  description: string
+  source: string
+  testId: string
+  isPrimary: boolean
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-center gap-2 text-sm"
+    >
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        // Native title attribute provides a tooltip for both screen readers
+        // and bare-DOM consumers when description is present. Set to
+        // undefined when empty so the attribute does not appear at all.
+        title={description || undefined}
+        className={
+          isPrimary
+            ? 'inline-flex items-center gap-1 font-medium underline-offset-4 hover:underline break-all'
+            : 'inline-flex items-center gap-1 underline-offset-4 hover:underline break-all'
+        }
+      >
+        <span className={isPrimary ? 'font-mono' : ''}>{text}</span>
+        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+      </a>
+      {/*
+        Source pill — rendered only for ArgoCD-sourced links so operators
+        can tell at a glance which annotation family produced the entry.
+        Holos-sourced links are the implicit default and stay unbadged to
+        keep the row scannable when most templates author exclusively
+        through `console.holos.run/external-link.*`.
+      */}
+      {source === 'argocd' ? (
+        <Badge variant="outline" className="text-xs uppercase tracking-wide">
+          argocd
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Renders the Status-tab Links section described in HOL-575. The section is
+ * a thin wrapper around `DeploymentLinkRow` that prepends the primary URL
+ * row (when `output.url` is a safe http(s) URL) and then walks
+ * `output.links` in the order the backend supplied them — aggregator
+ * already sorts by (name, source) so the wire order is deterministic and
+ * the UI does not need to re-sort. Returns `null` when no link survives
+ * the scheme allowlist so the section is hidden entirely (matching the
+ * acceptance criterion that an empty `output` produces no DOM).
+ *
+ * The legacy `data-testid="deployment-output-url"` is preserved on the
+ * primary row so the existing App URL tests (HOL-546 / HOL-555) continue
+ * to pass without modification.
+ */
+function DeploymentLinksSection({
+  output,
+}: {
+  output: { url: string; links?: DeploymentLink[] }
+}) {
+  const primarySafe = output.url && isSafeHttpUrl(output.url)
+  const safeLinks = (output.links ?? []).filter((l) => isSafeHttpUrl(l.url))
+  if (!primarySafe && safeLinks.length === 0) return null
+
+  return (
+    <div data-testid="deployment-links" className="space-y-2">
+      <div className="flex items-baseline gap-2">
+        <span className="text-muted-foreground text-sm w-36 shrink-0">App URL</span>
+        <div className="flex flex-col gap-1">
+          {primarySafe ? (
+            <DeploymentLinkRow
+              href={output.url}
+              text={output.url}
+              description=""
+              source="holos"
+              testId="deployment-output-url"
+              isPrimary={true}
+            />
+          ) : null}
+          {safeLinks.map((l) => (
+            <DeploymentLinkRow
+              key={`${l.source}/${l.name}/${l.url}`}
+              href={l.url}
+              text={linkDisplayText(l)}
+              description={l.description}
+              source={l.source}
+              testId={`deployment-link-row-${l.name}`}
+              isPrimary={false}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function DeploymentDetailRoute() {
@@ -329,31 +462,21 @@ export function DeploymentDetailPage({
                 <h3 className="text-sm font-medium">Status</h3>
                 <Separator />
                 {/*
-                  App URL row — surfaces the template-authored deployment URL
-                  from the render preview (`output.url`). Rendered only when
-                  the preview has resolved with a non-empty URL that parses
-                  as an http:/https: URL. Non-HTTP(S) schemes (including
-                  javascript:, data:, vbscript:, file:) are dropped so they
-                  cannot reach an anchor href and execute script on click.
+                  Links section (HOL-575) — surfaces both the template-authored
+                  primary URL (`output.url`, the canonical "App URL" preserved
+                  from the pre-HOL-572 wire format) and the full set of
+                  secondary links from `output.links` (aggregated by HOL-574
+                  from `console.holos.run/external-link.*` and
+                  `link.argocd.argoproj.io/*` annotations). Rendered only when
+                  the preview has resolved AND at least one link survives the
+                  http:/https: scheme allowlist enforced by `isSafeHttpUrl`.
+                  Non-HTTP(S) schemes (including javascript:, data:, vbscript:,
+                  file:) are dropped so they cannot reach an anchor href.
                   While the preview is pending, `preview` is undefined so
                   nothing renders (deliberate: avoids a flash on first load).
                 */}
-                {!isPreviewPending && preview?.output?.url && isSafeHttpUrl(preview.output.url) ? (
-                  <div
-                    data-testid="deployment-output-url"
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <span className="text-muted-foreground w-36 shrink-0">App URL</span>
-                    <a
-                      href={preview.output.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 underline-offset-4 hover:underline break-all"
-                    >
-                      <span className="font-mono">{preview.output.url}</span>
-                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                    </a>
-                  </div>
+                {!isPreviewPending && preview?.output ? (
+                  <DeploymentLinksSection output={preview.output} />
                 ) : null}
                 {status ? (
                   <div className="space-y-3">

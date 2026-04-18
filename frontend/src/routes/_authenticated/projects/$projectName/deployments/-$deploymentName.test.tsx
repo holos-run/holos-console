@@ -1126,6 +1126,242 @@ describe('DeploymentDetailPage', () => {
     })
   })
 
+  // ── Links section tests (HOL-575) ────────────────────────────────────────
+  //
+  // The Status tab surfaces the full set of external links from the render
+  // preview's `output.links` field, in addition to the legacy primary
+  // `output.url`. Each entry is rendered as a target=_blank anchor with
+  // rel=noopener noreferrer; descriptions appear as a tooltip; ArgoCD-sourced
+  // links carry a small "argocd" pill so operators can tell at a glance which
+  // annotation family produced them. Primary URL appears first when present.
+
+  describe('Links section', () => {
+    it('does not render the Links section when output is undefined', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: undefined },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('deployment-links')).not.toBeInTheDocument()
+    })
+
+    it('does not render the Links section when both output.url and output.links are empty', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: '', links: [] } },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('deployment-links')).not.toBeInTheDocument()
+    })
+
+    it('renders only the primary URL when links is empty (backwards-compat)', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockPreview, output: { url: 'https://app.example.com', links: [] } },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      // The legacy App URL row still appears.
+      expect(screen.getByTestId('deployment-output-url')).toBeInTheDocument()
+      const appUrl = screen.getByRole('link', { name: /https:\/\/app\.example\.com/ })
+      expect(appUrl.getAttribute('href')).toBe('https://app.example.com')
+    })
+
+    it('renders a single named link with anchor attributes', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              {
+                url: 'https://logs.example.com',
+                title: 'Logs',
+                description: 'Application log dashboard',
+                source: 'holos',
+                name: 'logs',
+              },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = screen.getByRole('link', { name: /^Logs$/ })
+      expect(link.getAttribute('href')).toBe('https://logs.example.com')
+      expect(link.getAttribute('target')).toBe('_blank')
+      const rel = link.getAttribute('rel') ?? ''
+      expect(rel).toContain('noopener')
+      expect(rel).toContain('noreferrer')
+    })
+
+    it('exposes link description via the title attribute (tooltip trigger)', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              {
+                url: 'https://logs.example.com',
+                title: 'Logs',
+                description: 'Application log dashboard',
+                source: 'holos',
+                name: 'logs',
+              },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const link = screen.getByRole('link', { name: /^Logs$/ })
+      // Tooltip trigger — wrap the anchor in a Tooltip whose content is the
+      // description. We assert the description is rendered as the native
+      // title attribute as well so screen readers and bare-DOM consumers
+      // can also reach it.
+      expect(link.getAttribute('title')).toBe('Application log dashboard')
+    })
+
+    it('renders multiple links in deterministic order with primary first', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: 'https://app.example.com',
+            // Backend already sorts by (name, source); the UI must preserve
+            // that order and prepend the primary URL on top.
+            links: [
+              { url: 'https://docs.example.com', title: 'Docs', description: '', source: 'holos', name: 'docs' },
+              { url: 'https://logs.example.com', title: 'Logs', description: '', source: 'holos', name: 'logs' },
+              { url: 'https://metrics.example.com', title: 'Metrics', description: '', source: 'argocd', name: 'metrics' },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      // Inside the Links section, the rendered anchors should appear in
+      // primary, docs, logs, metrics order. We scope by the data-testid so
+      // unrelated anchors elsewhere on the page (e.g. the back link) do
+      // not interfere.
+      const section = screen.getByTestId('deployment-links')
+      const anchors = Array.from(section.querySelectorAll('a'))
+      const hrefs = anchors.map((a) => a.getAttribute('href'))
+      expect(hrefs).toEqual([
+        'https://app.example.com',
+        'https://docs.example.com',
+        'https://logs.example.com',
+        'https://metrics.example.com',
+      ])
+    })
+
+    it('falls back to link.name when title is empty', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              { url: 'https://x.example.com', title: '', description: '', source: 'argocd', name: 'metrics' },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      // No title and no name fallback would mean the host. With name set
+      // the anchor text must be the name verbatim.
+      expect(screen.getByRole('link', { name: 'metrics' })).toBeInTheDocument()
+    })
+
+    it('falls back to URL host when title and name are both empty', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              { url: 'https://nameless.example.com/path', title: '', description: '', source: 'holos', name: '' },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.getByRole('link', { name: 'nameless.example.com' })).toBeInTheDocument()
+    })
+
+    it('renders an "argocd" indicator for ArgoCD-sourced links', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              { url: 'https://metrics.example.com', title: 'Metrics', description: '', source: 'argocd', name: 'metrics' },
+              { url: 'https://logs.example.com', title: 'Logs', description: '', source: 'holos', name: 'logs' },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      // The argocd link row should carry an "argocd" pill; the holos one
+      // should not.
+      const section = screen.getByTestId('deployment-links')
+      const argoRow = section.querySelector('[data-testid="deployment-link-row-metrics"]')
+      const holosRow = section.querySelector('[data-testid="deployment-link-row-logs"]')
+      expect(argoRow).not.toBeNull()
+      expect(holosRow).not.toBeNull()
+      expect(argoRow!.textContent).toContain('argocd')
+      expect(holosRow!.textContent).not.toContain('argocd')
+    })
+
+    it('skips secondary links whose URL is unsafe', () => {
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: {
+          ...mockPreview,
+          output: {
+            url: '',
+            links: [
+              { url: 'javascript:alert(1)', title: 'Bad', description: '', source: 'holos', name: 'bad' },
+              { url: 'https://good.example.com', title: 'Good', description: '', source: 'holos', name: 'good' },
+            ],
+          },
+        },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByRole('link', { name: 'Bad' })).not.toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Good' })).toBeInTheDocument()
+      // Verify the unsafe URL never reached an href.
+      const anchors = document.querySelectorAll('a')
+      anchors.forEach((a) => {
+        expect(a.getAttribute('href')).not.toBe('javascript:alert(1)')
+      })
+    })
+  })
+
   // HOL-559: drift badge + Reconcile action for the deployment detail page.
   // The detail page fetches PolicyState via useGetDeploymentPolicyState and
   // renders the shared PolicySection. Reconcile is gated on write
