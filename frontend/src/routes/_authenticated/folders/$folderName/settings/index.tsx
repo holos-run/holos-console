@@ -35,6 +35,7 @@ import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpda
 import { useGetOrganization } from '@/queries/organizations'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { FOLDER_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute(
   '/_authenticated/folders/$folderName/settings/',
@@ -522,9 +523,7 @@ export function FolderDetailPage({
           <div className="space-y-4">
             <h3 className="text-sm font-medium">Platform Templates</h3>
             <Separator />
-            <p className="text-sm text-muted-foreground">
-              Platform templates authored at this folder scope are applied to projects in this folder.
-            </p>
+            <p className="text-sm text-muted-foreground">{FOLDER_SCOPE_INDEX_DESCRIPTION}</p>
             <Link
               to="/folders/$folderName/templates"
               params={{ folderName }}

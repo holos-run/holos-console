@@ -32,6 +32,7 @@ import {
   useDeleteOrganization,
 } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
+import { ORG_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/')({
   component: OrgSettingsRoute,
@@ -374,10 +375,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
             <div className="space-y-4">
               <h3 className="text-sm font-medium">Platform Templates</h3>
               <Separator />
-              <p className="text-sm text-muted-foreground">
-                Platform templates are authored at organization scope and are applied to
-                projects in this organization.
-              </p>
+              <p className="text-sm text-muted-foreground">{ORG_SCOPE_INDEX_DESCRIPTION}</p>
               <Link
                 to="/orgs/$orgName/settings/org-templates"
                 params={{ orgName }}

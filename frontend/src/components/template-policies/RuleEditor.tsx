@@ -23,6 +23,10 @@ import { TemplatePolicyKind } from '@/queries/templatePolicies'
 import { TemplateScope, linkableKey } from '@/queries/templates'
 import type { LinkableTemplate } from '@/queries/templates'
 import type { RuleDraft } from '@/components/template-policies/rule-draft'
+import {
+  REQUIRE_RULE_DESCRIPTION,
+  EXCLUDE_RULE_DESCRIPTION,
+} from '@/components/platform-template-copy'
 
 export type RuleEditorProps = {
   rules: RuleDraft[]
@@ -31,19 +35,19 @@ export type RuleEditorProps = {
   disabled?: boolean
 }
 
-// Kind options shown in the kind picker. Localized labels for the UI.
+// Kind options shown in the kind picker. Descriptions describe render-time
+// inclusion semantics and come from the shared platform-template copy module
+// so the wording stays in sync with the rest of the UI.
 const KIND_OPTIONS: Array<{ value: TemplatePolicyKind; label: string; description: string }> = [
   {
     value: TemplatePolicyKind.REQUIRE,
     label: 'REQUIRE',
-    description:
-      'Force this template onto every project and deployment matched by the target patterns.',
+    description: REQUIRE_RULE_DESCRIPTION,
   },
   {
     value: TemplatePolicyKind.EXCLUDE,
     label: 'EXCLUDE',
-    description:
-      'Block this template from matching projects and deployments even if a project explicitly links it.',
+    description: EXCLUDE_RULE_DESCRIPTION,
   },
 ]
 
