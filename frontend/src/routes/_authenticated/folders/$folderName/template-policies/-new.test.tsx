@@ -122,17 +122,18 @@ describe('CreateFolderTemplatePolicyPage', () => {
     expect(screen.getByText(/create template policy/i)).toBeInTheDocument()
   })
 
-  it('explains the `*` pattern convention and dual project/deployment scope', () => {
+  // HOL-598: the form header no longer documents glob patterns. It now
+  // redirects admins to TemplatePolicyBinding for attachment.
+  it('explains that attachment is expressed via TemplatePolicyBinding', () => {
     render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
-    // Form copy must explicitly cover the mandatory-flag removal guidance.
-    expect(
-      screen.getByText(
-        /leave both patterns as/i,
-      ),
-    ).toBeInTheDocument()
     expect(
       screen.getByText(/apply to both project templates and deployments/i),
     ).toBeInTheDocument()
+    expect(
+      screen.getByText(/templatepolicybinding/i),
+    ).toBeInTheDocument()
+    // The old `*`-pattern copy is gone with the glob inputs.
+    expect(screen.queryByText(/leave both patterns as/i)).toBeNull()
   })
 
   it('rejects submission when the policy has no name', async () => {
@@ -162,27 +163,16 @@ describe('CreateFolderTemplatePolicyPage', () => {
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 
-  it('rejects glob patterns with trailing backslash with an inline error', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ name: '' })
-    setupMocks(mutateAsync)
+  // HOL-598: The "Project pattern" and "Deployment pattern" inputs were
+  // removed from the rule editor. This test replaces the old
+  // trailing-backslash check by pinning that neither label exists anymore.
+  it('does not render glob pattern inputs on each rule', () => {
+    setupMocks()
     render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
 
-    fireEvent.change(screen.getByLabelText(/display name/i), {
-      target: { value: 'Bad Pattern' },
-    })
-    // Simulate a selected template so the next validator fires.
     const firstRow = screen.getByTestId('rule-editor-row-0')
-    const pattern = within(firstRow).getByLabelText(/project pattern/i)
-    fireEvent.change(pattern, { target: { value: 'foo\\' } })
-
-    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
-    await waitFor(() => {
-      // Template selection is still required, so that error fires first.
-      expect(
-        screen.getByText(/template selection is required|trailing backslash/i),
-      ).toBeInTheDocument()
-    })
-    expect(mutateAsync).not.toHaveBeenCalled()
+    expect(within(firstRow).queryByLabelText(/project pattern/i)).toBeNull()
+    expect(within(firstRow).queryByLabelText(/deployment pattern/i)).toBeNull()
   })
 
   it('disables the Create button for VIEWER role', () => {
@@ -253,6 +243,43 @@ describe('CreateFolderTemplatePolicyPage', () => {
       expect.objectContaining({ scope: 2, scopeName: 'test-folder' }),
       expect.objectContaining({ includeSelfScope: true }),
     )
+  })
+
+  // HOL-598: the submit payload must carry rules with no `target` field. The
+  // proto converter (rule-draft.ts:ruleDraftToProto) omits Target entirely;
+  // this test exercises the full PolicyForm -> mutation path.
+  it('submits rules without a Target field', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ name: 'require-folder-gateway' })
+    setupMocks(mutateAsync)
+    render(<CreateFolderTemplatePolicyPage folderName="test-folder" />)
+
+    fireEvent.change(screen.getByLabelText(/display name/i), {
+      target: { value: 'Require FolderGateway' },
+    })
+    // Select the folder-scope template from the Combobox. The options use
+    // the generated linkable key as value; fire the change directly on the
+    // hidden input the Combobox wraps to avoid pointer-event gymnastics.
+    const firstRow = screen.getByTestId('rule-editor-row-0')
+    const trigger = within(firstRow).getByRole('combobox', {
+      name: /rule 1 template/i,
+    })
+    fireEvent.click(trigger)
+    // Pick the folder-scope template by its rendered label.
+    const folderOption = await screen.findByText(
+      /folder \/ test-folder \/ folder-gateway/,
+    )
+    fireEvent.click(folderOption)
+
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1)
+    })
+    const payload = mutateAsync.mock.calls[0][0] as {
+      rules: Array<{ target?: unknown }>
+    }
+    expect(payload.rules).toHaveLength(1)
+    expect(payload.rules[0].target).toBeUndefined()
   })
 
   it('shows both same-scope and ancestor templates in the rule template picker', async () => {

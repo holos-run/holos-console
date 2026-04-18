@@ -57,12 +57,23 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
+vi.mock('@/queries/templatePolicyBindings', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/queries/templatePolicyBindings')
+  >('@/queries/templatePolicyBindings')
+  return {
+    ...actual,
+    useListTemplatePolicyBindings: vi.fn(),
+  }
+})
+
 import {
   useGetTemplatePolicy,
   useUpdateTemplatePolicy,
   useDeleteTemplatePolicy,
   TemplatePolicyKind,
 } from '@/queries/templatePolicies'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatePolicyDetailPage } from './$policyName'
@@ -91,6 +102,13 @@ function makeMockPolicy() {
 function setupMocks(
   userRole: Role = Role.OWNER,
   policy: ReturnType<typeof makeMockPolicy> | undefined = makeMockPolicy(),
+  bindings: Array<{
+    name: string
+    displayName?: string
+    description?: string
+    policyRef?: { name: string; scopeRef?: { scope: number; scopeName: string } }
+    targetRefs?: Array<{ kind?: number; name: string; projectName?: string }>
+  }> = [],
 ) {
   ;(useGetTemplatePolicy as Mock).mockReturnValue({
     data: policy,
@@ -107,6 +125,11 @@ function setupMocks(
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', userRole },
+    isPending: false,
+    error: null,
+  })
+  ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
+    data: bindings,
     isPending: false,
     error: null,
   })
@@ -139,5 +162,82 @@ describe('OrgTemplatePolicyDetailPage', () => {
     expect(screen.queryByRole('button', { name: /delete policy/i })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/display name/i)).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled()
+  })
+
+  // HOL-598: the Policy detail page must surface the bindings that attach
+  // this policy to specific render targets. The section is implemented via
+  // useListTemplatePolicyBindings(scope) + client-side filter on
+  // policyRef.name === policyName.
+  describe('Bindings section (HOL-598)', () => {
+    it('renders a Bindings heading and an empty-state message when no bindings reference the policy', () => {
+      setupMocks(Role.OWNER, makeMockPolicy(), [])
+      render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
+      expect(
+        screen.getByRole('heading', { name: /^bindings$/i }),
+      ).toBeInTheDocument()
+      expect(screen.getByTestId('policy-bindings-empty')).toBeInTheDocument()
+    })
+
+    it('lists only bindings whose policyRef.name matches this policy', () => {
+      const bindings = [
+        {
+          name: 'binding-for-policy-a',
+          displayName: 'Binding for policy-a',
+          description: 'attaches policy-a to api deployments',
+          policyRef: {
+            name: 'policy-a',
+            scopeRef: { scope: 1, scopeName: 'test-org' },
+          },
+          targetRefs: [
+            { kind: 2, name: 'api', projectName: 'frontend' },
+            { kind: 2, name: 'worker', projectName: 'frontend' },
+          ],
+        },
+        {
+          name: 'binding-for-policy-b',
+          displayName: 'Unrelated binding',
+          policyRef: {
+            name: 'policy-b',
+            scopeRef: { scope: 1, scopeName: 'test-org' },
+          },
+          targetRefs: [{ kind: 2, name: 'api', projectName: 'frontend' }],
+        },
+      ]
+      setupMocks(Role.OWNER, makeMockPolicy(), bindings)
+      render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
+
+      const list = screen.getByTestId('policy-bindings-list')
+      expect(list).toBeInTheDocument()
+      expect(list).toHaveTextContent('binding-for-policy-a')
+      expect(list).not.toHaveTextContent('binding-for-policy-b')
+    })
+
+    it('links each row to the binding detail route', () => {
+      const bindings = [
+        {
+          name: 'binding-for-policy-a',
+          policyRef: {
+            name: 'policy-a',
+            scopeRef: { scope: 1, scopeName: 'test-org' },
+          },
+          targetRefs: [] as Array<{ kind?: number; name: string; projectName?: string }>,
+        },
+      ]
+      setupMocks(Role.OWNER, makeMockPolicy(), bindings)
+      render(<OrgTemplatePolicyDetailPage orgName="test-org" policyName="policy-a" />)
+
+      const link = screen.getByRole('link', { name: /binding-for-policy-a/i })
+      // The Link mock at the top of this file exposes the `to` template as
+      // href, so we can assert the route shape without running the router.
+      expect(link).toHaveAttribute(
+        'href',
+        '/orgs/$orgName/template-policy-bindings/$bindingName',
+      )
+      const params = JSON.parse(link.getAttribute('data-params') ?? '{}')
+      expect(params).toEqual({
+        orgName: 'test-org',
+        bindingName: 'binding-for-policy-a',
+      })
+    })
   })
 })

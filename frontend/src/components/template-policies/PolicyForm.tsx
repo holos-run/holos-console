@@ -139,9 +139,9 @@ export function PolicyForm({
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
-        Template policies apply to BOTH project templates and deployments. Rules use glob
-        patterns against project and deployment names. To require a template on every
-        project template and deployment, leave both patterns as <code>*</code>.
+        Template policies apply to both project templates and deployments. A policy is only
+        enforced where a TemplatePolicyBinding attaches it to specific render targets — see
+        the Bindings section on the policy detail page.
       </div>
 
       <div>

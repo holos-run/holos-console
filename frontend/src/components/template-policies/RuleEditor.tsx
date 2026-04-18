@@ -22,7 +22,7 @@ import { Trash2, Info, AlertTriangle } from 'lucide-react'
 import { TemplatePolicyKind } from '@/queries/templatePolicies'
 import { TemplateScope, linkableKey } from '@/queries/templates'
 import type { LinkableTemplate } from '@/queries/templates'
-import type { RuleDraft } from '@/components/template-policies/rule-draft'
+import { newEmptyRule, type RuleDraft } from '@/components/template-policies/rule-draft'
 import {
   REQUIRE_RULE_DESCRIPTION,
   EXCLUDE_RULE_DESCRIPTION,
@@ -81,13 +81,9 @@ export function RuleEditor({
   }
 
   const handleAdd = () => {
-    onChange([...rules, {
-      kind: TemplatePolicyKind.REQUIRE,
-      templateKey: '',
-      versionConstraint: '',
-      projectPattern: '*',
-      deploymentPattern: '*',
-    }])
+    // HOL-598: the draft no longer carries glob pattern fields; attachment is
+    // expressed exclusively via TemplatePolicyBinding.
+    onChange([...rules, newEmptyRule()])
   }
 
   return (
@@ -201,61 +197,14 @@ export function RuleEditor({
                   Semver range. Leave empty to always use the latest release.
                 </p>
               </div>
-
-              <div>
-                <Label htmlFor={`rule-project-pattern-${index}`} className="flex items-center gap-1">
-                  Project pattern
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          Glob pattern matched against both ProjectTemplate names (per-project)
-                          and the project name. Use <code>*</code> to match every project.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Label>
-                <Input
-                  id={`rule-project-pattern-${index}`}
-                  aria-label={`Rule ${index + 1} project pattern`}
-                  placeholder="*"
-                  value={rule.projectPattern}
-                  onChange={(e) => handleUpdate(index, { projectPattern: e.target.value })}
-                  disabled={disabled}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor={`rule-deployment-pattern-${index}`} className="flex items-center gap-1">
-                  Deployment pattern
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          Glob pattern matched against Deployment names within the matched
-                          projects. Use <code>*</code> to match every deployment, or leave empty
-                          to apply at project-level only.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Label>
-                <Input
-                  id={`rule-deployment-pattern-${index}`}
-                  aria-label={`Rule ${index + 1} deployment pattern`}
-                  placeholder="*"
-                  value={rule.deploymentPattern}
-                  onChange={(e) => handleUpdate(index, { deploymentPattern: e.target.value })}
-                  disabled={disabled}
-                />
-              </div>
+              {/*
+               * HOL-598: the former "Project pattern" and "Deployment pattern"
+               * text inputs lived here. They authored opaque glob patterns on
+               * the rule's Target. Attachment is now expressed exclusively via
+               * TemplatePolicyBinding (see the Bindings section on the Policy
+               * detail page), so the inputs were removed. Newly created and
+               * edited rules submit with `target` unset.
+               */}
             </div>
 
             {isExclude && (
