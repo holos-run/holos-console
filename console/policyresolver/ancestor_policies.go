@@ -17,11 +17,11 @@ import (
 // exists (an attacker could otherwise craft a policy in their own project
 // namespace that overrides the platform's constraints).
 //
-// This helper is shared by the render-time `folderResolver` (which classifies
-// rules as REQUIRE vs EXCLUDE and evaluates them against a render target)
-// and the project-creation-time `policyRequireRuleResolver` (which evaluates
-// REQUIRE rules against the new project's name before any deployment
-// exists). Keeping both callers on a single traversal means the
+// This helper is used by the render-time `folderResolver` (which classifies
+// rules as REQUIRE vs EXCLUDE and evaluates them against a render target).
+// HOL-582 removed the project-creation-time require-rule evaluator that
+// previously shared this traversal; render-time remains the sole enforcement
+// path for REQUIRE rules. Centralizing the ancestor walk here means the
 // storage-isolation guardrail — and the slog-based error-logging contract
 // that goes with it — is implemented exactly once.
 type AncestorPolicyLister struct {

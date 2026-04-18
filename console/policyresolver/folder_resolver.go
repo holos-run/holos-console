@@ -58,12 +58,13 @@ type folderResolver struct {
 	walker       WalkerInterface
 	resolver     *resolver.Resolver
 	unmarshaler  RuleUnmarshaler
-	// ancestorLister shares the ancestor-chain traversal and
-	// folder-namespace-only filter with the project-creation-time resolver
-	// in console/templates (HOL-571). When any of policyLister, walker,
-	// resolver, or unmarshaler is nil the fail-open branch in Resolve
-	// short-circuits before ancestorLister is consulted, so it is safe to
-	// construct from possibly-nil deps here.
+	// ancestorLister encapsulates the ancestor-chain traversal and
+	// folder-namespace-only filter used by render-time REQUIRE/EXCLUDE
+	// evaluation. HOL-582 removed the project-creation-time resolver that
+	// previously shared this helper; render-time is now the sole caller.
+	// When any of policyLister, walker, resolver, or unmarshaler is nil the
+	// fail-open branch in Resolve short-circuits before ancestorLister is
+	// consulted, so it is safe to construct from possibly-nil deps here.
 	ancestorLister *AncestorPolicyLister
 }
 
@@ -150,9 +151,8 @@ func (r *folderResolver) Resolve(
 	// namespaces are never read) and per-namespace parse/list errors.
 	// Classify the returned rules by kind here because the resolver's
 	// REQUIRE/EXCLUDE evaluation cares about the distinction; the shared
-	// lister stays kind-agnostic so the project-creation-time caller
-	// (HOL-571) can reuse it without pulling EXCLUDE semantics it does
-	// not evaluate.
+	// lister stays kind-agnostic so alternate future consumers (if any)
+	// need not pull EXCLUDE semantics they do not evaluate.
 	allRules, walkErr := r.ancestorLister.ListRules(ctx, projectNs)
 	if walkErr != nil {
 		// Degrade gracefully: a walker failure at resolve time should

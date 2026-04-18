@@ -13,19 +13,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/deployments"
-	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
-	"github.com/holos-run/holos-console/console/templates"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -1301,107 +1297,12 @@ func assertInvalidArgument(t *testing.T, err error) {
 	}
 }
 
-// ---- CreateProject with REQUIRE-rule applier tests ----
+// ---- CreateProject no longer auto-applies REQUIRE-rule templates ----
 //
-// HOL-565 (Phase 3 of HOL-562) replaced the legacy MandatoryTemplateApplier —
-// which walked the ancestor chain reading `console.holos.run/mandatory` — with
-// a RequiredTemplateApplier interface that evaluates TemplatePolicy REQUIRE
-// rules at project-creation time. The stub here only asserts that
-// CreateProject invokes the applier with the right arguments and respects its
-// error return; Phase 5 (HOL-567) wires the real resolver.
-
-// stubRequiredTemplateApplier implements RequiredTemplateApplier for tests.
-type stubRequiredTemplateApplier struct {
-	called  bool
-	org     string
-	project string
-	err     error
-}
-
-func (s *stubRequiredTemplateApplier) ApplyRequiredTemplates(_ context.Context, org, project, _ string, _ *rpc.Claims) error {
-	s.called = true
-	s.org = org
-	s.project = project
-	return s.err
-}
-
-func TestCreateProject_CallsRequiredTemplateApplierOnSuccess(t *testing.T) {
-	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	handler, _ := newHandler(existing)
-
-	applier := &stubRequiredTemplateApplier{}
-	handler = handler.WithRequiredTemplateApplier(applier)
-
-	ctx := contextWithClaims("alice@example.com")
-	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		Organization: "my-org",
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if resp.Msg.Name != "new-project" {
-		t.Errorf("expected name 'new-project', got %q", resp.Msg.Name)
-	}
-	if !applier.called {
-		t.Error("expected required template applier to be called")
-	}
-	if applier.org != "my-org" {
-		t.Errorf("expected org 'my-org', got %q", applier.org)
-	}
-	if applier.project != "new-project" {
-		t.Errorf("expected project 'new-project', got %q", applier.project)
-	}
-}
-
-func TestCreateProject_NotCalledWhenNoOrgSpecified(t *testing.T) {
-	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	handler, _ := newHandler(existing)
-
-	applier := &stubRequiredTemplateApplier{}
-	handler = handler.WithRequiredTemplateApplier(applier)
-
-	ctx := contextWithClaims("alice@example.com")
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		Organization: "", // no org
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if applier.called {
-		t.Error("expected required template applier NOT to be called when org is empty")
-	}
-}
-
-// ---- CreateProject with REAL REQUIRE-rule resolver ----
-//
-// HOL-571 Phase 9 swapped the Phase 3 empty resolver for the real
-// TemplatePolicy-backed resolver that walks the new project's ancestor chain
-// looking for REQUIRE rules whose project_pattern matches the project name.
-// These tests wire the real resolver through a RequiredTemplateApplier
-// instance with a recording applier so the assertions can look at what a
-// real resolver actually picks up — the previous tests only exercised the
-// handler/applier wiring through a hand-crafted stub and never went through
-// the ancestor walk.
-
-// capturingApplier is a ResourceApplier that records every Apply call so a
-// test can assert which templates were rendered into which project.
-type capturingApplier struct {
-	calls []capturedApply
-	err   error
-}
-
-type capturedApply struct {
-	project        string
-	deploymentName string
-	resources      []unstructured.Unstructured
-}
-
-func (c *capturingApplier) ApplyRequiredTemplate(_ context.Context, project, templateName string, resources []unstructured.Unstructured) error {
-	c.calls = append(c.calls, capturedApply{project: project, deploymentName: templateName, resources: resources})
-	return c.err
-}
+// HOL-582 deleted the creation-time RequiredTemplateApplier (Layer B in the
+// HOL-580 analysis). REQUIRE rules are now enforced exclusively at render
+// time via the folderResolver path; project creation is a pure namespace
+// write with zero template side effects.
 
 // makeOrgNamespace builds a fake organization namespace labeled so the
 // ancestor walker classifies it as an organization.
@@ -1430,8 +1331,7 @@ func marshalFixtureRules(t *testing.T, rules []map[string]any) string {
 
 // seedOrgRequirePolicy returns a TemplatePolicy ConfigMap containing a single
 // REQUIRE rule that mandates the named organization-scope template for every
-// project matching projectPattern. Mirrors the minimal fixture used by the
-// templates package's require_policy_resolver tests.
+// project matching projectPattern.
 func seedOrgRequirePolicy(t *testing.T, org, templateName, projectPattern string) *corev1.ConfigMap {
 	t.Helper()
 	rules := []map[string]any{
@@ -1462,11 +1362,11 @@ func seedOrgRequirePolicy(t *testing.T, org, templateName, projectPattern string
 	}
 }
 
-// seedOrgTemplate returns an organization-scope Template ConfigMap with a
-// minimal valid CUE source that emits exactly one ConfigMap resource into
-// the new project's namespace. The test harness does not fill the
-// PlatformInput struct into CUE, so the namespace is hardcoded in the CUE.
-func seedOrgTemplate(org, templateName, projectSlug string) *corev1.ConfigMap {
+// seedOrgTemplate returns an organization-scope Template ConfigMap carrying
+// a single sentinel ConfigMap in its CUE source, targeted at the given
+// project namespace. Used to prove that the creation-time code path does
+// NOT render and apply this template (the post-HOL-582 behavior).
+func seedOrgTemplate(org, templateName, projectNs string) *corev1.ConfigMap {
 	cueSrc := fmt.Sprintf(`projectResources: namespacedResources: "%s": ConfigMap: "sentinel-%s": {
 	apiVersion: "v1"
 	kind:       "ConfigMap"
@@ -1476,7 +1376,7 @@ func seedOrgTemplate(org, templateName, projectSlug string) *corev1.ConfigMap {
 		labels: "app.kubernetes.io/managed-by": "console.holos.run"
 	}
 }
-`, projectSlug, templateName, templateName, projectSlug)
+`, projectNs, templateName, templateName, projectNs)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      templateName,
@@ -1492,27 +1392,30 @@ func seedOrgTemplate(org, templateName, projectSlug string) *corev1.ConfigMap {
 			},
 		},
 		Data: map[string]string{
-			templates.CueTemplateKey: cueSrc,
+			"template.cue": cueSrc,
 		},
 	}
 }
 
-// TestCreateProject_RealRequireRuleResolver_AppliesOrgTemplate is the
-// HOL-571 end-to-end assertion: with the real policy-backed resolver wired
-// into the applier, creating a project under an organization whose
-// TemplatePolicy REQUIREs a template with project_pattern "*" causes that
-// template to be rendered and applied to the new project.
-func TestCreateProject_RealRequireRuleResolver_AppliesOrgTemplate(t *testing.T) {
+// TestCreateProject_DoesNotAutoApplyTemplates is the HOL-582 regression guard.
+// It constructs a scope (org) with a REQUIRE TemplatePolicy ConfigMap pointing
+// at a platform template and asserts that after CreateProject the project
+// namespace exists and contains zero resources derived from the referenced
+// template. The pre-HOL-582 behavior was the opposite — the project namespace
+// would eagerly contain rendered template resources — so asserting
+// emptiness here verifies the deletion of Layer B.
+func TestCreateProject_DoesNotAutoApplyTemplates(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	existing := managedNSWithOrg("existing", "acme", `[{"principal":"alice@example.com","role":"owner"}]`)
 	orgNs := makeOrgNamespace("acme")
-	orgTmpl := seedOrgTemplate("acme", "audit-policy", "holos-prj-new-prj")
+	projectNs := "holos-prj-new-prj"
+	orgTmpl := seedOrgTemplate("acme", "audit-policy", projectNs)
 	policyCM := seedOrgRequirePolicy(t, "acme", "audit-policy", "*")
 
-	handler, fakeClient := buildCreateProjectRealResolverHandler(t, existing, orgNs, orgTmpl, policyCM)
-
-	recording := handler.requiredTemplateApplier.(*recordingAppliedTemplates)
+	fakeClient := fake.NewClientset(existing, orgNs, orgTmpl, policyCM)
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, nil)
 
 	ctx := contextWithClaims("alice@example.com")
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
@@ -1526,324 +1429,35 @@ func TestCreateProject_RealRequireRuleResolver_AppliesOrgTemplate(t *testing.T) 
 		t.Errorf("expected project name 'new-prj', got %q", resp.Msg.Name)
 	}
 
-	// Real resolver should have matched the wildcard REQUIRE rule and the
-	// recording applier should have been called exactly once with the
-	// org-scope template.
-	if len(recording.applied.calls) != 1 {
-		t.Fatalf("expected exactly 1 Apply call for REQUIRE-matched template, got %d", len(recording.applied.calls))
-	}
-	call := recording.applied.calls[0]
-	if call.project != "new-prj" {
-		t.Errorf("apply called with project=%q, want new-prj", call.project)
-	}
-	if call.deploymentName != "audit-policy" {
-		t.Errorf("apply called with templateName=%q, want audit-policy", call.deploymentName)
-	}
-	if len(call.resources) == 0 {
-		t.Error("expected at least one rendered resource, got 0")
-	}
-
-	// Sanity check the project namespace was actually created.
-	if _, err := fakeClient.CoreV1().Namespaces().Get(ctx, "holos-prj-new-prj", metav1.GetOptions{}); err != nil {
+	// The project namespace must exist after CreateProject.
+	if _, err := fakeClient.CoreV1().Namespaces().Get(ctx, projectNs, metav1.GetOptions{}); err != nil {
 		t.Errorf("project namespace not created: %v", err)
 	}
-}
 
-// TestCreateProject_RealRequireRuleResolver_PopulatesPlatformFolders
-// asserts that the HOL-571 review round-1 folder-ancestry fix is live: a
-// project under a folder whose required template references
-// `platform.folders` renders with the folder chain populated. The CUE
-// template emits a ConfigMap whose sentinel annotation is the first
-// folder name taken from `platform.folders`; if Folders were empty (the
-// regression this test guards against), CUE would fail the index
-// expression and the apply would error rather than succeed with the
-// expected folder name in the annotation.
-func TestCreateProject_RealRequireRuleResolver_PopulatesPlatformFolders(t *testing.T) {
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	// Fixture: acme (org) → eng (folder) → new-prj (project under eng).
-	existing := managedNSWithOrg("existing", "acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	orgNs := makeOrgNamespace("acme")
-	folderEngNs := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-fld-eng",
-			Labels: map[string]string{
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.AnnotationParent:  orgNs.Name,
-			},
-		},
-	}
-
-	// Template CUE reads the first element of platform.folders and emits
-	// it as an annotation. Without the round-1 Folders fix this fails to
-	// evaluate (empty slice indexed at [0]) and the apply errors out.
-	templateName := "folder-aware"
-	cueSrc := `platform: #PlatformInput
-projectResources: namespacedResources: "holos-prj-new-prj": ConfigMap: "sentinel": {
-	apiVersion: "v1"
-	kind:       "ConfigMap"
-	metadata: {
-		name:      "sentinel"
-		namespace: "holos-prj-new-prj"
-		labels: "app.kubernetes.io/managed-by": "console.holos.run"
-		annotations: "folder": platform.folders[0].name
-	}
-}
-`
-	// Build the template with the folder-aware CUE source.
-	orgTmpl := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      templateName,
-			Namespace: "holos-org-acme",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName: templateName,
-				v1alpha2.AnnotationEnabled:     "true",
-			},
-		},
-		Data: map[string]string{
-			templates.CueTemplateKey: cueSrc,
-		},
-	}
-	policyCM := seedOrgRequirePolicy(t, "acme", templateName, "*")
-
-	handler, _ := buildCreateProjectRealResolverHandler(t, existing, orgNs, folderEngNs, orgTmpl, policyCM)
-
-	recording := handler.requiredTemplateApplier.(*recordingAppliedTemplates)
-
-	ctx := contextWithClaims("alice@example.com")
-	// Create the project under the eng folder so Folders is non-empty.
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-prj",
-		Organization: "acme",
-		ParentType:   consolev1.ParentType_PARENT_TYPE_FOLDER,
-		ParentName:   "eng",
-	}))
+	// But it must contain ZERO rendered-template resources. The sentinel
+	// ConfigMap authored by seedOrgTemplate would land here if any
+	// creation-time auto-apply path still existed.
+	cms, err := fakeClient.CoreV1().ConfigMaps(projectNs).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		t.Fatalf("expected no error (CUE would fail with empty platform.folders), got %v", err)
+		t.Fatalf("list config maps in project namespace: %v", err)
 	}
-
-	if len(recording.applied.calls) != 1 {
-		t.Fatalf("expected exactly 1 Apply call for REQUIRE-matched template, got %d", len(recording.applied.calls))
-	}
-	// The resulting ConfigMap should carry the folder annotation
-	// `folder: eng`. A stale or missing Folders slice would have aborted
-	// the CUE render above; the extra assertion here keeps the folder
-	// ancestry explicitly in scope.
-	gotFolder := ""
-	for _, r := range recording.applied.calls[0].resources {
-		anns := r.GetAnnotations()
-		if v, ok := anns["folder"]; ok {
-			gotFolder = v
-			break
+	if len(cms.Items) != 0 {
+		var names []string
+		for _, cm := range cms.Items {
+			names = append(names, cm.Name)
 		}
-	}
-	if gotFolder != "eng" {
-		t.Errorf("expected rendered annotation folder=eng (from platform.folders[0]), got %q", gotFolder)
-	}
-}
-
-// TestCreateProject_RealRequireRuleResolver_SkipsProjectNamespacePolicy
-// exercises the HOL-554 storage-isolation guardrail end-to-end: a
-// TemplatePolicy ConfigMap seeded in a project namespace (where it is not
-// allowed to live) must not contribute REQUIRE matches even though the
-// ConfigMap itself would deserialize cleanly. A project owner who smuggled
-// a policy into their own project namespace must not be able to force
-// templates on newly created peer projects — the resolver only reads
-// folder/org namespaces.
-func TestCreateProject_RealRequireRuleResolver_SkipsProjectNamespacePolicy(t *testing.T) {
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	// Create a project namespace and seed a (forbidden) TemplatePolicy
-	// ConfigMap inside it. The resolver must skip this namespace per
-	// HOL-554.
-	existing := managedNSWithOrg("existing", "acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	orgNs := makeOrgNamespace("acme")
-
-	pwnedNs := "holos-prj-pwned"
-	pwnedProjectNs := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: pwnedNs,
-			Labels: map[string]string{
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelProject:      "pwned",
-			},
-		},
+		t.Errorf("project namespace %q must be empty after CreateProject (HOL-582), found %d ConfigMaps: %v",
+			projectNs, len(cms.Items), names)
 	}
 
-	pwnedPolicy := seedOrgRequirePolicy(t, "acme", "should-be-ignored", "*")
-	pwnedPolicy.Namespace = pwnedNs // forbidden placement
-
-	handler, _ := buildCreateProjectRealResolverHandler(t, existing, orgNs, pwnedProjectNs, pwnedPolicy)
-
-	recording := handler.requiredTemplateApplier.(*recordingAppliedTemplates)
-
-	ctx := contextWithClaims("alice@example.com")
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-prj",
-		Organization: "acme",
-	}))
+	secrets, err := fakeClient.CoreV1().Secrets(projectNs).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("list secrets in project namespace: %v", err)
 	}
-
-	if len(recording.applied.calls) != 0 {
-		t.Errorf("project-namespace policy leaked into CreateProject apply: got %d calls, want 0",
-			len(recording.applied.calls))
+	if len(secrets.Items) != 0 {
+		t.Errorf("project namespace %q must be empty after CreateProject (HOL-582), found %d Secrets",
+			projectNs, len(secrets.Items))
 	}
-}
-
-// recordingAppliedTemplates wraps a RequiredTemplateApplier built out of the
-// real resolver + real applier so tests can assert both that the applier ran
-// and what it applied. The wrapper is needed because CreateProject's apply
-// call goes through RequiredTemplateApplier.ApplyRequiredTemplates (which
-// returns only an error), and the tests need to peek at the recording
-// applier inside.
-type recordingAppliedTemplates struct {
-	inner   RequiredTemplateApplier
-	applied *capturingApplier
-}
-
-func (r *recordingAppliedTemplates) ApplyRequiredTemplates(ctx context.Context, org, project, projectNamespace string, claims *rpc.Claims) error {
-	return r.inner.ApplyRequiredTemplates(ctx, org, project, projectNamespace, claims)
-}
-
-// buildCreateProjectRealResolverHandler wires a projects.Handler whose
-// RequiredTemplateApplier is constructed from the real
-// templates.PolicyRequireRuleResolver (backed by the given fake K8s client)
-// and a capturingApplier that records Apply calls. The recording wrapper is
-// returned as the handler's applier field so tests can reach into it.
-func buildCreateProjectRealResolverHandler(t *testing.T, namespaces ...runtime.Object) (*Handler, *fake.Clientset) {
-	t.Helper()
-
-	client := fake.NewClientset(namespaces...)
-	r := testResolver()
-	k8s := NewK8sClient(client, r)
-
-	nsWalker := &policyresolverWalker{client: client, resolver: r}
-	templatePoliciesLister := &configMapPolicyLister{client: client}
-	templatesK8s := templates.NewK8sClient(client, r)
-
-	ancestorLister := policyresolver.NewAncestorPolicyLister(
-		templatePoliciesLister,
-		nsWalker,
-		r,
-		policyresolver.RuleUnmarshalerFunc(templatepoliciesUnmarshalRules),
-	)
-	requireResolver := templates.NewPolicyRequireRuleResolver(
-		ancestorLister,
-		r.ProjectNamespace,
-	)
-	capturing := &capturingApplier{}
-	rta := templates.NewRequiredTemplateApplier(
-		templatesK8s,
-		nsWalker,
-		&deployments.CueRenderer{},
-		capturing,
-		requireResolver,
-		policyresolver.NewNoopResolver(),
-	)
-	wrapper := &recordingAppliedTemplates{inner: rta, applied: capturing}
-
-	handler := NewHandler(k8s, nil).WithRequiredTemplateApplier(wrapper)
-	return handler, client
-}
-
-// policyresolverWalker is a thin WalkAncestors adapter over a fake clientset
-// that avoids pulling in the full resolver.Walker (which would require
-// reimporting console/resolver into this package from
-// console/projects — already imported, but the fake here only needs the
-// ancestor-labels behavior, so keeping it inline avoids a circular setup).
-type policyresolverWalker struct {
-	client   *fake.Clientset
-	resolver *resolver.Resolver
-}
-
-func (w *policyresolverWalker) WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error) {
-	return (&resolver.Walker{Client: w.client, Resolver: w.resolver}).WalkAncestors(ctx, startNs)
-}
-
-// configMapPolicyLister is a PolicyListerInNamespace implementation over a
-// fake clientset that lists TemplatePolicy ConfigMaps by label. It mirrors
-// templatepolicies.K8sClient.ListPoliciesInNamespace without pulling the
-// whole package in.
-type configMapPolicyLister struct {
-	client *fake.Clientset
-}
-
-func (l *configMapPolicyLister) ListPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
-	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplatePolicy
-	list, err := l.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return nil, err
-	}
-	return list.Items, nil
-}
-
-// templatepoliciesUnmarshalRules mirrors the JSON wire shape produced by the
-// templatepolicies package so tests in this package can drive the resolver
-// without importing that package (which would create a test-only dependency
-// cycle).
-func templatepoliciesUnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	type storedRule struct {
-		Kind     string `json:"kind"`
-		Template struct {
-			Scope             string `json:"scope"`
-			ScopeName         string `json:"scope_name"`
-			Name              string `json:"name"`
-			VersionConstraint string `json:"version_constraint,omitempty"`
-		} `json:"template"`
-		Target struct {
-			ProjectPattern    string `json:"project_pattern"`
-			DeploymentPattern string `json:"deployment_pattern,omitempty"`
-		} `json:"target"`
-	}
-	var stored []storedRule
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return nil, err
-	}
-	rules := make([]*consolev1.TemplatePolicyRule, 0, len(stored))
-	for _, s := range stored {
-		kind := consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED
-		switch s.Kind {
-		case "require":
-			kind = consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE
-		case "exclude":
-			kind = consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE
-		}
-		scope := consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
-		switch s.Template.Scope {
-		case v1alpha2.TemplateScopeOrganization:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
-		case v1alpha2.TemplateScopeFolder:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
-		case v1alpha2.TemplateScopeProject:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
-		}
-		rules = append(rules, &consolev1.TemplatePolicyRule{
-			Kind: kind,
-			Template: &consolev1.LinkedTemplateRef{
-				Scope:             scope,
-				ScopeName:         s.Template.ScopeName,
-				Name:              s.Template.Name,
-				VersionConstraint: s.Template.VersionConstraint,
-			},
-			Target: &consolev1.TemplatePolicyTarget{
-				ProjectPattern:    s.Target.ProjectPattern,
-				DeploymentPattern: s.Target.DeploymentPattern,
-			},
-		})
-	}
-	return rules, nil
 }
 
 // ---- CheckProjectIdentifier tests ----
@@ -2133,33 +1747,6 @@ func TestUpdateProject_Reparent_MoveFromFolderToOrg(t *testing.T) {
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
-	}
-}
-
-func TestCreateProject_CleansUpNamespaceOnApplierFailure(t *testing.T) {
-	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	fakeClient := fake.NewClientset(existing)
-	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, nil)
-
-	applier := &stubRequiredTemplateApplier{
-		err: fmt.Errorf("render failed"),
-	}
-	handler = handler.WithRequiredTemplateApplier(applier)
-
-	ctx := contextWithClaims("alice@example.com")
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:         "new-project",
-		Organization: "my-org",
-	}))
-	if err == nil {
-		t.Fatal("expected error when required template applier fails")
-	}
-
-	// Verify project namespace was cleaned up (deleted).
-	_, getErr := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-new-project", metav1.GetOptions{})
-	if getErr == nil {
-		t.Error("expected project namespace to be deleted after applier failure")
 	}
 }
 
