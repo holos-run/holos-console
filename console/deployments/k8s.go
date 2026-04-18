@@ -55,6 +55,17 @@ func (k *K8sClient) WithDynamicClient(d dynamic.Interface) *K8sClient {
 	return k
 }
 
+// HasDynamicClient reports whether a dynamic client is configured. The link
+// aggregator needs this to distinguish "scan returned zero resources"
+// (legitimate empty drift — clear the cache) from "no dynamic client"
+// (cannot scan at all — preserve cache as-is). Without the distinction the
+// GetDeployment refresh path would either never clear stale entries
+// (always preserve on empty) or wrongly wipe them on local/dev wiring
+// where the dynamic client is intentionally nil.
+func (k *K8sClient) HasDynamicClient() bool {
+	return k.dynamic != nil
+}
+
 // ListDeployments returns all deployment ConfigMaps in the project namespace.
 func (k *K8sClient) ListDeployments(ctx context.Context, project string) ([]corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
@@ -185,20 +196,31 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 }
 
 // ListDeploymentResources returns every resource currently owned by the given
-// deployment, scanned across every kind apply.go writes. The lookup uses the
-// same `LabelProject=<project>,console.holos.run/deployment=<deployment>`
-// selector applied at apply time so results are exactly the set Reconcile and
-// Cleanup operate on. Returned objects are the live cluster representation —
-// each carries its own annotations, labels, kind, namespace, and name — and
-// are intended to be passed straight to links.ParseAnnotations by the
-// aggregator (HOL-574).
+// deployment within the project namespace, scanned across every kind
+// apply.go writes. The lookup uses the same
+// `LabelProject=<project>,console.holos.run/deployment=<deployment>`
+// selector applied at apply time so results are exactly the in-namespace
+// subset Reconcile and Cleanup operate on. Returned objects are the live
+// cluster representation — each carries its own annotations, labels,
+// kind, namespace, and name — and are intended to be passed straight to
+// links.ParseAnnotations by the aggregator (HOL-574).
 //
-// When no dynamic client is configured the method returns (nil, nil) so the
-// handler degrades gracefully on local/dev wiring without a cluster (mirrors
-// the SetOutputURLAnnotation precedent of "best-effort cache, never block
-// the RPC"). List failures for individual GVRs are logged and skipped — some
-// CRDs may be absent from the cluster — so a missing optional kind never
-// breaks aggregation for the kinds that are present.
+// Scope: namespace-scoped (the project namespace returned by Resolver).
+// This deliberately matches the existing console RBAC posture, which is
+// namespaced — a cluster-wide list would silently fail in any cluster
+// where the console service account does not have cluster-level list
+// permissions, dropping links without a visible error and leaving the
+// "RBAC unchanged" guarantee unmet. Cross-namespace owned resources
+// (e.g. an HTTPRoute landing in istio-ingress) are intentionally not
+// scanned here; templates that want to surface links from cross-
+// namespace resources should attach `external-link.*` /`primary-url`
+// annotations to a project-namespace resource instead.
+//
+// When no dynamic client is configured the method returns (nil, nil) so
+// the handler degrades gracefully on local/dev wiring without a cluster.
+// List failures for individual GVRs are logged and skipped — some
+// optional CRDs may be absent from the cluster — so a missing optional
+// kind never breaks aggregation for the kinds that are present.
 func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deployment string) ([]unstructured.Unstructured, error) {
 	if k.dynamic == nil {
 		return nil, nil
@@ -206,25 +228,24 @@ func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deploy
 	if project == "" || deployment == "" {
 		return nil, fmt.Errorf("project and deployment are required")
 	}
+	ns := k.Resolver.ProjectNamespace(project)
 	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
 		v1alpha2.LabelProject, project,
 		v1alpha2.AnnotationDeployment, deployment)
 
 	var out []unstructured.Unstructured
 	for kind, gvr := range allowedKinds {
-		// List across all namespaces — apply.go places resources in their
-		// own metadata.namespace, so cross-namespace fans-out (e.g. an
-		// HTTPRoute landing in istio-ingress) are surfaced too.
-		list, err := k.dynamic.Resource(gvr).List(ctx, metav1.ListOptions{
+		list, err := k.dynamic.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
 		if err != nil {
 			// Some optional CRDs may not be installed; treat as empty
 			// and continue rather than failing the whole aggregator
-			// (mirrors the apply.go DiscoverNamespaces / Reconcile
-			// orphan-scan precedent).
+			// (mirrors the apply.go Cleanup / Reconcile orphan-scan
+			// precedent of skip-and-log on per-kind list failures).
 			slog.DebugContext(ctx, "list deployment resources: skipping kind",
 				slog.String("kind", kind),
+				slog.String("namespace", ns),
 				slog.String("project", project),
 				slog.String("deployment", deployment),
 				slog.Any("error", err),

@@ -2127,4 +2127,67 @@ func TestHandler_AggregatedLinks(t *testing.T) {
 			t.Errorf("expected cache rewritten to fresh link, got %+v", gotLinks)
 		}
 	})
+
+	t.Run("GetDeployment: empty fresh scan clears stale cached links", func(t *testing.T) {
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		// Cache holds links, but the live cluster has nothing — e.g.
+		// the deployment was scaled to zero or a template change
+		// removed every annotation source. Drift must clear the cache.
+		stale := []*consolev1.Link{{Url: "https://stale.example.com", Title: "Stale", Source: "holos", Name: "stale"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, stale, "https://stale-primary.example.com")
+		// No owned resources seeded into the dynamic client.
+		handler, fakeClient := handlerWithLinks(t, ns, cm,
+			nil,
+			map[string]*consolev1.DeploymentStatusSummary{namespace: {Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING}})
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Output should be either nil or have no links/url because the
+		// live scan returned nothing.
+		summary := resp.Msg.Deployment.StatusSummary
+		if summary != nil && summary.Output != nil {
+			if len(summary.Output.Links) != 0 {
+				t.Errorf("expected stale links cleared, got %+v", summary.Output.Links)
+			}
+		}
+		// Cache annotation should be gone.
+		got, _ := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		if val := got.Annotations[v1alpha2.AnnotationAggregatedLinks]; val != "" {
+			t.Errorf("expected cache annotation cleared, got %q", val)
+		}
+	})
+
+	t.Run("GetDeployment: no dynamic client preserves cached links", func(t *testing.T) {
+		// Local/dev wiring: K8sClient has no dynamic. The cache must
+		// be served as-is — there is no way to scan, so wiping the
+		// cache would silently lose data.
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		cached := []*consolev1.Link{{Url: "https://cached.example.com", Title: "Cached", Source: "holos", Name: "cached"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, cached, "")
+		fakeClient := fake.NewClientset(ns, cm)
+		// Note: WithDynamicClient is intentionally not called.
+		k8s := NewK8sClient(fakeClient, testResolver())
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		links := resp.Msg.Deployment.StatusSummary.Output.Links
+		if len(links) != 1 || links[0].GetUrl() != "https://cached.example.com" {
+			t.Errorf("expected cached link preserved without dynamic client, got %+v", links)
+		}
+		// Cache annotation untouched.
+		got, _ := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		if got.Annotations[v1alpha2.AnnotationAggregatedLinks] == "" {
+			t.Error("expected cache annotation preserved when no dynamic client is configured")
+		}
+	})
 }

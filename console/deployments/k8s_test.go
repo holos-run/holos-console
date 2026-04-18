@@ -626,6 +626,49 @@ func TestListDeploymentResources(t *testing.T) {
 			t.Errorf("expected 0 cross-project matches, got %d", len(got))
 		}
 	})
+
+	t.Run("scoped to project namespace - cross-namespace resources are not surfaced", func(t *testing.T) {
+		// Same project + deployment labels but in a different
+		// namespace (e.g. an HTTPRoute landing in istio-ingress).
+		// The scan is namespace-scoped to align with the existing
+		// console RBAC posture (HOL-574 review round 1 P1) — cross-
+		// namespace resources are intentionally not harvested.
+		project := "my-project"
+		deployment := "web-app"
+		inProj := makeOwnedUnstructured("apps/v1", "Deployment", "prj-my-project", deployment, project, deployment, nil)
+		crossNS := makeOwnedUnstructured("apps/v1", "Deployment", "istio-ingress", deployment, project, deployment, nil)
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), inProj, crossNS)
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected exactly 1 in-namespace resource, got %d (cross-NS leak?): %+v", len(got), got)
+		}
+		if got[0].GetNamespace() != "prj-my-project" {
+			t.Errorf("expected resource in prj-my-project, got %q", got[0].GetNamespace())
+		}
+	})
+}
+
+// TestHasDynamicClient covers the boolean accessor used by the handler to
+// distinguish "no scan possible" (preserve cache) from "scan returned
+// nothing" (clear cache). HOL-574 review round 1 P2.
+func TestHasDynamicClient(t *testing.T) {
+	t.Run("returns false when no dynamic client is configured", func(t *testing.T) {
+		k8s := NewK8sClient(fake.NewClientset(), testResolver())
+		if k8s.HasDynamicClient() {
+			t.Error("expected HasDynamicClient to return false on default constructor")
+		}
+	})
+	t.Run("returns true after WithDynamicClient", func(t *testing.T) {
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest())
+		k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+		if !k8s.HasDynamicClient() {
+			t.Error("expected HasDynamicClient to return true after WithDynamicClient")
+		}
+	})
 }
 
 func TestListNamespaceSecrets(t *testing.T) {

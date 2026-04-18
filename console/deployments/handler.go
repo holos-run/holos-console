@@ -1251,8 +1251,21 @@ func mergeAggregatedLinksAnnotation(summary *consolev1.DeploymentStatusSummary, 
 // state is returned unchanged so a transient API error never blocks the
 // read RPC. Returns the (links, primaryURL) the caller should use when
 // populating the wire DeploymentOutput.
+//
+// When the K8sClient has no dynamic client configured (local/dev wiring),
+// the cache is treated as authoritative: there is no way to scan, so a
+// preserve-cache policy avoids wiping legitimate cached metadata simply
+// because the cluster is unreachable. When a dynamic client IS configured
+// and the scan returns zero resources, that is a meaningful "no links"
+// signal — the aggregator clears any stale cached entries so deletions
+// or annotation removals propagate without requiring a re-render.
 func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name string, cm *corev1.ConfigMap) ([]*consolev1.Link, string) {
 	cachedLinks, cachedPrimary := deserializeAggregatedLinks(cm)
+	if !h.k8s.HasDynamicClient() {
+		// No way to scan; keep serving the cache so the dev/local
+		// path (no cluster) still surfaces previously-stamped links.
+		return cachedLinks, cachedPrimary
+	}
 	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
 	if err != nil {
 		slog.WarnContext(ctx, "could not list owned resources for link refresh; using cached set",
@@ -1262,17 +1275,13 @@ func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name
 		)
 		return cachedLinks, cachedPrimary
 	}
-	if len(resources) == 0 {
-		// Either no dynamic client or no owned resources yet — keep
-		// the cache as-is rather than racing to clear it (a fresh
-		// deployment whose informer hasn't observed its resources
-		// would otherwise momentarily lose its links).
-		return cachedLinks, cachedPrimary
-	}
 	freshLinks, freshPrimary := aggregateLinksFromResources(ctx, project, name, resources)
 	if linksEqual(cachedLinks, freshLinks) && cachedPrimary == freshPrimary {
 		return cachedLinks, cachedPrimary
 	}
+	// Drift detected — empty fresh result clears the annotation; a
+	// non-empty fresh result overwrites it. Either way the cache
+	// converges on what the live cluster actually says.
 	payload := serializeAggregatedLinks(ctx, project, name, freshLinks, freshPrimary)
 	if err := h.k8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
 		slog.WarnContext(ctx, "failed to update aggregated links cache after drift",
