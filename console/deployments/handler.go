@@ -1109,6 +1109,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 // response field unset rather than erroring the RPC. A valid but empty JSON
 // object (e.g. `{}`) produces a non-nil DeploymentOutput with zero values so
 // the frontend — not the backend — decides whether to render.
+//
+// Both the primary `url` and the additive `links` list (HOL-572) are
+// preserved: templates that publish `output.links` alongside `output.url`
+// have the full list surfaced on the render-preview path without requiring
+// the HOL-573/HOL-574 aggregator to be in place. The links are passed
+// through verbatim; normalization and annotation harvesting belong to the
+// follow-on aggregator.
 func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJSON *string) *consolev1.DeploymentOutput {
 	if outputJSON == nil {
 		return nil
@@ -1118,7 +1125,14 @@ func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJ
 		return nil
 	}
 	var parsed struct {
-		Url string `json:"url"`
+		Url   string `json:"url"`
+		Links []struct {
+			Url         string `json:"url"`
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			Source      string `json:"source"`
+			Name        string `json:"name"`
+		} `json:"links"`
 	}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		slog.WarnContext(ctx, "failed to unmarshal OutputJSON into DeploymentOutput",
@@ -1128,7 +1142,20 @@ func deploymentOutputFromJSON(ctx context.Context, project, name string, outputJ
 		)
 		return nil
 	}
-	return &consolev1.DeploymentOutput{Url: parsed.Url}
+	out := &consolev1.DeploymentOutput{Url: parsed.Url}
+	if len(parsed.Links) > 0 {
+		out.Links = make([]*consolev1.Link, 0, len(parsed.Links))
+		for _, l := range parsed.Links {
+			out.Links = append(out.Links, &consolev1.Link{
+				Url:         l.Url,
+				Title:       l.Title,
+				Description: l.Description,
+				Source:      l.Source,
+				Name:        l.Name,
+			})
+		}
+	}
+	return out
 }
 
 // outputURLFromJSON extracts the `url` field from a JSON-encoded `output`
