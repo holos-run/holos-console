@@ -214,6 +214,11 @@ func withDeployment(ns, name string) fixtureOption {
 // label is missing. This is an ancestry-error fixture: the migrator must
 // refuse to enumerate descendants for policies that could be affected by
 // the broken chain rather than silently dropping the project.
+//
+// The project carries an LabelOrganization so the org pre-filter on
+// descendantProjects does not silently skip it — the point of this
+// fixture is to land on the ancestry-walk code path with a malformed
+// parent chain.
 func withProjectNamespaceOrphan(name string) fixtureOption {
 	return func(b *fixtureBuilder) {
 		b.objects = append(b.objects, &corev1.Namespace{
@@ -222,6 +227,7 @@ func withProjectNamespaceOrphan(name string) fixtureOption {
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.LabelOrganization: "acme",
 					// No AnnotationParent — this is the
 					// orphan we are testing against.
 				},
@@ -242,6 +248,29 @@ func withCollidingConfigMap(ns, name, resourceType string) fixtureOption {
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 					v1alpha2.LabelResourceType: resourceType,
+				},
+			},
+		})
+	}
+}
+
+// withCrossOrgOrphanProject adds a project namespace that is labeled as
+// belonging to `org` but has no parent annotation. Used to exercise the
+// org-scoped pre-filter on descendantProjects: a broken project in a
+// *different* organization from the policy under migration must not
+// fail the walk.
+func withCrossOrgOrphanProject(name, org string) fixtureOption {
+	return func(b *fixtureBuilder) {
+		b.objects = append(b.objects, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: b.r.ProjectNamespace(name),
+				Labels: map[string]string{
+					v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+					v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
+					v1alpha2.LabelOrganization: org,
+					// No AnnotationParent — deliberately
+					// broken to exercise the cross-org
+					// isolation guarantee.
 				},
 			},
 		})
@@ -795,6 +824,77 @@ func TestMigrateTemplatePolicyTargets(t *testing.T) {
 			},
 		},
 		{
+			// Codex round-4 review HOL-599: the descendant walk
+			// must narrow candidates by the policy scope's owning
+			// organization label so a malformed project chain in
+			// a *different* org cannot fail a migration for
+			// unrelated policies. Runtime topology does this (HOL-
+			// 570) and the migrator must match its contract.
+			name: "malformed project in another organization does not block migration of this org's policy",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withOrgNamespace("contoso"),
+				withProjectNamespace("lilies", "acme"),
+				// Broken project in the *other* org — label
+				// identifies it as contoso's, no parent.
+				withCrossOrgOrphanProject("strays", "contoso"),
+				withDeployment(r.ProjectNamespace("lilies"), "api"),
+				withPolicy(r.OrgNamespace("acme"), "audit", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "*", DeploymentPattern: "api"},
+					},
+				}),
+			},
+			run: runArgs{apply: true},
+			first: assertions{
+				bindingsCreated: 1,
+				policiesUpdated: 1,
+				wantPlans:       1,
+				wantTargets: map[string][]wantTarget{
+					r.OrgNamespace("acme") + "/audit" + migrateBindingNameSuffix: {
+						{Kind: consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT, Name: "api", Project: "lilies"},
+					},
+				},
+			},
+		},
+		{
+			// Codex round-4 review HOL-599: a policy name long
+			// enough to push the "-migrated" suffix past the K8s
+			// DNS-label limit (63 chars) must be flagged during
+			// planning rather than failing mid-apply. Surface it
+			// as a conflict so dry-run output matches what apply
+			// would do.
+			name: "policy name whose migrated binding would exceed 63 chars is a conflict",
+			options: []fixtureOption{
+				withOrgNamespace("acme"),
+				withProjectNamespace("lilies", "acme"),
+				withDeployment(r.ProjectNamespace("lilies"), "api"),
+				// 55-char policy name + "-migrated" (9 chars)
+				// = 64 chars, one over the limit.
+				withPolicy(r.OrgNamespace("acme"), "audit-this-policy-has-a-really-long-descriptive-name-xx", []testRule{
+					{
+						Kind: "require",
+						Template: testRuleTemplate{
+							Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit-policy",
+						},
+						Target: testRuleTarget{ProjectPattern: "*", DeploymentPattern: "api"},
+					},
+				}),
+			},
+			run: runArgs{apply: true},
+			first: assertions{
+				bindingsCreated:     0,
+				policiesUpdated:     0,
+				conflicts:           1,
+				wantPlans:           1,
+				wantPolicyUnchanged: [][2]string{{r.OrgNamespace("acme"), "audit-this-policy-has-a-really-long-descriptive-name-xx"}},
+			},
+		},
+		{
 			// Codex round-1 review HOL-599: a namespace with a
 			// non-nil DeletionTimestamp is being reclaimed, so
 			// K8sResourceTopology.ListProjectsUnderScope excludes
@@ -959,7 +1059,15 @@ func assertClusterState(t *testing.T, client *fake.Clientset, want assertions) {
 			continue
 		}
 		for i, rule := range rules {
-			if rule.Target.ProjectPattern != "" || rule.Target.DeploymentPattern != "" {
+			// A cleared target is either the empty struct or the
+			// migrator's placeholder shape (project_pattern="*",
+			// deployment_pattern=""). Anything else still carries
+			// a real glob and the migration failed to translate
+			// it.
+			pp := rule.Target.ProjectPattern
+			dp := rule.Target.DeploymentPattern
+			cleared := dp == "" && (pp == "" || pp == clearedProjectPatternPlaceholder)
+			if !cleared {
 				t.Errorf("policy %s/%s rule[%d]: Target still populated (%+v)", ns, name, i, rule.Target)
 			}
 		}

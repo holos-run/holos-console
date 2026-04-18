@@ -113,6 +113,16 @@ Typical recovery steps:
 - Restore the missing or cyclic `console.holos.run/parent` label so the chain terminates at the owning organization namespace.
 - Re-run the migration — the migrator re-walks the chain and proceeds once the ancestry is consistent.
 
+## Policy name length caveat
+
+The synthesized binding name is always `<policy-name>-migrated`. A policy whose name is longer than 54 characters produces a binding name over the 63-character Kubernetes DNS-label limit; the migrator flags such policies as a conflict during planning so the dry-run output makes the problem visible before an `--apply` run. Rename the policy (or create the binding by hand) and re-run the migration.
+
+## Cleared target shape
+
+On `--apply` the migrator rewrites every rule's `target` to the placeholder shape `{project_pattern: "*", deployment_pattern: ""}` rather than the empty struct. The reason is practical: the pre-HOL-600 `TemplatePolicy` validator still requires a non-empty `project_pattern`, so a policy cleared to `{}` would be read-only through the UI/API until HOL-600 lands and removes the validator. The `"*"` placeholder satisfies the validator, and the resolver honors the binding (HOL-596) as the authoritative selector for covered render targets. When HOL-600 lands and the legacy evaluation path goes away, the placeholder is inert.
+
+Re-running the migration after the cleared state is a no-op: the idempotency short-circuit treats both `project_pattern=""` and `project_pattern="*"` (with empty `deployment_pattern`) as "already migrated" and skips the policy entirely.
+
 ## Semantic caveat
 
 Pre-HOL-590 rule-level `Target` globs could select a narrower set per rule than the policy as a whole. The binding model is per-policy: a single binding covers all of its bound policy's rules for every target it names. If a policy has multiple rules with disjoint `Target` globs, the migration produces one binding with the union of all matched targets. Post-migration every rule applies to every target named on that union — which may broaden some rules relative to their pre-migration glob. In practice platform engineers author policy rules to cover the same target set, so this broadening is uncommon; if your cluster has exotic per-rule targets, review the printed plan before running `--apply` and split the policy into multiple narrower policies beforehand.

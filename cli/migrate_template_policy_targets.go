@@ -29,6 +29,14 @@ import (
 // command finds the existing binding by name and leaves it alone.
 const migrateBindingNameSuffix = "-migrated"
 
+// maxK8sNameLength is the Kubernetes DNS-label limit for ConfigMap
+// metadata.name. A policy whose name, once the "-migrated" suffix is
+// appended, would exceed this limit cannot be turned into a binding by
+// the deterministic naming scheme. The migrator surfaces such policies
+// during planning as a conflict so dry-run output makes the problem
+// visible before --apply fails mid-run.
+const maxK8sNameLength = 63
+
 // newMigrateCommand returns the `holos-console migrate` parent command
 // grouping every migration subcommand in the tree.
 func newMigrateCommand() *cobra.Command {
@@ -451,7 +459,7 @@ func buildPolicyPlan(
 	// projects whose ancestor chain passes through this folder
 	// qualify. The helper resolves ancestry via the parent label —
 	// the same seam the runtime walker uses at render time.
-	projects, err := descendantProjects(nsIndex, scopeNs)
+	projects, err := descendantProjects(r, nsIndex, scopeNs)
 	if err != nil {
 		return nil, fmt.Errorf("enumerating descendant projects for %q: %w", scopeNs.Name, err)
 	}
@@ -545,6 +553,23 @@ func buildPolicyPlan(
 		plan.Notes = append(plan.Notes,
 			"glob patterns matched no live project templates or deployments; skipping binding creation (an empty target_refs list is rejected by the binding handler) while still clearing the policy Target globs")
 	}
+	// Preflight the synthesized binding name against the K8s DNS-label
+	// limit. A policy name long enough to push the "-migrated" suffix
+	// past 63 characters cannot be expressed as a ConfigMap, and the
+	// error would only surface mid-apply — the operator sees a clean
+	// dry-run then a broken run. Surface it during planning so the
+	// dry-run output matches what --apply will actually do.
+	if len(bindingName) > maxK8sNameLength {
+		plan.Notes = append(plan.Notes,
+			fmt.Sprintf("synthesized binding name %q is %d characters, exceeds Kubernetes DNS-label limit %d; rename the policy before running the migration or create the binding manually",
+				bindingName, len(bindingName), maxK8sNameLength))
+		// Route through the conflict branch so neither the binding
+		// nor the policy mutation happens. BindingExists=true with
+		// BindingTargetsMatch=false is the plan's "skip everything,
+		// operator must act" shape.
+		plan.BindingExists = true
+		return plan, nil
+	}
 
 	// Inspect any pre-existing binding by BindingName. A matching set
 	// means the binding side is already migrated and only the
@@ -596,6 +621,13 @@ func buildPolicyPlan(
 // carries a Target glob that the migrator needs to translate. A policy
 // whose rules are all cleared is already migrated and the migrator skips it
 // entirely — the canonical idempotency short-circuit.
+//
+// "Cleared" means either the Target is literally empty (project_pattern=""
+// and deployment_pattern="") or the migrator's placeholder shape
+// (project_pattern="*" and deployment_pattern=""). Both forms are
+// treated as "no migration work left" so a second run of this command is
+// a no-op regardless of whether an earlier version wrote an empty string
+// or this version's placeholder.
 func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
 	for _, rule := range rules {
 		if rule == nil {
@@ -605,9 +637,14 @@ func policyHasNonEmptyTargets(rules []*consolev1.TemplatePolicyRule) bool {
 		if t == nil {
 			continue
 		}
-		if t.GetProjectPattern() != "" || t.GetDeploymentPattern() != "" {
+		if t.GetDeploymentPattern() != "" {
 			return true
 		}
+		pp := t.GetProjectPattern()
+		if pp == "" || pp == clearedProjectPatternPlaceholder {
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -637,26 +674,44 @@ func templateScopeFromNamespace(r *resolver.Resolver, ns string) (consolev1.Temp
 // in classifyNamespaces so the helper never touches the K8s API — all the
 // metadata it needs is already in memory.
 //
+// The candidate set is narrowed by the policy scope's owning organization
+// label (via `orgForScopeNamespace`) so a malformed project chain in an
+// unrelated organization cannot fail the migration for a policy that
+// could never match that project anyway. This mirrors
+// `K8sResourceTopology.ListProjectsUnderScope` (HOL-570), which also
+// pre-filters by the org label before walking ancestors — keeping the
+// blast radius of ancestry errors narrow is the whole point of that
+// filter, and the migration preserves the same contract.
+//
 // Projects carrying a non-nil DeletionTimestamp are skipped to mirror
-// K8sResourceTopology.ListProjectsUnderScope (HOL-570): the runtime
-// topology treats a terminating namespace as already unreachable, so the
-// migration must not bind targets in namespaces that will never activate
-// under the legacy glob path the binding is replacing.
+// the same topology helper: the runtime treats a terminating namespace as
+// already unreachable, so the migration must not bind targets in
+// namespaces that will never activate under the legacy glob path the
+// binding is replacing.
 //
 // Ancestry walk failures (missing parent label, missing parent namespace,
-// cycle, depth exceeded) propagate to the caller. Silently dropping an
-// unreachable project would be a data-loss path: the migrator would skip
-// targets that legitimately match the policy's globs, clear the policy's
-// Target fields, and leave the project permanently uncovered once
-// HOL-600 removes the legacy evaluation. Failing loudly forces the
-// operator to fix the ancestry before the migration runs, which matches
-// the fail-closed behavior `K8sResourceTopology.ListProjectsUnderScope`
-// uses at render time.
-func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace) ([]*corev1.Namespace, error) {
+// cycle, depth exceeded) encountered on an in-org candidate project
+// propagate to the caller. Silently dropping an unreachable project would
+// be a data-loss path: the migrator would skip targets that legitimately
+// match the policy's globs, clear the policy's Target fields, and leave
+// the project permanently uncovered once HOL-600 removes the legacy
+// evaluation. Failing loudly forces the operator to fix the ancestry
+// before the migration runs.
+func descendantProjects(r *resolver.Resolver, nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace) ([]*corev1.Namespace, error) {
 	wantNs := scopeNs.Name
+	orgLabel := orgForScopeNamespace(r, scopeNs)
 	out := make([]*corev1.Namespace, 0)
 	for _, projNs := range nsIndex.project {
 		if projNs.DeletionTimestamp != nil {
+			continue
+		}
+		// Pre-filter by organization label so a malformed parent
+		// chain in a different org cannot fail this walk. When the
+		// scope namespace itself carries no org label (legacy
+		// fixtures, tests that set up a bare fixture without the
+		// org label) fall through to the ancestry check without a
+		// pre-filter — correctness first, speed second.
+		if orgLabel != "" && projNs.Labels[v1alpha2.LabelOrganization] != orgLabel {
 			continue
 		}
 		contained, err := ancestorChainContains(nsIndex, projNs, wantNs)
@@ -670,6 +725,37 @@ func descendantProjects(nsIndex *classifiedNamespaces, scopeNs *corev1.Namespace
 	// Stable ordering keeps the printed plan reproducible across runs.
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// orgForScopeNamespace returns the organization slug that owns the
+// policy's scope namespace, used as a pre-filter on the descendant
+// project walk.
+//
+//   - Organization scope: the slug derives directly from the namespace
+//     prefix, classified via the resolver. The organization namespace
+//     carries no LabelOrganization by convention, so a label lookup
+//     would miss it.
+//   - Folder scope: read LabelOrganization from the folder namespace; if
+//     the label is missing, return "" and fall through to the
+//     unfiltered walk (matches the runtime topology fallback).
+//   - Any other case (unclassified namespace): return "" so the caller
+//     defaults to the unfiltered walk.
+func orgForScopeNamespace(r *resolver.Resolver, scopeNs *corev1.Namespace) string {
+	if scopeNs == nil {
+		return ""
+	}
+	kind, name, err := r.ResourceTypeFromNamespace(scopeNs.Name)
+	if err != nil {
+		return ""
+	}
+	switch kind {
+	case v1alpha2.ResourceTypeOrganization:
+		return name
+	case v1alpha2.ResourceTypeFolder:
+		return scopeNs.Labels[v1alpha2.LabelOrganization]
+	default:
+		return ""
+	}
 }
 
 // ancestorChainContains walks the parent label from startNs up the
@@ -1012,8 +1098,27 @@ type targetWire struct {
 	DeploymentPattern string `json:"deployment_pattern,omitempty"`
 }
 
-// marshalClearedRules serializes the in-memory rules with both Target
-// globs set to the empty string. The function intentionally does NOT call
+// clearedProjectPatternPlaceholder is the stand-in project_pattern written
+// on every rule when the migration clears a policy's Target globs. The
+// runtime validator (templatepolicies.validatePolicyRules, pre-HOL-600)
+// still rejects empty project_pattern strings, so a migration that wrote
+// project_pattern="" would leave affected policies effectively read-only
+// through the UI/API until HOL-600 deletes the validator. Using the
+// universal glob "*" satisfies the validator without changing the
+// semantic meaning: a binding that covers the render target overrides
+// the glob (HOL-596 resolver contract), and for targets with no
+// covering binding the "*" glob is an accurate statement that the
+// policy applies everywhere — which is also what HOL-600 will
+// implicitly assume when it removes the glob path entirely.
+//
+// Tests that assert the glob fields are cleared check for either ""
+// or "*" and ignore deployment_pattern (which stays empty — the
+// validator does not require it).
+const clearedProjectPatternPlaceholder = "*"
+
+// marshalClearedRules serializes the in-memory rules with
+// project_pattern set to the placeholder constant and deployment_pattern
+// set to the empty string. The function intentionally does NOT call
 // out into templatepolicies.marshalRules — that helper is unexported, and
 // duplicating the wire struct keeps the migrator independent from
 // templatepolicies' internal refactors.
@@ -1032,10 +1137,12 @@ func marshalClearedRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) 
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
 		}
-		// Target fields deliberately left zero — this is the whole
-		// point of the migration: post-apply the policy carries no
-		// meaningful Target data so HOL-600 can delete the
-		// evaluation path.
+		// project_pattern is set to the universal-match placeholder so
+		// the existing validator accepts subsequent UpdatePolicy
+		// calls from the UI during the HOL-599 → HOL-600 transition
+		// window. deployment_pattern stays empty — the validator
+		// does not require it.
+		wire.Target = targetWire{ProjectPattern: clearedProjectPatternPlaceholder}
 		out = append(out, wire)
 	}
 	b, err := json.Marshal(out)
