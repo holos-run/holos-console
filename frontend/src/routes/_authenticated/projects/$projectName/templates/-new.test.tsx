@@ -251,10 +251,10 @@ describe('CreateTemplatePage', () => {
   })
 
   describe('linked platform templates on create page', () => {
-    // HOL-555 removed the `mandatory` field on LinkableTemplate. The `forced`
-    // field replaces the UI signal while the backend still auto-includes
-    // mandatory templates at render time (HOL-557 will migrate this to
-    // TemplatePolicy REQUIRE).
+    // `forced` signals templates that a TemplatePolicy REQUIRE rule will
+    // unify onto this project at render time. The checkbox renders checked
+    // and disabled so the UI mirrors that the template is effectively
+    // pinned; the user cannot opt out via the linking UI.
     const mockOrgTemplates = [
       { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, scopeRef: { scope: 1, scopeName: 'default' } },
       { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
@@ -303,9 +303,9 @@ describe('CreateTemplatePage', () => {
       expect(checkboxes.length).toBe(3)
     })
 
-    // HOL-555: `forced` templates are rendered checked and disabled so the
-    // linking UI reflects the backend's annotation-driven auto-inclusion
-    // until HOL-557 migrates to TemplatePolicy REQUIRE evaluation.
+    // `forced` templates are rendered checked and disabled so the linking
+    // UI reflects the fact that a TemplatePolicy REQUIRE rule pins them at
+    // render time; the user cannot opt out via this form.
     it('forced template checkbox is checked and disabled', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.OWNER)
@@ -325,10 +325,9 @@ describe('CreateTemplatePage', () => {
       expect(httpbinCheckbox).not.toBeDisabled()
     })
 
-    // HOL-555 removed the auto-listed mandatory templates in the read-only
-    // view; the permission note remains. TemplatePolicy REQUIRE rules
-    // (HOL-558) will re-introduce the listing.
-    it('shows read-only view for EDITOR with permission note (HOL-555)', () => {
+    // Read-only linking view for non-OWNER roles surfaces only the
+    // permission note; the checkboxes and actions are hidden.
+    it('shows read-only view for EDITOR with permission note', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: allLinkable, isPending: false })
       setupMocks(vi.fn().mockResolvedValue({}), undefined, undefined, Role.EDITOR)
       render(<CreateTemplatePage />)

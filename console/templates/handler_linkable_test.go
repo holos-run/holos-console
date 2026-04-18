@@ -288,11 +288,13 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 	})
 
 	// HOL-565 removed the `console.holos.run/mandatory` annotation reader.
-	// `Forced` is now always false until HOL-567 wires it to TemplatePolicy
-	// REQUIRE-rule evaluation. The previous `forced=true when template has
-	// mandatory annotation` assertion is therefore intentionally gone — the
-	// dual of it below is kept so regressions that re-populate `forced` from
-	// anything but REQUIRE rules show up as a test failure.
+	// `Forced` is always false in the ListLinkableTemplates response because
+	// this path does not evaluate TemplatePolicy REQUIRE rules per candidate
+	// (render-time resolution is the authoritative source). The previous
+	// `forced=true when template has mandatory annotation` assertion is
+	// therefore intentionally gone — the dual of it below is kept so
+	// regressions that re-populate `forced` from anything but REQUIRE rules
+	// show up as a test failure.
 	t.Run("forced=false after mandatory annotation reader removal", func(t *testing.T) {
 		orgNsObj := orgNS(org)
 		projectNsObj := projectNS(project)

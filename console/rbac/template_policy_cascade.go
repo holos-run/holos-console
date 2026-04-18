@@ -23,7 +23,7 @@ const (
 // granted at most LIST and READ through this table because project-namespace
 // storage is forbidden and projects never own a policy ConfigMap directly —
 // read flows through ancestor traversal to the folder/org policy ConfigMaps
-// (HOL-557 will materialize that traversal in the resolver).
+// (materialized in the render-time resolver; see console/policyresolver).
 //
 // The cascade table itself does not know the scope it is evaluated at; the
 // handler is responsible for choosing the correct grants (org or folder) and

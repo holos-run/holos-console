@@ -336,10 +336,9 @@ type RenderHierarchyWalker interface {
 // The "mandatory" annotation that previously contributed a
 // (mandatory AND enabled) branch was removed in HOL-565 as part of the
 // HOL-562 collapse. Templates that must be unconditionally applied now come
-// in via TemplatePolicy REQUIRE rules — resolved by the caller and injected
-// as explicit refs — rather than via an annotation baked into the template
-// ConfigMap. Phase 5 (HOL-567) wires the real policy resolver; until then
-// this function only surfaces the caller's explicit link set.
+// in via TemplatePolicy REQUIRE rules — resolved by the injected
+// policyresolver and merged into the effective ref set — rather than via
+// an annotation baked into the template ConfigMap.
 //
 // Dedup key: (scope, scopeName, name). This uniform key replaces the
 // three inconsistent dedup strategies of the legacy helpers this function
@@ -355,12 +354,11 @@ type RenderHierarchyWalker interface {
 // actually participate in the render.
 //
 // resolver evaluates TemplatePolicy REQUIRE/EXCLUDE rules against the
-// caller's explicitRefs before the ancestor walk. Phase 4 (HOL-566) threads
-// the PolicyResolver seam through every call site with a no-op
-// implementation that returns explicitRefs unchanged; Phase 5 (HOL-567)
-// swaps in a real policy-backed implementation. When resolver is nil the
-// call site predates the seam — the function falls back to using
-// explicitRefs directly so tests that have not been updated keep working.
+// caller's explicitRefs before the ancestor walk. The PolicyResolver seam
+// is threaded through every production call site with the real
+// policy-backed implementation (HOL-567). When resolver is nil the call
+// site predates the seam — the function falls back to using explicitRefs
+// directly so tests that have not been updated keep working.
 //
 // The effectiveRefs return value is the single authoritative representation
 // of "what the policy chain decided would participate in this render AND
@@ -375,10 +373,10 @@ type RenderHierarchyWalker interface {
 // what actually rendered.
 //
 // Storage-isolation note (HOL-554): the walk deliberately skips the starting
-// namespace (ancestors[0]) and only reads templates, releases, and — once
-// HOL-557 lands — applied-render-set state from folder and organization
-// namespaces. Project owners have write access to their project namespace
-// and must never be able to mutate render-set truth from there.
+// namespace (ancestors[0]) and only reads templates, releases, and
+// applied-render-set state from folder and organization namespaces.
+// Project owners have write access to their project namespace and must
+// never be able to mutate render-set truth from there.
 func (k *K8sClient) ListEffectiveTemplateSources(
 	ctx context.Context,
 	projectNs string,
@@ -389,11 +387,11 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	resolver policyresolver.PolicyResolver,
 ) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	// Resolve the caller's explicit refs through the PolicyResolver seam
-	// before walking ancestors. Phase 4 (HOL-566) wires a no-op resolver at
-	// every call site; Phase 5 swaps in real REQUIRE/EXCLUDE evaluation.
-	// A nil resolver means the call site predates the seam — fall back to
-	// explicitRefs unchanged so tests that were written before HOL-566 keep
-	// exercising the ancestor walk without modification.
+	// before walking ancestors. Production call sites inject the real
+	// TemplatePolicy-backed resolver (HOL-567) which evaluates
+	// REQUIRE/EXCLUDE rules. A nil resolver means the call site predates
+	// the seam — fall back to explicitRefs unchanged so tests that have
+	// not been updated keep exercising the ancestor walk.
 	effectiveRefs := explicitRefs
 	if resolver != nil {
 		resolved, resolveErr := resolver.Resolve(ctx, projectNs, targetKind, targetName, explicitRefs)
@@ -534,10 +532,11 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 		if !enabled {
 			continue
 		}
-		// `Forced` is the transitional field that the linking UI reads to show
-		// a disabled "always applied" checkbox. Since HOL-565 removed the
-		// `mandatory` annotation reader, the field is always false until
-		// HOL-567 populates it from TemplatePolicy REQUIRE-rule evaluation.
+		// `Forced` is the linking-UI signal for "always applied" checkboxes.
+		// This linkable-list path does not yet run TemplatePolicy REQUIRE
+		// evaluation for each candidate, so Forced is always false here;
+		// the render-time resolver is the authoritative source of truth.
+		// Tracked for promotion in the forced-in-linkable follow-up.
 		result = append(result, &consolev1.LinkableTemplate{
 			ScopeRef: &consolev1.TemplateScopeRef{
 				Scope:     scope,
@@ -814,9 +813,9 @@ func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, sc
 	cueSource := cm.Data[CueTemplateKey]
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 	// The `mandatory` field was removed from Template in HOL-555; the
-	// annotation remains in ConfigMap storage to avoid a mass migration here,
-	// but it is no longer projected into the proto. TemplatePolicy REQUIRE
-	// rules (HOL-557) become the only mechanism for "always apply".
+	// annotation may linger on older ConfigMaps but is never read. The only
+	// mechanism for "always apply" is a TemplatePolicy REQUIRE rule
+	// (render-time resolution via policyresolver.FolderResolver).
 	tmpl := &consolev1.Template{
 		Name:        cm.Name,
 		DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],

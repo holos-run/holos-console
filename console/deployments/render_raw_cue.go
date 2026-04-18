@@ -13,10 +13,9 @@ import (
 // EvaluateGroupedCUE compiles and evaluates a pre-concatenated CUE source
 // document (template + any already-embedded raw CUE input) and returns the
 // rendered Kubernetes resources grouped by origin. This is the raw-CUE entry
-// point used by callers that assemble the full CUE document themselves (for
-// example, the templates preview path which receives CUE strings for
-// "platform" and "input" from the client, or the mandatory-template applier
-// which marshals its own inputs to CUE).
+// point used by callers that assemble the full CUE document themselves —
+// for example, the templates preview path which receives CUE strings for
+// "platform" and "input" from the client.
 //
 // When readPlatformResources is true the renderer reads both
 // platformResources and projectResources; when false only projectResources is

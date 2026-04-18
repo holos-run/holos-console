@@ -304,16 +304,13 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                     }
                     const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
                     const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
-                    // HOL-555 -> HOL-557 transition: the backend resolver
-                    // still auto-unifies ancestor templates carrying the
-                    // legacy mandatory annotation (surfaced here as
-                    // `forced=true`). Keep those visible in the read-only
-                    // listing with an "Always applied" badge so the page
-                    // reflects the effective template set, matching the
-                    // checked+disabled treatment on the new/edit dialogs.
-                    // TemplatePolicy REQUIRE rules (HOL-557 / HOL-558) will
-                    // replace the annotation-driven signal in the same
-                    // field.
+                    // `forced=true` flags ancestor templates that a
+                    // TemplatePolicy REQUIRE rule pins onto this project at
+                    // render time. Surface them alongside explicitly linked
+                    // templates with an "Always applied" badge so the
+                    // read-only listing reflects the effective template set,
+                    // matching the checked+disabled treatment on the
+                    // new/edit dialogs.
                     const allLinked = linkableTemplates.filter(
                       (t) => !!t.forced || linkedKeys.includes(keyOf(t)),
                     )
