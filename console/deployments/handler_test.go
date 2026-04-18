@@ -2160,6 +2160,42 @@ func TestHandler_AggregatedLinks(t *testing.T) {
 		}
 	})
 
+	t.Run("GetDeployment: partial-scan failure preserves cached links", func(t *testing.T) {
+		// One per-kind list fails (transient API error or RBAC gap)
+		// — ListDeploymentResources signals via ErrPartialScan that
+		// the returned slice is not authoritative. The handler must
+		// preserve the cache rather than wiping it on a partial view.
+		ns := projectNS(project)
+		cm := deploymentConfigMap(project, deployment, "nginx", "1.25", "default", "Web", "")
+		cached := []*consolev1.Link{{Url: "https://cached.example.com", Title: "Cached", Source: "holos", Name: "cached"}}
+		cm.Annotations[v1alpha2.AnnotationAggregatedLinks] = serializeAggregatedLinks(context.Background(), project, deployment, cached, "")
+		fakeClient := fake.NewClientset(ns, cm)
+		dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicScheme())
+		// Make every list fail so the scan is fully partial.
+		dyn.PrependReactor("list", "*", func(_ ktesting.Action) (bool, runtime.Object, error) {
+			return true, nil, fmt.Errorf("simulated transient failure")
+		})
+		k8s := NewK8sClient(fakeClient, testResolver()).WithDynamicClient(dyn)
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+		cache := newFakeStatusCache()
+		cache.set(namespace, deployment, &consolev1.DeploymentStatusSummary{Phase: consolev1.DeploymentPhase_DEPLOYMENT_PHASE_RUNNING})
+		handler := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, &stubTemplateResolver{cm: fakeTemplate("default")}, &stubRenderer{}, &stubApplier{}).WithStatusCache(cache)
+
+		resp, err := handler.GetDeployment(authedCtx("alice@example.com", nil), connect.NewRequest(&consolev1.GetDeploymentRequest{Project: project, Name: deployment}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		links := resp.Msg.Deployment.StatusSummary.Output.Links
+		if len(links) != 1 || links[0].GetUrl() != "https://cached.example.com" {
+			t.Errorf("expected cached link preserved on partial scan, got %+v", links)
+		}
+		// Cache annotation untouched.
+		got, _ := fakeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		if got.Annotations[v1alpha2.AnnotationAggregatedLinks] == "" {
+			t.Error("expected cache annotation preserved on partial scan failure")
+		}
+	})
+
 	t.Run("GetDeployment: no dynamic client preserves cached links", func(t *testing.T) {
 		// Local/dev wiring: K8sClient has no dynamic. The cache must
 		// be served as-is — there is no way to scan, so wiping the

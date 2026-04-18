@@ -3,6 +3,8 @@ package deployments
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -11,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -650,6 +653,88 @@ func TestListDeploymentResources(t *testing.T) {
 			t.Errorf("expected resource in prj-my-project, got %q", got[0].GetNamespace())
 		}
 	})
+}
+
+// TestListDeploymentResources_PartialScan verifies that ListDeployment
+// Resources signals a partial scan (via ErrPartialScan) when at least
+// one per-kind list call fails. Without this the GetDeployment refresh
+// path would treat a transient failure as authoritative drift and wipe
+// legitimate cached links (HOL-574 review round 2 P1).
+func TestListDeploymentResources_PartialScan(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	owned := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), owned)
+	// Make Service list calls fail to simulate a transient API error
+	// or RBAC gap on a single resource type. The Deployment list
+	// should still succeed, so the returned slice carries the
+	// successful items but the error wraps ErrPartialScan.
+	dyn.PrependReactor("list", "services", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated transient failure")
+	})
+
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+	got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+	if !errors.Is(err, ErrPartialScan) {
+		t.Fatalf("expected ErrPartialScan, got %v", err)
+	}
+	// Successful kinds still surface so the caller may render a
+	// partial view if it chooses.
+	if len(got) != 1 || got[0].GetKind() != "Deployment" {
+		t.Errorf("expected Deployment item to surface despite partial failure, got %+v", got)
+	}
+}
+
+// TestListDeploymentResources_DeterministicOrder verifies that the
+// resource slice ordering does not depend on Go's randomized map
+// iteration (HOL-574 review round 2 P2). A stable order keeps the
+// aggregator's first-wins de-duplication and primary-url promotion
+// repeatable so cached values do not flap across requests.
+func TestListDeploymentResources_DeterministicOrder(t *testing.T) {
+	project := "my-project"
+	deployment := "web-app"
+	namespace := "prj-my-project"
+
+	// Seed one resource per kind we care about. Stable iteration
+	// across allowedKinds means the slice ordering is identical from
+	// run to run.
+	dep := makeOwnedUnstructured("apps/v1", "Deployment", namespace, deployment, project, deployment, nil)
+	svc := makeOwnedUnstructured("v1", "Service", namespace, deployment, project, deployment, nil)
+	sa := makeOwnedUnstructured("v1", "ServiceAccount", namespace, deployment, project, deployment, nil)
+
+	dyn := dynamicfake.NewSimpleDynamicClient(fakeDynamicSchemeForK8sTest(), dep, svc, sa)
+	k8s := NewK8sClient(fake.NewClientset(), testResolver()).WithDynamicClient(dyn)
+
+	// Run the scan multiple times; the slice ordering must be
+	// identical across calls. If allowedKinds were iterated as a map
+	// this would flake under -count.
+	const runs = 8
+	var first []string
+	for i := 0; i < runs; i++ {
+		got, err := k8s.ListDeploymentResources(context.Background(), project, deployment)
+		if err != nil {
+			t.Fatalf("run %d: unexpected error: %v", i, err)
+		}
+		order := make([]string, 0, len(got))
+		for _, r := range got {
+			order = append(order, r.GetKind())
+		}
+		if i == 0 {
+			first = order
+			continue
+		}
+		if len(order) != len(first) {
+			t.Fatalf("run %d: ordering length differs from run 0", i)
+		}
+		for j := range order {
+			if order[j] != first[j] {
+				t.Errorf("run %d: ordering differs at index %d (got %q, want %q from run 0)", i, j, order[j], first[j])
+				break
+			}
+		}
+	}
 }
 
 // TestHasDynamicClient covers the boolean accessor used by the handler to

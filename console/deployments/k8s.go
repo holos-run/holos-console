@@ -3,8 +3,10 @@ package deployments
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -15,6 +17,14 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
+
+// ErrPartialScan is returned by ListDeploymentResources when at least one
+// per-kind List call failed. The returned slice still contains every
+// resource the successful kinds produced — callers may surface a partial
+// view — but the error signals "do not treat this slice as authoritative
+// drift evidence" so cache-rewrite paths can preserve their existing
+// state instead of wiping it on a transient failure.
+var ErrPartialScan = errors.New("list deployment resources: partial scan")
 
 const (
 	// Data keys in the ConfigMap.
@@ -213,14 +223,24 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 // "RBAC unchanged" guarantee unmet. Cross-namespace owned resources
 // (e.g. an HTTPRoute landing in istio-ingress) are intentionally not
 // scanned here; templates that want to surface links from cross-
-// namespace resources should attach `external-link.*` /`primary-url`
+// namespace resources should attach `external-link.*` / `primary-url`
 // annotations to a project-namespace resource instead.
+//
+// Determinism: kinds are iterated in lexicographic GVR order so the
+// resource slice — and therefore the first-wins selection in the
+// aggregator (de-duplication and `primary-url` promotion) — is stable
+// across requests. Iterating the `allowedKinds` map directly would
+// scramble the order on every call and cause cached values to flap
+// even when the live cluster did not change (HOL-574 review round 2 P2).
+//
+// Partial-failure handling: if any per-kind list fails (transient API
+// error, missing optional CRD, RBAC gap on a single resource type) the
+// successful items are still returned but the error wraps `ErrPartialScan`
+// so callers can preserve their cached state instead of treating an
+// incomplete view as authoritative drift (HOL-574 review round 2 P1).
 //
 // When no dynamic client is configured the method returns (nil, nil) so
 // the handler degrades gracefully on local/dev wiring without a cluster.
-// List failures for individual GVRs are logged and skipped — some
-// optional CRDs may be absent from the cluster — so a missing optional
-// kind never breaks aggregation for the kinds that are present.
 func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deployment string) ([]unstructured.Unstructured, error) {
 	if k.dynamic == nil {
 		return nil, nil
@@ -233,16 +253,29 @@ func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deploy
 		v1alpha2.LabelProject, project,
 		v1alpha2.AnnotationDeployment, deployment)
 
+	// Walk allowedKinds in a deterministic order so the aggregator's
+	// first-wins de-duplication is stable across calls.
+	kinds := make([]string, 0, len(allowedKinds))
+	for kind := range allowedKinds {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+
 	var out []unstructured.Unstructured
-	for kind, gvr := range allowedKinds {
+	var listErrors []error
+	for _, kind := range kinds {
+		gvr := allowedKinds[kind]
 		list, err := k.dynamic.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
 		if err != nil {
-			// Some optional CRDs may not be installed; treat as empty
-			// and continue rather than failing the whole aggregator
-			// (mirrors the apply.go Cleanup / Reconcile orphan-scan
-			// precedent of skip-and-log on per-kind list failures).
+			// Some optional CRDs may not be installed and some
+			// transient errors are recoverable; record and continue
+			// rather than aborting the whole aggregator (mirrors the
+			// apply.go Cleanup / Reconcile orphan-scan precedent of
+			// skip-and-log on per-kind list failures). Track the
+			// error so the caller can downgrade authority on the
+			// returned slice (see ErrPartialScan).
 			slog.DebugContext(ctx, "list deployment resources: skipping kind",
 				slog.String("kind", kind),
 				slog.String("namespace", ns),
@@ -250,9 +283,14 @@ func (k *K8sClient) ListDeploymentResources(ctx context.Context, project, deploy
 				slog.String("deployment", deployment),
 				slog.Any("error", err),
 			)
+			listErrors = append(listErrors, fmt.Errorf("listing %s: %w", kind, err))
 			continue
 		}
 		out = append(out, list.Items...)
+	}
+	if len(listErrors) > 0 {
+		return out, fmt.Errorf("%w (%d/%d kinds failed): %w",
+			ErrPartialScan, len(listErrors), len(allowedKinds), listErrors[0])
 	}
 	return out, nil
 }

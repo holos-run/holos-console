@@ -3,6 +3,7 @@ package deployments
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -11,7 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
@@ -1259,6 +1260,13 @@ func mergeAggregatedLinksAnnotation(summary *consolev1.DeploymentStatusSummary, 
 // and the scan returns zero resources, that is a meaningful "no links"
 // signal — the aggregator clears any stale cached entries so deletions
 // or annotation removals propagate without requiring a re-render.
+//
+// Partial-scan handling: if `ListDeploymentResources` returns an error
+// wrapping `ErrPartialScan`, at least one per-kind list failed and the
+// returned slice is incomplete. The fresh aggregation is therefore not
+// authoritative — the cache is preserved so a transient API error or a
+// missing optional CRD never silently wipes legitimate cached links
+// (HOL-574 review round 2 P1).
 func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name string, cm *corev1.ConfigMap) ([]*consolev1.Link, string) {
 	cachedLinks, cachedPrimary := deserializeAggregatedLinks(cm)
 	if !h.k8s.HasDynamicClient() {
@@ -1268,7 +1276,16 @@ func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name
 	}
 	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
 	if err != nil {
-		slog.WarnContext(ctx, "could not list owned resources for link refresh; using cached set",
+		// Partial-scan errors mean some kinds were not observed; the
+		// returned slice is therefore not a faithful view of the
+		// cluster. Preserve the cache rather than wiping it on what
+		// might be a transient or RBAC-shaped failure. Total scan
+		// failures (no slice at all) take the same path.
+		level := slog.LevelWarn
+		if errors.Is(err, ErrPartialScan) {
+			level = slog.LevelDebug
+		}
+		slog.Log(ctx, level, "could not fully list owned resources for link refresh; using cached set",
 			slog.String("project", project),
 			slog.String("name", name),
 			slog.Any("error", err),
@@ -1650,13 +1667,13 @@ func scopeFromLabel(label string) consolev1.TemplateScope {
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.
 func mapK8sError(err error) error {
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	if errors.IsAlreadyExists(err) {
+	if k8serrors.IsAlreadyExists(err) {
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	}
-	if errors.IsForbidden(err) {
+	if k8serrors.IsForbidden(err) {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
