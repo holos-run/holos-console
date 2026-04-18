@@ -134,8 +134,18 @@ test-e2e: build ## Run Playwright E2E tests (orchestrates servers automatically)
 coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
+.PHONY: manifests
+manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers.
+	controller-gen \
+		crd \
+		rbac:roleName=holos-console-templates \
+		object:headerFile="hack/boilerplate.go.txt" \
+		paths="./api/templates/..." \
+		output:crd:artifacts:config=config/crd \
+		output:rbac:artifacts:config=config/rbac
+
 .PHONY: generate
-generate: ## Generate protobuf code and build frontend.
+generate: manifests ## Generate protobuf code, CRD manifests, and build frontend.
 	go generate ./...
 	cd frontend && npm run build
 
@@ -183,6 +193,10 @@ cluster: ## Create local k3d cluster (DNS + cluster + CA).
 	./scripts/local-dns
 	./scripts/local-k3d
 	./scripts/local-ca
+
+.PHONY: kind-up
+kind-up: ## Create cluster, install CRDs, admission policies, and RBAC.
+	./scripts/kind-up
 
 .PHONY: help
 help: ## Display this help menu.
