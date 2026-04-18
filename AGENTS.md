@@ -11,13 +11,6 @@ opening a PR.
 
 ## Guardrails
 
-- **Demo docs routing** — Demo setup materials and CUE example snippets belong
-  in
-  [`holos-run/holos-console-docs/demo/`](https://github.com/holos-run/holos-console-docs/tree/main/demo),
-  **not** in this repo. Demo-related issues must include concrete examples and
-  operator guidance. Smoke-test instructions must include `kubectl` commands
-  for the resources required to observe the feature in the demo environment.
-  Forward pointers:
-  [demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md)
-  and
-  [smoke tests](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests).
+- [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.
+- [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.
+- [Demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md) — Forward pointer to the demo setup order, prerequisites, and per-template walkthroughs.
