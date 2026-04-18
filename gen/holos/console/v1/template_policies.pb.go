@@ -82,6 +82,60 @@ func (TemplatePolicyKind) EnumDescriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{0}
 }
 
+// HOL-590 removed the legacy glob-based TemplatePolicyTarget semantics
+// and the TemplatePolicyRule.target field. Render-time selection now
+// runs through TemplatePolicyBinding (see template_policy_bindings.proto);
+// a rule contributes to a render target only when a matching binding
+// names its owning policy.
+//
+// TemplatePolicyTarget is kept as an empty, deprecated message so the
+// top-level symbol name stays reserved at the schema level — a future
+// revision cannot reintroduce a different shape under the same name
+// without an explicit rename. The message has no fields and must not be
+// produced or consumed by any current client; it exists purely as a
+// compatibility marker. The TemplatePolicyRule.target field number (3)
+// is reserved at the message level so its wire slot is never reused.
+//
+// See HOL-599 for the migration that translates legacy globs into
+// bindings, and HOL-600 for the final cleanup.
+//
+// Deprecated: Marked as deprecated in holos/console/v1/template_policies.proto.
+type TemplatePolicyTarget struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TemplatePolicyTarget) Reset() {
+	*x = TemplatePolicyTarget{}
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TemplatePolicyTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TemplatePolicyTarget) ProtoMessage() {}
+
+func (x *TemplatePolicyTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TemplatePolicyTarget.ProtoReflect.Descriptor instead.
+func (*TemplatePolicyTarget) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{0}
+}
+
 // TemplatePolicyRule binds a kind and a template reference into a single
 // rule. A TemplatePolicy may carry many rules; which render targets a rule
 // applies to is decided entirely by TemplatePolicyBinding objects.
@@ -98,7 +152,7 @@ type TemplatePolicyRule struct {
 
 func (x *TemplatePolicyRule) Reset() {
 	*x = TemplatePolicyRule{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[0]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -110,7 +164,7 @@ func (x *TemplatePolicyRule) String() string {
 func (*TemplatePolicyRule) ProtoMessage() {}
 
 func (x *TemplatePolicyRule) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[0]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -123,7 +177,7 @@ func (x *TemplatePolicyRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemplatePolicyRule.ProtoReflect.Descriptor instead.
 func (*TemplatePolicyRule) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{0}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *TemplatePolicyRule) GetKind() TemplatePolicyKind {
@@ -172,7 +226,7 @@ type TemplatePolicy struct {
 
 func (x *TemplatePolicy) Reset() {
 	*x = TemplatePolicy{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[1]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -184,7 +238,7 @@ func (x *TemplatePolicy) String() string {
 func (*TemplatePolicy) ProtoMessage() {}
 
 func (x *TemplatePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[1]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -197,7 +251,7 @@ func (x *TemplatePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemplatePolicy.ProtoReflect.Descriptor instead.
 func (*TemplatePolicy) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{1}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *TemplatePolicy) GetName() string {
@@ -261,7 +315,7 @@ type ListTemplatePoliciesRequest struct {
 
 func (x *ListTemplatePoliciesRequest) Reset() {
 	*x = ListTemplatePoliciesRequest{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[2]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -273,7 +327,7 @@ func (x *ListTemplatePoliciesRequest) String() string {
 func (*ListTemplatePoliciesRequest) ProtoMessage() {}
 
 func (x *ListTemplatePoliciesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[2]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -286,7 +340,7 @@ func (x *ListTemplatePoliciesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatePoliciesRequest.ProtoReflect.Descriptor instead.
 func (*ListTemplatePoliciesRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{2}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListTemplatePoliciesRequest) GetScope() *TemplateScopeRef {
@@ -306,7 +360,7 @@ type ListTemplatePoliciesResponse struct {
 
 func (x *ListTemplatePoliciesResponse) Reset() {
 	*x = ListTemplatePoliciesResponse{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[3]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -318,7 +372,7 @@ func (x *ListTemplatePoliciesResponse) String() string {
 func (*ListTemplatePoliciesResponse) ProtoMessage() {}
 
 func (x *ListTemplatePoliciesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[3]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,7 +385,7 @@ func (x *ListTemplatePoliciesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatePoliciesResponse.ProtoReflect.Descriptor instead.
 func (*ListTemplatePoliciesResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{3}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListTemplatePoliciesResponse) GetPolicies() []*TemplatePolicy {
@@ -355,7 +409,7 @@ type GetTemplatePolicyRequest struct {
 
 func (x *GetTemplatePolicyRequest) Reset() {
 	*x = GetTemplatePolicyRequest{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[4]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +421,7 @@ func (x *GetTemplatePolicyRequest) String() string {
 func (*GetTemplatePolicyRequest) ProtoMessage() {}
 
 func (x *GetTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[4]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +434,7 @@ func (x *GetTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplatePolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetTemplatePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{4}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetTemplatePolicyRequest) GetScope() *TemplateScopeRef {
@@ -407,7 +461,7 @@ type GetTemplatePolicyResponse struct {
 
 func (x *GetTemplatePolicyResponse) Reset() {
 	*x = GetTemplatePolicyResponse{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[5]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +473,7 @@ func (x *GetTemplatePolicyResponse) String() string {
 func (*GetTemplatePolicyResponse) ProtoMessage() {}
 
 func (x *GetTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[5]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +486,7 @@ func (x *GetTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplatePolicyResponse.ProtoReflect.Descriptor instead.
 func (*GetTemplatePolicyResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{5}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetTemplatePolicyResponse) GetPolicy() *TemplatePolicy {
@@ -456,7 +510,7 @@ type CreateTemplatePolicyRequest struct {
 
 func (x *CreateTemplatePolicyRequest) Reset() {
 	*x = CreateTemplatePolicyRequest{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[6]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -468,7 +522,7 @@ func (x *CreateTemplatePolicyRequest) String() string {
 func (*CreateTemplatePolicyRequest) ProtoMessage() {}
 
 func (x *CreateTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[6]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -481,7 +535,7 @@ func (x *CreateTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplatePolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreateTemplatePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{6}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateTemplatePolicyRequest) GetScope() *TemplateScopeRef {
@@ -508,7 +562,7 @@ type CreateTemplatePolicyResponse struct {
 
 func (x *CreateTemplatePolicyResponse) Reset() {
 	*x = CreateTemplatePolicyResponse{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[7]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -520,7 +574,7 @@ func (x *CreateTemplatePolicyResponse) String() string {
 func (*CreateTemplatePolicyResponse) ProtoMessage() {}
 
 func (x *CreateTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[7]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -533,7 +587,7 @@ func (x *CreateTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplatePolicyResponse.ProtoReflect.Descriptor instead.
 func (*CreateTemplatePolicyResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{7}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateTemplatePolicyResponse) GetName() string {
@@ -557,7 +611,7 @@ type UpdateTemplatePolicyRequest struct {
 
 func (x *UpdateTemplatePolicyRequest) Reset() {
 	*x = UpdateTemplatePolicyRequest{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[8]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -569,7 +623,7 @@ func (x *UpdateTemplatePolicyRequest) String() string {
 func (*UpdateTemplatePolicyRequest) ProtoMessage() {}
 
 func (x *UpdateTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[8]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -582,7 +636,7 @@ func (x *UpdateTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTemplatePolicyRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTemplatePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{8}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpdateTemplatePolicyRequest) GetScope() *TemplateScopeRef {
@@ -608,7 +662,7 @@ type UpdateTemplatePolicyResponse struct {
 
 func (x *UpdateTemplatePolicyResponse) Reset() {
 	*x = UpdateTemplatePolicyResponse{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[9]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +674,7 @@ func (x *UpdateTemplatePolicyResponse) String() string {
 func (*UpdateTemplatePolicyResponse) ProtoMessage() {}
 
 func (x *UpdateTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[9]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +687,7 @@ func (x *UpdateTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTemplatePolicyResponse.ProtoReflect.Descriptor instead.
 func (*UpdateTemplatePolicyResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{9}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{10}
 }
 
 // DeleteTemplatePolicyRequest deletes a policy.
@@ -650,7 +704,7 @@ type DeleteTemplatePolicyRequest struct {
 
 func (x *DeleteTemplatePolicyRequest) Reset() {
 	*x = DeleteTemplatePolicyRequest{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[10]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -662,7 +716,7 @@ func (x *DeleteTemplatePolicyRequest) String() string {
 func (*DeleteTemplatePolicyRequest) ProtoMessage() {}
 
 func (x *DeleteTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[10]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -675,7 +729,7 @@ func (x *DeleteTemplatePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplatePolicyRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTemplatePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{10}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteTemplatePolicyRequest) GetScope() *TemplateScopeRef {
@@ -701,7 +755,7 @@ type DeleteTemplatePolicyResponse struct {
 
 func (x *DeleteTemplatePolicyResponse) Reset() {
 	*x = DeleteTemplatePolicyResponse{}
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[11]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +767,7 @@ func (x *DeleteTemplatePolicyResponse) String() string {
 func (*DeleteTemplatePolicyResponse) ProtoMessage() {}
 
 func (x *DeleteTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_template_policies_proto_msgTypes[11]
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,14 +780,15 @@ func (x *DeleteTemplatePolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplatePolicyResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTemplatePolicyResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{11}
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{12}
 }
 
 var File_holos_console_v1_template_policies_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_template_policies_proto_rawDesc = "" +
 	"\n" +
-	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\x1a holos/console/v1/templates.proto\"\x9d\x01\n" +
+	"(holos/console/v1/template_policies.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\x1a holos/console/v1/templates.proto\"\x1a\n" +
+	"\x14TemplatePolicyTarget:\x02\x18\x01\"\x9d\x01\n" +
 	"\x12TemplatePolicyRule\x128\n" +
 	"\x04kind\x18\x01 \x01(\x0e2$.holos.console.v1.TemplatePolicyKindR\x04kind\x12?\n" +
 	"\btemplate\x18\x02 \x01(\v2#.holos.console.v1.LinkedTemplateRefR\btemplateJ\x04\b\x03\x10\x04R\x06target\"\xc6\x02\n" +
@@ -792,50 +847,51 @@ func file_holos_console_v1_template_policies_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_template_policies_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_template_policies_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_holos_console_v1_template_policies_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_holos_console_v1_template_policies_proto_goTypes = []any{
 	(TemplatePolicyKind)(0),              // 0: holos.console.v1.TemplatePolicyKind
-	(*TemplatePolicyRule)(nil),           // 1: holos.console.v1.TemplatePolicyRule
-	(*TemplatePolicy)(nil),               // 2: holos.console.v1.TemplatePolicy
-	(*ListTemplatePoliciesRequest)(nil),  // 3: holos.console.v1.ListTemplatePoliciesRequest
-	(*ListTemplatePoliciesResponse)(nil), // 4: holos.console.v1.ListTemplatePoliciesResponse
-	(*GetTemplatePolicyRequest)(nil),     // 5: holos.console.v1.GetTemplatePolicyRequest
-	(*GetTemplatePolicyResponse)(nil),    // 6: holos.console.v1.GetTemplatePolicyResponse
-	(*CreateTemplatePolicyRequest)(nil),  // 7: holos.console.v1.CreateTemplatePolicyRequest
-	(*CreateTemplatePolicyResponse)(nil), // 8: holos.console.v1.CreateTemplatePolicyResponse
-	(*UpdateTemplatePolicyRequest)(nil),  // 9: holos.console.v1.UpdateTemplatePolicyRequest
-	(*UpdateTemplatePolicyResponse)(nil), // 10: holos.console.v1.UpdateTemplatePolicyResponse
-	(*DeleteTemplatePolicyRequest)(nil),  // 11: holos.console.v1.DeleteTemplatePolicyRequest
-	(*DeleteTemplatePolicyResponse)(nil), // 12: holos.console.v1.DeleteTemplatePolicyResponse
-	(*LinkedTemplateRef)(nil),            // 13: holos.console.v1.LinkedTemplateRef
-	(*TemplateScopeRef)(nil),             // 14: holos.console.v1.TemplateScopeRef
-	(*timestamppb.Timestamp)(nil),        // 15: google.protobuf.Timestamp
+	(*TemplatePolicyTarget)(nil),         // 1: holos.console.v1.TemplatePolicyTarget
+	(*TemplatePolicyRule)(nil),           // 2: holos.console.v1.TemplatePolicyRule
+	(*TemplatePolicy)(nil),               // 3: holos.console.v1.TemplatePolicy
+	(*ListTemplatePoliciesRequest)(nil),  // 4: holos.console.v1.ListTemplatePoliciesRequest
+	(*ListTemplatePoliciesResponse)(nil), // 5: holos.console.v1.ListTemplatePoliciesResponse
+	(*GetTemplatePolicyRequest)(nil),     // 6: holos.console.v1.GetTemplatePolicyRequest
+	(*GetTemplatePolicyResponse)(nil),    // 7: holos.console.v1.GetTemplatePolicyResponse
+	(*CreateTemplatePolicyRequest)(nil),  // 8: holos.console.v1.CreateTemplatePolicyRequest
+	(*CreateTemplatePolicyResponse)(nil), // 9: holos.console.v1.CreateTemplatePolicyResponse
+	(*UpdateTemplatePolicyRequest)(nil),  // 10: holos.console.v1.UpdateTemplatePolicyRequest
+	(*UpdateTemplatePolicyResponse)(nil), // 11: holos.console.v1.UpdateTemplatePolicyResponse
+	(*DeleteTemplatePolicyRequest)(nil),  // 12: holos.console.v1.DeleteTemplatePolicyRequest
+	(*DeleteTemplatePolicyResponse)(nil), // 13: holos.console.v1.DeleteTemplatePolicyResponse
+	(*LinkedTemplateRef)(nil),            // 14: holos.console.v1.LinkedTemplateRef
+	(*TemplateScopeRef)(nil),             // 15: holos.console.v1.TemplateScopeRef
+	(*timestamppb.Timestamp)(nil),        // 16: google.protobuf.Timestamp
 }
 var file_holos_console_v1_template_policies_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.TemplatePolicyRule.kind:type_name -> holos.console.v1.TemplatePolicyKind
-	13, // 1: holos.console.v1.TemplatePolicyRule.template:type_name -> holos.console.v1.LinkedTemplateRef
-	14, // 2: holos.console.v1.TemplatePolicy.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	1,  // 3: holos.console.v1.TemplatePolicy.rules:type_name -> holos.console.v1.TemplatePolicyRule
-	15, // 4: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
-	14, // 5: holos.console.v1.ListTemplatePoliciesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 6: holos.console.v1.ListTemplatePoliciesResponse.policies:type_name -> holos.console.v1.TemplatePolicy
-	14, // 7: holos.console.v1.GetTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 8: holos.console.v1.GetTemplatePolicyResponse.policy:type_name -> holos.console.v1.TemplatePolicy
-	14, // 9: holos.console.v1.CreateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 10: holos.console.v1.CreateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
-	14, // 11: holos.console.v1.UpdateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	2,  // 12: holos.console.v1.UpdateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
-	14, // 13: holos.console.v1.DeleteTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 14: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
-	5,  // 15: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
-	7,  // 16: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
-	9,  // 17: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
-	11, // 18: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
-	4,  // 19: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
-	6,  // 20: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
-	8,  // 21: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
-	10, // 22: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
-	12, // 23: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
+	14, // 1: holos.console.v1.TemplatePolicyRule.template:type_name -> holos.console.v1.LinkedTemplateRef
+	15, // 2: holos.console.v1.TemplatePolicy.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
+	2,  // 3: holos.console.v1.TemplatePolicy.rules:type_name -> holos.console.v1.TemplatePolicyRule
+	16, // 4: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
+	15, // 5: holos.console.v1.ListTemplatePoliciesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 6: holos.console.v1.ListTemplatePoliciesResponse.policies:type_name -> holos.console.v1.TemplatePolicy
+	15, // 7: holos.console.v1.GetTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 8: holos.console.v1.GetTemplatePolicyResponse.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 9: holos.console.v1.CreateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 10: holos.console.v1.CreateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 11: holos.console.v1.UpdateTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	3,  // 12: holos.console.v1.UpdateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
+	15, // 13: holos.console.v1.DeleteTemplatePolicyRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
+	4,  // 14: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
+	6,  // 15: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
+	8,  // 16: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
+	10, // 17: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
+	12, // 18: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
+	5,  // 19: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
+	7,  // 20: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
+	9,  // 21: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
+	11, // 22: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
+	13, // 23: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
 	19, // [19:24] is the sub-list for method output_type
 	14, // [14:19] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
@@ -856,7 +912,7 @@ func file_holos_console_v1_template_policies_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_template_policies_proto_rawDesc), len(file_holos_console_v1_template_policies_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

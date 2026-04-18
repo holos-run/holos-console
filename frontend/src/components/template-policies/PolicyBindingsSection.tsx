@@ -3,6 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TemplatePolicyBinding } from '@/queries/templatePolicyBindings'
+import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 /**
  * PolicyBindingsSection surfaces the TemplatePolicyBindings that attach the
@@ -11,9 +12,11 @@ import type { TemplatePolicyBinding } from '@/queries/templatePolicyBindings'
  * Per HOL-598, attachment is expressed exclusively through TemplatePolicyBinding
  * (the glob Target fields on each rule were removed from the editor). The
  * section calls `useListTemplatePolicyBindings(scope)` at the policy's own
- * scope and filters client-side by `policyRef.name === policyName`. Each row
- * links to the binding detail page so admins can jump from a policy to the
- * bindings that reference it.
+ * scope and filters client-side by the full `(scope, scope_name, name)`
+ * triple on `policyRef`. Matching on the name alone would conflate a
+ * folder-scope and an organization-scope policy that happen to share a
+ * slug; the resolver's own policy key uses the same triple, so the UI
+ * mirrors it to avoid pointing an operator at the wrong binding.
  */
 export type PolicyBindingsSectionProps =
   | {
@@ -36,9 +39,19 @@ export type PolicyBindingsSectionProps =
 export function PolicyBindingsSection(props: PolicyBindingsSectionProps) {
   const { policyName, bindings, isPending, error } = props
 
-  const matched = bindings.filter(
-    (b) => b.policyRef?.name === policyName,
-  )
+  const expectedScope =
+    props.scopeType === 'organization'
+      ? TemplateScope.ORGANIZATION
+      : TemplateScope.FOLDER
+  const expectedScopeName =
+    props.scopeType === 'organization' ? props.orgName : props.folderName
+
+  const matched = bindings.filter((b) => {
+    if (b.policyRef?.name !== policyName) return false
+    const ref = b.policyRef?.scopeRef
+    if (!ref) return false
+    return ref.scope === expectedScope && ref.scopeName === expectedScopeName
+  })
 
   return (
     <section className="space-y-3" aria-labelledby="policy-bindings-heading">

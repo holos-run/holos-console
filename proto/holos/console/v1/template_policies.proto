@@ -68,16 +68,28 @@ enum TemplatePolicyKind {
   TEMPLATE_POLICY_KIND_EXCLUDE = 2;
 }
 
-// HOL-590 removed the legacy glob-based TemplatePolicyTarget message and
-// TemplatePolicyRule.target field. Render-time selection now runs through
-// TemplatePolicyBinding (see template_policy_bindings.proto); a rule
-// contributes to a render target only when a matching binding names its
-// owning policy. The `TemplatePolicyTarget` message name and the
-// `TemplatePolicyRule.target` field number (3) are reserved here so they
-// are never reused in future revisions — any bytes left over from
-// pre-migration clients simply decode as unknown fields and are discarded.
+// HOL-590 removed the legacy glob-based TemplatePolicyTarget semantics
+// and the TemplatePolicyRule.target field. Render-time selection now
+// runs through TemplatePolicyBinding (see template_policy_bindings.proto);
+// a rule contributes to a render target only when a matching binding
+// names its owning policy.
+//
+// TemplatePolicyTarget is kept as an empty, deprecated message so the
+// top-level symbol name stays reserved at the schema level — a future
+// revision cannot reintroduce a different shape under the same name
+// without an explicit rename. The message has no fields and must not be
+// produced or consumed by any current client; it exists purely as a
+// compatibility marker. The TemplatePolicyRule.target field number (3)
+// is reserved at the message level so its wire slot is never reused.
+//
 // See HOL-599 for the migration that translates legacy globs into
 // bindings, and HOL-600 for the final cleanup.
+message TemplatePolicyTarget {
+  option deprecated = true;
+  // Intentionally empty. Any fields from the pre-HOL-600 shape are
+  // unrecoverable — the migration to TemplatePolicyBinding is the
+  // supported upgrade path.
+}
 
 // TemplatePolicyRule binds a kind and a template reference into a single
 // rule. A TemplatePolicy may carry many rules; which render targets a rule
