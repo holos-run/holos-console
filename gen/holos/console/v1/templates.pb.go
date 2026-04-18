@@ -1301,11 +1301,17 @@ type LinkableTemplate struct {
 	// descending by version (newest first). Populated by ListLinkableTemplates so
 	// the linking UI can display version choices without a separate RPC call.
 	Releases []*Release `protobuf:"bytes,6,rep,name=releases,proto3" json:"releases,omitempty"`
-	// forced signals that a TemplatePolicy REQUIRE rule will unconditionally
-	// unify this template with every matching project at render time, so the
-	// linking UI MUST render it as selected and disabled. The server populates
-	// this field from TemplatePolicy evaluation; clients MUST NOT infer it
-	// from any template annotation.
+	// forced signals that a TemplatePolicy REQUIRE rule unconditionally
+	// unifies this template with every matching project at render time, so
+	// the linking UI MUST render it as selected and disabled when set.
+	//
+	// The server's current ListLinkableTemplates implementation does not
+	// yet evaluate REQUIRE rules per candidate and therefore always returns
+	// `forced=false`; render-time resolution in the folder resolver remains
+	// the authoritative source of truth for "always applied" semantics.
+	// When ListLinkableTemplates is taught to populate this field, it will
+	// do so exclusively from TemplatePolicy evaluation — clients MUST NOT
+	// infer `forced` from any template annotation.
 	//
 	// Clients MUST NOT treat `forced=true` as a permission to author the
 	// template — it only describes render-time behavior for the UI.
