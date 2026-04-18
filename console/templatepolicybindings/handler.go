@@ -35,11 +35,13 @@ var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 // experience than a silent no-op at render time.
 //
 // Returning (false, nil) means "policy not found" — the handler rejects
-// with a precise InvalidArgument. Returning (false, err) means the probe
-// itself failed; the handler treats a transient error the same as "not
-// found" because there is no reason to lock in a binding whose policy
-// cannot be confirmed — but it logs the error so operators can diagnose a
-// misconfigured K8s API.
+// with CodeInvalidArgument so the caller sees a precise user-input
+// error. Returning (false, err) means the probe itself failed — the
+// handler rejects with CodeInternal and logs the underlying error so
+// operators can distinguish "policy is missing" (user bug) from "the
+// cluster is unreachable" (infrastructure problem). The tests
+// (TestCreateRejectsMissingPolicy, TestPolicyProbeErrorFailsInternal) pin
+// both mappings.
 //
 // This interface lets the handler decouple from console/templatepolicies to
 // avoid an import cycle; the policyresolver package consumes bindings

@@ -479,6 +479,38 @@ func TestCreateValidation(t *testing.T) {
 			wantMsg: "name is required",
 		},
 		{
+			name: "target project_name invalid DNS label",
+			binding: &consolev1.TemplatePolicyBinding{
+				Name:      "bad",
+				ScopeRef:  folder,
+				PolicyRef: validPolicyRef(),
+				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
+					{
+						Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+						Name:        "api",
+						ProjectName: "Bad_Project",
+					},
+				},
+			},
+			wantMsg: "project_name must be a valid DNS label",
+		},
+		{
+			name: "target name invalid DNS label",
+			binding: &consolev1.TemplatePolicyBinding{
+				Name:      "bad",
+				ScopeRef:  folder,
+				PolicyRef: validPolicyRef(),
+				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
+					{
+						Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+						Name:        "Bad_Name",
+						ProjectName: "payments-web",
+					},
+				},
+			},
+			wantMsg: "name must be a valid DNS label",
+		},
+		{
 			name: "target project_name missing",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",

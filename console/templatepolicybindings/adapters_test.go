@@ -102,13 +102,12 @@ func TestAncestorChainAdapter(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		walker   WalkerInterface
-		startNs  string
-		wantNs   string
-		want     bool
-		wantErr  bool
-		contains string
+		name    string
+		walker  WalkerInterface
+		startNs string
+		wantNs  string
+		want    bool
+		wantErr bool
 	}{
 		{name: "hit at self", walker: &stubWalker{chain: chain}, startNs: "holos-fld-payments", wantNs: "holos-fld-payments", want: true},
 		{name: "hit at parent", walker: &stubWalker{chain: chain}, startNs: "holos-fld-payments", wantNs: "holos-org-acme", want: true},
