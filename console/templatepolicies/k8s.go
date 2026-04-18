@@ -301,14 +301,15 @@ type storedTemplateRef struct {
 	VersionConstraint string `json:"version_constraint,omitempty"`
 }
 
-// legacyTargetsByRuleKey maps a (kind, template) triple to the raw
-// legacy `target` JSON payload that the caller-supplied rules do not
-// carry. marshalRules consults this map to preserve pre-migration data
-// across routine updates. The key is deliberately narrow: only rules
-// that match by (kind, template) are considered the "same" rule for
-// legacy-target preservation, which matches how the HOL-599 migrator
-// identifies rules.
-type legacyTargetsByRuleKey map[legacyRuleKey]json.RawMessage
+// legacyTargetQueue holds the pre-HOL-600 "target" JSON payloads
+// extracted from a stored rules annotation, keyed by (kind, template).
+// Each key maps to a FIFO queue so a policy with several rules that
+// share the same (kind, template) key but different legacy targets
+// round-trips each payload back to the matching position in the
+// rewritten annotation. Map-based preservation keyed by (kind,
+// template) alone would collapse those duplicates into a single
+// entry, silently corrupting the HOL-599 migrator's input.
+type legacyTargetQueue map[legacyRuleKey][]json.RawMessage
 
 type legacyRuleKey struct {
 	kind      string
@@ -337,12 +338,14 @@ func legacyKeyForProtoRule(r *consolev1.TemplatePolicyRule) legacyRuleKey {
 }
 
 // extractLegacyTargets decodes an existing rules annotation and returns a
-// lookup of (kind, template) → raw "target" JSON for every rule that
-// still carries the legacy payload. The function is nil-safe: an empty
-// annotation or one without any legacy targets yields an empty map so
-// marshalRulesPreservingLegacy can always be called unconditionally.
-func extractLegacyTargets(raw string) legacyTargetsByRuleKey {
-	out := make(legacyTargetsByRuleKey)
+// FIFO queue of legacy "target" JSON payloads per (kind, template) key.
+// The caller consumes one payload from the front of the queue per
+// matching rule in the rewritten annotation so duplicate rules keep
+// their individual targets. The function is nil-safe: an empty
+// annotation or one without any legacy targets yields an empty queue
+// so marshalRulesPreservingLegacy can always be called unconditionally.
+func extractLegacyTargets(raw string) legacyTargetQueue {
+	out := make(legacyTargetQueue)
 	if raw == "" {
 		return out
 	}
@@ -354,7 +357,8 @@ func extractLegacyTargets(raw string) legacyTargetsByRuleKey {
 		if len(s.LegacyTarget) == 0 {
 			continue
 		}
-		out[legacyKeyForStoredRule(s)] = s.LegacyTarget
+		key := legacyKeyForStoredRule(s)
+		out[key] = append(out[key], s.LegacyTarget)
 	}
 	return out
 }
@@ -372,10 +376,13 @@ func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
 // marshalRulesPreservingLegacy serializes rules and re-emits any legacy
 // `target` JSON payload keyed by (kind, template) so a pre-migration
 // ConfigMap remains machine-readable to the HOL-599 migrator even
-// after an unrelated UpdatePolicy call. Rules whose (kind, template)
-// key does not appear in legacyTargets are written without a "target"
-// field — identical to the post-HOL-600 shape.
-func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyTargets legacyTargetsByRuleKey) ([]byte, error) {
+// after an unrelated UpdatePolicy call. When a policy's rules contain
+// duplicate (kind, template) pairs, legacyTargets' FIFO queue hands
+// out payloads in the original order so each position keeps its own
+// target; rules whose key is absent (or whose queue is exhausted) are
+// written without a "target" field — identical to the post-HOL-600
+// shape.
+func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyTargets legacyTargetQueue) ([]byte, error) {
 	stored := make([]storedRule, 0, len(rules))
 	for _, r := range rules {
 		if r == nil {
@@ -393,8 +400,10 @@ func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyT
 			}
 		}
 		if legacyTargets != nil {
-			if raw, ok := legacyTargets[legacyKeyForProtoRule(r)]; ok {
-				sr.LegacyTarget = raw
+			key := legacyKeyForProtoRule(r)
+			if queue := legacyTargets[key]; len(queue) > 0 {
+				sr.LegacyTarget = queue[0]
+				legacyTargets[key] = queue[1:]
 			}
 		}
 		stored = append(stored, sr)

@@ -442,6 +442,70 @@ func TestUpdatePolicyPreservesLegacyTarget(t *testing.T) {
 	}
 }
 
+// TestUpdatePolicyPreservesLegacyTargetForDuplicateRules asserts the
+// FIFO-queue semantics of legacy-target preservation: a pre-HOL-600
+// policy that carries multiple rules with the same (kind, template)
+// but different legacy targets keeps every target on its own matching
+// position after a routine UpdatePolicy. A map-based preservation
+// keyed by (kind, template) alone would collapse the duplicates into
+// a single target and corrupt the HOL-599 migrator's input.
+func TestUpdatePolicyPreservesLegacyTargetForDuplicateRules(t *testing.T) {
+	const legacyRules = `[` +
+		`{"kind":"require","template":{"scope":"organization","scope_name":"acme","name":"reference-grant"},"target":{"project_pattern":"lilies"}},` +
+		`{"kind":"require","template":{"scope":"organization","scope_name":"acme","name":"reference-grant"},"target":{"project_pattern":"roses"}}` +
+		`]`
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationTemplatePolicyRules: legacyRules,
+			},
+		},
+	}
+	fakeClient := fake.NewClientset(existing)
+	k := NewK8sClient(fakeClient, newTestResolver())
+
+	// Resubmit two rules with the same (kind, template) key. The
+	// UI's UpdatePolicy caller never supplies a target; preservation
+	// must still assign the two legacy targets (lilies, then roses)
+	// positionally so the migrator reads the same mapping it would
+	// have before the update.
+	updated, err := k.UpdatePolicy(
+		context.Background(),
+		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		"payments",
+		"policy",
+		nil, nil,
+		[]*consolev1.TemplatePolicyRule{sampleRule(), sampleRule()},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("UpdatePolicy: %v", err)
+	}
+	raw := updated.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("decode stored rules: %v", err)
+	}
+	if len(decoded) != 2 {
+		t.Fatalf("expected 2 stored rules, got %d", len(decoded))
+	}
+	firstTarget, _ := decoded[0]["target"].(map[string]any)
+	secondTarget, _ := decoded[1]["target"].(map[string]any)
+	if firstTarget["project_pattern"] != "lilies" {
+		t.Errorf("first rule target collapsed: got %+v, want project_pattern=lilies", firstTarget)
+	}
+	if secondTarget["project_pattern"] != "roses" {
+		t.Errorf("second rule target collapsed: got %+v, want project_pattern=roses", secondTarget)
+	}
+}
+
 // TestUpdatePolicyDoesNotInventLegacyTargetForNewRule asserts the
 // flip-side of TestUpdatePolicyPreservesLegacyTarget: if the caller
 // submits a brand-new rule that does not match any existing
