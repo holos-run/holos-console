@@ -550,6 +550,14 @@ export function FolderDetailPage({
             >
               <span className="text-sm">Manage Folder Template Policies</span>
             </Link>
+            <Link
+              to="/folders/$folderName/template-policy-bindings"
+              params={{ folderName }}
+              aria-label="Folder Template Policy Bindings"
+              className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
+            >
+              <span className="text-sm">Manage Folder Template Policy Bindings</span>
+            </Link>
           </div>
 
           {/* Danger Zone */}

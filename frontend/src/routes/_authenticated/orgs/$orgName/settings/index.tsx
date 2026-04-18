@@ -404,6 +404,15 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                 <span className="text-sm">Manage Organization Template Policies</span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </Link>
+              <Link
+                to="/orgs/$orgName/template-policy-bindings"
+                params={{ orgName }}
+                aria-label="Organization Template Policy Bindings"
+                className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
+              >
+                <span className="text-sm">Manage Organization Template Policy Bindings</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
             </div>
 
             {/* Danger Zone */}
