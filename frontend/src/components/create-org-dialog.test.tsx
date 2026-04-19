@@ -186,6 +186,27 @@ describe('CreateOrgDialog', () => {
     })
   })
 
+  // Pending-state coverage migrated from `frontend/e2e/create-dialogs.spec.ts`
+  // (HOL-654). The E2E test could not observe the pending-but-not-yet-resolved
+  // state reliably; the unit version asserts on the mocked `isPending: true`
+  // branch directly.
+  it('disables submit and shows Creating… label while the mutation is pending', () => {
+    ;(useCreateOrganization as Mock).mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: true,
+    })
+
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), {
+      target: { value: 'Pending Org' },
+    })
+
+    const submit = screen.getByRole('button', { name: /creating…/i }) as HTMLButtonElement
+    expect(submit).toBeDefined()
+    expect(submit.disabled).toBe(true)
+  })
+
   describe('populate defaults checkbox', () => {
     it('renders checkbox unchecked by default', () => {
       render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)

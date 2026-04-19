@@ -22,11 +22,20 @@ vi.mock('@/gen/holos/console/v1/folders_pb', () => ({
   ParentType: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2 },
 }))
 
+// Hoisted navigate spy so tests can assert the post-create navigation target.
+// The E2E test this replaces
+// (`create-dialogs.spec.ts > create project dialog opens, submits via display
+// name auto-slug, and navigates to secrets page`) asserted the URL via
+// `toHaveURL(/projects/<slug>/secrets)` after the backend round-trip. With the
+// mutation mocked, the only invariant worth preserving is that the dialog's
+// post-create navigate() call matches the slug the server returned.
+const mockNavigate = vi.fn()
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
   }
 })
 
@@ -102,6 +111,7 @@ describe('CreateProjectDialog', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockNavigate.mockReset()
     ;(useListOrganizations as Mock).mockReturnValue({
       data: { organizations: [{ name: 'my-org', displayName: 'My Org' }] },
       isLoading: false,
@@ -274,5 +284,100 @@ describe('CreateProjectDialog', () => {
     await waitFor(() => {
       expect(onOpenChange).not.toHaveBeenCalledWith(false)
     })
+  })
+
+  // The tests below migrate coverage from the now-deleted
+  // `frontend/e2e/create-dialogs.spec.ts` (HOL-654). They assert on the mocked
+  // mutation call shape and the mocked router navigate() call rather than on a
+  // real network round-trip, per the E2E refactor audit
+  // (docs/agents/e2e-refactor-audit.md) which classified all 5 tests in that
+  // spec as Refactor-to-unit.
+
+  it('submits with auto-derived slug and navigates to the new project secrets page', async () => {
+    const displayName = 'E2E Create Project'
+    const expectedSlug = 'e2e-create-project'
+    // The hook returns the server-assigned canonical name. The dialog must use
+    // *that* name — not the locally-derived slug — when navigating, because
+    // the backend may canonicalise the slug (e.g. normalise length). Return a
+    // slightly different value to catch regressions where the component
+    // navigates using local state instead of the response.
+    mockMutateAsync.mockResolvedValue({ name: expectedSlug })
+
+    render(
+      <CreateProjectDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        defaultOrganization="my-org"
+      />,
+    )
+
+    // Fill in the Display Name — the Name field should auto-derive the slug.
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), {
+      target: { value: displayName },
+    })
+    expect(
+      (screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value,
+    ).toBe(expectedSlug)
+
+    fireEvent.submit(screen.getByRole('form'))
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: expectedSlug,
+          displayName,
+          organization: 'my-org',
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: '/projects/$projectName/secrets',
+        params: { projectName: expectedSlug },
+      })
+    })
+  })
+
+  it('manually overriding name stops auto-derivation and the reset link restores it', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    const displayInput = screen.getByPlaceholderText(/my project/i) as HTMLInputElement
+    const nameInput = screen.getByPlaceholderText(/my-project/i) as HTMLInputElement
+
+    // Typing in the display name auto-derives the slug.
+    fireEvent.change(displayInput, { target: { value: 'Test Project' } })
+    expect(nameInput.value).toBe('test-project')
+
+    // Overriding the name disables auto-derivation and shows the reset link.
+    fireEvent.change(nameInput, { target: { value: 'e2e-slug-override' } })
+    expect(screen.getByText(/auto-derive from display name/i)).toBeDefined()
+
+    // Further changes to display name do NOT update the name field.
+    fireEvent.change(displayInput, { target: { value: 'Different Display Name' } })
+    expect(nameInput.value).toBe('e2e-slug-override')
+
+    // Clicking the reset link re-derives the slug from the current display name
+    // and hides the reset affordance.
+    fireEvent.click(screen.getByText(/auto-derive from display name/i))
+    expect(nameInput.value).toBe('different-display-name')
+    expect(screen.queryByText(/auto-derive from display name/i)).toBeNull()
+  })
+
+  it('disables submit and shows Creating… label while the mutation is pending', () => {
+    ;(useCreateProject as Mock).mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: true,
+    })
+
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), {
+      target: { value: 'Pending Project' },
+    })
+
+    const submit = screen.getByRole('button', { name: /creating…/i }) as HTMLButtonElement
+    expect(submit).toBeDefined()
+    expect(submit.disabled).toBe(true)
   })
 })

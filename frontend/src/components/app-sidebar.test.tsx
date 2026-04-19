@@ -264,6 +264,88 @@ describe('AppSidebar — OrgPicker empty state', () => {
   })
 })
 
+// The two tests below cover behaviour migrated from
+// frontend/e2e/create-dialogs.spec.ts (HOL-654). The E2E suite exercised the
+// bottom-of-dropdown "New Organization" / "New Project" affordances against
+// the real K8s backend; here we assert the same DOM ordering with mocked
+// query hooks, per the E2E refactor audit.
+describe('AppSidebar — OrgPicker menu with existing orgs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [
+        { name: 'org-a', displayName: 'Org A' },
+        { name: 'org-b', displayName: 'Org B' },
+      ],
+      selectedOrg: 'org-a',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('renders the org-picker dropdown trigger', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('org-picker')).toBeDefined()
+  })
+
+  it('includes a New Organization item in the menu after the listed orgs', () => {
+    render(<AppSidebar />)
+
+    // The mocked DropdownMenuItem renders as a div (not role=menuitem), so we
+    // locate the entry by its visible text.
+    const newOrgItem = screen.getByText(/new organization/i)
+    expect(newOrgItem).toBeDefined()
+
+    // Assert DOM ordering: "New Organization" must appear after the last org
+    // in the picker (matches the E2E assertion that it sits at the *bottom*
+    // of the dropdown).
+    const orgBNode = screen.getByText('Org B')
+    expect(orgBNode.compareDocumentPosition(newOrgItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('AppSidebar — ProjectPicker menu with existing projects', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [
+        { name: 'project-a', displayName: 'Project A' },
+        { name: 'project-b', displayName: 'Project B' },
+      ],
+      selectedProject: null,
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('renders the project-picker dropdown trigger', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('project-picker')).toBeDefined()
+  })
+
+  it('includes a New Project item in the menu after the listed projects', () => {
+    render(<AppSidebar />)
+
+    const newProjectMatches = screen.getAllByText(/new project/i)
+    // The ProjectPicker renders "New Project" once — inside the dropdown. The
+    // empty-state CTA button with the same label is NOT rendered here because
+    // projects.length > 0.
+    expect(newProjectMatches.length).toBeGreaterThanOrEqual(1)
+
+    const lastProject = screen.getByText('Project B')
+    const newProjectItem = newProjectMatches[newProjectMatches.length - 1]
+    expect(lastProject.compareDocumentPosition(newProjectItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
 describe('AppSidebar — ProjectPicker empty state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
