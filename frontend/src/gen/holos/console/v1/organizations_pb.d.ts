@@ -95,6 +95,16 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
    * @generated from field: string default_folder = 11;
    */
   defaultFolder: string;
+
+  /**
+   * gateway_namespace is the Kubernetes namespace hosting the platform Gateway
+   * referenced by templates rendered for this organization. Persisted as the
+   * `console.holos.run/gateway-namespace` annotation on the org namespace and
+   * surfaced to template inputs via `platform.gatewayNamespace` (HOL-526).
+   *
+   * @generated from field: string gateway_namespace = 12;
+   */
+  gatewayNamespace: string;
 };
 
 /**
@@ -296,6 +306,17 @@ export declare type UpdateOrganizationRequest = Message<"holos.console.v1.Update
    * @generated from field: optional string default_folder = 4;
    */
   defaultFolder?: string;
+
+  /**
+   * gateway_namespace is the new gateway namespace for the platform Gateway
+   * referenced by templates rendered for this organization. When unset,
+   * preserves the existing value. Persisted as the
+   * `console.holos.run/gateway-namespace` annotation on the org namespace
+   * (HOL-526).
+   *
+   * @generated from field: optional string gateway_namespace = 5;
+   */
+  gatewayNamespace?: string;
 };
 
 /**

@@ -124,6 +124,13 @@
 // this folder (ADR 022 Decision 3).
 #AnnotationDefaultFolder: "console.holos.run/default-folder"
 
+// AnnotationGatewayNamespace stores the Kubernetes namespace that hosts
+// the platform Gateway referenced by templates rendered for an
+// organization. Lives on the organization namespace; surfaced to template
+// inputs via `platform.gatewayNamespace` and writable via
+// UpdateOrganization (HOL-526).
+#AnnotationGatewayNamespace: "console.holos.run/gateway-namespace"
+
 // AnnotationParent is the Kubernetes namespace name of the immediate parent
 // (organization namespace or folder namespace). Added in v1alpha2 and
 // present on both Folder and Project namespaces. The hierarchy walk follows
