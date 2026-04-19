@@ -27,8 +27,13 @@ import (
 // HOL-662 migrated the return type from corev1.ConfigMap to the CRD; the
 // CEL ValidatingAdmissionPolicy (HOL-618) is now the authoritative
 // enforcement point for the HOL-554 storage-isolation guardrail.
+//
+// HOL-622 converted the return shape from a value slice to a pointer slice so
+// the ancestor walker and the folderResolver share the same addressable
+// binding value through the cache boundary. This keeps the resolver-side
+// loops index-free and mirrors the PolicyListerInNamespace shape.
 type BindingListerInNamespace interface {
-	ListBindingsInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error)
+	ListBindingsInNamespace(ctx context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicyBinding, error)
 }
 
 // ResolvedBinding is the decoded form of a TemplatePolicyBinding CRD, keyed
@@ -141,8 +146,10 @@ func (a *AncestorBindingLister) ListBindings(ctx context.Context, startNs string
 			)
 			continue
 		}
-		for i := range items {
-			b := &items[i]
+		for _, b := range items {
+			if b == nil {
+				continue
+			}
 			out = append(out, &ResolvedBinding{
 				Name:       b.Name,
 				Namespace:  ns.Name,

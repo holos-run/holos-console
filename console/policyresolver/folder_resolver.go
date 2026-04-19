@@ -25,8 +25,14 @@ import (
 // HOL-662 migrated the return type from corev1.ConfigMap to the CRD; the
 // CEL ValidatingAdmissionPolicy (HOL-618) is now the authoritative
 // enforcement point for the HOL-554 storage-isolation guardrail.
+//
+// HOL-622 converted the return shape from a value slice to a pointer slice.
+// Callers forwarding CRD items into per-policy loops no longer need a manual
+// index-address dance; the ancestor walker already iterates by pointer, and
+// handing the pointer through at the cache boundary lets every layer share
+// the same addressable CRD without copying.
 type PolicyListerInNamespace interface {
-	ListPoliciesInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicy, error)
+	ListPoliciesInNamespace(ctx context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicy, error)
 }
 
 // folderResolver is the real PolicyResolver implementation introduced in

@@ -22,7 +22,7 @@ type errorBindingLister struct {
 	err     error
 }
 
-func (e *errorBindingLister) ListBindingsInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
+func (e *errorBindingLister) ListBindingsInNamespace(ctx context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicyBinding, error) {
 	if ns == e.failFor {
 		return nil, e.err
 	}

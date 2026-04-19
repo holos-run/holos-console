@@ -6,6 +6,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -13,11 +15,23 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// walkerForCtrl builds a resolver.Walker backed by a controller-runtime
+// ctrlclient.Client. This mirrors production wiring (HOL-622), where the
+// render-state client and the ancestor walker share the same cache-backed
+// client instead of threading two different client shapes through the call
+// sites.
+func walkerForCtrl(c ctrlclient.Client, r *resolver.Resolver) *resolver.Walker {
+	return &resolver.Walker{
+		Getter:   &resolver.CtrlRuntimeNamespaceGetter{Client: c},
+		Resolver: r,
+	}
+}
+
 // TestFolderNamespaceForProject_NestedFolder picks the immediate folder
 // parent when the project lives under one or more folders.
 func TestFolderNamespaceForProject_NestedFolder(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	got, err := c.FolderNamespaceForProject(context.Background(), ns["projectRoses"])
@@ -32,8 +46,8 @@ func TestFolderNamespaceForProject_NestedFolder(t *testing.T) {
 // TestFolderNamespaceForProject_FolderOnly picks the folder when the project
 // is directly under a folder with no intermediate folder.
 func TestFolderNamespaceForProject_FolderOnly(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	got, err := c.FolderNamespaceForProject(context.Background(), ns["projectLilies"])
@@ -48,8 +62,8 @@ func TestFolderNamespaceForProject_FolderOnly(t *testing.T) {
 // TestFolderNamespaceForProject_DirectOrg falls back to the organization
 // namespace when a project's immediate parent is an org (no folder between).
 func TestFolderNamespaceForProject_DirectOrg(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	got, err := c.FolderNamespaceForProject(context.Background(), ns["projectOrchids"])
@@ -65,8 +79,8 @@ func TestFolderNamespaceForProject_DirectOrg(t *testing.T) {
 // storage-location invariant: the applied render set MUST be stored in the
 // owning folder namespace, not the project namespace.
 func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	refs := []*consolev1.LinkedTemplateRef{
@@ -80,8 +94,8 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 
 	// Present in folder namespace.
 	cmName := renderStateConfigMapName(TargetKindDeployment, "lilies", "api")
-	cm, err := client.CoreV1().ConfigMaps(ns["folderEng"]).Get(context.Background(), cmName, metav1.GetOptions{})
-	if err != nil {
+	cm := &corev1.ConfigMap{}
+	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["folderEng"], Name: cmName}, cm); err != nil {
 		t.Fatalf("expected ConfigMap in folder namespace, got error: %v", err)
 	}
 	if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeRenderState {
@@ -92,8 +106,8 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 	}
 
 	// Absent from project namespace.
-	_, err = client.CoreV1().ConfigMaps(ns["projectLilies"]).Get(context.Background(), cmName, metav1.GetOptions{})
-	if err == nil {
+	stray := &corev1.ConfigMap{}
+	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["projectLilies"], Name: cmName}, stray); err == nil {
 		t.Errorf("applied render set leaked into project namespace; expected NotFound")
 	}
 }
@@ -101,8 +115,8 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 // TestRecordAppliedRenderSet_RoundTripViaRead: write then read returns the
 // same set and ok=true.
 func TestRecordAppliedRenderSet_RoundTripViaRead(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	refs := []*consolev1.LinkedTemplateRef{
@@ -133,8 +147,8 @@ func TestRecordAppliedRenderSet_RoundTripViaRead(t *testing.T) {
 
 // TestReadAppliedRenderSet_NotFound returns ok=false with no error.
 func TestReadAppliedRenderSet_NotFound(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	refs, ok, err := c.ReadAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "never-applied")
@@ -155,15 +169,15 @@ func TestReadAppliedRenderSet_NotFound(t *testing.T) {
 // storage. Writing a project-namespace ConfigMap by hand and asserting the
 // read returns ok=false proves the guardrail holds.
 func TestReadAppliedRenderSet_IgnoresProjectNamespaceAnnotation(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 
 	cmName := renderStateConfigMapName(TargetKindDeployment, "lilies", "api")
 	payload, _ := MarshalAppliedRenderSet([]*consolev1.LinkedTemplateRef{
 		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "stale", ""),
 	})
 	cm := buildForbiddenRenderStateCM(cmName, ns["projectLilies"], string(payload))
-	if _, err := client.CoreV1().ConfigMaps(ns["projectLilies"]).Create(context.Background(), &cm, metav1.CreateOptions{}); err != nil {
+	if err := client.Create(context.Background(), &cm); err != nil {
 		t.Fatalf("seed forbidden CM: %v", err)
 	}
 
@@ -195,8 +209,8 @@ func buildForbiddenRenderStateCM(name, namespace, payload string) corev1.ConfigM
 // TestRecordAppliedRenderSet_Idempotent: calling Record twice on the same
 // target overwrites rather than erroring with AlreadyExists.
 func TestRecordAppliedRenderSet_Idempotent(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	v1 := []*consolev1.LinkedTemplateRef{
@@ -224,8 +238,8 @@ func TestRecordAppliedRenderSet_Idempotent(t *testing.T) {
 // is recorded for both target kinds under a single project without overwriting
 // each other's storage.
 func TestRecordAppliedRenderSet_BothTargetKinds(t *testing.T) {
-	client, r, ns := buildFixture()
-	walker := &resolver.Walker{Client: client, Resolver: r}
+	client, r, ns := buildCtrlFixture()
+	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	dep := []*consolev1.LinkedTemplateRef{

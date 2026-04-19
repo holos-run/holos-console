@@ -24,6 +24,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clientgocache "k8s.io/client-go/tools/cache"
+	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
@@ -39,8 +41,16 @@ import (
 // against the cluster and serves every List/Get out of local memory, so
 // ListPolicies does not pay a round-trip per call. Writes fall through to
 // the API server; the cache learns about them on the next watch event.
+//
+// HOL-622: when Cache is non-nil, ListPoliciesInNamespace uses the shared
+// informer's indexer directly to return pointers to cache-owned objects
+// without the DeepCopy the delegating client performs. The CRUD methods
+// (Create/Update/Delete and the local-handler ListPolicies/GetPolicy) keep
+// using the delegating client so writes land at the apiserver and reads for
+// the handler continue to return fresh copies the handler can safely mutate.
 type K8sClient struct {
 	client   ctrlclient.Client
+	cache    ctrlcache.Cache
 	Resolver *resolver.Resolver
 }
 
@@ -50,6 +60,17 @@ type K8sClient struct {
 // envtest-backed client.
 func NewK8sClient(client ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
+}
+
+// WithCache wires the shared informer cache onto the K8sClient so the
+// hot-path ListPoliciesInNamespace call used by the policy resolver can
+// retrieve pointers to cache-owned TemplatePolicy objects instead of paying
+// the delegating client's DeepCopy per List. Production wiring from
+// console.go passes mgr.GetCache(); tests that exercise only the handler
+// CRUD surface can leave this nil.
+func (k *K8sClient) WithCache(c ctrlcache.Cache) *K8sClient {
+	k.cache = c
+	return k
 }
 
 // ListPolicies returns every TemplatePolicy in the given namespace.
@@ -64,14 +85,66 @@ func (k *K8sClient) ListPolicies(ctx context.Context, namespace string) ([]templ
 	return list.Items, nil
 }
 
-// ListPoliciesInNamespace is an alias for ListPolicies used by the
-// policyresolver ancestor walker (HOL-567). It is kept as a distinct method
-// name because the walker interface uses that signature.
-func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicy, error) {
+// ListPoliciesInNamespace returns every TemplatePolicy in a namespace as a
+// slice of pointers. The policyresolver ancestor walker (HOL-567) calls this
+// per ancestor namespace on every render-time resolve.
+//
+// HOL-622 hot-path contract: when the K8sClient has been wired with a shared
+// informer cache (WithCache), reads go through the indexer's NamespaceIndex
+// and return pointers that reference cache-owned objects directly — no
+// DeepCopy. The resolver treats the returned pointers as read-only, which
+// matches its actual usage (the resolver only reads .Spec.Rules and object
+// metadata; it does not mutate the cached object).
+//
+// When no cache is wired (handler-only tests or pre-HOL-622 fallback paths),
+// we fall back to the delegating client.List which returns a freshly-decoded
+// value slice. This path still works correctly, just without the zero-copy
+// optimization.
+func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, namespace string) ([]*templatesv1alpha1.TemplatePolicy, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required")
 	}
-	return k.ListPolicies(ctx, namespace)
+	slog.DebugContext(ctx, "listing template policies for resolver",
+		slog.String("namespace", namespace),
+		slog.Bool("cache", k.cache != nil),
+	)
+	if k.cache != nil {
+		informer, err := k.cache.GetInformer(ctx, &templatesv1alpha1.TemplatePolicy{})
+		if err != nil {
+			return nil, fmt.Errorf("getting template policy informer: %w", err)
+		}
+		// SharedIndexInformer exposes an indexer keyed by namespace via the
+		// well-known NamespaceIndex. ByIndex returns []interface{} pointing
+		// at the indexer's storage — no copy.
+		si, ok := informer.(clientgocache.SharedIndexInformer)
+		if !ok {
+			return nil, fmt.Errorf("template policy informer is not a SharedIndexInformer (got %T)", informer)
+		}
+		raws, err := si.GetIndexer().ByIndex(clientgocache.NamespaceIndex, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("listing template policies via indexer in %q: %w", namespace, err)
+		}
+		out := make([]*templatesv1alpha1.TemplatePolicy, 0, len(raws))
+		for _, raw := range raws {
+			p, ok := raw.(*templatesv1alpha1.TemplatePolicy)
+			if !ok {
+				return nil, fmt.Errorf("indexer returned unexpected type %T for TemplatePolicy", raw)
+			}
+			out = append(out, p)
+		}
+		return out, nil
+	}
+	// Fallback: delegating client List. Pays DeepCopy per item, used for
+	// tests that do not stand up a full cache (e.g., ctrlfake-backed units).
+	items, err := k.ListPolicies(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicy, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out, nil
 }
 
 // GetPolicy retrieves a single TemplatePolicy by name.

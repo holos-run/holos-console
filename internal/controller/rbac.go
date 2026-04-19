@@ -33,4 +33,5 @@ limitations under the License.
 // +kubebuilder:rbac:groups=templates.holos.run,resources=templatepolicybindings/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 package controller

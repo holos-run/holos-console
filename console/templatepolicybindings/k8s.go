@@ -24,6 +24,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clientgocache "k8s.io/client-go/tools/cache"
+	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
@@ -37,8 +39,13 @@ import (
 //
 // Reads hit the controller-runtime cache; writes fall through to the API
 // server and the cache learns about them on the next watch event.
+//
+// HOL-622: when Cache is non-nil, ListBindingsInNamespace uses the shared
+// informer's indexer directly to return pointers to cache-owned objects
+// without the DeepCopy the delegating client performs.
 type K8sClient struct {
 	client   ctrlclient.Client
+	cache    ctrlcache.Cache
 	Resolver *resolver.Resolver
 }
 
@@ -48,6 +55,16 @@ type K8sClient struct {
 // envtest-backed client.
 func NewK8sClient(client ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
+}
+
+// WithCache wires the shared informer cache onto the K8sClient so the
+// hot-path ListBindingsInNamespace call used by the policy resolver can
+// retrieve pointers to cache-owned TemplatePolicyBinding objects instead of
+// paying the delegating client's DeepCopy per List. Production wiring from
+// console.go passes mgr.GetCache().
+func (k *K8sClient) WithCache(c ctrlcache.Cache) *K8sClient {
+	k.cache = c
+	return k
 }
 
 // ListBindings returns every TemplatePolicyBinding in the given namespace.
@@ -62,14 +79,57 @@ func (k *K8sClient) ListBindings(ctx context.Context, namespace string) ([]templ
 	return list.Items, nil
 }
 
-// ListBindingsInNamespace is an alias for ListBindings used by the
-// policyresolver ancestor walker (HOL-596). It is kept as a distinct method
-// name because the walker interface uses that signature.
-func (k *K8sClient) ListBindingsInNamespace(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
+// ListBindingsInNamespace returns every TemplatePolicyBinding in a namespace
+// as a slice of pointers. The policyresolver binding walker (HOL-596) calls
+// this per ancestor namespace on every render-time resolve.
+//
+// HOL-622 hot-path contract: when the K8sClient has been wired with a shared
+// informer cache (WithCache), reads go through the indexer's NamespaceIndex
+// and return pointers that reference cache-owned objects directly — no
+// DeepCopy. The resolver treats the returned pointers as read-only.
+//
+// When no cache is wired we fall back to the delegating client.List which
+// returns a freshly-decoded value slice.
+func (k *K8sClient) ListBindingsInNamespace(ctx context.Context, namespace string) ([]*templatesv1alpha1.TemplatePolicyBinding, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required")
 	}
-	return k.ListBindings(ctx, namespace)
+	slog.DebugContext(ctx, "listing template policy bindings for resolver",
+		slog.String("namespace", namespace),
+		slog.Bool("cache", k.cache != nil),
+	)
+	if k.cache != nil {
+		informer, err := k.cache.GetInformer(ctx, &templatesv1alpha1.TemplatePolicyBinding{})
+		if err != nil {
+			return nil, fmt.Errorf("getting template policy binding informer: %w", err)
+		}
+		si, ok := informer.(clientgocache.SharedIndexInformer)
+		if !ok {
+			return nil, fmt.Errorf("template policy binding informer is not a SharedIndexInformer (got %T)", informer)
+		}
+		raws, err := si.GetIndexer().ByIndex(clientgocache.NamespaceIndex, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("listing template policy bindings via indexer in %q: %w", namespace, err)
+		}
+		out := make([]*templatesv1alpha1.TemplatePolicyBinding, 0, len(raws))
+		for _, raw := range raws {
+			b, ok := raw.(*templatesv1alpha1.TemplatePolicyBinding)
+			if !ok {
+				return nil, fmt.Errorf("indexer returned unexpected type %T for TemplatePolicyBinding", raw)
+			}
+			out = append(out, b)
+		}
+		return out, nil
+	}
+	items, err := k.ListBindings(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicyBinding, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out, nil
 }
 
 // GetBinding retrieves a single TemplatePolicyBinding by name.
