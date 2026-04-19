@@ -26,6 +26,7 @@ import {
   makeFolderScope,
 } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
+import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
 import { PlatformTemplateEnabledToggle } from '@/components/platform-template-enabled-toggle'
@@ -65,6 +66,11 @@ export function FolderTemplateDetailPage({
 
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
+  // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
+  // platform-input preview default so the preview matches what the backend
+  // will inject at render time. Folder templates inherit this from the
+  // folder's parent organization.
+  const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(orgName)
 
   const scope = makeFolderScope(folderName)
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
@@ -89,7 +95,18 @@ export function FolderTemplateDetailPage({
   const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
-  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  // Fall back to "istio-ingress" only after the org query has successfully
+  // resolved with no value configured. While the org load is pending or
+  // errored (e.g. a folder EDITOR may not have org-read permission), omit
+  // the field entirely so the preview never advertises a value that may be
+  // incorrect — the backend (HOL-644) still injects the org's actual value
+  // at render time.
+  const orgLoaded = orgName.length > 0 && !orgPending && !orgError
+  const gatewayNamespace = orgLoaded ? (org?.gatewayNamespace || 'istio-ingress') : ''
+  const gatewayNamespaceLine = gatewayNamespace
+    ? `  gatewayNamespace: "${gatewayNamespace}"\n`
+    : ''
+  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n${gatewayNamespaceLine}  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {

@@ -38,6 +38,10 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
@@ -46,6 +50,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateTemplatePage } from './new'
 
@@ -67,8 +72,13 @@ function setupMocks(
     isError: !!renderError,
   })
   ;(useGetProject as Mock).mockReturnValue({
-    data: { name: 'test-project', userRole },
+    data: { name: 'test-project', userRole, organization: 'test-org' },
     isLoading: false,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'test-org', gatewayNamespace: '' },
+    isPending: false,
+    error: null,
   })
 }
 

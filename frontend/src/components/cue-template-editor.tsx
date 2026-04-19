@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -120,6 +120,32 @@ export function CueTemplateEditor({
   const [activeTab, setActiveTab] = useState('editor')
   const [cuePlatformInput, setCuePlatformInput] = useState(() => prettyPrintJson(defaultPlatformInput))
   const [cueInput, setCueInput] = useState(() => prettyPrintJson(defaultProjectInput))
+
+  // The defaults can change after first render when async data (such as the
+  // authoring org's gatewayNamespace, HOL-646) finishes loading. Re-sync the
+  // textarea state to the new default value only if the user has not edited
+  // it — track the last applied default in a ref and compare with current
+  // state to detect that case.
+  const lastPlatformDefaultRef = useRef(prettyPrintJson(defaultPlatformInput))
+  const lastProjectDefaultRef = useRef(prettyPrintJson(defaultProjectInput))
+  useEffect(() => {
+    const next = prettyPrintJson(defaultPlatformInput)
+    if (next !== lastPlatformDefaultRef.current) {
+      setCuePlatformInput((current) =>
+        current === lastPlatformDefaultRef.current ? next : current,
+      )
+      lastPlatformDefaultRef.current = next
+    }
+  }, [defaultPlatformInput])
+  useEffect(() => {
+    const next = prettyPrintJson(defaultProjectInput)
+    if (next !== lastProjectDefaultRef.current) {
+      setCueInput((current) =>
+        current === lastProjectDefaultRef.current ? next : current,
+      )
+      lastProjectDefaultRef.current = next
+    }
+  }, [defaultProjectInput])
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
   const debouncedCuePlatformInput = useDebouncedValue(cuePlatformInput, 500)

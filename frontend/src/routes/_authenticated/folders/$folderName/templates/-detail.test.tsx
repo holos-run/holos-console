@@ -34,6 +34,10 @@ vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
@@ -52,6 +56,7 @@ import {
   useRenderTemplate,
 } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
+import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { FolderTemplateDetailPage } from './$templateName'
 
@@ -95,6 +100,11 @@ function setupMocks(
   })
   ;(useGetFolder as Mock).mockReturnValue({
     data: { name: 'test-folder', organization: 'test-org', userRole },
+    isPending: false,
+    error: null,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'test-org', gatewayNamespace: '' },
     isPending: false,
     error: null,
   })
@@ -468,6 +478,11 @@ describe('FolderTemplateDetailPage', () => {
       isPending: false,
       error: null,
     })
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { name: 'test-org', gatewayNamespace: '' },
+      isPending: false,
+      error: null,
+    })
     render(
       <FolderTemplateDetailPage
         folderName="test-folder"
@@ -505,6 +520,11 @@ describe('FolderTemplateDetailPage', () => {
     })
     ;(useGetFolder as Mock).mockReturnValue({
       data: { name: 'test-folder', organization: 'test-org', userRole: Role.OWNER },
+      isPending: false,
+      error: null,
+    })
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { name: 'test-org', gatewayNamespace: '' },
       isPending: false,
       error: null,
     })

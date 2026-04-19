@@ -64,6 +64,10 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
 }))
@@ -80,6 +84,7 @@ import {
   useListLinkableTemplates,
 } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateTemplatePage } from './new'
 import { DeploymentTemplateDetailPage } from './$templateName'
@@ -125,8 +130,13 @@ function setupCreateMocks(userRole = Role.OWNER) {
     isError: false,
   })
   ;(useGetProject as Mock).mockReturnValue({
-    data: { name: 'test-project', userRole },
+    data: { name: 'test-project', userRole, organization: 'test-org' },
     isLoading: false,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'test-org', gatewayNamespace: '' },
+    isPending: false,
+    error: null,
   })
 }
 
@@ -136,7 +146,8 @@ function setupDetailMocks(userRole = Role.OWNER, templateOverrides?: Partial<typ
   ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
   ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }), isPending: false })
-  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole, organization: 'test-org' }, isLoading: false })
+  ;(useGetOrganization as Mock).mockReturnValue({ data: { name: 'test-org', gatewayNamespace: '' }, isPending: false, error: null })
   ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
 }
 
