@@ -288,6 +288,71 @@ describe('AppSidebar — ProjectPicker empty state', () => {
   })
 })
 
+describe('AppSidebar — ProjectPicker navigation', () => {
+  const setSelectedProject = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockNavigate.mockReset()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [
+        { name: 'project-a', displayName: 'Project A' },
+        { name: 'project-b', displayName: 'Project B' },
+      ],
+      selectedProject: null,
+      setSelectedProject,
+      isLoading: false,
+    })
+  })
+
+  it('selecting a project in the picker navigates directly to its secrets page', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    // The picker renders each project's display name as a menuitem.
+    const projectBItem = screen.getByText('Project B')
+    await user.click(projectBItem)
+
+    expect(setSelectedProject).toHaveBeenCalledWith('project-b')
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/projects/$projectName/secrets',
+      params: { projectName: 'project-b' },
+    })
+  })
+
+  it('selecting "All Projects" in the picker navigates to the org projects page and clears selection', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    // "All Projects" appears twice: once as the picker trigger label (a button
+    // with data-testid="project-picker") and once as the first dropdown menu
+    // item. The dropdown item is rendered by the mocked DropdownMenuItem as a
+    // clickable div — pick the text element that is *not* inside the trigger
+    // button.
+    const allProjectsNodes = screen.getAllByText('All Projects')
+    const menuItemNode = allProjectsNodes.find(
+      (el) => !el.closest('button[data-testid="project-picker"]'),
+    )
+    expect(menuItemNode).toBeDefined()
+    await user.click(menuItemNode!)
+
+    expect(setSelectedProject).toHaveBeenCalledWith(null)
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/orgs/$orgName/projects',
+      params: { orgName: 'my-org' },
+    })
+  })
+})
+
 describe('AppSidebar — project selected', () => {
   beforeEach(() => {
     vi.clearAllMocks()
