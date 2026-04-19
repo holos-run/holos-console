@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Agent context map for the `holos-console` code repo. For architecture, testing,
+Agent context map for the `holos-console` code repo. For architecture,
 UI conventions, and the full catalog of cross-cutting guardrails, see the
 companion
 [AGENTS.md in holos-console-docs](https://github.com/holos-run/holos-console-docs/blob/main/AGENTS.md).
@@ -8,6 +8,13 @@ companion
 This code is not yet released. Do not preserve backwards compatibility when
 making changes. Review `CONTRIBUTING.md` for commit message requirements before
 opening a PR.
+
+## Testing
+
+- [Test Strategy](docs/agents/test-strategy.md) — Prefer unit tests; reserve E2E for OIDC login and real K8s round-trips.
+- [Testing Patterns](docs/agents/testing-patterns.md) — Go table-driven tests, Vitest + RTL for UI, Playwright for E2E, multi-persona helpers.
+- [Testing Guide](docs/testing.md) — Full decision-rule table and ConnectRPC mock worked example.
+- [E2E Testing](docs/e2e-testing.md) — Tight iteration loop, port overrides, multi-persona helpers, and which tests need Kubernetes.
 
 ## Guardrails
 
