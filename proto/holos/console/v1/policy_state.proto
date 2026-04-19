@@ -6,52 +6,38 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 
 // policy_state.proto carries the shared TemplatePolicy drift messages used by
 // both DeploymentService and TemplateService (HOL-567). It also holds the
-// LinkedTemplateRef / TemplateScope / TemplateScopeRef foundational types so
-// deployments.proto can reference them in PolicyState without creating an
-// import cycle with templates.proto (which already imports deployments.proto
-// for EnvVar).
+// LinkedTemplateRef foundational type so deployments.proto can reference it in
+// PolicyState without creating an import cycle with templates.proto (which
+// already imports deployments.proto for EnvVar).
 //
 // File-scope placement is transparent to generated Go and TypeScript:
 // types remain in the `holos.console.v1` proto package and in the
 // consolev1 Go package regardless of which file defines them. Proto consumers
 // that import `holos.console.v1.LinkedTemplateRef` continue to resolve the
 // same type.
+//
+// HOL-619 removed the TemplateScope enum and TemplateScopeRef message.
+// Resources are now keyed by `(namespace, name)` — the containing Kubernetes
+// namespace is the only parent signal. Admission plugins (HOL-618) reject
+// TemplatePolicy and TemplatePolicyBinding objects in project namespaces so
+// proto no longer needs a TEMPLATE_SCOPE_PROJECT carve-out.
 
-// TemplateScope identifies the hierarchy level at which a template is stored.
-// (ADR 021 Decision 1)
-enum TemplateScope {
-  TEMPLATE_SCOPE_UNSPECIFIED = 0;
-  // TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
-  TEMPLATE_SCOPE_ORGANIZATION = 1;
-  // TEMPLATE_SCOPE_FOLDER — authored by SREs.
-  TEMPLATE_SCOPE_FOLDER = 2;
-  // TEMPLATE_SCOPE_PROJECT — authored by product engineers.
-  TEMPLATE_SCOPE_PROJECT = 3;
-}
-
-// TemplateScopeRef identifies the owning scope of a template.
-// (ADR 021 Decision 1)
-message TemplateScopeRef {
-  // scope is the hierarchy level.
-  TemplateScope scope = 1;
-  // scope_name is the org name, folder name, or project name.
-  string scope_name = 2;
-}
-
-// LinkedTemplateRef is a scope-qualified reference to a template used in the
-// explicit linking list (ADR 021 Decision 5). Replaces the flat string list
-// from v1alpha1's console.holos.run/linked-org-templates annotation.
+// LinkedTemplateRef is a (namespace, name) reference to a template used in
+// the explicit linking list (ADR 021 Decision 5). Replaces the flat string
+// list from v1alpha1's console.holos.run/linked-org-templates annotation.
+//
+// Fields were renumbered in HOL-619 when the scope discriminator was dropped.
 message LinkedTemplateRef {
-  // scope identifies the hierarchy level of the linked template.
-  TemplateScope scope = 1;
-  // scope_name is the org/folder/project name for the linked template.
-  string scope_name = 2;
+  // namespace is the Kubernetes namespace that owns the linked template. The
+  // resolver classifies the namespace into its hierarchy kind (organization,
+  // folder, project) at render time — callers supply the namespace only.
+  string namespace = 1;
   // name is the template name.
-  string name = 3;
+  string name = 2;
   // version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
   // restricts which release versions of the linked template are compatible.
   // Empty means no constraint (latest version is used).
-  string version_constraint = 4;
+  string version_constraint = 3;
 }
 
 // PolicyState carries the full TemplatePolicy drift snapshot for a render
@@ -107,14 +93,15 @@ message GetDeploymentPolicyStateResponse {
 }
 
 // GetProjectTemplatePolicyStateRequest requests the policy state snapshot for
-// a project-scope template. The scope must be TEMPLATE_SCOPE_PROJECT — other
-// scopes return InvalidArgument. This is the project-template counterpart to
-// DeploymentService.GetDeploymentPolicyState.
+// a project-scope template. The `namespace` MUST classify as a project
+// namespace — other kinds return InvalidArgument. This is the
+// project-template counterpart to DeploymentService.GetDeploymentPolicyState.
 message GetProjectTemplatePolicyStateRequest {
-  // scope identifies the owning project (scope must be
-  // TEMPLATE_SCOPE_PROJECT; scope_name is the project slug).
-  TemplateScopeRef scope = 1;
-  // name is the template's DNS label slug within the project.
+  // namespace is the Kubernetes namespace that owns the project-scope
+  // template. The resolver classifies the namespace as a project namespace;
+  // other classifications are rejected.
+  string namespace = 1;
+  // name is the template's DNS label slug within the project namespace.
   string name = 2;
 }
 

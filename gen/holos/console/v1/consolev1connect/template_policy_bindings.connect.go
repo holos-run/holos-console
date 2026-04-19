@@ -55,26 +55,25 @@ const (
 // holos.console.v1.TemplatePolicyBindingService service.
 type TemplatePolicyBindingServiceClient interface {
 	// ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
-	// visible in the given scope. Requires
-	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
-	// PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
-	// meaningless without its policy — anyone who can read/write the policy
+	// visible in the given namespace. Requires
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the owning resource. Bindings reuse
+	// the PERMISSION_TEMPLATE_POLICIES_* permission family because a binding
+	// is meaningless without its policy — anyone who can read/write the policy
 	// can read/write the set of targets it applies to (see HOL-595).
 	ListTemplatePolicyBindings(context.Context, *connect.Request[v1.ListTemplatePolicyBindingsRequest]) (*connect.Response[v1.ListTemplatePolicyBindingsResponse], error)
-	// GetTemplatePolicyBinding retrieves a single binding by name within a
-	// scope. Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+	// GetTemplatePolicyBinding retrieves a single binding by (namespace,
+	// name). Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
 	GetTemplatePolicyBinding(context.Context, *connect.Request[v1.GetTemplatePolicyBindingRequest]) (*connect.Response[v1.GetTemplatePolicyBindingResponse], error)
-	// CreateTemplatePolicyBinding creates a new binding at the given scope.
-	// The scope MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER;
-	// TEMPLATE_SCOPE_PROJECT and any namespace the resolver classifies as
-	// `ResourceTypeProject` are rejected. Requires
-	// PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// CreateTemplatePolicyBinding creates a new binding in the given
+	// namespace. The namespace MUST be an organization or folder namespace;
+	// admission (HOL-618) rejects project-namespace creates. Requires
+	// PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	CreateTemplatePolicyBinding(context.Context, *connect.Request[v1.CreateTemplatePolicyBindingRequest]) (*connect.Response[v1.CreateTemplatePolicyBindingResponse], error)
 	// UpdateTemplatePolicyBinding updates an existing binding. Requires
-	// PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	UpdateTemplatePolicyBinding(context.Context, *connect.Request[v1.UpdateTemplatePolicyBindingRequest]) (*connect.Response[v1.UpdateTemplatePolicyBindingResponse], error)
 	// DeleteTemplatePolicyBinding deletes a binding. Requires
-	// PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+	// PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicyBinding(context.Context, *connect.Request[v1.DeleteTemplatePolicyBindingRequest]) (*connect.Response[v1.DeleteTemplatePolicyBindingResponse], error)
 }
 
@@ -166,26 +165,25 @@ func (c *templatePolicyBindingServiceClient) DeleteTemplatePolicyBinding(ctx con
 // holos.console.v1.TemplatePolicyBindingService service.
 type TemplatePolicyBindingServiceHandler interface {
 	// ListTemplatePolicyBindings returns all TemplatePolicyBinding resources
-	// visible in the given scope. Requires
-	// PERMISSION_TEMPLATE_POLICIES_LIST on the scope. Bindings reuse the
-	// PERMISSION_TEMPLATE_POLICIES_* permission family because a binding is
-	// meaningless without its policy — anyone who can read/write the policy
+	// visible in the given namespace. Requires
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the owning resource. Bindings reuse
+	// the PERMISSION_TEMPLATE_POLICIES_* permission family because a binding
+	// is meaningless without its policy — anyone who can read/write the policy
 	// can read/write the set of targets it applies to (see HOL-595).
 	ListTemplatePolicyBindings(context.Context, *connect.Request[v1.ListTemplatePolicyBindingsRequest]) (*connect.Response[v1.ListTemplatePolicyBindingsResponse], error)
-	// GetTemplatePolicyBinding retrieves a single binding by name within a
-	// scope. Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+	// GetTemplatePolicyBinding retrieves a single binding by (namespace,
+	// name). Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
 	GetTemplatePolicyBinding(context.Context, *connect.Request[v1.GetTemplatePolicyBindingRequest]) (*connect.Response[v1.GetTemplatePolicyBindingResponse], error)
-	// CreateTemplatePolicyBinding creates a new binding at the given scope.
-	// The scope MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER;
-	// TEMPLATE_SCOPE_PROJECT and any namespace the resolver classifies as
-	// `ResourceTypeProject` are rejected. Requires
-	// PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// CreateTemplatePolicyBinding creates a new binding in the given
+	// namespace. The namespace MUST be an organization or folder namespace;
+	// admission (HOL-618) rejects project-namespace creates. Requires
+	// PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	CreateTemplatePolicyBinding(context.Context, *connect.Request[v1.CreateTemplatePolicyBindingRequest]) (*connect.Response[v1.CreateTemplatePolicyBindingResponse], error)
 	// UpdateTemplatePolicyBinding updates an existing binding. Requires
-	// PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	UpdateTemplatePolicyBinding(context.Context, *connect.Request[v1.UpdateTemplatePolicyBindingRequest]) (*connect.Response[v1.UpdateTemplatePolicyBindingResponse], error)
 	// DeleteTemplatePolicyBinding deletes a binding. Requires
-	// PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+	// PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicyBinding(context.Context, *connect.Request[v1.DeleteTemplatePolicyBindingRequest]) (*connect.Response[v1.DeleteTemplatePolicyBindingResponse], error)
 }
 

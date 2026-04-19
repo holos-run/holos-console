@@ -82,34 +82,37 @@ const (
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
 type TemplateServiceClient interface {
-	// ListTemplates returns all templates the user can see in the given scope.
+	// ListTemplates returns all templates the user can see in the given
+	// namespace.
 	ListTemplates(context.Context, *connect.Request[v1.ListTemplatesRequest]) (*connect.Response[v1.ListTemplatesResponse], error)
-	// GetTemplate retrieves a template by name within a scope.
+	// GetTemplate retrieves a template by (namespace, name).
 	GetTemplate(context.Context, *connect.Request[v1.GetTemplateRequest]) (*connect.Response[v1.GetTemplateResponse], error)
-	// CreateTemplate creates a new template in the given scope.
-	// Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+	// CreateTemplate creates a new template in the given namespace.
+	// Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
 	CreateTemplate(context.Context, *connect.Request[v1.CreateTemplateRequest]) (*connect.Response[v1.CreateTemplateResponse], error)
 	// UpdateTemplate updates an existing template.
-	// Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+	// Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
 	UpdateTemplate(context.Context, *connect.Request[v1.UpdateTemplateRequest]) (*connect.Response[v1.UpdateTemplateResponse], error)
 	// DeleteTemplate deletes a template.
-	// Requires PERMISSION_TEMPLATES_DELETE on the owning scope.
+	// Requires PERMISSION_TEMPLATES_DELETE on the owning resource.
 	DeleteTemplate(context.Context, *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error)
 	// RenderTemplate evaluates a CUE template with inputs and returns rendered
 	// Kubernetes resource manifests. Supports draft (unsaved) templates.
 	RenderTemplate(context.Context, *connect.Request[v1.RenderTemplateRequest]) (*connect.Response[v1.RenderTemplateResponse], error)
-	// CloneTemplate copies an existing template to a new name within the same scope.
+	// CloneTemplate copies an existing template to a new name within the same
+	// namespace.
 	CloneTemplate(context.Context, *connect.Request[v1.CloneTemplateRequest]) (*connect.Response[v1.CloneTemplateResponse], error)
-	// ListLinkableTemplates returns all enabled templates in ancestor scopes that
-	// the given scope may link against. For a project scope, this is all enabled
-	// templates in parent folders and the organization. For a folder scope, it is
-	// all enabled templates in parent folders and the organization above it.
-	// Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
+	// ListLinkableTemplates returns all enabled templates in ancestor
+	// namespaces that the given namespace may link against. For a project
+	// namespace, this is all enabled templates in parent folders and the
+	// organization. For a folder namespace, it is all enabled templates in
+	// parent folders and the organization above it. Replaces
+	// ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
 	ListLinkableTemplates(context.Context, *connect.Request[v1.ListLinkableTemplatesRequest]) (*connect.Response[v1.ListLinkableTemplatesResponse], error)
-	// ListAncestorTemplates returns templates from all ancestor scopes of the
-	// given scope. Used by the renderer to compute the effective template set;
-	// TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
-	// templates are forced onto the project.
+	// ListAncestorTemplates returns templates from all ancestor namespaces of
+	// the given namespace. Used by the renderer to compute the effective
+	// template set; TemplatePolicy REQUIRE rules (TemplatePolicyService) drive
+	// which ancestor templates are forced onto the project.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
 	// CreateRelease publishes a new versioned release of a template, capturing
 	// the CUE source, defaults, changelog, and upgrade advice at a specific
@@ -117,34 +120,32 @@ type TemplateServiceClient interface {
 	CreateRelease(context.Context, *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error)
 	// ListReleases returns all releases for a template, ordered by version.
 	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
-	// GetRelease retrieves a single release by template name, scope, and version.
+	// GetRelease retrieves a single release by (namespace, template_name,
+	// version).
 	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
 	// CheckUpdates returns available version updates for linked templates in a
-	// given scope, comparing current pinned versions against published releases.
+	// given namespace, comparing current pinned versions against published
+	// releases.
 	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
-	// GetTemplateDefaults returns the defaults a template provides for deployment
-	// form fields. The handler evaluates the template's `defaults` CUE block via
-	// ExtractDefaults and returns the same TemplateDefaults message that
-	// Template.defaults would carry on GetTemplate. Inline `*` defaults declared
-	// on `input` fields are NOT read — only the top-level `defaults` CUE block is
-	// considered. References ADR 027.
+	// GetTemplateDefaults returns the defaults a template provides for
+	// deployment form fields. The handler evaluates the template's `defaults`
+	// CUE block via ExtractDefaults and returns the same TemplateDefaults
+	// message that Template.defaults would carry on GetTemplate. Inline `*`
+	// defaults declared on `input` fields are NOT read — only the top-level
+	// `defaults` CUE block is considered. References ADR 027.
 	//
 	// This RPC gives the Create Deployment form an explicit, testable hook to
 	// call on template selection and on the "Load defaults" action. It is
-	// complementary to Template.defaults on list/get responses, which is retained
-	// for backwards compatibility.
+	// complementary to Template.defaults on list/get responses, which is
+	// retained for backwards compatibility.
 	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
 	// GetProjectTemplatePolicyState returns the full TemplatePolicy drift
 	// snapshot for a project-scope Template. Mirrors
 	// DeploymentService.GetDeploymentPolicyState but keyed by
-	// (scope=project, project slug, template name). Introduced in HOL-567.
+	// (project namespace, template name). Introduced in HOL-567.
 	//
-	// Scope decision (AC from HOL-567): the parallel `policy_drift` surface
-	// for project-scope Templates is provided via this RPC rather than a new
-	// `ProjectTemplateStatusSummary` message, because project-scope templates
-	// do not carry a live-status concept in the current UI — the list view
-	// shows metadata only. A dedicated RPC keeps list responses cheap and
-	// makes the drift query symmetric with deployments.
+	// A dedicated RPC keeps list responses cheap and makes the drift query
+	// symmetric with deployments.
 	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
 }
 
@@ -349,34 +350,37 @@ func (c *templateServiceClient) GetProjectTemplatePolicyState(ctx context.Contex
 
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
-	// ListTemplates returns all templates the user can see in the given scope.
+	// ListTemplates returns all templates the user can see in the given
+	// namespace.
 	ListTemplates(context.Context, *connect.Request[v1.ListTemplatesRequest]) (*connect.Response[v1.ListTemplatesResponse], error)
-	// GetTemplate retrieves a template by name within a scope.
+	// GetTemplate retrieves a template by (namespace, name).
 	GetTemplate(context.Context, *connect.Request[v1.GetTemplateRequest]) (*connect.Response[v1.GetTemplateResponse], error)
-	// CreateTemplate creates a new template in the given scope.
-	// Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+	// CreateTemplate creates a new template in the given namespace.
+	// Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
 	CreateTemplate(context.Context, *connect.Request[v1.CreateTemplateRequest]) (*connect.Response[v1.CreateTemplateResponse], error)
 	// UpdateTemplate updates an existing template.
-	// Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+	// Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
 	UpdateTemplate(context.Context, *connect.Request[v1.UpdateTemplateRequest]) (*connect.Response[v1.UpdateTemplateResponse], error)
 	// DeleteTemplate deletes a template.
-	// Requires PERMISSION_TEMPLATES_DELETE on the owning scope.
+	// Requires PERMISSION_TEMPLATES_DELETE on the owning resource.
 	DeleteTemplate(context.Context, *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error)
 	// RenderTemplate evaluates a CUE template with inputs and returns rendered
 	// Kubernetes resource manifests. Supports draft (unsaved) templates.
 	RenderTemplate(context.Context, *connect.Request[v1.RenderTemplateRequest]) (*connect.Response[v1.RenderTemplateResponse], error)
-	// CloneTemplate copies an existing template to a new name within the same scope.
+	// CloneTemplate copies an existing template to a new name within the same
+	// namespace.
 	CloneTemplate(context.Context, *connect.Request[v1.CloneTemplateRequest]) (*connect.Response[v1.CloneTemplateResponse], error)
-	// ListLinkableTemplates returns all enabled templates in ancestor scopes that
-	// the given scope may link against. For a project scope, this is all enabled
-	// templates in parent folders and the organization. For a folder scope, it is
-	// all enabled templates in parent folders and the organization above it.
-	// Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
+	// ListLinkableTemplates returns all enabled templates in ancestor
+	// namespaces that the given namespace may link against. For a project
+	// namespace, this is all enabled templates in parent folders and the
+	// organization. For a folder namespace, it is all enabled templates in
+	// parent folders and the organization above it. Replaces
+	// ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
 	ListLinkableTemplates(context.Context, *connect.Request[v1.ListLinkableTemplatesRequest]) (*connect.Response[v1.ListLinkableTemplatesResponse], error)
-	// ListAncestorTemplates returns templates from all ancestor scopes of the
-	// given scope. Used by the renderer to compute the effective template set;
-	// TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
-	// templates are forced onto the project.
+	// ListAncestorTemplates returns templates from all ancestor namespaces of
+	// the given namespace. Used by the renderer to compute the effective
+	// template set; TemplatePolicy REQUIRE rules (TemplatePolicyService) drive
+	// which ancestor templates are forced onto the project.
 	ListAncestorTemplates(context.Context, *connect.Request[v1.ListAncestorTemplatesRequest]) (*connect.Response[v1.ListAncestorTemplatesResponse], error)
 	// CreateRelease publishes a new versioned release of a template, capturing
 	// the CUE source, defaults, changelog, and upgrade advice at a specific
@@ -384,34 +388,32 @@ type TemplateServiceHandler interface {
 	CreateRelease(context.Context, *connect.Request[v1.CreateReleaseRequest]) (*connect.Response[v1.CreateReleaseResponse], error)
 	// ListReleases returns all releases for a template, ordered by version.
 	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
-	// GetRelease retrieves a single release by template name, scope, and version.
+	// GetRelease retrieves a single release by (namespace, template_name,
+	// version).
 	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
 	// CheckUpdates returns available version updates for linked templates in a
-	// given scope, comparing current pinned versions against published releases.
+	// given namespace, comparing current pinned versions against published
+	// releases.
 	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
-	// GetTemplateDefaults returns the defaults a template provides for deployment
-	// form fields. The handler evaluates the template's `defaults` CUE block via
-	// ExtractDefaults and returns the same TemplateDefaults message that
-	// Template.defaults would carry on GetTemplate. Inline `*` defaults declared
-	// on `input` fields are NOT read — only the top-level `defaults` CUE block is
-	// considered. References ADR 027.
+	// GetTemplateDefaults returns the defaults a template provides for
+	// deployment form fields. The handler evaluates the template's `defaults`
+	// CUE block via ExtractDefaults and returns the same TemplateDefaults
+	// message that Template.defaults would carry on GetTemplate. Inline `*`
+	// defaults declared on `input` fields are NOT read — only the top-level
+	// `defaults` CUE block is considered. References ADR 027.
 	//
 	// This RPC gives the Create Deployment form an explicit, testable hook to
 	// call on template selection and on the "Load defaults" action. It is
-	// complementary to Template.defaults on list/get responses, which is retained
-	// for backwards compatibility.
+	// complementary to Template.defaults on list/get responses, which is
+	// retained for backwards compatibility.
 	GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error)
 	// GetProjectTemplatePolicyState returns the full TemplatePolicy drift
 	// snapshot for a project-scope Template. Mirrors
 	// DeploymentService.GetDeploymentPolicyState but keyed by
-	// (scope=project, project slug, template name). Introduced in HOL-567.
+	// (project namespace, template name). Introduced in HOL-567.
 	//
-	// Scope decision (AC from HOL-567): the parallel `policy_drift` surface
-	// for project-scope Templates is provided via this RPC rather than a new
-	// `ProjectTemplateStatusSummary` message, because project-scope templates
-	// do not carry a live-status concept in the current UI — the list view
-	// shows metadata only. A dedicated RPC keeps list responses cheap and
-	// makes the drift query symmetric with deployments.
+	// A dedicated RPC keeps list responses cheap and makes the drift query
+	// symmetric with deployments.
 	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
 }
 

@@ -2,7 +2,7 @@
 // @generated from file holos/console/v1/policy_state.proto (package holos.console.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
@@ -11,59 +11,28 @@ import type { Message } from "@bufbuild/protobuf";
 export declare const file_holos_console_v1_policy_state: GenFile;
 
 /**
- * TemplateScopeRef identifies the owning scope of a template.
- * (ADR 021 Decision 1)
+ * LinkedTemplateRef is a (namespace, name) reference to a template used in
+ * the explicit linking list (ADR 021 Decision 5). Replaces the flat string
+ * list from v1alpha1's console.holos.run/linked-org-templates annotation.
  *
- * @generated from message holos.console.v1.TemplateScopeRef
- */
-export declare type TemplateScopeRef = Message<"holos.console.v1.TemplateScopeRef"> & {
-  /**
-   * scope is the hierarchy level.
-   *
-   * @generated from field: holos.console.v1.TemplateScope scope = 1;
-   */
-  scope: TemplateScope;
-
-  /**
-   * scope_name is the org name, folder name, or project name.
-   *
-   * @generated from field: string scope_name = 2;
-   */
-  scopeName: string;
-};
-
-/**
- * Describes the message holos.console.v1.TemplateScopeRef.
- * Use `create(TemplateScopeRefSchema)` to create a new message.
- */
-export declare const TemplateScopeRefSchema: GenMessage<TemplateScopeRef>;
-
-/**
- * LinkedTemplateRef is a scope-qualified reference to a template used in the
- * explicit linking list (ADR 021 Decision 5). Replaces the flat string list
- * from v1alpha1's console.holos.run/linked-org-templates annotation.
+ * Fields were renumbered in HOL-619 when the scope discriminator was dropped.
  *
  * @generated from message holos.console.v1.LinkedTemplateRef
  */
 export declare type LinkedTemplateRef = Message<"holos.console.v1.LinkedTemplateRef"> & {
   /**
-   * scope identifies the hierarchy level of the linked template.
+   * namespace is the Kubernetes namespace that owns the linked template. The
+   * resolver classifies the namespace into its hierarchy kind (organization,
+   * folder, project) at render time — callers supply the namespace only.
    *
-   * @generated from field: holos.console.v1.TemplateScope scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope: TemplateScope;
-
-  /**
-   * scope_name is the org/folder/project name for the linked template.
-   *
-   * @generated from field: string scope_name = 2;
-   */
-  scopeName: string;
+  namespace: string;
 
   /**
    * name is the template name.
    *
-   * @generated from field: string name = 3;
+   * @generated from field: string name = 2;
    */
   name: string;
 
@@ -72,7 +41,7 @@ export declare type LinkedTemplateRef = Message<"holos.console.v1.LinkedTemplate
    * restricts which release versions of the linked template are compatible.
    * Empty means no constraint (latest version is used).
    *
-   * @generated from field: string version_constraint = 4;
+   * @generated from field: string version_constraint = 3;
    */
   versionConstraint: string;
 };
@@ -208,23 +177,24 @@ export declare const GetDeploymentPolicyStateResponseSchema: GenMessage<GetDeplo
 
 /**
  * GetProjectTemplatePolicyStateRequest requests the policy state snapshot for
- * a project-scope template. The scope must be TEMPLATE_SCOPE_PROJECT — other
- * scopes return InvalidArgument. This is the project-template counterpart to
- * DeploymentService.GetDeploymentPolicyState.
+ * a project-scope template. The `namespace` MUST classify as a project
+ * namespace — other kinds return InvalidArgument. This is the
+ * project-template counterpart to DeploymentService.GetDeploymentPolicyState.
  *
  * @generated from message holos.console.v1.GetProjectTemplatePolicyStateRequest
  */
 export declare type GetProjectTemplatePolicyStateRequest = Message<"holos.console.v1.GetProjectTemplatePolicyStateRequest"> & {
   /**
-   * scope identifies the owning project (scope must be
-   * TEMPLATE_SCOPE_PROJECT; scope_name is the project slug).
+   * namespace is the Kubernetes namespace that owns the project-scope
+   * template. The resolver classifies the namespace as a project namespace;
+   * other classifications are rejected.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
-   * name is the template's DNS label slug within the project.
+   * name is the template's DNS label slug within the project namespace.
    *
    * @generated from field: string name = 2;
    */
@@ -255,43 +225,4 @@ export declare type GetProjectTemplatePolicyStateResponse = Message<"holos.conso
  * Use `create(GetProjectTemplatePolicyStateResponseSchema)` to create a new message.
  */
 export declare const GetProjectTemplatePolicyStateResponseSchema: GenMessage<GetProjectTemplatePolicyStateResponse>;
-
-/**
- * TemplateScope identifies the hierarchy level at which a template is stored.
- * (ADR 021 Decision 1)
- *
- * @generated from enum holos.console.v1.TemplateScope
- */
-export enum TemplateScope {
-  /**
-   * @generated from enum value: TEMPLATE_SCOPE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_ORGANIZATION = 1;
-   */
-  ORGANIZATION = 1,
-
-  /**
-   * TEMPLATE_SCOPE_FOLDER — authored by SREs.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_FOLDER = 2;
-   */
-  FOLDER = 2,
-
-  /**
-   * TEMPLATE_SCOPE_PROJECT — authored by product engineers.
-   *
-   * @generated from enum value: TEMPLATE_SCOPE_PROJECT = 3;
-   */
-  PROJECT = 3,
-}
-
-/**
- * Describes the enum holos.console.v1.TemplateScope.
- */
-export declare const TemplateScopeSchema: GenEnum<TemplateScope>;
 

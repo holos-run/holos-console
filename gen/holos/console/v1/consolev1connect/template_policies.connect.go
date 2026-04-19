@@ -53,22 +53,22 @@ const (
 // TemplatePolicyServiceClient is a client for the holos.console.v1.TemplatePolicyService service.
 type TemplatePolicyServiceClient interface {
 	// ListTemplatePolicies returns all TemplatePolicy resources visible in the
-	// given scope. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the scope.
+	// given namespace. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the
+	// owning resource.
 	ListTemplatePolicies(context.Context, *connect.Request[v1.ListTemplatePoliciesRequest]) (*connect.Response[v1.ListTemplatePoliciesResponse], error)
-	// GetTemplatePolicy retrieves a single policy by name within a scope.
-	// Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+	// GetTemplatePolicy retrieves a single policy by (namespace, name).
+	// Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
 	GetTemplatePolicy(context.Context, *connect.Request[v1.GetTemplatePolicyRequest]) (*connect.Response[v1.GetTemplatePolicyResponse], error)
-	// CreateTemplatePolicy creates a new policy at the given scope. The scope
-	// MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER; the handler
-	// MUST reject TEMPLATE_SCOPE_PROJECT and any namespace that the resolver
-	// classifies as `ResourceTypeProject`.
-	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// CreateTemplatePolicy creates a new policy in the given namespace. The
+	// namespace MUST be an organization or folder namespace; admission
+	// (HOL-618) rejects project-namespace creates.
+	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	CreateTemplatePolicy(context.Context, *connect.Request[v1.CreateTemplatePolicyRequest]) (*connect.Response[v1.CreateTemplatePolicyResponse], error)
 	// UpdateTemplatePolicy updates an existing policy.
-	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	UpdateTemplatePolicy(context.Context, *connect.Request[v1.UpdateTemplatePolicyRequest]) (*connect.Response[v1.UpdateTemplatePolicyResponse], error)
 	// DeleteTemplatePolicy deletes a policy.
-	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
 }
 
@@ -154,22 +154,22 @@ func (c *templatePolicyServiceClient) DeleteTemplatePolicy(ctx context.Context, 
 // service.
 type TemplatePolicyServiceHandler interface {
 	// ListTemplatePolicies returns all TemplatePolicy resources visible in the
-	// given scope. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the scope.
+	// given namespace. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the
+	// owning resource.
 	ListTemplatePolicies(context.Context, *connect.Request[v1.ListTemplatePoliciesRequest]) (*connect.Response[v1.ListTemplatePoliciesResponse], error)
-	// GetTemplatePolicy retrieves a single policy by name within a scope.
-	// Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+	// GetTemplatePolicy retrieves a single policy by (namespace, name).
+	// Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
 	GetTemplatePolicy(context.Context, *connect.Request[v1.GetTemplatePolicyRequest]) (*connect.Response[v1.GetTemplatePolicyResponse], error)
-	// CreateTemplatePolicy creates a new policy at the given scope. The scope
-	// MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER; the handler
-	// MUST reject TEMPLATE_SCOPE_PROJECT and any namespace that the resolver
-	// classifies as `ResourceTypeProject`.
-	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// CreateTemplatePolicy creates a new policy in the given namespace. The
+	// namespace MUST be an organization or folder namespace; admission
+	// (HOL-618) rejects project-namespace creates.
+	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	CreateTemplatePolicy(context.Context, *connect.Request[v1.CreateTemplatePolicyRequest]) (*connect.Response[v1.CreateTemplatePolicyResponse], error)
 	// UpdateTemplatePolicy updates an existing policy.
-	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+	// Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
 	UpdateTemplatePolicy(context.Context, *connect.Request[v1.UpdateTemplatePolicyRequest]) (*connect.Response[v1.UpdateTemplatePolicyResponse], error)
 	// DeleteTemplatePolicy deletes a policy.
-	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
 }
 

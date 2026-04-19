@@ -5,7 +5,7 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EnvVar } from "./deployments_pb";
-import type { GetProjectTemplatePolicyStateRequestSchema, GetProjectTemplatePolicyStateResponseSchema, LinkedTemplateRef, TemplateScopeRef } from "./policy_state_pb";
+import type { GetProjectTemplatePolicyStateRequestSchema, GetProjectTemplatePolicyStateResponseSchema, LinkedTemplateRef } from "./policy_state_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -92,13 +92,14 @@ export declare const TemplateDefaultsSchema: GenMessage<TemplateDefaults>;
  */
 export declare type GetTemplateDefaultsRequest = Message<"holos.console.v1.GetTemplateDefaultsRequest"> & {
   /**
-   * scope identifies the owning scope of the template. Only
-   * TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
-   * preserved for symmetry with other template RPCs and future use.
+   * namespace is the Kubernetes namespace that owns the template. Only
+   * project namespaces carry meaningful defaults today, but this RPC is
+   * accepted at any scope for symmetry; non-project namespaces return an
+   * empty TemplateDefaults.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * name is the template's DNS label slug.
@@ -138,25 +139,25 @@ export declare const GetTemplateDefaultsResponseSchema: GenMessage<GetTemplateDe
 
 /**
  * Template is a CUE template that produces Kubernetes resource manifests.
- * It is stored as a Kubernetes ConfigMap in the namespace of its owning scope.
- * (ADR 021 Decision 4)
+ * It is stored as a Kubernetes ConfigMap in the namespace identified by
+ * `namespace` (ADR 021 Decision 4).
  *
  * @generated from message holos.console.v1.Template
  */
 export declare type Template = Message<"holos.console.v1.Template"> & {
   /**
-   * name is the unique identifier (DNS label slug) within the scope.
+   * name is the unique identifier (DNS label slug) within the namespace.
    *
    * @generated from field: string name = 1;
    */
   name: string;
 
   /**
-   * scope_ref identifies the owning scope (level + name).
+   * namespace is the Kubernetes namespace that owns this template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope_ref = 2;
+   * @generated from field: string namespace = 2;
    */
-  scopeRef?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * display_name is a human-readable name.
@@ -181,17 +182,17 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
 
   /**
    * defaults provides optional default values for deployment form fields.
-   * Only meaningful for project-scope templates.
+   * Only meaningful for project-namespace templates.
    *
    * @generated from field: holos.console.v1.TemplateDefaults defaults = 6;
    */
   defaults?: TemplateDefaults;
 
   /**
-   * linked_templates lists templates in ancestor scopes to unify with this
-   * template at render time. Replaces linked_org_templates from v1alpha1.
-   * Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
-   * always unify regardless of this list.
+   * linked_templates lists templates in ancestor namespaces to unify with
+   * this template at render time. Replaces linked_org_templates from
+   * v1alpha1. Ancestor templates forced onto a project by a TemplatePolicy
+   * REQUIRE rule always unify regardless of this list.
    *
    * @generated from field: repeated holos.console.v1.LinkedTemplateRef linked_templates = 7;
    */
@@ -224,15 +225,15 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
 export declare const TemplateSchema: GenMessage<Template>;
 
 /**
- * ListTemplatesRequest requests all templates visible in the given scope.
+ * ListTemplatesRequest requests all templates visible in the given namespace.
  *
  * @generated from message holos.console.v1.ListTemplatesRequest
  */
 export declare type ListTemplatesRequest = Message<"holos.console.v1.ListTemplatesRequest"> & {
   /**
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 };
 
 /**
@@ -260,15 +261,15 @@ export declare type ListTemplatesResponse = Message<"holos.console.v1.ListTempla
 export declare const ListTemplatesResponseSchema: GenMessage<ListTemplatesResponse>;
 
 /**
- * GetTemplateRequest requests a single template by name within a scope.
+ * GetTemplateRequest requests a single template by (namespace, name).
  *
  * @generated from message holos.console.v1.GetTemplateRequest
  */
 export declare type GetTemplateRequest = Message<"holos.console.v1.GetTemplateRequest"> & {
   /**
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * @generated from field: string name = 2;
@@ -301,15 +302,15 @@ export declare type GetTemplateResponse = Message<"holos.console.v1.GetTemplateR
 export declare const GetTemplateResponseSchema: GenMessage<GetTemplateResponse>;
 
 /**
- * CreateTemplateRequest creates a new template in the given scope.
+ * CreateTemplateRequest creates a new template in the given namespace.
  *
  * @generated from message holos.console.v1.CreateTemplateRequest
  */
 export declare type CreateTemplateRequest = Message<"holos.console.v1.CreateTemplateRequest"> & {
   /**
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * @generated from field: holos.console.v1.Template template = 2;
@@ -348,9 +349,9 @@ export declare const CreateTemplateResponseSchema: GenMessage<CreateTemplateResp
  */
 export declare type UpdateTemplateRequest = Message<"holos.console.v1.UpdateTemplateRequest"> & {
   /**
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * @generated from field: holos.console.v1.Template template = 2;
@@ -396,9 +397,9 @@ export declare const UpdateTemplateResponseSchema: GenMessage<UpdateTemplateResp
  */
 export declare type DeleteTemplateRequest = Message<"holos.console.v1.DeleteTemplateRequest"> & {
   /**
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * @generated from field: string name = 2;
@@ -436,11 +437,12 @@ export declare const DeleteTemplateResponseSchema: GenMessage<DeleteTemplateResp
  */
 export declare type RenderTemplateRequest = Message<"holos.console.v1.RenderTemplateRequest"> & {
   /**
-   * scope identifies the owning scope for resolving ancestor templates.
+   * namespace is the Kubernetes namespace that owns the render target, used
+   * to resolve ancestor templates.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * cue_template is the CUE source to evaluate. May be a draft (unsaved) value.
@@ -468,8 +470,8 @@ export declare type RenderTemplateRequest = Message<"holos.console.v1.RenderTemp
   cueProjectInput: string;
 
   /**
-   * linked_templates lists scope-qualified template references to include in
-   * preview unification. Allows draft templates to preview their effective
+   * linked_templates lists (namespace, name) template references to include
+   * in preview unification. Allows draft templates to preview their effective
    * rendering with the chosen linking list before saving.
    *
    * @generated from field: repeated holos.console.v1.LinkedTemplateRef linked_templates = 5;
@@ -605,17 +607,18 @@ export declare type RenderTemplateResponse = Message<"holos.console.v1.RenderTem
 export declare const RenderTemplateResponseSchema: GenMessage<RenderTemplateResponse>;
 
 /**
- * CloneTemplateRequest copies an existing template to a new name within the same scope.
+ * CloneTemplateRequest copies an existing template to a new name within the
+ * same namespace.
  *
  * @generated from message holos.console.v1.CloneTemplateRequest
  */
 export declare type CloneTemplateRequest = Message<"holos.console.v1.CloneTemplateRequest"> & {
   /**
-   * scope identifies the owning scope.
+   * namespace is the Kubernetes namespace that owns the template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * source_name is the name of the template to copy.
@@ -664,28 +667,30 @@ export declare type CloneTemplateResponse = Message<"holos.console.v1.CloneTempl
 export declare const CloneTemplateResponseSchema: GenMessage<CloneTemplateResponse>;
 
 /**
- * ListLinkableTemplatesRequest requests enabled templates in ancestor scopes
- * that the given scope may explicitly link.
+ * ListLinkableTemplatesRequest requests enabled templates in ancestor
+ * namespaces that the given namespace may explicitly link.
  *
  * @generated from message holos.console.v1.ListLinkableTemplatesRequest
  */
 export declare type ListLinkableTemplatesRequest = Message<"holos.console.v1.ListLinkableTemplatesRequest"> & {
   /**
-   * scope is the starting scope (e.g. SCOPE_PROJECT for a project template).
-   * The handler walks up the hierarchy and returns enabled ancestor templates.
+   * namespace is the starting namespace (e.g. a project namespace for a
+   * project template). The handler walks up the hierarchy and returns enabled
+   * ancestor templates.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * include_self_scope, when true, also returns enabled templates at the
-   * request's own scope in addition to ancestor-scope templates. Default false
-   * preserves the existing semantics for project-template linking UIs, which
-   * only link against ancestor-scope templates. The TemplatePolicy editor sets
-   * this to true so org-scope policies can pick org-scope templates (there are
-   * no ancestors to pick from otherwise) and folder-scope policies can pick
-   * templates owned by the same folder. See HOL-561.
+   * request's own namespace in addition to ancestor-namespace templates.
+   * Default false preserves the existing semantics for project-template
+   * linking UIs, which only link against ancestor-namespace templates. The
+   * TemplatePolicy editor sets this to true so org-namespace policies can
+   * pick org-namespace templates (there are no ancestors to pick from
+   * otherwise) and folder-namespace policies can pick templates owned by the
+   * same folder. See HOL-561.
    *
    * @generated from field: bool include_self_scope = 2;
    */
@@ -705,11 +710,11 @@ export declare const ListLinkableTemplatesRequestSchema: GenMessage<ListLinkable
  */
 export declare type LinkableTemplate = Message<"holos.console.v1.LinkableTemplate"> & {
   /**
-   * scope_ref identifies the scope that owns this template.
+   * namespace is the Kubernetes namespace that owns this template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope_ref = 1;
+   * @generated from field: string namespace = 1;
    */
-  scopeRef?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * name is the template's DNS label slug.
@@ -787,17 +792,18 @@ export declare type ListLinkableTemplatesResponse = Message<"holos.console.v1.Li
 export declare const ListLinkableTemplatesResponseSchema: GenMessage<ListLinkableTemplatesResponse>;
 
 /**
- * ListAncestorTemplatesRequest requests templates from all ancestor scopes.
+ * ListAncestorTemplatesRequest requests templates from all ancestor
+ * namespaces of the given namespace.
  *
  * @generated from message holos.console.v1.ListAncestorTemplatesRequest
  */
 export declare type ListAncestorTemplatesRequest = Message<"holos.console.v1.ListAncestorTemplatesRequest"> & {
   /**
-   * scope is the starting scope (e.g. SCOPE_PROJECT).
+   * namespace is the starting namespace (e.g. a project namespace).
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 };
 
 /**
@@ -807,7 +813,7 @@ export declare type ListAncestorTemplatesRequest = Message<"holos.console.v1.Lis
 export declare const ListAncestorTemplatesRequestSchema: GenMessage<ListAncestorTemplatesRequest>;
 
 /**
- * ListAncestorTemplatesResponse contains ancestor templates grouped by scope.
+ * ListAncestorTemplatesResponse contains ancestor templates.
  *
  * @generated from message holos.console.v1.ListAncestorTemplatesResponse
  */
@@ -840,11 +846,11 @@ export declare type Release = Message<"holos.console.v1.Release"> & {
   templateName: string;
 
   /**
-   * scope_ref identifies the owning scope of the template.
+   * namespace is the Kubernetes namespace that owns the template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope_ref = 2;
+   * @generated from field: string namespace = 2;
    */
-  scopeRef?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * version is the semver version string (e.g. "1.2.3").
@@ -954,14 +960,14 @@ export declare const TemplateUpdateSchema: GenMessage<TemplateUpdate>;
  */
 export declare type CreateReleaseRequest = Message<"holos.console.v1.CreateReleaseRequest"> & {
   /**
-   * scope identifies the owning scope of the template.
+   * namespace is the Kubernetes namespace that owns the template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
-   * release is the release to create. template_name, scope_ref, version,
+   * release is the release to create. template_name, namespace, version,
    * cue_template, and defaults are required.
    *
    * @generated from field: holos.console.v1.Release release = 2;
@@ -1000,11 +1006,11 @@ export declare const CreateReleaseResponseSchema: GenMessage<CreateReleaseRespon
  */
 export declare type ListReleasesRequest = Message<"holos.console.v1.ListReleasesRequest"> & {
   /**
-   * scope identifies the owning scope of the template.
+   * namespace is the Kubernetes namespace that owns the template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * template_name is the DNS label slug of the template.
@@ -1039,17 +1045,18 @@ export declare type ListReleasesResponse = Message<"holos.console.v1.ListRelease
 export declare const ListReleasesResponseSchema: GenMessage<ListReleasesResponse>;
 
 /**
- * GetReleaseRequest requests a single release by template, scope, and version.
+ * GetReleaseRequest requests a single release by (namespace, template_name,
+ * version).
  *
  * @generated from message holos.console.v1.GetReleaseRequest
  */
 export declare type GetReleaseRequest = Message<"holos.console.v1.GetReleaseRequest"> & {
   /**
-   * scope identifies the owning scope of the template.
+   * namespace is the Kubernetes namespace that owns the template.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * template_name is the DNS label slug of the template.
@@ -1091,21 +1098,23 @@ export declare type GetReleaseResponse = Message<"holos.console.v1.GetReleaseRes
 export declare const GetReleaseResponseSchema: GenMessage<GetReleaseResponse>;
 
 /**
- * CheckUpdatesRequest asks for available updates for linked templates in a scope.
+ * CheckUpdatesRequest asks for available updates for linked templates in a
+ * namespace.
  *
  * @generated from message holos.console.v1.CheckUpdatesRequest
  */
 export declare type CheckUpdatesRequest = Message<"holos.console.v1.CheckUpdatesRequest"> & {
   /**
-   * scope identifies the scope whose linked templates should be checked.
+   * namespace is the Kubernetes namespace whose linked templates should be
+   * checked.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * template_name is the template whose linked templates should be checked.
-   * If empty, all templates in the scope are checked.
+   * If empty, all templates in the namespace are checked.
    *
    * @generated from field: string template_name = 2;
    */
@@ -1155,15 +1164,18 @@ export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
  * (ADR 021 Decision 1).
  *
- * The TemplateScope enum and TemplateScopeRef message discriminate the level
- * at which a template is stored and authored. All CRUD operations carry a
- * TemplateScopeRef so the handler can locate the owning Kubernetes Namespace.
+ * All CRUD operations carry a `namespace` that owns the template. The
+ * backend resolver classifies the namespace into its hierarchy kind
+ * (organization, folder, project) — callers do not supply the kind
+ * directly. HOL-619 replaced the earlier TemplateScope / TemplateScopeRef
+ * discriminator with this namespace-only model.
  *
  * @generated from service holos.console.v1.TemplateService
  */
 export declare const TemplateService: GenService<{
   /**
-   * ListTemplates returns all templates the user can see in the given scope.
+   * ListTemplates returns all templates the user can see in the given
+   * namespace.
    *
    * @generated from rpc holos.console.v1.TemplateService.ListTemplates
    */
@@ -1173,7 +1185,7 @@ export declare const TemplateService: GenService<{
     output: typeof ListTemplatesResponseSchema;
   },
   /**
-   * GetTemplate retrieves a template by name within a scope.
+   * GetTemplate retrieves a template by (namespace, name).
    *
    * @generated from rpc holos.console.v1.TemplateService.GetTemplate
    */
@@ -1183,8 +1195,8 @@ export declare const TemplateService: GenService<{
     output: typeof GetTemplateResponseSchema;
   },
   /**
-   * CreateTemplate creates a new template in the given scope.
-   * Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+   * CreateTemplate creates a new template in the given namespace.
+   * Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplateService.CreateTemplate
    */
@@ -1195,7 +1207,7 @@ export declare const TemplateService: GenService<{
   },
   /**
    * UpdateTemplate updates an existing template.
-   * Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+   * Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplateService.UpdateTemplate
    */
@@ -1206,7 +1218,7 @@ export declare const TemplateService: GenService<{
   },
   /**
    * DeleteTemplate deletes a template.
-   * Requires PERMISSION_TEMPLATES_DELETE on the owning scope.
+   * Requires PERMISSION_TEMPLATES_DELETE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplateService.DeleteTemplate
    */
@@ -1227,7 +1239,8 @@ export declare const TemplateService: GenService<{
     output: typeof RenderTemplateResponseSchema;
   },
   /**
-   * CloneTemplate copies an existing template to a new name within the same scope.
+   * CloneTemplate copies an existing template to a new name within the same
+   * namespace.
    *
    * @generated from rpc holos.console.v1.TemplateService.CloneTemplate
    */
@@ -1237,11 +1250,12 @@ export declare const TemplateService: GenService<{
     output: typeof CloneTemplateResponseSchema;
   },
   /**
-   * ListLinkableTemplates returns all enabled templates in ancestor scopes that
-   * the given scope may link against. For a project scope, this is all enabled
-   * templates in parent folders and the organization. For a folder scope, it is
-   * all enabled templates in parent folders and the organization above it.
-   * Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
+   * ListLinkableTemplates returns all enabled templates in ancestor
+   * namespaces that the given namespace may link against. For a project
+   * namespace, this is all enabled templates in parent folders and the
+   * organization. For a folder namespace, it is all enabled templates in
+   * parent folders and the organization above it. Replaces
+   * ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
    *
    * @generated from rpc holos.console.v1.TemplateService.ListLinkableTemplates
    */
@@ -1251,10 +1265,10 @@ export declare const TemplateService: GenService<{
     output: typeof ListLinkableTemplatesResponseSchema;
   },
   /**
-   * ListAncestorTemplates returns templates from all ancestor scopes of the
-   * given scope. Used by the renderer to compute the effective template set;
-   * TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
-   * templates are forced onto the project.
+   * ListAncestorTemplates returns templates from all ancestor namespaces of
+   * the given namespace. Used by the renderer to compute the effective
+   * template set; TemplatePolicy REQUIRE rules (TemplatePolicyService) drive
+   * which ancestor templates are forced onto the project.
    *
    * @generated from rpc holos.console.v1.TemplateService.ListAncestorTemplates
    */
@@ -1286,7 +1300,8 @@ export declare const TemplateService: GenService<{
     output: typeof ListReleasesResponseSchema;
   },
   /**
-   * GetRelease retrieves a single release by template name, scope, and version.
+   * GetRelease retrieves a single release by (namespace, template_name,
+   * version).
    *
    * @generated from rpc holos.console.v1.TemplateService.GetRelease
    */
@@ -1297,7 +1312,8 @@ export declare const TemplateService: GenService<{
   },
   /**
    * CheckUpdates returns available version updates for linked templates in a
-   * given scope, comparing current pinned versions against published releases.
+   * given namespace, comparing current pinned versions against published
+   * releases.
    *
    * @generated from rpc holos.console.v1.TemplateService.CheckUpdates
    */
@@ -1307,17 +1323,17 @@ export declare const TemplateService: GenService<{
     output: typeof CheckUpdatesResponseSchema;
   },
   /**
-   * GetTemplateDefaults returns the defaults a template provides for deployment
-   * form fields. The handler evaluates the template's `defaults` CUE block via
-   * ExtractDefaults and returns the same TemplateDefaults message that
-   * Template.defaults would carry on GetTemplate. Inline `*` defaults declared
-   * on `input` fields are NOT read — only the top-level `defaults` CUE block is
-   * considered. References ADR 027.
+   * GetTemplateDefaults returns the defaults a template provides for
+   * deployment form fields. The handler evaluates the template's `defaults`
+   * CUE block via ExtractDefaults and returns the same TemplateDefaults
+   * message that Template.defaults would carry on GetTemplate. Inline `*`
+   * defaults declared on `input` fields are NOT read — only the top-level
+   * `defaults` CUE block is considered. References ADR 027.
    *
    * This RPC gives the Create Deployment form an explicit, testable hook to
    * call on template selection and on the "Load defaults" action. It is
-   * complementary to Template.defaults on list/get responses, which is retained
-   * for backwards compatibility.
+   * complementary to Template.defaults on list/get responses, which is
+   * retained for backwards compatibility.
    *
    * @generated from rpc holos.console.v1.TemplateService.GetTemplateDefaults
    */
@@ -1330,14 +1346,10 @@ export declare const TemplateService: GenService<{
    * GetProjectTemplatePolicyState returns the full TemplatePolicy drift
    * snapshot for a project-scope Template. Mirrors
    * DeploymentService.GetDeploymentPolicyState but keyed by
-   * (scope=project, project slug, template name). Introduced in HOL-567.
+   * (project namespace, template name). Introduced in HOL-567.
    *
-   * Scope decision (AC from HOL-567): the parallel `policy_drift` surface
-   * for project-scope Templates is provided via this RPC rather than a new
-   * `ProjectTemplateStatusSummary` message, because project-scope templates
-   * do not carry a live-status concept in the current UI — the list view
-   * shows metadata only. A dedicated RPC keeps list responses cheap and
-   * makes the drift query symmetric with deployments.
+   * A dedicated RPC keeps list responses cheap and makes the drift query
+   * symmetric with deployments.
    *
    * @generated from rpc holos.console.v1.TemplateService.GetProjectTemplatePolicyState
    */
