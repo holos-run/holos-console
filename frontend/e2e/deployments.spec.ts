@@ -29,7 +29,7 @@ async function apiCreateDeploymentTemplate(
       if (!key) throw new Error('No OIDC session found')
       const data = JSON.parse(sessionStorage.getItem(key)!) as { access_token?: string }
       const token = data.access_token!
-      // Use the unified TemplateService (v1alpha2) with project scope.
+      // HOL-619: Use the unified TemplateService with a namespace-keyed request.
       const resp = await fetch('/holos.console.v1.TemplateService/CreateTemplate', {
         method: 'POST',
         headers: {
@@ -38,8 +38,8 @@ async function apiCreateDeploymentTemplate(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          scope: { scope: 3, scopeName: project }, // TEMPLATE_SCOPE_PROJECT = 3
-          template: { name, scopeRef: { scope: 3, scopeName: project }, displayName: name, description: '', cueTemplate: '' },
+          namespace: `holos-prj-${project}`,
+          template: { name, displayName: name, description: '', cueTemplate: '' },
         }),
       })
       if (!resp.ok) {
