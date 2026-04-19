@@ -18,9 +18,10 @@ import (
 
 // newOrgTestHandler builds a Handler wired to a fake K8s client with org grant
 // resolver for release tests. The grant resolver maps emails to roles.
-func newOrgTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+func newOrgTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := NewK8sClient(fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
 	return handler
@@ -57,7 +58,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("creates first release successfully", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -113,7 +114,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("rejects prerelease version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -137,7 +138,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("rejects build metadata version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -180,7 +181,7 @@ func TestCreateRelease(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(ns, existingRelease)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -204,7 +205,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("rejects invalid semver version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -228,7 +229,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("rejects missing template_name", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -251,7 +252,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("rejects missing version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -279,7 +280,7 @@ func TestCreateRelease(t *testing.T) {
 			viewerEmail: "viewer",
 		}
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, viewerShareUsers)
+		handler := newOrgTestHandler(t, fakeClient, viewerShareUsers)
 
 		ctx := authedCtx(viewerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -303,7 +304,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("creates release with defaults", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		defaults := &consolev1.TemplateDefaults{
@@ -335,7 +336,7 @@ func TestCreateRelease(t *testing.T) {
 	t.Run("unauthenticated request rejected", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := context.Background() // no claims
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -392,7 +393,7 @@ func TestListReleases(t *testing.T) {
 		r2 := makeReleaseCM("2.0.0")
 		r3 := makeReleaseCM("1.5.0")
 		fakeClient := fake.NewClientset(ns, r1, r2, r3)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
@@ -420,7 +421,7 @@ func TestListReleases(t *testing.T) {
 	t.Run("returns empty list when no releases exist", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
@@ -440,7 +441,7 @@ func TestListReleases(t *testing.T) {
 	t.Run("rejects missing template_name", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
@@ -487,7 +488,7 @@ func TestGetRelease(t *testing.T) {
 			},
 		}
 		fakeClient := fake.NewClientset(ns, release)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
@@ -521,7 +522,7 @@ func TestGetRelease(t *testing.T) {
 	t.Run("returns NotFound for nonexistent version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
@@ -542,7 +543,7 @@ func TestGetRelease(t *testing.T) {
 	t.Run("rejects invalid version format", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
@@ -563,7 +564,7 @@ func TestGetRelease(t *testing.T) {
 	t.Run("rejects missing version", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
-		handler := newOrgTestHandler(fakeClient, shareUsers)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{

@@ -1,15 +1,42 @@
+// k8s_test.go exercises the HOL-661 rewrite of the Template CRUD surface
+// against the Template CRD. The tests run inline-envtest style: each test
+// starts its own envtest.Environment with the templates.holos.run CRDs
+// installed (shared-envtest extraction is the HOL-663 follow-up), builds a
+// K8sClient backed by a direct controller-runtime client, and exercises one
+// CRUD operation table-driven.
+//
+// Cache freshness is covered by TestK8sClient_ListReflectsCreate, which
+// creates a Template and asserts a subsequent List reflects it within the
+// resync window. The remaining fake-client tests (ListEffectiveTemplateSources,
+// LinkedTemplatesAnnotation) continue to run against a fake
+// controller-runtime client because their inputs are still expressed as
+// ConfigMap fixtures and the bridge in testhelpers_test.go materializes
+// them into CRs — this keeps HOL-661's blast radius inside k8s.go and
+// k8s_test.go while the surrounding packages wait for HOL-662/HOL-663.
 package templates
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -17,8 +44,46 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// testResolver returns the canonical resolver every test in this package
+// shares. Namespace prefixes match the defaults used in production wiring so
+// namespace strings round-trip through scopeshim.FromNamespace in tests.
 func testResolver() *resolver.Resolver {
 	return &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+}
+
+var (
+	projectScope = scopeshim.ScopeProject
+	orgScope     = scopeshim.ScopeOrganization
+	folderScope  = scopeshim.ScopeFolder
+)
+
+// orgNS / folderNS / projectNS build v1alpha2-labeled Namespace fixtures so
+// fake.Clientset reads and the render-time ancestor walker agree on the
+// resource-type label.
+func orgNS(org string) *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "org-" + org,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
+				v1alpha2.LabelOrganization: org,
+			},
+		},
+	}
+}
+
+func folderNS(folder string) *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "fld-" + folder,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
+				v1alpha2.LabelFolder:       folder,
+			},
+		},
+	}
 }
 
 func projectNS(project string) *corev1.Namespace {
@@ -34,20 +99,11 @@ func projectNS(project string) *corev1.Namespace {
 	}
 }
 
-func orgNS(org string) *corev1.Namespace {
-	return &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "org-" + org,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeOrganization,
-				v1alpha2.LabelOrganization: org,
-			},
-		},
-	}
-}
-
-// templateConfigMap builds a v1alpha2-labeled template ConfigMap for tests.
+// templateConfigMap / projectTemplateConfigMap / orgTemplateConfigMap /
+// folderTemplateConfigMap remain in place so handler-level tests continue to
+// compile. HOL-661 rewrote the storage substrate but kept these fixture
+// helpers intact; the testhelpers_test.go bridge converts them into Template
+// CRDs for the rewritten K8sClient.
 func templateConfigMap(scope scopeshim.Scope, scopePrefix, scopeName, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -74,12 +130,19 @@ func projectTemplateConfigMap(project, name, displayName, description, cueTempla
 	return templateConfigMap(scopeshim.ScopeProject, "prj-", project, name, displayName, description, cueTemplate)
 }
 
-// orgTemplateConfigMap builds a test fixture for an organization-scope
-// template. The first boolean parameter was the now-deleted "mandatory"
-// annotation (HOL-565); callers pass a value that is ignored so existing test
-// call sites continue to compile.
+// orgTemplateConfigMap builds a fixture for an org-scope template. The first
+// boolean was the pre-HOL-565 "mandatory" toggle and is ignored; the second
+// controls the enabled annotation.
 func orgTemplateConfigMap(org, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
 	cm := templateConfigMap(scopeshim.ScopeOrganization, "org-", org, name, displayName, description, cueTemplate)
+	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
+	return cm
+}
+
+// folderTemplateConfigMap builds a fixture for a folder-scope template. See
+// orgTemplateConfigMap for the first-boolean rationale.
+func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
+	cm := templateConfigMap(scopeshim.ScopeFolder, "fld-", folder, name, displayName, description, cueTemplate)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -91,400 +154,431 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-var projectScope = scopeshim.ScopeProject
-var orgScope = scopeshim.ScopeOrganization
-var folderScope = scopeshim.ScopeFolder
+// envtestEnv wraps an envtest.Environment + direct client + rest config so
+// every CRUD test spins up its own isolated API server. One Environment per
+// test keeps tests independent when they need custom resolver settings or
+// different CRD fixtures — the shared-env helper comes in HOL-663.
+type envtestEnv struct {
+	env    *envtest.Environment
+	cfg    *rest.Config
+	client ctrlclient.Client
+	core   kubernetes.Interface
+}
 
-func folderNS(folder string) *corev1.Namespace {
-	return &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "fld-" + folder,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
-				v1alpha2.LabelFolder:       folder,
-			},
-		},
+// startEnvtest boots envtest with the templates.holos.run CRDs installed and
+// returns a direct controller-runtime client + a client-go Interface. Skips
+// (does not fail) when envtest binaries are not installed so developers
+// without `setup-envtest use` can still run `go test ./...`.
+func startEnvtest(t *testing.T) *envtestEnv {
+	t.Helper()
+
+	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
+		if assets := detectEnvtestAssets(); assets != "" {
+			t.Setenv("KUBEBUILDER_ASSETS", assets)
+		} else {
+			t.Skip("envtest binaries not found; run `setup-envtest use` to download")
+		}
+	}
+
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Fatalf("finding repo root: %v", err)
+	}
+
+	e := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, err := e.Start()
+	if err != nil {
+		t.Fatalf("starting envtest: %v", err)
+	}
+	t.Cleanup(func() {
+		if stopErr := e.Stop(); stopErr != nil {
+			t.Logf("stopping envtest: %v", stopErr)
+		}
+	})
+
+	scheme := testScheme(t)
+	cl, err := ctrlclient.New(cfg, ctrlclient.Options{Scheme: scheme})
+	if err != nil {
+		t.Fatalf("constructing direct client: %v", err)
+	}
+	core, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		t.Fatalf("constructing core client: %v", err)
+	}
+	return &envtestEnv{env: e, cfg: cfg, client: cl, core: core}
+}
+
+// newEnvtestK8sClient builds a K8sClient backed by an envtest API server.
+// Every test that needs to assert on real apiserver semantics (Create
+// conflict handling, cache freshness after create, namespace scoping) uses
+// this helper.
+func newEnvtestK8sClient(t *testing.T) (*envtestEnv, *K8sClient) {
+	t.Helper()
+	e := startEnvtest(t)
+	return e, NewK8sClient(e.core, e.client, testResolver())
+}
+
+// ensureNamespace creates a namespace if it does not already exist.
+func ensureNamespace(t *testing.T, c ctrlclient.Client, name string) {
+	t.Helper()
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := c.Create(context.Background(), ns); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("create namespace %q: %v", name, err)
 	}
 }
 
-// folderTemplateConfigMap builds a test fixture for a folder-scope template.
-// The first boolean parameter was the now-deleted "mandatory" annotation
-// (HOL-565); callers pass a value that is ignored so existing test call
-// sites continue to compile.
-func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
-	cm := templateConfigMap(scopeshim.ScopeFolder, "fld-", folder, name, displayName, description, cueTemplate)
-	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
-	return cm
-}
+// ------------------------------------------------------------------------
+// Envtest table-driven CRUD tests.
+// ------------------------------------------------------------------------
 
 func TestListTemplates(t *testing.T) {
-	t.Run("returns empty list when no templates exist", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		cms, err := k8s.ListTemplates(context.Background(), projectScope, "my-project")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(cms) != 0 {
-			t.Errorf("expected 0 templates, got %d", len(cms))
-		}
-	})
+	type row struct {
+		name       string
+		namespace  string
+		seed       []*templatesv1alpha1.Template
+		wantNames  []string
+		wantNonNil bool
+	}
+	cases := []row{
+		{
+			name:      "empty namespace returns empty list",
+			namespace: "prj-empty",
+		},
+		{
+			name:      "returns only templates in requested namespace",
+			namespace: "prj-target",
+			seed: []*templatesv1alpha1.Template{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "web-app", Namespace: "prj-target"},
+					Spec: templatesv1alpha1.TemplateSpec{
+						DisplayName: "Web App", CueTemplate: "package holos\n",
+					},
+				},
+				// Different namespace — must not be returned.
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "prj-other"},
+					Spec: templatesv1alpha1.TemplateSpec{
+						DisplayName: "Other", CueTemplate: "package holos\n",
+					},
+				},
+			},
+			wantNames: []string{"web-app"},
+		},
+	}
 
-	t.Run("returns templates with correct label", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web application template", "#Input: {}\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ensureNamespace(t, e.client, tc.namespace)
+			for _, tmpl := range tc.seed {
+				ensureNamespace(t, e.client, tmpl.Namespace)
+				if err := e.client.Create(context.Background(), tmpl); err != nil {
+					t.Fatalf("seed create: %v", err)
+				}
+				t.Cleanup(func() {
+					_ = e.client.Delete(context.Background(), tmpl)
+				})
+			}
 
-		cms, err := k8s.ListTemplates(context.Background(), projectScope, "my-project")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(cms) != 1 {
-			t.Fatalf("expected 1 template, got %d", len(cms))
-		}
-		if cms[0].Name != "web-app" {
-			t.Errorf("expected name 'web-app', got %q", cms[0].Name)
-		}
-	})
-
-	t.Run("lists org-scoped templates", func(t *testing.T) {
-		ns := orgNS("acme")
-		cm := orgTemplateConfigMap("acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", false, true)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		cms, err := k8s.ListTemplates(context.Background(), orgScope, "acme")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if len(cms) != 1 {
-			t.Fatalf("expected 1 org template, got %d", len(cms))
-		}
-		if cms[0].Name != "ref-grant" {
-			t.Errorf("expected name 'ref-grant', got %q", cms[0].Name)
-		}
-	})
+			got, err := k.ListTemplates(context.Background(), tc.namespace)
+			if err != nil {
+				t.Fatalf("ListTemplates: %v", err)
+			}
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("len(got)=%d want %d (items=%v)", len(got), len(tc.wantNames), names(got))
+			}
+			for i, want := range tc.wantNames {
+				if got[i].Name != want {
+					t.Errorf("item %d: name=%q want %q", i, got[i].Name, want)
+				}
+			}
+		})
+	}
 }
 
 func TestGetTemplate(t *testing.T) {
-	t.Run("returns existing project template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		result, err := k8s.GetTemplate(context.Background(), projectScope, "my-project", "web-app")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if result.Name != "web-app" {
-			t.Errorf("expected name 'web-app', got %q", result.Name)
-		}
-		if result.Data[CueTemplateKey] != "#Input: {}\n" {
-			t.Errorf("expected cue template content, got %q", result.Data[CueTemplateKey])
-		}
-	})
+	ns := "prj-get"
+	ensureNamespace(t, e.client, ns)
 
-	t.Run("returns error for nonexistent template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	seed := &templatesv1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-app", Namespace: ns},
+		Spec: templatesv1alpha1.TemplateSpec{
+			DisplayName: "Web App",
+			Description: "A web app",
+			CueTemplate: "package holos\n",
+			Enabled:     true,
+		},
+	}
+	if err := e.client.Create(context.Background(), seed); err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
 
-		_, err := k8s.GetTemplate(context.Background(), projectScope, "my-project", "nonexistent")
-		if err == nil {
-			t.Fatal("expected error for nonexistent template")
-		}
-	})
+	cases := []struct {
+		name     string
+		tmplName string
+		wantErr  bool
+		errIs    func(error) bool
+	}{
+		{name: "existing template returns spec", tmplName: "web-app"},
+		{name: "missing template surfaces NotFound", tmplName: "nope", wantErr: true, errIs: apierrors.IsNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := k.GetTemplate(context.Background(), ns, tc.tmplName)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tc.errIs != nil && !tc.errIs(err) {
+					t.Fatalf("unexpected error shape: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetTemplate: %v", err)
+			}
+			if got.Name != tc.tmplName {
+				t.Errorf("name=%q want %q", got.Name, tc.tmplName)
+			}
+			if got.Spec.DisplayName != "Web App" {
+				t.Errorf("displayName=%q want Web App", got.Spec.DisplayName)
+			}
+		})
+	}
 }
 
 func TestCreateTemplate(t *testing.T) {
-	t.Run("creates project template with correct labels", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, nil)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if cm.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
-			t.Error("expected managed-by label")
-		}
-		if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplate {
-			t.Errorf("expected resource-type %q, got %q", v1alpha2.ResourceTypeTemplate, cm.Labels[v1alpha2.LabelResourceType])
-		}
-		if cm.Labels[v1alpha2.LabelTemplateScope] != v1alpha2.TemplateScopeProject {
-			t.Errorf("expected template-scope %q, got %q", v1alpha2.TemplateScopeProject, cm.Labels[v1alpha2.LabelTemplateScope])
-		}
-		if cm.Annotations[v1alpha2.AnnotationDisplayName] != "Web App" {
-			t.Errorf("expected display name 'Web App', got %q", cm.Annotations[v1alpha2.AnnotationDisplayName])
-		}
-		if cm.Data[CueTemplateKey] != "#Input: {}\n" {
-			t.Errorf("expected cue template content, got %q", cm.Data[CueTemplateKey])
-		}
+	ns := "prj-create"
+	ensureNamespace(t, e.client, ns)
 
-		// Verify it was persisted.
-		got, err := fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected ConfigMap to exist, got %v", err)
-		}
-		if got.Data[CueTemplateKey] != "#Input: {}\n" {
-			t.Errorf("expected persisted cue template, got %q", got.Data[CueTemplateKey])
-		}
-	})
+	cases := []struct {
+		name            string
+		resourceName    string
+		displayName     string
+		description     string
+		cueTemplate     string
+		defaults        *consolev1.TemplateDefaults
+		enabled         bool
+		linkedTemplates []*consolev1.LinkedTemplateRef
+	}{
+		{
+			name:         "minimal fields persisted",
+			resourceName: "minimal",
+			displayName:  "Minimal",
+			cueTemplate:  "package holos\n",
+		},
+		{
+			name:         "defaults stored in spec",
+			resourceName: "with-defaults",
+			displayName:  "With Defaults",
+			cueTemplate:  "package holos\n",
+			defaults: &consolev1.TemplateDefaults{
+				Image: "ghcr.io/example/app",
+				Tag:   "v1.0",
+			},
+		},
+		{
+			name:         "enabled + linked refs stored in spec",
+			resourceName: "enabled",
+			displayName:  "Enabled",
+			cueTemplate:  "package holos\n",
+			enabled:      true,
+			linkedTemplates: []*consolev1.LinkedTemplateRef{
+				scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := k.CreateTemplate(
+				context.Background(), ns, tc.resourceName, tc.displayName, tc.description,
+				tc.cueTemplate, tc.defaults, tc.enabled, tc.linkedTemplates,
+			)
+			if err != nil {
+				t.Fatalf("CreateTemplate: %v", err)
+			}
+			if got.Name != tc.resourceName {
+				t.Errorf("name=%q want %q", got.Name, tc.resourceName)
+			}
 
-	t.Run("creates org template with enabled flag", func(t *testing.T) {
-		ns := orgNS("acme")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		cm, err := k8s.CreateTemplate(context.Background(), orgScope, "acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", nil, true, nil)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if cm.Labels[v1alpha2.LabelTemplateScope] != v1alpha2.TemplateScopeOrganization {
-			t.Errorf("expected org scope label, got %q", cm.Labels[v1alpha2.LabelTemplateScope])
-		}
-		if cm.Annotations[v1alpha2.AnnotationEnabled] != "true" {
-			t.Errorf("expected enabled=true, got %q", cm.Annotations[v1alpha2.AnnotationEnabled])
-		}
-		// Verify it was stored in org namespace.
-		got, err := fakeClient.CoreV1().ConfigMaps("org-acme").Get(context.Background(), "ref-grant", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected ConfigMap in org namespace, got %v", err)
-		}
-		if got.Namespace != "org-acme" {
-			t.Errorf("expected namespace 'org-acme', got %q", got.Namespace)
-		}
-	})
-
-	t.Run("creates template with defaults stored as JSON", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		defaults := &consolev1.TemplateDefaults{
-			Image: "ghcr.io/mccutchen/go-httpbin",
-			Tag:   "2.21",
-		}
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", defaults, false, nil)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		rawJSON, ok := cm.Data[DefaultsKey]
-		if !ok {
-			t.Fatalf("expected %q key in ConfigMap data", DefaultsKey)
-		}
-		var got map[string]any
-		if err := json.Unmarshal([]byte(rawJSON), &got); err != nil {
-			t.Fatalf("defaults.json is not valid JSON: %v", err)
-		}
-		if got["image"] != "ghcr.io/mccutchen/go-httpbin" {
-			t.Errorf("expected image, got %v", got["image"])
-		}
-	})
-
-	t.Run("creates template without defaults omits defaults.json key", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "A web app", "#Input: {}\n", nil, false, nil)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if _, ok := cm.Data[DefaultsKey]; ok {
-			t.Errorf("expected no %q key when defaults is nil", DefaultsKey)
-		}
-	})
+			// Read-your-own-write via direct client Get.
+			read := &templatesv1alpha1.Template{}
+			if err := e.client.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: tc.resourceName}, read); err != nil {
+				t.Fatalf("Get after Create: %v", err)
+			}
+			if read.Spec.DisplayName != tc.displayName {
+				t.Errorf("displayName=%q want %q", read.Spec.DisplayName, tc.displayName)
+			}
+			if read.Spec.Enabled != tc.enabled {
+				t.Errorf("enabled=%v want %v", read.Spec.Enabled, tc.enabled)
+			}
+			if tc.defaults != nil && read.Spec.Defaults == nil {
+				t.Errorf("expected defaults to be persisted")
+			}
+			if len(tc.linkedTemplates) != len(read.Spec.LinkedTemplates) {
+				t.Errorf("linkedTemplates len=%d want %d", len(read.Spec.LinkedTemplates), len(tc.linkedTemplates))
+			}
+		})
+	}
 }
 
 func TestUpdateTemplate(t *testing.T) {
-	t.Run("updates display name only", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		newName := "Updated Web App"
-		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", &newName, nil, nil, nil, false, nil, nil, false)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if updated.Annotations[v1alpha2.AnnotationDisplayName] != "Updated Web App" {
-			t.Errorf("expected updated display name, got %q", updated.Annotations[v1alpha2.AnnotationDisplayName])
-		}
-		if updated.Annotations[v1alpha2.AnnotationDescription] != "A web app" {
-			t.Errorf("expected unchanged description, got %q", updated.Annotations[v1alpha2.AnnotationDescription])
-		}
-	})
+	ns := "prj-update"
+	ensureNamespace(t, e.client, ns)
 
-	t.Run("updates cue template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	seed := &templatesv1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "tmpl", Namespace: ns},
+		Spec: templatesv1alpha1.TemplateSpec{
+			DisplayName: "Before", Description: "before-desc", CueTemplate: "package holos\n",
+		},
+	}
+	if err := e.client.Create(context.Background(), seed); err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
 
-		newTemplate := "#Input: { name: string }\n"
-		updated, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "web-app", nil, nil, &newTemplate, nil, false, nil, nil, false)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if updated.Data[CueTemplateKey] != newTemplate {
-			t.Errorf("expected updated template, got %q", updated.Data[CueTemplateKey])
-		}
-	})
+	newDisplay := "After"
+	got, err := k.UpdateTemplate(context.Background(), ns, "tmpl", &newDisplay, nil, nil, nil, false, nil, nil, false)
+	if err != nil {
+		t.Fatalf("UpdateTemplate: %v", err)
+	}
+	if got.Spec.DisplayName != "After" {
+		t.Errorf("displayName=%q want After", got.Spec.DisplayName)
+	}
+	if got.Spec.Description != "before-desc" {
+		t.Errorf("description=%q want before-desc (should be unchanged)", got.Spec.Description)
+	}
 
-	t.Run("updates enabled flag on org template", func(t *testing.T) {
-		ns := orgNS("acme")
-		cm := orgTemplateConfigMap("acme", "ref-grant", "ReferenceGrant", "desc", "#Input: {}\n", false, false)
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		enabled := true
-		updated, err := k8s.UpdateTemplate(context.Background(), orgScope, "acme", "ref-grant", nil, nil, nil, nil, false, &enabled, nil, false)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if updated.Annotations[v1alpha2.AnnotationEnabled] != "true" {
-			t.Errorf("expected enabled=true, got %q", updated.Annotations[v1alpha2.AnnotationEnabled])
-		}
-	})
-
-	t.Run("returns error for nonexistent template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		newName := "Updated"
-		_, err := k8s.UpdateTemplate(context.Background(), projectScope, "my-project", "nonexistent", &newName, nil, nil, nil, false, nil, nil, false)
-		if err == nil {
-			t.Fatal("expected error for nonexistent template")
-		}
-	})
+	// nonexistent template → error.
+	_, err = k.UpdateTemplate(context.Background(), ns, "missing", &newDisplay, nil, nil, nil, false, nil, nil, false)
+	if err == nil {
+		t.Fatal("expected error updating missing template")
+	}
 }
 
 func TestDeleteTemplate(t *testing.T) {
-	t.Run("deletes existing template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web app", "#Input: {}\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		err := k8s.DeleteTemplate(context.Background(), projectScope, "my-project", "web-app")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
+	ns := "prj-delete"
+	ensureNamespace(t, e.client, ns)
 
-		_, err = fakeClient.CoreV1().ConfigMaps("prj-my-project").Get(context.Background(), "web-app", metav1.GetOptions{})
-		if err == nil {
-			t.Fatal("expected ConfigMap to be deleted")
-		}
-	})
+	seed := &templatesv1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "goner", Namespace: ns},
+		Spec: templatesv1alpha1.TemplateSpec{
+			DisplayName: "Goner", CueTemplate: "package holos\n",
+		},
+	}
+	if err := e.client.Create(context.Background(), seed); err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
 
-	t.Run("returns error for nonexistent template", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	if err := k.DeleteTemplate(context.Background(), ns, "goner"); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+	read := &templatesv1alpha1.Template{}
+	err := e.client.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "goner"}, read)
+	if err == nil {
+		t.Fatal("expected NotFound after delete")
+	}
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("unexpected error after delete: %v", err)
+	}
 
-		err := k8s.DeleteTemplate(context.Background(), projectScope, "my-project", "nonexistent")
-		if err == nil {
-			t.Fatal("expected error for nonexistent template")
-		}
-	})
+	// deleting missing → error.
+	if err := k.DeleteTemplate(context.Background(), ns, "already-gone"); err == nil {
+		t.Fatal("expected error deleting missing template")
+	}
 }
 
+// TestK8sClient_ListReflectsCreate is the cache-freshness regression the
+// ticket calls out specifically. After Create, a subsequent List on the same
+// namespace must reflect the new object without any manual resync nudging.
+func TestK8sClient_ListReflectsCreate(t *testing.T) {
+	e, k := newEnvtestK8sClient(t)
+
+	ns := "prj-cache"
+	ensureNamespace(t, e.client, ns)
+
+	if _, err := k.CreateTemplate(
+		context.Background(), ns, "fresh", "Fresh", "", "package holos\n",
+		nil, false, nil,
+	); err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+
+	// The direct client is not cache-backed, so List must see the new
+	// object on the very next call. We still wrap in Eventually because
+	// envtest apiserver writes have a tiny propagation window.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := k.ListTemplates(context.Background(), ns)
+		if err != nil {
+			t.Fatalf("ListTemplates: %v", err)
+		}
+		for _, tmpl := range got {
+			if tmpl.Name == "fresh" {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("ListTemplates never reflected Create within deadline")
+}
+
+// TestCloneTemplate drives the CRD Clone path and verifies the clone lands
+// disabled with the source's CUE.
 func TestCloneTemplate(t *testing.T) {
-	t.Run("copies CUE template and description from source", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := projectTemplateConfigMap("my-project", "web-app", "Web App", "A web app template", "foo: true\n")
-		fakeClient := fake.NewClientset(ns, cm)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	e, k := newEnvtestK8sClient(t)
 
-		cloned, err := k8s.CloneTemplate(context.Background(), projectScope, "my-project", "web-app", "web-app-copy", "Web App Copy")
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if cloned.Name != "web-app-copy" {
-			t.Errorf("expected name 'web-app-copy', got %q", cloned.Name)
-		}
-		if cloned.Annotations[v1alpha2.AnnotationDisplayName] != "Web App Copy" {
-			t.Errorf("expected display name 'Web App Copy', got %q", cloned.Annotations[v1alpha2.AnnotationDisplayName])
-		}
-		if cloned.Annotations[v1alpha2.AnnotationDescription] != "A web app template" {
-			t.Errorf("expected description from source, got %q", cloned.Annotations[v1alpha2.AnnotationDescription])
-		}
-		if cloned.Data[CueTemplateKey] != "foo: true\n" {
-			t.Errorf("expected CUE template from source, got %q", cloned.Data[CueTemplateKey])
-		}
-	})
+	ns := "prj-clone"
+	ensureNamespace(t, e.client, ns)
 
-	t.Run("returns error when source does not exist", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	seed := &templatesv1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: ns},
+		Spec: templatesv1alpha1.TemplateSpec{
+			DisplayName: "Src", Description: "desc", CueTemplate: "package holos\nfoo: true\n", Enabled: true,
+		},
+	}
+	if err := e.client.Create(context.Background(), seed); err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
 
-		_, err := k8s.CloneTemplate(context.Background(), projectScope, "my-project", "nonexistent", "copy", "Copy")
-		if err == nil {
-			t.Fatal("expected error when source does not exist")
-		}
-	})
+	got, err := k.CloneTemplate(context.Background(), ns, "src", "src-copy", "Src Copy")
+	if err != nil {
+		t.Fatalf("CloneTemplate: %v", err)
+	}
+	if got.Name != "src-copy" {
+		t.Errorf("name=%q want src-copy", got.Name)
+	}
+	if got.Spec.DisplayName != "Src Copy" {
+		t.Errorf("displayName=%q want 'Src Copy'", got.Spec.DisplayName)
+	}
+	if got.Spec.Description != "desc" {
+		t.Errorf("description=%q want desc", got.Spec.Description)
+	}
+	if got.Spec.CueTemplate != "package holos\nfoo: true\n" {
+		t.Errorf("cueTemplate did not copy from source")
+	}
+	if got.Spec.Enabled {
+		t.Error("clone should start disabled")
+	}
 }
 
-func TestLinkedTemplatesAnnotation(t *testing.T) {
-	t.Run("CreateTemplate stores linked refs as JSON", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		linked := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
-			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "policy-floor", ""),
-		}
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, linked)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]
-		if !ok {
-			t.Fatal("expected linked-templates annotation")
-		}
-		// Parse back via unmarshalLinkedTemplates.
-		refs, err := unmarshalLinkedTemplates(raw)
-		if err != nil {
-			t.Fatalf("failed to parse annotation: %v", err)
-		}
-		if len(refs) != 2 {
-			t.Fatalf("expected 2 refs, got %d", len(refs))
-		}
-		if refs[0].Name != "httproute" {
-			t.Errorf("expected 'httproute', got %q", refs[0].Name)
-		}
-	})
-
-	t.Run("CreateTemplate with nil linked list omits annotation", func(t *testing.T) {
-		ns := projectNS("my-project")
-		fakeClient := fake.NewClientset(ns)
-		k8s := NewK8sClient(fakeClient, testResolver())
-
-		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if _, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok {
-			t.Error("expected no linked-templates annotation when list is nil")
-		}
-	})
-}
-
-// folderLinkedRefWithConstraint builds a folder-scope LinkedTemplateRef with a version constraint.
-func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, constraint)
-}
+// ------------------------------------------------------------------------
+// ListEffectiveTemplateSources tests — still driven by ConfigMap fixtures
+// bridged through testhelpers_test.go's newTestK8sClient because they
+// exercise the render-time resolver which joins ancestor walk + per-namespace
+// List. The fake controller-runtime client is enough for their reads.
+// ------------------------------------------------------------------------
 
 // stubHierarchyWalker implements RenderHierarchyWalker for testing
 // ListEffectiveTemplateSources.
@@ -497,21 +591,23 @@ func (s *stubHierarchyWalker) WalkAncestors(_ context.Context, _ string) ([]*cor
 	return s.ancestors, s.err
 }
 
-// TestListEffectiveTemplateSources exercises the unified ancestor-source helper
-// that replaced the three legacy List*TemplateSourcesForRender helpers in
-// HOL-564 (Phase 2 of HOL-562). The helper is the single render-time seam for
-// effective template resolution across every render path — preview and apply,
-// deployments and project-scope templates — so all tests here assert
-// identical slices are produced regardless of the TargetKind passed in.
+// folderLinkedRefWithConstraint builds a folder-scope LinkedTemplateRef with a version constraint.
+func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.LinkedTemplateRef {
+	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, constraint)
+}
+
+// TestListEffectiveTemplateSources exercises the unified ancestor-source
+// helper that replaced the legacy per-scope helpers in HOL-564. HOL-661
+// retained the contract; only the storage substrate changed, so every
+// assertion here continues to cover the render-time effective-ref surface.
 func TestListEffectiveTemplateSources(t *testing.T) {
 	orgNsObj := orgNS("my-org")
 	fldNsObj := folderNS("payments")
 	prjNsObj := projectNS("my-project")
 	fullAncestors := []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj}
 
-	t.Run("nil walker returns no sources (no fallback path)", func(t *testing.T) {
-		fakeClient := fake.NewClientset(orgNsObj)
-		k8s := NewK8sClient(fakeClient, testResolver())
+	t.Run("nil walker returns no sources", func(t *testing.T) {
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj), testResolver())
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -525,8 +621,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	t.Run("folder-only linked refs resolves from folder namespace", func(t *testing.T) {
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -549,8 +644,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -566,20 +660,10 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		}
 	})
 
-	// HOL-565 removed the (mandatory AND enabled) branch from
-	// ListEffectiveTemplateSources: templates that must always participate in
-	// a render now come in via TemplatePolicy REQUIRE rules (HOL-567) and
-	// are injected by the caller as explicit refs. The assertion therefore
-	// flips — a folder template that used to be forced onto every deployment
-	// by its `mandatory` annotation is now only included when the caller
-	// explicitly links it.
 	t.Run("folder template with legacy mandatory annotation is NOT auto-included", func(t *testing.T) {
 		mandatoryCue := "// mandatory folder template"
-		// The first boolean is now ignored by folderTemplateConfigMap; passing
-		// true documents the pre-HOL-565 intent.
 		fldCM := folderTemplateConfigMap("payments", "audit-policy", "Audit Policy", "", mandatoryCue, true, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
@@ -593,8 +677,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 
 	t.Run("disabled folder template excluded even when linked", func(t *testing.T) {
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", "// disabled", false, false)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -631,8 +714,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			},
 			Data: map[string]string{CueTemplateKey: releaseCue},
 		}
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM, releaseCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM, releaseCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -651,8 +733,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	})
 
 	t.Run("walker failure degrades gracefully with empty sources", func(t *testing.T) {
-		fakeClient := fake.NewClientset()
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(), testResolver())
 		walker := &stubHierarchyWalker{err: fmt.Errorf("walk failed")}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -668,10 +749,8 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	})
 
 	t.Run("no linked refs and no mandatory templates returns empty", func(t *testing.T) {
-		// Non-mandatory, enabled, but not linked.
 		fldCM := folderTemplateConfigMap("payments", "optional", "Optional", "", "// optional", false, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
@@ -683,19 +762,13 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		}
 	})
 
-	// Dedup regression test: the legacy ListOrgTemplateSourcesForRender
-	// deduplicated by template name alone, so a folder template named "foo"
-	// and an org template named "foo" would collide and one source would be
-	// dropped. The unified helper deduplicates by (scope, scopeName, name),
-	// so both survive. Guards HOL-564.
 	t.Run("dedup key is (scope, scopeName, name) across scopes", func(t *testing.T) {
 		sharedName := "shared"
 		orgCue := "// org shared"
 		folderCue := "// folder shared"
 		orgCM := orgTemplateConfigMap("my-org", sharedName, "OrgShared", "", orgCue, false, true)
 		fldCM := folderTemplateConfigMap("payments", sharedName, "FolderShared", "", folderCue, false, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -715,18 +788,12 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		}
 	})
 
-	// Structural invariant HOL-564 establishes: every TargetKind that travels
-	// through the helper must yield an identical source slice for the same
-	// inputs. Phase 4 will make TargetKind load-bearing for policy evaluation;
-	// until then, callers on the preview path (project templates) and callers
-	// on the apply path (deployments) cannot drift.
 	t.Run("TargetKind does not alter resolution in Phase 2", func(t *testing.T) {
 		orgCue := "// org httproute"
 		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, true, true)
-		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
-		k8s := NewK8sClient(fakeClient, testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -750,4 +817,127 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestLinkedTemplatesAnnotation covers CreateTemplate's linked-refs handling
+// through the CRD spec (post-HOL-661 the annotation round-trip is gone, but
+// the bridged fixtures make the same assertions). The bridge still round-
+// trips through the JSON annotation path to make sure
+// unmarshalLinkedTemplates retains its public shape — the Release-rendering
+// path depends on it.
+func TestLinkedTemplatesAnnotation(t *testing.T) {
+	_, k := newEnvtestK8sClient(t)
+
+	ns := "prj-links"
+	ctx := context.Background()
+
+	t.Run("CreateTemplate stores linked refs in spec", func(t *testing.T) {
+		ensureNamespace(t, k.client.(interface {
+			Get(context.Context, ctrlclient.ObjectKey, ctrlclient.Object, ...ctrlclient.GetOption) error
+		}).(ctrlclient.Client), ns)
+
+		linked := []*consolev1.LinkedTemplateRef{
+			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
+			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "policy-floor", ""),
+		}
+		tmpl, err := k.CreateTemplate(ctx, ns, "web-app", "Web App", "desc", "package holos\n", nil, false, linked)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tmpl.Spec.LinkedTemplates) != 2 {
+			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.Spec.LinkedTemplates))
+		}
+		if tmpl.Spec.LinkedTemplates[0].Name != "httproute" {
+			t.Errorf("expected 'httproute', got %q", tmpl.Spec.LinkedTemplates[0].Name)
+		}
+	})
+
+	t.Run("CreateTemplate with nil linked list leaves spec empty", func(t *testing.T) {
+		tmpl, err := k.CreateTemplate(ctx, ns, "no-links", "No Links", "desc", "package holos\n", nil, false, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tmpl.Spec.LinkedTemplates) != 0 {
+			t.Errorf("expected empty linked list, got %d entries", len(tmpl.Spec.LinkedTemplates))
+		}
+	})
+}
+
+// Ensure defaults serialize through the DefaultsKey JSON path the test
+// helpers use. Covers the DefaultsKey-read path in configMapToTemplateCRD.
+func TestDefaultsJSONRoundTrip(t *testing.T) {
+	raw, err := json.Marshal(&consolev1.TemplateDefaults{Image: "ghcr.io/app", Tag: "1.0"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: "prj-x"},
+		Data:       map[string]string{DefaultsKey: string(raw)},
+	}
+	tmpl := configMapToTemplateCRD(cm)
+	if tmpl.Spec.Defaults == nil {
+		t.Fatalf("expected defaults")
+	}
+	if tmpl.Spec.Defaults.Image != "ghcr.io/app" {
+		t.Errorf("image=%q want ghcr.io/app", tmpl.Spec.Defaults.Image)
+	}
+}
+
+// ------------------------------------------------------------------------
+// envtest helpers — detectEnvtestAssets + findRepoRoot mirror the copies in
+// internal/controller/suite_test.go and api/templates/v1alpha1/crd_test.go.
+// HOL-663 will extract a shared helper; for now we duplicate so the
+// templates package has zero test-only dependency on the other suites.
+// ------------------------------------------------------------------------
+
+func detectEnvtestAssets() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	base := filepath.Join(home, ".local", "share", "kubebuilder-envtest", "k8s")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return ""
+	}
+	var best string
+	for _, en := range entries {
+		if !en.IsDir() {
+			continue
+		}
+		cand := filepath.Join(base, en.Name())
+		if _, err := os.Stat(filepath.Join(cand, "kube-apiserver")); err == nil {
+			if best == "" || en.Name() > filepath.Base(best) {
+				best = cand
+			}
+		}
+	}
+	return best
+}
+
+func findRepoRoot() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("runtime.Caller failed")
+	}
+	dir := filepath.Dir(file)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no go.mod above %q", file)
+		}
+		dir = parent
+	}
+}
+
+// names collects a compact slice of Template.Name values for debug output.
+func names(tmpls []templatesv1alpha1.Template) []string {
+	out := make([]string, 0, len(tmpls))
+	for i := range tmpls {
+		out = append(out, tmpls[i].Name)
+	}
+	return out
 }
