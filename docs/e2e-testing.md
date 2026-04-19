@@ -88,9 +88,7 @@ E2E tests can authenticate as different test personas to verify RBAC behavior. T
 
 | Helper | Purpose |
 |--------|---------|
-| `getPersonaToken(page, email)` | Fetch a signed ID token for a persona |
-| `switchPersona(page, email)` | Inject a persona's token and reload |
-| `loginAsPersona(page, email)` | Auto-login as admin, then switch to persona |
+| `loginAsPersona(page, email)` | Auto-login as admin, then switch to the requested persona |
 | `apiGrantOrgAccess(page, org, email, role)` | Grant a persona a role on an org |
 
 ### Email Constants
@@ -113,14 +111,14 @@ test('editor cannot delete org', async ({ page }) => {
   await apiCreateOrg(page, 'test-org')
   await apiGrantOrgAccess(page, 'test-org', PRODUCT_ENGINEER_EMAIL, 2) // EDITOR
 
-  // Switch to product engineer (editor role)
-  await switchPersona(page, PRODUCT_ENGINEER_EMAIL)
+  // Switch to product engineer (editor role) by re-logging in as that persona
+  await loginAsPersona(page, PRODUCT_ENGINEER_EMAIL)
 
   // Verify the editor cannot delete the org
   // ... assertion logic ...
 
   // Cleanup as admin
-  await switchPersona(page, ADMIN_EMAIL)
+  await loginAsPersona(page, ADMIN_EMAIL)
   await apiDeleteOrg(page, 'test-org')
 })
 ```
@@ -128,16 +126,15 @@ test('editor cannot delete org', async ({ page }) => {
 ### Notes
 
 - The dev token endpoint is available whenever `--enable-insecure-dex` is set (always in E2E).
-- `loginAsPersona()` first completes the auto-login flow (authenticating as admin), then switches to the requested persona if it is not admin.
-- `switchPersona()` can be called mid-test to change identities without restarting the browser.
-- The `multi-persona.spec.ts` test file demonstrates token acquisition, persona switching, and RBAC grant verification patterns.
+- `loginAsPersona()` first completes the OIDC auto-login flow (authenticating as admin), then switches to the requested persona if it is not admin. Internally it exchanges the persona email for a signed ID token via `POST /api/dev/token` and injects the token into `sessionStorage`.
+- Call `loginAsPersona()` again mid-test to switch identities; the helper clears the prior session and reloads the page.
+- The `multi-persona.spec.ts` test file demonstrates RBAC grant verification patterns across personas.
 
 ## Which Tests Need Kubernetes
 
 | Test file | Tests | Needs K8s? |
 |-----------|-------|-----------|
 | `e2e/auth.spec.ts` | All | No |
-| `e2e/multi-persona.spec.ts` | Token endpoint tests (first 5) | No |
-| `e2e/multi-persona.spec.ts` | RBAC grant tests | Yes |
+| `e2e/multi-persona.spec.ts` | All (Multi-Persona RBAC) | Yes |
 | `e2e/secrets.spec.ts` | sidebar navigation (first 2) | No |
 | `e2e/secrets.spec.ts` | create/update/list secrets, add key | Yes |

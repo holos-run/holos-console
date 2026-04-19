@@ -377,3 +377,25 @@ With ~2m 20s of fixed overhead that no amount of test-deletion can remove, hitti
 - [x] If total E2E time is still over ~6 minutes, a follow-up section lists the top three longest-running specs with a recommendation. *(See "Long-Pole Analysis" above -- all three are accepted as canonical K8s round-trips; sharding is identified as the only remaining ~3-minute lever.)*
 - [x] No code changes in this phase other than the results doc update.
 - [x] Tests pass: `make test` (verified locally before the PR).
+
+---
+
+## Release Notes (HOL-658)
+
+HOL-658 finalizes the E2E refactor that ran across HOL-651 through HOL-657. The repo now owns the complete testing strategy end to end (`docs/agents/test-strategy.md`, `docs/agents/testing-patterns.md`, `docs/testing.md`, `docs/e2e-testing.md`, and this audit); every testing-guidance forward-pointer to the external docs repo has been removed. `AGENTS.md` Testing section enumerates the five docs in reader order (Strategy -> Patterns -> Guide -> E2E -> Audit) and calls out the make targets.
+
+### What landed in this phase
+
+- **`frontend/e2e/helpers.ts` slimmed to its public surface.** `TokenExchangeResponse`, `getPersonaToken()`, and `switchPersona()` are now file-internal. The public helpers are `loginAsPersona()`, `apiGrantOrgAccess()`, the four persona email constants, plus the org / project / folder API helpers and `loginViaProfilePage()` / `selectOrg()` used by the K8s round-trip specs.
+- **`frontend/e2e/fixtures/` deleted.** The three YAML fixtures (`project-default-sharing.yaml`, `project-namespace.yaml`, `secret-no-time-bounds.yaml`) were only referenced by one-off PR screenshot scripts (`scripts/pr-200/`, `scripts/pr-268/`, `scripts/browser-verify-time-bounds`) for already-merged PRs; those scripts were removed alongside the fixtures.
+- **`auth.spec.ts` trimmed** per the audit's per-test notes: the raw-JSON-view test was deleted (covered by `frontend/src/routes/_authenticated/-profile.test.tsx`), and the two token-claim-enumeration tests were minimized to real-Dex smoke assertions (per-claim label coverage lives in the same unit test).
+- **`secrets.spec.ts` mobile cleanup.** The redundant `should show hamburger menu and hide sidebar on mobile` test was deleted; the mobile-chrome Playwright project runs every remaining spec at a phone viewport and already exercises responsive layout.
+- **`docs/e2e-testing.md` updated** to reflect the narrower public helper API, the revised multi-persona example, and the post-refactor "Which Tests Need Kubernetes" table (`multi-persona.spec.ts` is now K8s-only — the token-endpoint tests moved to Go in HOL-656).
+- **`docs/agents/testing-patterns.md` updated** to list only the public helpers (`loginAsPersona`, `apiGrantOrgAccess`).
+
+### Net effect of HOL-650
+
+`E2E Tests` CI job: **~11m 23s -> ~7m 43s (-32%)**. Playwright per-test seconds: **495.1s -> 275.5s (-44%)**. Spec file count: **11 -> 6**. Remaining E2E coverage is focused on OIDC auth (`auth.spec.ts`) and real Kubernetes round-trips (`folders.spec.ts`, `folder-rbac.spec.ts`, `folder-templates.spec.ts`, `secrets.spec.ts`, `multi-persona.spec.ts`).
+
+This repo does not maintain a `CHANGELOG.md`; this Release Notes section in the audit doc is the canonical record of the in-sourced test strategy and E2E refactor per the HOL-658 acceptance criteria.
+

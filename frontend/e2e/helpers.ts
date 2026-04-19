@@ -11,7 +11,7 @@ export const PRODUCT_ENGINEER_EMAIL = 'product@localhost'
 export const SRE_EMAIL = 'sre@localhost'
 
 /** Response from the POST /api/dev/token endpoint. */
-export interface TokenExchangeResponse {
+interface TokenExchangeResponse {
   id_token: string
   email: string
   groups: string[]
@@ -37,7 +37,7 @@ export function buildAuthorizeUrl(): string {
  * Navigate past the Dex connector selection page if present.
  * Call this after landing on /dex/.
  */
-export async function navigatePastConnectorSelection(page: Page): Promise<void> {
+async function navigatePastConnectorSelection(page: Page): Promise<void> {
   const connectorLink = page.locator('a[href*="connector"]').first()
   if ((await connectorLink.count()) > 0) {
     await connectorLink.click()
@@ -321,7 +321,7 @@ export async function selectOrg(page: Page, orgName: string): Promise<void> {
  * The backend must be running with --enable-insecure-dex for this endpoint
  * to be available.
  */
-export async function getPersonaToken(
+async function getPersonaToken(
   page: Page,
   email: string,
 ): Promise<TokenExchangeResponse> {
@@ -411,7 +411,7 @@ async function injectPersonaSession(
  * The page must have already loaded the app (any route) so that
  * fetch('/api/dev/token') can reach the backend.
  */
-export async function switchPersona(page: Page, email: string): Promise<void> {
+async function switchPersona(page: Page, email: string): Promise<void> {
   const tokenData = await getPersonaToken(page, email)
   await injectPersonaSession(page, tokenData)
   await page.reload()
