@@ -285,3 +285,39 @@ describe('ProfilePage token claims — Raw view', () => {
     expect(screen.getByRole('button', { name: /copy to clipboard/i })).toBeInTheDocument()
   })
 })
+
+// HOL-656: per-persona email rendering. These tests replace the
+// `Persona Switching > should login as platform engineer ...` and
+// `Persona Switching > should switch from admin to SRE persona` cases from
+// `frontend/e2e/multi-persona.spec.ts`. The E2E tests asserted that after
+// swapping the OIDC `sessionStorage` entry for a persona's dev token, the
+// profile page rendered the new email. At the component level we mock
+// `useAuth` with the persona's profile directly — the sessionStorage/reload
+// mechanics are covered by `transport.test.ts` and `-_authenticated.test.tsx`.
+describe('ProfilePage persona email rendering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it.each([
+    ['platform engineer', 'platform@localhost'],
+    ['product engineer', 'product@localhost'],
+    ['SRE', 'sre@localhost'],
+    ['admin', 'admin@localhost'],
+  ])('renders %s email when useAuth returns the %s profile', (_persona, email) => {
+    setAuthState({ user: makeUser({}, { email }) })
+    render(<ProfilePage />)
+    expect(screen.getByText(email)).toBeInTheDocument()
+  })
+
+  it('updates the displayed email when useAuth rerenders with a new persona', () => {
+    setAuthState({ user: makeUser({}, { email: 'admin@localhost' }) })
+    const { rerender } = render(<ProfilePage />)
+    expect(screen.getByText('admin@localhost')).toBeInTheDocument()
+
+    setAuthState({ user: makeUser({}, { email: 'sre@localhost' }) })
+    rerender(<ProfilePage />)
+    expect(screen.getByText('sre@localhost')).toBeInTheDocument()
+    expect(screen.queryByText('admin@localhost')).not.toBeInTheDocument()
+  })
+})
