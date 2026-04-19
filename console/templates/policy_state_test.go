@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -54,10 +55,10 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 		HasAppliedState: true,
 		Drift:           false,
 		AppliedSet: []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
 		},
 		CurrentSet: []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
 		},
 	}
 
@@ -76,26 +77,17 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 
 	cases := []tc{
 		{
-			desc:     "nil scope is rejected",
+			desc:     "empty namespace is rejected",
 			ctx:      ownerCtx,
 			req:      &consolev1.GetProjectTemplatePolicyStateRequest{Name: tmplName},
 			wantCode: connect.CodeInvalidArgument,
 		},
 		{
-			desc: "non-project scope is rejected",
+			desc: "non-project namespace is rejected",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: &consolev1.TemplateScopeRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme"},
-				Name:  tmplName,
-			},
-			wantCode: connect.CodeInvalidArgument,
-		},
-		{
-			desc: "empty scope_name is rejected",
-			ctx:  ownerCtx,
-			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: &consolev1.TemplateScopeRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT},
-				Name:  tmplName,
+				Namespace: scopeshim.DefaultResolver().OrgNamespace("acme"),
+				Name:      tmplName,
 			},
 			wantCode: connect.CodeInvalidArgument,
 		},
@@ -103,7 +95,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "empty template name is rejected",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 			},
 			wantCode: connect.CodeInvalidArgument,
 		},
@@ -111,7 +103,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "unauthenticated is rejected",
 			ctx:  context.Background(),
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			wantCode: connect.CodeUnauthenticated,
@@ -124,7 +116,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "caller without project read grant is denied (RBAC regression guard)",
 			ctx:  otherCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			seedTemplate: true,
@@ -134,7 +126,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "owner with no template present returns NotFound",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			seedTemplate: false,
@@ -144,7 +136,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "no checker wired returns empty PolicyState",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			seedTemplate: true,
@@ -155,7 +147,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "checker error surfaces as Internal",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			seedTemplate: true,
@@ -166,7 +158,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "happy path returns the checker's PolicyState verbatim",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Name:  tmplName,
 			},
 			seedTemplate: true,

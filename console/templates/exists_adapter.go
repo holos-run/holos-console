@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // TemplateExistsAdapter adapts a templates.K8sClient into the
@@ -28,7 +28,7 @@ func NewTemplateExistsAdapter(k8s *K8sClient) *TemplateExistsAdapter {
 // given scope. A Kubernetes NotFound response is treated as a definitive
 // "does not exist"; every other error is returned so the caller can log and
 // continue.
-func (a *TemplateExistsAdapter) TemplateExists(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (bool, error) {
+func (a *TemplateExistsAdapter) TemplateExists(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (bool, error) {
 	if a == nil || a.k8s == nil {
 		return false, nil
 	}

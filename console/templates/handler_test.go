@@ -16,6 +16,7 @@ import (
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -86,7 +87,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
 		if tmpl.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", tmpl.Name)
 		}
@@ -99,14 +100,12 @@ func TestConfigMapToTemplate(t *testing.T) {
 		if tmpl.CueTemplate != validCue {
 			t.Errorf("expected cue template, got %q", tmpl.CueTemplate)
 		}
-		if tmpl.ScopeRef == nil {
-			t.Fatal("expected non-nil ScopeRef")
-		}
-		if tmpl.ScopeRef.ScopeName != "my-project" {
-			t.Errorf("expected scope_name 'my-project', got %q", tmpl.ScopeRef.ScopeName)
-		}
-		if tmpl.ScopeRef.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
-			t.Errorf("expected project scope, got %v", tmpl.ScopeRef.Scope)
+		// HOL-619 replaced tmpl.ScopeRef with tmpl.Namespace. The
+		// expected project namespace for "my-project" under the test
+		// resolver (prj- prefix, no org/namespace prefix) is
+		// "prj-my-project".
+		if tmpl.GetNamespace() != "prj-my-project" {
+			t.Errorf("expected namespace 'prj-my-project', got %q", tmpl.GetNamespace())
 		}
 	})
 
@@ -126,12 +125,13 @@ func TestConfigMapToTemplate(t *testing.T) {
 			},
 			Data: map[string]string{},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "acme")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeOrganization, "acme")
 		if !tmpl.Enabled {
 			t.Error("expected enabled=true")
 		}
-		if tmpl.ScopeRef.Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
-			t.Errorf("expected org scope, got %v", tmpl.ScopeRef.Scope)
+		// HOL-619: expect the org namespace instead of ScopeRef.Scope.
+		if tmpl.GetNamespace() != "org-acme" {
+			t.Errorf("expected namespace 'org-acme', got %q", tmpl.GetNamespace())
 		}
 	})
 
@@ -156,18 +156,19 @@ func TestConfigMapToTemplate(t *testing.T) {
 			},
 			Data: map[string]string{},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
 		if len(tmpl.LinkedTemplates) != 2 {
 			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.LinkedTemplates))
 		}
 		if tmpl.LinkedTemplates[0].Name != "httproute" {
 			t.Errorf("expected 'httproute', got %q", tmpl.LinkedTemplates[0].Name)
 		}
-		if tmpl.LinkedTemplates[0].Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
-			t.Errorf("expected org scope, got %v", tmpl.LinkedTemplates[0].Scope)
+		// HOL-619: LinkedTemplateRef.Scope was replaced by .Namespace.
+		if got := scopeshim.RefScope(tmpl.LinkedTemplates[0]); got != scopeshim.ScopeOrganization {
+			t.Errorf("expected org scope from namespace %q, got %v", tmpl.LinkedTemplates[0].GetNamespace(), got)
 		}
-		if tmpl.LinkedTemplates[1].Scope != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
-			t.Errorf("expected folder scope, got %v", tmpl.LinkedTemplates[1].Scope)
+		if got := scopeshim.RefScope(tmpl.LinkedTemplates[1]); got != scopeshim.ScopeFolder {
+			t.Errorf("expected folder scope from namespace %q, got %v", tmpl.LinkedTemplates[1].GetNamespace(), got)
 		}
 	})
 
@@ -182,7 +183,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				DefaultsKey: defaultsJSON,
 			},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
 		if tmpl.Defaults == nil {
 			t.Fatal("expected non-nil defaults from annotation fallback")
 		}
@@ -204,7 +205,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "acme")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeOrganization, "acme")
 		if tmpl.Defaults != nil {
 			t.Errorf("expected nil defaults for org-scope template, got %+v", tmpl.Defaults)
 		}
@@ -220,7 +221,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "my-project")
+		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
 		if tmpl.Defaults != nil {
 			t.Errorf("expected nil defaults when neither CUE defaults nor annotation present, got %+v", tmpl.Defaults)
 		}
@@ -266,28 +267,19 @@ func newTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string) *H
 
 // orgLinkedRef returns a LinkedTemplateRef pointing at an org-scope template.
 func orgLinkedRef(org, name string) *consolev1.LinkedTemplateRef {
-	return &consolev1.LinkedTemplateRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName: org,
-		Name:      name,
-	}
+	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, name, "")
 }
 
 // folderLinkedRef returns a LinkedTemplateRef pointing at a folder-scope template.
 func folderLinkedRef(folder, name string) *consolev1.LinkedTemplateRef {
-	return &consolev1.LinkedTemplateRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-		ScopeName: folder,
-		Name:      name,
-	}
+	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, "")
 }
 
-// projectScopeRef returns a project-scoped TemplateScopeRef.
-func projectScopeRef(project string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
-		ScopeName: project,
-	}
+// projectScopeRef returns the Kubernetes namespace string for the named
+// project scope. HOL-619 collapsed TemplateScopeRef; the handler now keys
+// project-scope requests by namespace alone.
+func projectScopeRef(project string) string {
+	return scopeshim.DefaultResolver().ProjectNamespace(project)
 }
 
 // TestCreateTemplateLinkPermissions verifies that CreateTemplate enforces scoped
@@ -365,7 +357,7 @@ func TestCreateTemplateLinkPermissions(t *testing.T) {
 			templateName := fmt.Sprintf("tmpl-%d", i)
 			ctx := authedCtx(tt.email, nil)
 			req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Template: &consolev1.Template{
 					Name:            templateName,
 					CueTemplate:     validCue,
@@ -514,7 +506,7 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 
 			ctx := authedCtx(tt.email, nil)
 			req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-				Scope: projectScopeRef(project),
+				Namespace: projectScopeRef(project),
 				Template: &consolev1.Template{
 					Name:            "web-app",
 					CueTemplate:     validCue,
@@ -608,7 +600,7 @@ func TestUpdateTemplateMalformedLinkedAnnotation(t *testing.T) {
 
 	ctx := authedCtx(ownerEmail, nil)
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef(project),
+		Namespace: projectScopeRef(project),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -708,7 +700,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
-			Scope:       projectScopeRef(project),
+			Namespace:       projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				folderLinkedRef(folder, "payments-policy"),
@@ -799,7 +791,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
-			Scope:       projectScopeRef(project),
+			Namespace:       projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				orgLinkedRef(org, "httproute"),
@@ -918,7 +910,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(walker)
 		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
-			Scope:       projectScopeRef(project),
+			Namespace:       projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				folderLinkedRef(folder, "shared"),
@@ -1140,7 +1132,7 @@ input: #ProjectInput & {
 	tests := []struct {
 		name        string
 		email       string
-		scope       *consolev1.TemplateScopeRef
+		scope       string
 		tmplName    string
 		cueTemplate string // if non-empty, seeded as a project-scope template with this name
 		orgTmpl     string // if non-empty, seeded as an org-scope template with tmplName in org namespace
@@ -1248,7 +1240,7 @@ input: #ProjectInput & {
 
 			ctx := authedCtx(tt.email, nil)
 			resp, err := handler.GetTemplateDefaults(ctx, connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
-				Scope: tt.scope,
+				Namespace: tt.scope,
 				Name:  tt.tmplName,
 			}))
 
@@ -1304,7 +1296,7 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 		_, err := handler.GetTemplateDefaults(
 			authedCtx("anyone@localhost", nil),
 			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
-				Scope: projectScopeRef("p"),
+				Namespace: projectScopeRef("p"),
 				Name:  "",
 			}),
 		)
@@ -1320,7 +1312,7 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 		_, err := handler.GetTemplateDefaults(
 			context.Background(),
 			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
-				Scope: projectScopeRef("p"),
+				Namespace: projectScopeRef("p"),
 				Name:  "foo",
 			}),
 		)
@@ -1332,12 +1324,16 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("missing scope returns CodeInvalidArgument", func(t *testing.T) {
+	t.Run("missing namespace returns CodeInvalidArgument", func(t *testing.T) {
+		// HOL-619 replaced GetTemplateDefaultsRequest.Scope with
+		// .Namespace. A zero value here must produce
+		// CodeInvalidArgument so the handler does not silently route
+		// the lookup to a mis-keyed namespace.
 		_, err := handler.GetTemplateDefaults(
 			authedCtx("anyone@localhost", nil),
 			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
-				Scope: nil,
-				Name:  "foo",
+				Namespace: "",
+				Name:      "foo",
 			}),
 		)
 		if err == nil {

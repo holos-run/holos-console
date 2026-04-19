@@ -23,6 +23,7 @@ import (
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -172,7 +173,7 @@ func (h *Handler) ListTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListTemplatesRequest],
 ) (*connect.Response[consolev1.ListTemplatesResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +216,7 @@ func (h *Handler) GetTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetTemplateRequest],
 ) (*connect.Response[consolev1.GetTemplateResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +270,7 @@ func (h *Handler) GetTemplateDefaults(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetTemplateDefaultsRequest],
 ) (*connect.Response[consolev1.GetTemplateDefaultsResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +291,7 @@ func (h *Handler) GetTemplateDefaults(
 	// Defaults are a project-scope concept (ADR 027). For org/folder scopes,
 	// return an empty TemplateDefaults so the UI can call uniformly without
 	// special-casing scope.
-	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+	if scope != scopeshim.ScopeProject {
 		return connect.NewResponse(&consolev1.GetTemplateDefaultsResponse{
 			Defaults: &consolev1.TemplateDefaults{},
 		}), nil
@@ -335,7 +336,7 @@ func (h *Handler) CreateTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateTemplateRequest],
 ) (*connect.Response[consolev1.CreateTemplateResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +408,7 @@ func (h *Handler) UpdateTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateTemplateRequest],
 ) (*connect.Response[consolev1.UpdateTemplateResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +500,7 @@ func (h *Handler) UpdateTemplate(
 		// an empty applied set even though the ConfigMap kept its
 		// original links, producing false drift on the next policy-state
 		// read (review findings P2 from codex round 1).
-		if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && h.projectTemplateDriftChecker != nil {
+		if scope == scopeshim.ScopeProject && h.projectTemplateDriftChecker != nil {
 			existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
 			if getErr != nil {
 				slog.WarnContext(ctx, "failed to read existing template for applied-set write-through, skipping record",
@@ -579,11 +580,11 @@ func (h *Handler) UpdateTemplate(
 // on the next preview.
 func (h *Handler) recordProjectTemplateApplied(
 	ctx context.Context,
-	scope consolev1.TemplateScope,
+	scope scopeshim.Scope,
 	scopeName, name string,
 	explicitRefs []*consolev1.LinkedTemplateRef,
 ) {
-	if scope != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+	if scope != scopeshim.ScopeProject {
 		return
 	}
 	if h.projectTemplateDriftChecker == nil {
@@ -617,7 +618,7 @@ func (h *Handler) DeleteTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.DeleteTemplateRequest],
 ) (*connect.Response[consolev1.DeleteTemplateResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +658,7 @@ func (h *Handler) CloneTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.CloneTemplateRequest],
 ) (*connect.Response[consolev1.CloneTemplateResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -769,41 +770,52 @@ func (h *Handler) RenderTemplate(
 // deployments handler does.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
 	var templateSources []string
-	if h.k8s != nil && h.walker != nil && msg.GetScope() != nil {
-		startNs, nsErr := h.k8s.namespaceForScope(msg.GetScope().GetScope(), msg.GetScope().GetScopeName())
-		if nsErr != nil {
-			// Falling through to the plain-render path below. Logging the
-			// namespace resolution failure here makes the "why didn't my
-			// linked template apply" debug path discoverable instead of
-			// silently producing a templateless render.
-			slog.WarnContext(ctx, "failed to resolve namespace for scope, falling back to plain render",
-				slog.String("scope", msg.GetScope().GetScope().String()),
-				slog.String("scopeName", msg.GetScope().GetScopeName()),
-				slog.Any("error", nsErr),
+	// HOL-619 replaced the request's TemplateScopeRef with a Kubernetes
+	// namespace. Classify it through the shim so the downstream storage
+	// layer (still scope-keyed until HOL-621) keeps working.
+	if h.k8s != nil && h.walker != nil && msg.GetNamespace() != "" {
+		msgScope, msgScopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, msg.GetNamespace())
+		if classifyErr != nil {
+			slog.WarnContext(ctx, "failed to classify namespace for render, falling back to plain render",
+				slog.String("namespace", msg.GetNamespace()),
+				slog.Any("error", classifyErr),
 			)
 		} else {
-			// ListEffectiveTemplateSources currently swallows walker errors
-			// internally and returns (nil, nil) on walker failure (see
-			// k8s.go: "failed to walk ancestor chain for render, returning
-			// empty sources"). The walkErr branch below is therefore
-			// unreachable today but kept as belt-and-suspenders so a future
-			// edit that starts propagating walker errors out of the helper
-			// still degrades to the plain-render fallback here.
-			sources, _, walkErr := h.k8s.ListEffectiveTemplateSources(
-				ctx,
-				startNs,
-				previewTargetKindForScope(msg.GetScope().GetScope()),
-				msg.GetScope().GetScopeName(),
-				msg.LinkedTemplates,
-				h.walker,
-				h.policyResolver,
-			)
-			if walkErr != nil {
-				slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
-					slog.Any("error", walkErr),
+			startNs, nsErr := h.k8s.namespaceForScope(msgScope, msgScopeName)
+			if nsErr != nil {
+				// Falling through to the plain-render path below. Logging the
+				// namespace resolution failure here makes the "why didn't my
+				// linked template apply" debug path discoverable instead of
+				// silently producing a templateless render.
+				slog.WarnContext(ctx, "failed to resolve namespace for scope, falling back to plain render",
+					slog.String("scope", msgScope.String()),
+					slog.String("scopeName", msgScopeName),
+					slog.Any("error", nsErr),
 				)
 			} else {
-				templateSources = sources
+				// ListEffectiveTemplateSources currently swallows walker errors
+				// internally and returns (nil, nil) on walker failure (see
+				// k8s.go: "failed to walk ancestor chain for render, returning
+				// empty sources"). The walkErr branch below is therefore
+				// unreachable today but kept as belt-and-suspenders so a future
+				// edit that starts propagating walker errors out of the helper
+				// still degrades to the plain-render fallback here.
+				sources, _, walkErr := h.k8s.ListEffectiveTemplateSources(
+					ctx,
+					startNs,
+					previewTargetKindForScope(msgScope),
+					msgScopeName,
+					msg.LinkedTemplates,
+					h.walker,
+					h.policyResolver,
+				)
+				if walkErr != nil {
+					slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
+						slog.Any("error", walkErr),
+					)
+				} else {
+					templateSources = sources
+				}
 			}
 		}
 	}
@@ -839,7 +851,7 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 // is intentionally ignored today; the parameter exists so Phase 5 can add
 // preview-path-specific TargetKind discrimination (e.g., different kinds for
 // project-vs-folder preview) without changing the call site signature.
-func previewTargetKindForScope(scope consolev1.TemplateScope) TargetKind {
+func previewTargetKindForScope(scope scopeshim.Scope) TargetKind {
 	_ = scope
 	return TargetKindProjectTemplate
 }
@@ -854,7 +866,7 @@ func (h *Handler) ListLinkableTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListLinkableTemplatesRequest],
 ) (*connect.Response[consolev1.ListLinkableTemplatesResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -901,7 +913,7 @@ func (h *Handler) ListLinkableTemplates(
 			continue // skip the scope itself unless explicitly requested
 		}
 		entryScope, entryName := scopeAndNameFromNs(h.resolver, ns.Name)
-		if entryScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		if entryScope == scopeshim.ScopeUnspecified {
 			continue
 		}
 		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, entryScope, entryName)
@@ -957,7 +969,7 @@ func (h *Handler) ListAncestorTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListAncestorTemplatesRequest],
 ) (*connect.Response[consolev1.ListAncestorTemplatesResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -1001,7 +1013,7 @@ func (h *Handler) ListAncestorTemplates(
 // in folder/organization namespaces precisely because project owners can
 // write to their project namespace and would otherwise be able to tamper
 // with the constraints the platform is enforcing.
-func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
+func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.Scope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil
 	}
@@ -1030,7 +1042,7 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 	for i := len(ancestors) - 1; i >= 0; i-- {
 		ns := ancestors[i]
 		ancestorScope, ancestorName := scopeAndNameFromNs(h.resolver, ns.Name)
-		if ancestorScope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		if ancestorScope == scopeshim.ScopeUnspecified {
 			continue
 		}
 
@@ -1069,17 +1081,17 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope consolev1.
 // org-scope template, PermissionTemplatesLinkOrgWrite is checked. If any ref
 // targets a folder-scope template, PermissionTemplatesLinkFolderWrite is checked.
 // Both checks are performed at the template's owning scope.
-func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
+func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
 	hasOrg := false
 	hasFolder := false
 	for _, ref := range linkedTemplates {
 		if ref == nil {
 			continue
 		}
-		switch ref.GetScope() {
-		case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		switch scopeshim.RefScope(ref) {
+		case scopeshim.ScopeOrganization:
 			hasOrg = true
-		case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		case scopeshim.ScopeFolder:
 			hasFolder = true
 		}
 	}
@@ -1099,13 +1111,13 @@ func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, 
 // checkAccess verifies the caller has the given permission for the requested scope.
 // All scope levels (org, folder, project) use the unified TemplateCascadePerms
 // table per ADR 021 Decision 2.
-func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, perm rbac.Permission) error {
+func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, perm rbac.Permission) error {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return h.checkOrgAccess(ctx, claims, scopeName, perm)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return h.checkFolderAccess(ctx, claims, scopeName, perm)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return h.checkProjectAccess(ctx, claims, scopeName, perm)
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))
@@ -1153,7 +1165,7 @@ func (h *Handler) CreateRelease(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateReleaseRequest],
 ) (*connect.Response[consolev1.CreateReleaseResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -1211,7 +1223,7 @@ func (h *Handler) ListReleases(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListReleasesRequest],
 ) (*connect.Response[consolev1.ListReleasesResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -1259,7 +1271,7 @@ func (h *Handler) GetRelease(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetReleaseRequest],
 ) (*connect.Response[consolev1.GetReleaseResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -1311,7 +1323,7 @@ func (h *Handler) CheckUpdates(
 	ctx context.Context,
 	req *connect.Request[consolev1.CheckUpdatesRequest],
 ) (*connect.Response[consolev1.CheckUpdatesResponse], error) {
-	scope, scopeName, err := extractScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -1386,8 +1398,8 @@ func (h *Handler) CheckUpdates(
 // with resolved version information even if the template is already at the
 // latest compatible version.
 func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef, includeCurrent bool) (*consolev1.TemplateUpdate, error) {
-	refScope := ref.GetScope()
-	refScopeName := ref.ScopeName
+	refScope := scopeshim.RefScope(ref)
+	refScopeName := scopeshim.RefScopeName(ref)
 	refName := ref.Name
 	constraintStr := ref.VersionConstraint
 
@@ -1457,19 +1469,13 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	return update, nil
 }
 
-// extractScope validates and extracts the scope and scope_name from a TemplateScopeRef.
-func extractScope(ref *consolev1.TemplateScopeRef) (consolev1.TemplateScope, string, error) {
-	if ref == nil {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
-	}
-	if ref.Scope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope must be specified"))
-	}
-	if ref.ScopeName == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name is required"))
-	}
-	return ref.Scope, ref.ScopeName, nil
-}
+// extractScope was formerly a package-level helper that validated a
+// TemplateScopeRef. HOL-619 removed TemplateScopeRef; the method-based shim
+// in legacy_shim.go ((h *Handler).extractScope(namespace)) now owns the
+// classification. Call sites in this file were updated to the method form.
+//
+// This deliberate-absence comment exists so future readers don't grep for a
+// missing free function and wonder whether it was lost in a merge.
 
 // validateTemplateName checks that the name is a valid DNS label.
 func validateTemplateName(name string) error {
@@ -1550,21 +1556,28 @@ func (h *Handler) GetProjectTemplatePolicyState(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetProjectTemplatePolicyStateRequest],
 ) (*connect.Response[consolev1.GetProjectTemplatePolicyStateResponse], error) {
-	scopeRef := req.Msg.GetScope()
+	namespace := req.Msg.GetNamespace()
 	name := req.Msg.GetName()
-	if scopeRef == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
-	}
-	if scopeRef.GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("scope must be TEMPLATE_SCOPE_PROJECT for project-template policy state"))
-	}
-	project := scopeRef.GetScopeName()
-	if project == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope_name (project) is required"))
+	if namespace == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
 	}
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+	// HOL-619 replaced the request's TemplateScopeRef with a Kubernetes
+	// namespace that MUST classify as a project namespace. Rejecting a
+	// non-project namespace preserves the pre-HOL-619 contract (which
+	// rejected scope != TEMPLATE_SCOPE_PROJECT here).
+	scope, project, err := h.extractScope(namespace)
+	if err != nil {
+		return nil, err
+	}
+	if scope != scopeshim.ScopeProject {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("namespace must classify as a project namespace for project-template policy state"))
+	}
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project slug is required"))
 	}
 
 	claims := rpc.ClaimsFromContext(ctx)
@@ -1572,14 +1585,14 @@ func (h *Handler) GetProjectTemplatePolicyState(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, rbac.PermissionTemplatesRead); err != nil {
+	if err := h.checkAccess(ctx, claims, scopeshim.ScopeProject, project, rbac.PermissionTemplatesRead); err != nil {
 		return nil, err
 	}
 
 	// Read the template so we can pass its owner-linked refs to the
 	// resolver. The caller must have read access to the owning project for
 	// this to succeed.
-	cm, err := h.k8s.GetTemplate(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, name)
+	cm, err := h.k8s.GetTemplate(ctx, scopeshim.ScopeProject, project, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}

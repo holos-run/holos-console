@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -46,11 +47,14 @@ func makeTemplateWithLinks(ns, name string, links []*consolev1.LinkedTemplateRef
 	}
 	stored := make([]storedRef, 0, len(links))
 	for _, ref := range links {
+		// HOL-619: LinkedTemplateRef.Scope / ScopeName were removed; the
+		// shim classifies the ref's namespace back to the legacy pair
+		// via the package-level default resolver installed in TestMain.
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(ref.Scope),
-			ScopeName:         ref.ScopeName,
-			Name:              ref.Name,
-			VersionConstraint: ref.VersionConstraint,
+			Scope:             scopeLabelValue(scopeshim.RefScope(ref)),
+			ScopeName:         scopeshim.RefScopeName(ref),
+			Name:              ref.GetName(),
+			VersionConstraint: ref.GetVersionConstraint(),
 		})
 	}
 	linkedJSON, _ := json.Marshal(stored)
@@ -88,18 +92,14 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no updates when no releases exist", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName: org,
-				Name:      linkedTemplateName,
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
 		handler := newTestHandler(fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -115,12 +115,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no compatible update when already on latest matching", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0 and 1.1.0
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -130,7 +125,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -150,12 +145,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("breaking update available", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0, 1.5.0, 2.0.0
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -166,7 +156,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -195,12 +185,8 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no constraint no update when already on latest", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName: org,
-				Name:      linkedTemplateName,
-				// No version constraint
-			},
+			// No version constraint
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		// Create releases: 1.0.0, 2.0.0
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -210,7 +196,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -229,12 +215,8 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no constraint single release means no update", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName: org,
-				Name:      linkedTemplateName,
-				// No version constraint
-			},
+			// No version constraint
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		// Single release: current == latest, no update.
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -243,7 +225,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -281,7 +263,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:        projectScopeRef(project),
+			Namespace:        projectScopeRef(project),
 			TemplateName: "standalone",
 		})
 
@@ -297,20 +279,10 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("checks all templates when template_name omitted", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl1 := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		tmpl2 := makeTemplateWithLinks("prj-"+project, "api-svc", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              "gateway",
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, "gateway", ">=1.0.0 <2.0.0"),
 		})
 		// httproute: has breaking update (2.0.0)
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -322,7 +294,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 			// template_name omitted -- check all
 		})
 
@@ -342,12 +314,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current returns entries for up-to-date linked templates", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -357,7 +324,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:          projectScopeRef(project),
+			Namespace:          projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})
@@ -385,12 +352,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current false preserves existing behavior", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -400,7 +362,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:          projectScopeRef(project),
+			Namespace:          projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: false,
 		})
@@ -418,18 +380,14 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current with no releases returns no entries", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName: org,
-				Name:      linkedTemplateName,
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
 		handler := newTestHandler(fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:          projectScopeRef(project),
+			Namespace:          projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})
@@ -447,12 +405,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current with breaking update still reports breaking", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         org,
-				Name:              linkedTemplateName,
-				VersionConstraint: ">=1.0.0 <2.0.0",
-			},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0, 1.5.0, 2.0.0 — breaking update exists.
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
@@ -463,7 +416,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Scope:          projectScopeRef(project),
+			Namespace:          projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})
