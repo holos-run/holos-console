@@ -217,7 +217,10 @@ describe('CreateFolderTemplatePage', () => {
 
       const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
       expect(cueEditor.value).toContain('HTTPRoute')
-      expect(cueEditor.value).toContain('istio-ingress')
+      // The example now uses platform.gatewayNamespace (org-configurable)
+      // rather than hard-coding "istio-ingress" — see HOL-526.
+      expect(cueEditor.value).toContain('platform.gatewayNamespace')
+      expect(cueEditor.value).not.toContain('"istio-ingress"')
     })
   })
 

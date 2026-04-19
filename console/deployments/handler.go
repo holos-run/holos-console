@@ -56,7 +56,14 @@ type TemplateResolver interface {
 	GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error)
 }
 
-// DefaultGatewayNamespace is the default namespace for the ingress gateway.
+// DefaultGatewayNamespace is the fallback namespace for the ingress gateway,
+// injected into PlatformInput.GatewayNamespace when no resolver is wired,
+// when the OrganizationGatewayResolver returns an error, or when the owning
+// org has no `console.holos.run/gateway-namespace` annotation set (HOL-526
+// makes this configurable per-organization via the Settings UI; HOL-644
+// wires the resolver). It is intentionally NOT the only supported value —
+// platform engineers pin a cluster-specific gateway namespace (e.g.
+// "ci-private-apps-gateway") via the org annotation.
 const DefaultGatewayNamespace = "istio-ingress"
 
 // Renderer evaluates CUE templates with deployment parameters.

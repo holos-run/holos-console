@@ -14,17 +14,23 @@ import { useCreateTemplate, makeFolderScope } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
 
 // EXAMPLE_FOLDER_PLATFORM_TEMPLATE is the example folder-level platform template CUE content.
-// It provides an HTTPRoute into the istio-ingress namespace using platformResources.
-const EXAMPLE_FOLDER_PLATFORM_TEMPLATE = `// Folder-level platform template — HTTPRoute for istio-ingress gateway.
-// Applied to projects within this folder hierarchy.
+// It provides an HTTPRoute into the org-configured ingress-gateway namespace
+// (platform.gatewayNamespace, set per-org via Settings; falls back to
+// "istio-ingress" when unset). Authors who need a literal pin should use the
+// same value the org is configured with — see HOL-526.
+const EXAMPLE_FOLDER_PLATFORM_TEMPLATE = `// Folder-level platform template — HTTPRoute for the org-configured ingress gateway.
+// Applied to projects within this folder hierarchy. The HTTPRoute lands in
+// platform.gatewayNamespace, which the backend resolves from the org's
+// console.holos.run/gateway-namespace annotation. Configure it on the org's
+// Settings page (see HOL-526).
 platformResources: {
-    namespacedResources: ("istio-ingress"): {
+    namespacedResources: (platform.gatewayNamespace): {
         HTTPRoute: (input.name): {
             apiVersion: "gateway.networking.k8s.io/v1"
             kind:       "HTTPRoute"
             metadata: {
                 name:      input.name
-                namespace: "istio-ingress"
+                namespace: platform.gatewayNamespace
                 labels: {
                     "app.kubernetes.io/managed-by": "console.holos.run"
                     "app.kubernetes.io/name":       input.name
@@ -97,7 +103,7 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
     setName('httproute-ingress')
     setDisplayName('HTTPRoute Ingress')
     setDescription(
-      'Provides an HTTPRoute for the istio-ingress gateway, routing traffic to project services.',
+      'Provides an HTTPRoute for the org-configured ingress gateway, routing traffic to project services.',
     )
     setCueTemplate(EXAMPLE_FOLDER_PLATFORM_TEMPLATE)
   }
@@ -211,8 +217,8 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
                     <TooltipContent>
                       <p>
                         Platform templates are unified with project deployment templates at render
-                        time via CUE. This example provides an HTTPRoute for the istio-ingress
-                        gateway.
+                        time via CUE. This example provides an HTTPRoute for the org-configured
+                        ingress gateway (platform.gatewayNamespace).
                       </p>
                     </TooltipContent>
                   </Tooltip>

@@ -379,7 +379,15 @@
 	// Namespace is the Kubernetes namespace for the project, resolved by the backend.
 	namespace: string  @go(Namespace)
 
-	// GatewayNamespace is the namespace of the ingress gateway (default: "istio-ingress").
+	// GatewayNamespace is the namespace of the ingress gateway. The backend
+	// resolves it from the owning organization's
+	// `console.holos.run/gateway-namespace` annotation (set via the Settings UI
+	// and the OrganizationService, see HOL-526). When the annotation is unset
+	// or the lookup fails, the renderer falls back to the historical default
+	// "istio-ingress" so legacy clusters keep working unchanged. Template
+	// authors who pin platform.gatewayNamespace to a literal MUST use the same
+	// value the org is configured with — CUE unifies string : "X" & string :
+	// "Y" as a conflict.
 	gatewayNamespace: string  @go(GatewayNamespace)
 
 	// Organization is the root organization name.
