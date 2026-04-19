@@ -1485,9 +1485,11 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 		// unchanged when buildPlatformInput injects it (the resolver is
 		// unconfigured or the annotation is empty). When the org sets
 		// AnnotationGatewayNamespace to a custom value, the handler injects
-		// that value instead — see the
-		// TestHandler_BuildPlatformInput_GatewayNamespace_OrgConfigured
-		// scenario in handler_test.go.
+		// that value instead — see
+		// TestBuildPlatformInput_GatewayNamespace_TemplateUnifies (and the
+		// "configured resolver value is propagated verbatim" subtest of
+		// TestBuildPlatformInput_GatewayNamespace) in
+		// buildplatforminput_test.go.
 		system := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
