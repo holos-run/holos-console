@@ -142,6 +142,28 @@ describe('ProfilePage API Access section', () => {
     expect(bashPanel.textContent).toContain('set +o history')
   })
 
+  it('clicking zsh tab after bash restores zsh content', async () => {
+    const user = userEvent.setup()
+    setAuthState()
+    render(<ProfilePage />)
+
+    // Switch to bash
+    await user.click(screen.getByRole('tab', { name: /bash/i }))
+    const bashPanel = screen.getByRole('tabpanel')
+    expect(bashPanel.textContent).toContain('set +o history')
+
+    // Switch back to zsh
+    await user.click(screen.getByRole('tab', { name: /zsh/i }))
+    const zshTab = screen.getByRole('tab', { name: /zsh/i })
+    expect(zshTab).toHaveAttribute('data-state', 'active')
+
+    // Active panel is now the zsh panel — content changes, no more bash-specific
+    // instructions; the zsh panel includes setopt guidance.
+    const zshPanel = screen.getByRole('tabpanel')
+    expect(zshPanel.textContent).toContain('setopt')
+    expect(zshPanel.textContent).not.toContain('set +o history')
+  })
+
   it('never shows the refresh_token even when present', () => {
     setAuthState({ user: makeUser({ refresh_token: 'refresh.token.value' }) })
     render(<ProfilePage />)

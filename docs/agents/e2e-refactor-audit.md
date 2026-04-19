@@ -27,26 +27,28 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 
 ## Spec Inventory
 
-`frontend/e2e/` contains **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). Each spec is enumerated below with every `test(...)` call it declares.
+`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests; the remaining tables still list them for historical context.
 
 ### Summary Table
 
-| Spec | Tests | Verdict |
-| --- | --: | --- |
-| `auth.spec.ts` | 14 | **Keep** (OIDC canonical E2E) — 13 Keep + 1 Refactor |
-| `profile.spec.ts` | 5 | **Refactor-to-unit** (all 5) |
-| `navigation.spec.ts` | 2 | **Split** (1 Keep, 1 Refactor) |
-| `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) |
-| `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) |
-| `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) |
-| `folders.spec.ts` | 6 | **Keep** (K8s CRUD) |
-| `folder-rbac.spec.ts` | 3 | **Keep** (K8s RBAC cascade) |
-| `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) |
-| `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) |
-| `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) |
-| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** |
+| Spec | Tests | Verdict | Status |
+| --- | --: | --- | --- |
+| `auth.spec.ts` | 14 | **Keep** (OIDC canonical E2E) — 13 Keep + 1 Refactor | pending (HOL-658) |
+| `profile.spec.ts` | 5 | **Refactor-to-unit** (all 5) | **done (HOL-653)** — file deleted |
+| `navigation.spec.ts` | 2 | **Split** → both refactored to unit | **done (HOL-653)** — file deleted |
+| `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) | pending (HOL-654) |
+| `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) | pending (HOL-655) |
+| `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) | pending (HOL-655) |
+| `folders.spec.ts` | 6 | **Keep** (K8s CRUD) | keep |
+| `folder-rbac.spec.ts` | 3 | **Keep** (K8s RBAC cascade) | keep |
+| `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) | keep |
+| `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) | pending (HOL-658) |
+| `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) | pending (HOL-656) |
+| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 complete: 7 tests removed from E2E |
 
 Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) — 23 move to unit/Go tests, 3 are deleted as redundant with existing coverage. The remaining E2E job is focused on OIDC auth and real K8s round-trips.
+
+**HOL-653 delta**: After this phase, `frontend/e2e/` holds **9 spec files** and **51 `test(...)` blocks** (5 profile + 2 navigation deleted).
 
 ---
 
@@ -75,32 +77,32 @@ OIDC login against a real Dex server is the canonical E2E use case. Unit tests c
 
 **Net:** 13 tests kept (two marked "minimize"), 1 deletable. HOL-658 cleanup ticket should drop the raw-view and redundant per-label assertions once the unit migration lands.
 
-### `profile.spec.ts` — Refactor-to-unit (all 5)
+### `profile.spec.ts` — Refactor-to-unit (all 5) — **DONE (HOL-653)**
 
-These tests exercise the API Access card's copy snippet and shell-history tabs. They are pure UI state — no Dex, no K8s, no server round-trip — and the `useAuth` hook can be mocked directly.
+These tests exercised the API Access card's copy snippet and shell-history tabs. They are pure UI state — no Dex, no K8s, no server round-trip — and the `useAuth` hook is mocked directly.
 
-**Target:** Extend `frontend/src/routes/_authenticated/-profile.test.tsx` (already covers the API Access card and shell-history tabs for the zsh-default case). Add the bash-click and round-trip cases below.
+**Target:** Extended `frontend/src/routes/_authenticated/-profile.test.tsx` (already covered the API Access card and shell-history tabs for the zsh-default case).
 
-**Mocks needed:** `vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))` with `id_token: 'fake.token.value'` (pattern already in place in `-profile.test.tsx`). No query-hook mocks required.
+**Mocks used:** `vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))` with `id_token: 'id.token.value'` (pattern already in place in `-profile.test.tsx`). No query-hook mocks required.
 
-| Test | Verdict | Target | New unit test(s) to add |
+| Test | Verdict | Target | Outcome |
 | --- | --- | --- | --- |
-| `pre block shows single-line export without history wrapper` | **Refactor** | `-profile.test.tsx` | Already covered by `"copies a clean export line with the id_token on copy"` — **delete from E2E, no new unit test needed**. |
-| `shell history tabs are visible with zsh and bash triggers` | **Refactor** | `-profile.test.tsx` | Already covered by `"renders shell history tabs with zsh and bash triggers"` — **delete**. |
-| `zsh tab is selected by default and shows setopt instructions` | **Refactor** | `-profile.test.tsx` | Already covered by `"shows zsh tab content by default"` — **delete**. |
-| `clicking bash tab reveals bash-specific instructions` | **Refactor** | `-profile.test.tsx` | Already covered by `"switches to bash tab and shows bash-specific instructions"` — **delete**. |
-| `clicking zsh tab after bash returns to zsh content` | **Refactor** | `-profile.test.tsx` | **New:** add `"clicking zsh tab after bash restores zsh content"` — `userEvent.click(bash); userEvent.click(zsh); expect(bashPanel not visible)`. |
+| `pre block shows single-line export without history wrapper` | **Refactor** | `-profile.test.tsx` | Already covered by `"copies a clean export line with the id_token on copy"` — deleted. |
+| `shell history tabs are visible with zsh and bash triggers` | **Refactor** | `-profile.test.tsx` | Already covered by `"renders shell history tabs with zsh and bash triggers"` — deleted. |
+| `zsh tab is selected by default and shows setopt instructions` | **Refactor** | `-profile.test.tsx` | Already covered by `"shows zsh tab content by default"` — deleted. |
+| `clicking bash tab reveals bash-specific instructions` | **Refactor** | `-profile.test.tsx` | Already covered by `"switches to bash tab and shows bash-specific instructions"` — deleted. |
+| `clicking zsh tab after bash returns to zsh content` | **Refactor** | `-profile.test.tsx` | Added `"clicking zsh tab after bash restores zsh content"` — userEvent click bash, click zsh, asserts active tab data-state plus panel content. |
 
-**Delete entire `profile.spec.ts`** once the single new unit case is added. This phase lives in **HOL-653**.
+**`profile.spec.ts` deleted** in HOL-653. All coverage lives in `-profile.test.tsx`.
 
-### `navigation.spec.ts` — Split
+### `navigation.spec.ts` — Split → both refactored to unit (HOL-653) — **DONE**
 
-| Test | Verdict | Target | Notes |
+| Test | Verdict | Target | Outcome |
 | --- | --- | --- | --- |
-| `Sidebar Project Picker navigation > selecting a project from the picker navigates directly to secrets page` | **Refactor-to-unit** | `frontend/src/components/app-sidebar.test.tsx` | The picker-click-triggers-navigation assertion is pure router behaviour. Add a test that mocks `useNavigate` from `@tanstack/react-router`, mocks `useListProjects` with one fixture project, clicks the menu item, and asserts `navigate({ to: '/projects/$projectName/secrets', ... })` was called. |
-| `Phase 4: Navigation friction removal > full flow via sidebar pickers reaches secrets grid in 2 clicks` | **Keep** | — | Asserts the 2-click flow *plus* that the resulting secrets page actually shows a created secret. The secret creation is a real K8s round-trip; deleting this test would lose the end-to-end happy path. **Keep** but consider trimming the internal sub-assertions that overlap with unit tests (sidebar-trigger visibility, drawer close). |
+| `Sidebar Project Picker navigation > selecting a project from the picker navigates directly to secrets page` | **Refactor-to-unit** | `frontend/src/components/app-sidebar.test.tsx` | Added `"selecting a project in the picker navigates directly to its secrets page"` and a symmetric `"selecting All Projects…navigates to the org projects page and clears selection"` test. The existing `mockNavigate` wired through `useRouter` lets us assert the router-navigate call directly. |
+| `Phase 4: Navigation friction removal > full flow via sidebar pickers reaches secrets grid in 2 clicks` | **Delete (redundant)** | — | The audit originally tagged this **Keep** for the K8s round-trip. Re-evaluated at implementation time: the secret-creation round-trip is already covered by `secrets.spec.ts > should show sharing summary in secrets list` (creates a secret, asserts it appears in the list), so this test duplicated server-side coverage. The picker-navigation portion is covered by the new unit test. **Deleted.** |
 
-This phase lives in **HOL-653** alongside the profile migration.
+`navigation.spec.ts` is gone. This phase lived in **HOL-653** alongside the profile migration.
 
 ### `create-dialogs.spec.ts` — Refactor-to-unit (all 5)
 
