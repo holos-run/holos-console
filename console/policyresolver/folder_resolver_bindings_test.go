@@ -17,12 +17,24 @@ import (
 //
 // HOL-662 switched the return type from corev1.ConfigMap to the CRD shape;
 // tests no longer vendor a ConfigMap decoder.
+//
+// HOL-622 switched the interface return shape to a pointer slice so the
+// resolver can forward the cached CRD pointer through without re-addressing
+// a copy. The map still holds value slices for readable test fixtures.
 type bindingListerFromMap struct {
 	items map[string][]templatesv1alpha1.TemplatePolicyBinding
 }
 
-func (b *bindingListerFromMap) ListBindingsInNamespace(_ context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
-	return b.items[ns], nil
+func (b *bindingListerFromMap) ListBindingsInNamespace(_ context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicyBinding, error) {
+	src := b.items[ns]
+	if len(src) == 0 {
+		return nil, nil
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicyBinding, 0, len(src))
+	for i := range src {
+		out = append(out, &src[i])
+	}
+	return out, nil
 }
 
 // bindingCRD returns a TemplatePolicyBinding CR populated with the given

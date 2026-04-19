@@ -62,14 +62,29 @@ func (k *K8sClient) ListBindings(ctx context.Context, namespace string) ([]templ
 	return list.Items, nil
 }
 
-// ListBindingsInNamespace is an alias for ListBindings used by the
-// policyresolver ancestor walker (HOL-596). It is kept as a distinct method
-// name because the walker interface uses that signature.
-func (k *K8sClient) ListBindingsInNamespace(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
+// ListBindingsInNamespace is a pointer-slice adapter over ListBindings used
+// by the policyresolver ancestor walker (HOL-596). HOL-622 converted the
+// signature to a pointer slice so the resolver can pass each cached CRD
+// pointer through without an index-address dance; this helper rewraps the
+// value slice the controller-runtime List returns.
+//
+// ListBindings itself retains the value-slice signature because the local
+// templatepolicybindings handler converts entries to proto via an
+// index-addressed loop that benefits from slice locality. The
+// policyresolver consumers always want pointers.
+func (k *K8sClient) ListBindingsInNamespace(ctx context.Context, namespace string) ([]*templatesv1alpha1.TemplatePolicyBinding, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required")
 	}
-	return k.ListBindings(ctx, namespace)
+	items, err := k.ListBindings(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicyBinding, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out, nil
 }
 
 // GetBinding retrieves a single TemplatePolicyBinding by name.

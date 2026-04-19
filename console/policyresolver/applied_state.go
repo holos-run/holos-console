@@ -35,6 +35,16 @@ import (
 // effective set, and the same package stores what was applied. Keeping the
 // two helpers co-located avoids a cross-package dependency cycle between
 // templates and policyresolver.
+//
+// HOL-622 scope decision: render-state remains on ConfigMap storage. The
+// HOL-615 plan scopes the CRD migration to `Template`, `TemplatePolicy`, and
+// `TemplatePolicyBinding`; the applied-render-set is an implementation
+// detail of the drift surface — not a user-declared policy artifact — so it
+// continues to live as a managed ConfigMap in the folder/organization
+// namespace. A future phase may migrate this to a dedicated CRD, at which
+// point this client will route through the controller-runtime cache like
+// the policy readers above; until then the cache hit the resolver's List
+// paths enjoy is the sole HOL-622 optimization.
 type AppliedRenderStateClient struct {
 	client   kubernetes.Interface
 	resolver *resolver.Resolver

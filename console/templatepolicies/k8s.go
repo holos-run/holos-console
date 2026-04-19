@@ -64,14 +64,29 @@ func (k *K8sClient) ListPolicies(ctx context.Context, namespace string) ([]templ
 	return list.Items, nil
 }
 
-// ListPoliciesInNamespace is an alias for ListPolicies used by the
-// policyresolver ancestor walker (HOL-567). It is kept as a distinct method
-// name because the walker interface uses that signature.
-func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicy, error) {
+// ListPoliciesInNamespace is a pointer-slice adapter over ListPolicies used
+// by the policyresolver ancestor walker (HOL-567). HOL-622 converted the
+// signature to a pointer slice so the resolver can pass each cached CRD
+// pointer through without an index-address dance; this helper rewraps the
+// value slice the controller-runtime List returns.
+//
+// ListPolicies itself retains the value-slice signature because the local
+// templatepolicies handler converts entries to proto via an index-addressed
+// loop that benefits from slice locality. The policyresolver consumers
+// always want pointers.
+func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, namespace string) ([]*templatesv1alpha1.TemplatePolicy, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required")
 	}
-	return k.ListPolicies(ctx, namespace)
+	items, err := k.ListPolicies(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicy, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out, nil
 }
 
 // GetPolicy retrieves a single TemplatePolicy by name.

@@ -36,12 +36,25 @@ import (
 // PolicyListerInNamespace interface. The production implementation lives in
 // console/templatepolicies and is exercised by its own tests; this adapter
 // lets the resolver be tested in isolation.
+//
+// HOL-622 switched the interface return shape to a pointer slice so the
+// resolver can forward the cached CRD pointer through without re-addressing
+// a copy. The map still holds value slices for readable test fixtures; this
+// adapter rewraps them on the way out.
 type policyListerFromClient struct {
 	items map[string][]templatesv1alpha1.TemplatePolicy
 }
 
-func (p *policyListerFromClient) ListPoliciesInNamespace(_ context.Context, ns string) ([]templatesv1alpha1.TemplatePolicy, error) {
-	return p.items[ns], nil
+func (p *policyListerFromClient) ListPoliciesInNamespace(_ context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicy, error) {
+	src := p.items[ns]
+	if len(src) == 0 {
+		return nil, nil
+	}
+	out := make([]*templatesv1alpha1.TemplatePolicy, 0, len(src))
+	for i := range src {
+		out = append(out, &src[i])
+	}
+	return out, nil
 }
 
 // errorPolicyLister returns a hardcoded error for a given namespace and
@@ -52,7 +65,7 @@ type errorPolicyLister struct {
 	err     error
 }
 
-func (e *errorPolicyLister) ListPoliciesInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicy, error) {
+func (e *errorPolicyLister) ListPoliciesInNamespace(ctx context.Context, ns string) ([]*templatesv1alpha1.TemplatePolicy, error) {
 	if ns == e.failFor {
 		return nil, e.err
 	}

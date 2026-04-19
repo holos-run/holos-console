@@ -60,9 +60,9 @@ type AncestorPolicyLister struct {
 }
 
 // NewAncestorPolicyLister returns a lister wired with the given dependencies.
-// Any nil dependency yields a lister whose ListRules method returns an empty
-// slice without error (fail-open behavior — misconfigured bootstraps must not
-// block project creation or render).
+// Any nil dependency yields a lister whose ListPolicies method returns an
+// empty slice without error (fail-open behavior — misconfigured bootstraps
+// must not block project creation or render).
 func NewAncestorPolicyLister(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
@@ -75,94 +75,31 @@ func NewAncestorPolicyLister(
 	}
 }
 
-// ListRules returns every TemplatePolicy rule declared in a folder or
-// organization namespace on the ancestor chain starting from startNs. The
-// returned rules preserve the walker's order (closest ancestor first) within
-// each policy and the policy-list order within each namespace; callers that
-// need a deterministic match order should dedup or sort after.
-//
-// startNs is typically the new project's namespace (project-creation time) or
-// the render target's project namespace (render time). Passing a
-// folder/organization namespace works too — any project namespace on the
-// chain (including the start itself) is skipped.
-//
-// A misconfigured lister (any nil dependency) returns (nil, nil) — the
-// fail-open contract matches `folderResolver.Resolve` so a bootstrap
-// misconfiguration degrades to "no policies" rather than "render errors on
-// every call".
-//
-// A walker failure returns (nil, err) so project-creation callers can choose
-// whether to fail closed (refuse to create the project) or fail open (create
-// without policy-injected templates). Today the project-creation caller
-// fails closed because a silent walker failure there would let a project
-// sneak in without required templates — a security-relevant outcome that
-// deserves explicit handling at the call site.
-//
-// Individual per-namespace lister errors do not abort traversal; they are
-// logged and the namespace is skipped. This matches the resolver contract
-// that a single corrupted policy should not prevent legitimate policies in
-// peer namespaces from being honored.
-func (a *AncestorPolicyLister) ListRules(ctx context.Context, startNs string) ([]*consolev1.TemplatePolicyRule, error) {
-	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil {
-		slog.WarnContext(ctx, "ancestor policy lister is misconfigured; returning no rules",
-			slog.String("startNs", startNs),
-			slog.Bool("policyListerNil", a == nil || a.policyLister == nil),
-			slog.Bool("walkerNil", a == nil || a.walker == nil),
-			slog.Bool("resolverNil", a == nil || a.resolver == nil),
-		)
-		return nil, nil
-	}
-
-	ancestors, err := a.walker.WalkAncestors(ctx, startNs)
-	if err != nil {
-		return nil, err
-	}
-
-	var rules []*consolev1.TemplatePolicyRule
-	for _, ns := range ancestors {
-		if ns == nil {
-			continue
-		}
-		kind, _, kErr := a.resolver.ResourceTypeFromNamespace(ns.Name)
-		if kErr != nil {
-			continue
-		}
-		if kind == v1alpha2.ResourceTypeProject {
-			continue
-		}
-		items, listErr := a.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
-		if listErr != nil {
-			slog.WarnContext(ctx, "failed to list template policies in ancestor namespace",
-				slog.String("namespace", ns.Name),
-				slog.Any("error", listErr),
-			)
-			continue
-		}
-		for i := range items {
-			p := &items[i]
-			for _, rule := range crdRulesToProto(p.Spec.Rules) {
-				if rule == nil {
-					continue
-				}
-				rules = append(rules, rule)
-			}
-		}
-	}
-	return rules, nil
-}
-
 // ListPolicies returns the parsed TemplatePolicy records declared in each
 // folder or organization namespace on the ancestor chain starting from
 // startNs. Each returned entry bundles the policy's rules with the (scope,
 // scope_name, name) triple derived from its owning namespace so downstream
 // consumers can match a binding's policy_ref to the policy it references.
 //
-// Ordering matches ListRules: closest ancestor first, list order within each
-// namespace. Project namespaces are skipped (HOL-554 storage-isolation).
+// Ordering: closest ancestor first, list order within each namespace.
+// Project namespaces are skipped (HOL-554 storage-isolation).
 //
-// Fail-open and per-namespace error behavior mirrors ListRules. A namespace
-// whose scope-prefix classification fails is skipped — the resolver has no
-// way to report a policy whose scope it cannot identify.
+// A misconfigured lister (any nil dependency) returns (nil, nil) — the
+// fail-open contract matches `folderResolver.Resolve` so a bootstrap
+// misconfiguration degrades to "no policies" rather than "render errors on
+// every call".
+//
+// A walker failure returns (nil, err) so callers can choose whether to fail
+// closed or fail open at the call site.
+//
+// Individual per-namespace lister errors do not abort traversal; they are
+// logged and the namespace is skipped. A namespace whose scope-prefix
+// classification fails is skipped — the resolver has no way to report a
+// policy whose scope it cannot identify.
+//
+// HOL-622 converted the policy lister to return a pointer slice; this method
+// passes each pointer through unchanged so downstream ResolvedPolicy values
+// observe the same addressable CRD that the informer cache returns.
 func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string) ([]*ResolvedPolicy, error) {
 	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil {
 		slog.WarnContext(ctx, "ancestor policy lister is misconfigured; returning no policies",
@@ -205,8 +142,10 @@ func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string)
 			)
 			continue
 		}
-		for i := range items {
-			p := &items[i]
+		for _, p := range items {
+			if p == nil {
+				continue
+			}
 			rules := crdRulesToProto(p.Spec.Rules)
 			out = append(out, &ResolvedPolicy{
 				Name:      p.Name,
