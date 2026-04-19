@@ -17,7 +17,7 @@ import {
   type BindingMutationParams,
 } from './binding-draft'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
-import { TemplateScope } from '@/queries/templates'
+import { TemplateScope, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
 import type { TemplateScopeRef } from '@/queries/templates'
 
 /**
@@ -78,8 +78,8 @@ export function BindingForm({
 
   const policyItems: ComboboxItem[] = useMemo(() => {
     return policies.map((p) => {
-      const scope = p.scopeRef?.scope ?? TemplateScope.UNSPECIFIED
-      const scopeName = p.scopeRef?.scopeName ?? ''
+      const scope = scopeFromNamespace(p.namespace)
+      const scopeName = scopeNameFromNamespace(p.namespace)
       const scopeLabel =
         scope === TemplateScope.ORGANIZATION
           ? 'org'
