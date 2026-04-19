@@ -186,6 +186,50 @@ describe('CreateOrgDialog', () => {
     })
   })
 
+  // Required-field coverage migrated from `frontend/e2e/create-dialogs.spec.ts`
+  // (HOL-654). The E2E spec relied on HTML `required` attribute validation to
+  // block submits with a blank name; the unit version asserts the same
+  // invariant by checking the submit button's `disabled` state when the
+  // required `name` is empty.
+  it('disables submit when the name field is empty', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+    const submit = screen.getByRole('button', { name: /^create$/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+  })
+
+  it('enables submit once a name is provided', () => {
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), {
+      target: { value: 'New Org' },
+    })
+
+    const submit = screen.getByRole('button', { name: /^create$/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(false)
+  })
+
+  // Pending-state coverage migrated from `frontend/e2e/create-dialogs.spec.ts`
+  // (HOL-654). The E2E test could not observe the pending-but-not-yet-resolved
+  // state reliably; the unit version asserts on the mocked `isPending: true`
+  // branch directly.
+  it('disables submit and shows Creating… label while the mutation is pending', () => {
+    ;(useCreateOrganization as Mock).mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: true,
+    })
+
+    render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my organization/i), {
+      target: { value: 'Pending Org' },
+    })
+
+    const submit = screen.getByRole('button', { name: /creating…/i }) as HTMLButtonElement
+    expect(submit).toBeDefined()
+    expect(submit.disabled).toBe(true)
+  })
+
   describe('populate defaults checkbox', () => {
     it('renders checkbox unchecked by default', () => {
       render(<CreateOrgDialog open={true} onOpenChange={onOpenChange} />)

@@ -27,7 +27,7 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 
 ## Spec Inventory
 
-`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests; the remaining tables still list them for historical context.
+`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests. After HOL-654 landed, `create-dialogs.spec.ts` was also deleted; the remaining tables still list all three for historical context.
 
 ### Summary Table
 
@@ -36,7 +36,7 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 | `auth.spec.ts` | 14 | **Keep** (OIDC canonical E2E) — 13 Keep + 1 Refactor | pending (HOL-658) |
 | `profile.spec.ts` | 5 | **Refactor-to-unit** (all 5) | **done (HOL-653)** — file deleted |
 | `navigation.spec.ts` | 2 | **Split** → both refactored to unit | **done (HOL-653)** — file deleted |
-| `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) | pending (HOL-654) |
+| `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) | **done (HOL-654)** — file deleted |
 | `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) | pending (HOL-655) |
 | `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) | pending (HOL-655) |
 | `folders.spec.ts` | 6 | **Keep** (K8s CRUD) | keep |
@@ -44,11 +44,13 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 | `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) | keep |
 | `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) | pending (HOL-658) |
 | `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) | pending (HOL-656) |
-| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 complete: 7 tests removed from E2E |
+| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 + HOL-654 complete: 12 tests removed from E2E |
 
 Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) — 23 move to unit/Go tests, 3 are deleted as redundant with existing coverage. The remaining E2E job is focused on OIDC auth and real K8s round-trips.
 
 **HOL-653 delta**: After this phase, `frontend/e2e/` holds **9 spec files** and **51 `test(...)` blocks** (5 profile + 2 navigation deleted).
+
+**HOL-654 delta**: After this phase, `frontend/e2e/` holds **8 spec files** and **46 `test(...)` blocks** (5 create-dialogs deleted). The new Vitest coverage lives in `frontend/src/components/create-project-dialog.test.tsx` (3 new tests: auto-derived-slug submit + navigate, manual override + reset affordance, pending submit), `frontend/src/components/create-org-dialog.test.tsx` (1 new test: pending submit), and `frontend/src/components/app-sidebar.test.tsx` (4 new tests across two describes: org-picker with existing orgs surfaces a "New Organization" item below the listed orgs, and the symmetric project-picker assertion for "New Project").
 
 ---
 
@@ -104,27 +106,28 @@ These tests exercised the API Access card's copy snippet and shell-history tabs.
 
 `navigation.spec.ts` is gone. This phase lived in **HOL-653** alongside the profile migration.
 
-### `create-dialogs.spec.ts` — Refactor-to-unit (all 5)
+### `create-dialogs.spec.ts` — Refactor-to-unit (all 5) — **DONE (HOL-654)**
 
-The dialog validation, auto-slug, and reset-affordance behaviours are pure form state. The "picker-menu-item-renders-at-bottom" assertions are also pure UI. The create → navigate-to-secrets case looks like a full-stack round-trip at first glance, but the only thing E2E verifies that a unit test cannot is that the **slug URL the router produces matches the slug the server created** — and that invariant is already covered by `secrets.spec.ts` (which creates a project and then a secret under it). With mocked `useCreateProject` and `useNavigate`, all five cases collapse into pure UI assertions.
+The dialog validation, auto-slug, and reset-affordance behaviours are pure form state. The "picker-menu-item-renders-at-bottom" assertions are also pure UI. The create → navigate-to-secrets case looks like a full-stack round-trip at first glance, but the only thing E2E verifies that a unit test cannot is that the **slug URL the router produces matches the slug the server created** — and that invariant is already covered by `secrets.spec.ts` (which creates a project and then a secret under it). With mocked `useCreateProject` and `useNavigate`, all five cases collapsed into pure UI assertions.
 
-**Existing unit targets:** `frontend/src/components/create-project-dialog.test.tsx` (278 lines) and `frontend/src/components/create-org-dialog.test.tsx` (238 lines) — **extend these**, do not create new files.
+**Unit targets:** `frontend/src/components/create-project-dialog.test.tsx`, `frontend/src/components/create-org-dialog.test.tsx`, and `frontend/src/components/app-sidebar.test.tsx` — all three already existed; extended in place.
 
-**Mocks needed:**
-- `vi.mock('@/queries/projects', () => ({ useCreateProject: vi.fn(), useListProjects: vi.fn() }))`
-- `vi.mock('@/queries/organizations', () => ({ useCreateOrganization: vi.fn(), useListOrganizations: vi.fn() }))`
-- `vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))`
-- Router mock exporting `useNavigate: vi.fn()` so navigation can be asserted.
+**Mocks used (HOL-654):**
+- `vi.mock('@/queries/projects', () => ({ useCreateProject: vi.fn(), useListProjects: vi.fn() }))` — already present in `create-project-dialog.test.tsx` and `app-sidebar.test.tsx`.
+- `vi.mock('@/queries/organizations', () => ({ useCreateOrganization: vi.fn(), useListOrganizations: vi.fn(), useGetOrganization: vi.fn() }))` — already present.
+- Router mock: `vi.mock('@tanstack/react-router', ...)` was updated in `create-project-dialog.test.tsx` to expose a hoisted `mockNavigate` spy so the post-create `navigate({ to: '/projects/$projectName/secrets', params: { projectName } })` call can be asserted. `useAuth` was not needed because the dialog does not depend on it.
 
-| Test | Verdict | Target | New unit test(s) to add |
+| Test | Verdict | Target | Outcome |
 | --- | --- | --- | --- |
-| `Create Organization dialog > existing user sees New Organization item at bottom of org picker dropdown` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | New: `"org picker menu includes New Organization at bottom when orgs exist"` — mock `useListOrganizations` with one org, open picker, assert `getByRole('menuitem', { name: /new organization/i })` is the last item. |
-| `Create Project dialog > org with no projects shows New Project CTA` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | New: `"sidebar shows New Project CTA when selected org has zero projects"` — mock `useListProjects` with empty array, assert `queryByTestId('project-picker')` is null and `getByRole('button', { name: /new project/i })` is visible. |
-| `Create Project dialog > create project dialog opens, submits via display name auto-slug, and navigates to secrets page` | **Refactor** | `create-project-dialog.test.tsx` | New: `"submits with auto-derived slug and navigates to secrets page"` — fill displayName, click Create, assert `mutateAsync` called with the expected slug, assert `navigate({ to: '/projects/$projectName/secrets', params: { projectName: expectedSlug } })`. |
-| `Create Project dialog > create project dialog: manually overriding name stops auto-derivation and shows reset affordance` | **Refactor** | `create-project-dialog.test.tsx` | Already partially covered. Verify the existing test in `create-project-dialog.test.tsx` covers the reset-affordance round-trip; if not, add `"name override disables auto-derivation until reset link is clicked"`. |
-| `Create Project dialog > existing user sees New Project item at bottom of project picker dropdown` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | New: `"project picker menu includes New Project at bottom when projects exist"` — symmetric to the org-picker test above. |
+| `Create Organization dialog > existing user sees New Organization item at bottom of org picker dropdown` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | Added describe `"AppSidebar — OrgPicker menu with existing orgs"` with two tests that render with two orgs, confirm `getByTestId('org-picker')` is present, and assert the "New Organization" text node appears *after* the last org label via `compareDocumentPosition`. |
+| `Create Project dialog > org with no projects shows New Project CTA` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | Already covered by the existing describe `"AppSidebar — ProjectPicker empty state"` which asserts the "New Project" button is visible and `queryByTestId('project-picker')` is null. No new test needed. |
+| `Create Project dialog > create project dialog opens, submits via display name auto-slug, and navigates to secrets page` | **Refactor** | `create-project-dialog.test.tsx` | Added `"submits with auto-derived slug and navigates to the new project secrets page"` — fills displayName, asserts auto-derived slug in the Name field, submits, asserts `mockMutateAsync` called with `{ name, displayName, organization }` and `mockNavigate` called with `{ to: '/projects/$projectName/secrets', params: { projectName: expectedSlug } }` using the server-returned name (not the local slug). Also added `"disables submit and shows Creating… label while the mutation is pending"`. |
+| `Create Project dialog > create project dialog: manually overriding name stops auto-derivation and shows reset affordance` | **Refactor** | `create-project-dialog.test.tsx` | Added `"manually overriding name stops auto-derivation and the reset link restores it"` — a single test that exercises the full E2E flow (type displayName → override name → change displayName (no effect) → click reset → displayName change re-derives). Consolidates what the existing test file split across four separate its. |
+| `Create Project dialog > existing user sees New Project item at bottom of project picker dropdown` | **Refactor** | `frontend/src/components/app-sidebar.test.tsx` | Added describe `"AppSidebar — ProjectPicker menu with existing projects"` with two tests that confirm the picker trigger renders and the "New Project" item is after the last project via `compareDocumentPosition`. |
 
-After the above refactor lands, **delete `create-dialogs.spec.ts` entirely**. This phase lives in **HOL-654**.
+Also added `"disables submit and shows Creating… label while the mutation is pending"` in `create-org-dialog.test.tsx` to cover the pending-state branch symmetrically (the E2E test could not observe this reliably).
+
+`create-dialogs.spec.ts` deleted in HOL-654. All coverage lives in the three extended unit-test files.
 
 ### `org-settings.spec.ts` — Refactor-to-unit (all 2)
 

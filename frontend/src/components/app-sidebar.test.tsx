@@ -75,11 +75,17 @@ vi.mock('@/queries/projects', () => ({
   useListProjects: vi.fn().mockReturnValue({ data: { projects: [] }, isLoading: false }),
   useCreateProject: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
 }))
+// The dialog mocks respect the `open` prop so tests can assert the sidebar's
+// CTAs actually open the dialog. Without this, a regression in the
+// "click New Organization opens the dialog" wiring would go undetected by
+// make test-ui (HOL-654 review round 1).
 vi.mock('@/components/create-org-dialog', () => ({
-  CreateOrgDialog: () => <div data-testid="create-org-dialog" />,
+  CreateOrgDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="create-org-dialog" /> : null,
 }))
 vi.mock('@/components/create-project-dialog', () => ({
-  CreateProjectDialog: () => <div data-testid="create-project-dialog" />,
+  CreateProjectDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="create-project-dialog" /> : null,
 }))
 vi.mock('@/lib/console-config', () => ({
   getConsoleConfig: vi.fn(),
@@ -261,6 +267,203 @@ describe('AppSidebar — OrgPicker empty state', () => {
   it('does not render org picker dropdown when no orgs', () => {
     render(<AppSidebar />)
     expect(screen.queryByTestId('org-picker')).toBeNull()
+  })
+})
+
+// The two tests below cover behaviour migrated from
+// frontend/e2e/create-dialogs.spec.ts (HOL-654). The E2E suite exercised the
+// bottom-of-dropdown "New Organization" / "New Project" affordances against
+// the real K8s backend; here we assert the same DOM ordering with mocked
+// query hooks, per the E2E refactor audit.
+describe('AppSidebar — OrgPicker menu with existing orgs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [
+        { name: 'org-a', displayName: 'Org A' },
+        { name: 'org-b', displayName: 'Org B' },
+      ],
+      selectedOrg: 'org-a',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('renders the org-picker dropdown trigger', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('org-picker')).toBeDefined()
+  })
+
+  it('includes a New Organization item in the menu after the listed orgs', () => {
+    render(<AppSidebar />)
+
+    // The mocked DropdownMenuItem renders as a div (not role=menuitem), so we
+    // locate the entry by its visible text.
+    const newOrgItem = screen.getByText(/new organization/i)
+    expect(newOrgItem).toBeDefined()
+
+    // Assert DOM ordering: "New Organization" must appear after the last org
+    // in the picker (matches the E2E assertion that it sits at the *bottom*
+    // of the dropdown).
+    const orgBNode = screen.getByText('Org B')
+    expect(orgBNode.compareDocumentPosition(newOrgItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('AppSidebar — ProjectPicker menu with existing projects', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [
+        { name: 'project-a', displayName: 'Project A' },
+        { name: 'project-b', displayName: 'Project B' },
+      ],
+      selectedProject: null,
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('renders the project-picker dropdown trigger', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('project-picker')).toBeDefined()
+  })
+
+  it('includes a New Project item in the menu after the listed projects', () => {
+    render(<AppSidebar />)
+
+    const newProjectMatches = screen.getAllByText(/new project/i)
+    // The ProjectPicker renders "New Project" once — inside the dropdown. The
+    // empty-state CTA button with the same label is NOT rendered here because
+    // projects.length > 0.
+    expect(newProjectMatches.length).toBeGreaterThanOrEqual(1)
+
+    const lastProject = screen.getByText('Project B')
+    const newProjectItem = newProjectMatches[newProjectMatches.length - 1]
+    expect(lastProject.compareDocumentPosition(newProjectItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+// Sidebar-launches-dialog coverage migrated from
+// frontend/e2e/create-dialogs.spec.ts (HOL-654 review round 1). These tests
+// assert that clicking the sidebar's "New Organization" / "New Project"
+// affordances opens the corresponding dialog. Without these, a regression in
+// the dialog-open wiring would silently break the create flow the deleted E2E
+// suite exercised end-to-end.
+describe('AppSidebar — New Organization CTA opens the dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    // Empty orgs: OrgPicker renders the New Organization button (not a menu).
+  })
+
+  it('empty-state New Organization button opens the create-org dialog', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    // Dialog is closed before the click.
+    expect(screen.queryByTestId('create-org-dialog')).toBeNull()
+
+    const button = screen.getByRole('button', { name: /new organization/i })
+    await user.click(button)
+
+    expect(screen.getByTestId('create-org-dialog')).toBeDefined()
+  })
+})
+
+describe('AppSidebar — New Organization menu item opens the dialog when orgs exist', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'org-a', displayName: 'Org A' }],
+      selectedOrg: 'org-a',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('clicking the New Organization dropdown item opens the create-org dialog', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    expect(screen.queryByTestId('create-org-dialog')).toBeNull()
+
+    // The "New Organization" dropdown item renders as a div (mocked
+    // DropdownMenuItem). userEvent can still click on it.
+    const newOrgItem = screen.getByText(/new organization/i)
+    await user.click(newOrgItem)
+
+    expect(screen.getByTestId('create-org-dialog')).toBeDefined()
+  })
+})
+
+describe('AppSidebar — New Project CTA opens the dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    // Projects list empty: ProjectPicker renders the New Project button.
+  })
+
+  it('empty-state New Project button opens the create-project dialog', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    expect(screen.queryByTestId('create-project-dialog')).toBeNull()
+
+    const button = screen.getByRole('button', { name: /new project/i })
+    await user.click(button)
+
+    expect(screen.getByTestId('create-project-dialog')).toBeDefined()
+  })
+})
+
+describe('AppSidebar — New Project menu item opens the dialog when projects exist', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'project-a', displayName: 'Project A' }],
+      selectedProject: null,
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+  })
+
+  it('clicking the New Project dropdown item opens the create-project dialog', async () => {
+    const { userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppSidebar />)
+
+    expect(screen.queryByTestId('create-project-dialog')).toBeNull()
+
+    const newProjectItem = screen.getByText(/new project/i)
+    await user.click(newProjectItem)
+
+    expect(screen.getByTestId('create-project-dialog')).toBeDefined()
   })
 })
 
