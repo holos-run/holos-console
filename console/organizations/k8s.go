@@ -122,9 +122,10 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 }
 
-// UpdateOrganization updates the description and display name annotations on an organization namespace.
-// Nil pointers preserve existing values.
-func (c *K8sClient) UpdateOrganization(ctx context.Context, name string, displayName, description *string) (*corev1.Namespace, error) {
+// UpdateOrganization updates the description, display name, and gateway
+// namespace annotations on an organization namespace. Nil pointers preserve
+// existing values; empty strings clear the corresponding annotation.
+func (c *K8sClient) UpdateOrganization(ctx context.Context, name string, displayName, description, gatewayNamespace *string) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating organization in kubernetes",
 		slog.String("name", name),
 	)
@@ -147,6 +148,13 @@ func (c *K8sClient) UpdateOrganization(ctx context.Context, name string, display
 			delete(ns.Annotations, v1alpha2.AnnotationDescription)
 		} else {
 			ns.Annotations[v1alpha2.AnnotationDescription] = *description
+		}
+	}
+	if gatewayNamespace != nil {
+		if *gatewayNamespace == "" {
+			delete(ns.Annotations, v1alpha2.AnnotationGatewayNamespace)
+		} else {
+			ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = *gatewayNamespace
 		}
 	}
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
@@ -187,6 +195,34 @@ func GetDefaultFolder(ns *corev1.Namespace) string {
 		return ""
 	}
 	return ns.Annotations[v1alpha2.AnnotationDefaultFolder]
+}
+
+// GetGatewayNamespace reads the gateway-namespace annotation from an org
+// namespace. Returns empty string if not set.
+func GetGatewayNamespace(ns *corev1.Namespace) string {
+	if ns.Annotations == nil {
+		return ""
+	}
+	return ns.Annotations[v1alpha2.AnnotationGatewayNamespace]
+}
+
+// SetGatewayNamespace writes (or clears) the gateway-namespace annotation on
+// the org namespace. An empty value deletes the annotation.
+func (c *K8sClient) SetGatewayNamespace(ctx context.Context, name, value string) error {
+	ns, err := c.GetOrganization(ctx, name)
+	if err != nil {
+		return err
+	}
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	if value == "" {
+		delete(ns.Annotations, v1alpha2.AnnotationGatewayNamespace)
+	} else {
+		ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = value
+	}
+	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return err
 }
 
 // UpdateOrganizationSharing updates the sharing annotations on an organization namespace.

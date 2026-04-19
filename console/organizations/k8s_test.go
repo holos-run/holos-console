@@ -19,6 +19,13 @@ func testResolver() *resolver.Resolver {
 	return &resolver.Resolver{NamespacePrefix: "holos-", OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 }
 
+// ptr returns a pointer to v. Used by table-driven tests that exercise the
+// optional-field semantics of UpdateOrganization (nil = preserve, "" = clear,
+// non-empty = set).
+func ptr[T any](v T) *T {
+	return &v
+}
+
 func TestListOrganizations_ReturnsOnlyOrgNamespaces(t *testing.T) {
 	orgNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -259,7 +266,7 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 
 	displayName := "Updated Name"
 	desc := "Updated desc"
-	result, err := k8s.UpdateOrganization(context.Background(), "acme", &displayName, &desc)
+	result, err := k8s.UpdateOrganization(context.Background(), "acme", &displayName, &desc, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -275,6 +282,154 @@ func TestUpdateOrganization_UpdatesAnnotations(t *testing.T) {
 	}
 }
 
+func TestUpdateOrganization_GatewayNamespaceSetClearPreserve(t *testing.T) {
+	// Round-trip the gateway-namespace annotation via UpdateOrganization.
+	// Covers: set when absent, clear (empty string), and preserve (nil pointer).
+	tests := []struct {
+		name              string
+		initial           string // initial annotation value, "" means no annotation
+		input             *string
+		wantValue         string
+		wantAnnotationSet bool
+	}{
+		{
+			name:              "set when absent",
+			initial:           "",
+			input:             ptr("gw-system"),
+			wantValue:         "gw-system",
+			wantAnnotationSet: true,
+		},
+		{
+			name:              "overwrite existing",
+			initial:           "old-gw",
+			input:             ptr("new-gw"),
+			wantValue:         "new-gw",
+			wantAnnotationSet: true,
+		},
+		{
+			name:              "clear with empty string",
+			initial:           "gw-system",
+			input:             ptr(""),
+			wantValue:         "",
+			wantAnnotationSet: false,
+		},
+		{
+			name:              "preserve with nil",
+			initial:           "gw-system",
+			input:             nil,
+			wantValue:         "gw-system",
+			wantAnnotationSet: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			annotations := map[string]string{}
+			if tc.initial != "" {
+				annotations[v1alpha2.AnnotationGatewayNamespace] = tc.initial
+			}
+			ns := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "holos-org-acme",
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+						resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+					},
+					Annotations: annotations,
+				},
+			}
+			fakeClient := fake.NewClientset(ns)
+			k8s := NewK8sClient(fakeClient, testResolver())
+
+			result, err := k8s.UpdateOrganization(context.Background(), "acme", nil, nil, tc.input)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			got, ok := result.Annotations[v1alpha2.AnnotationGatewayNamespace]
+			if ok != tc.wantAnnotationSet {
+				t.Errorf("annotation present=%t, want %t", ok, tc.wantAnnotationSet)
+			}
+			if got != tc.wantValue {
+				t.Errorf("annotation value=%q, want %q", got, tc.wantValue)
+			}
+			if helper := GetGatewayNamespace(result); helper != tc.wantValue {
+				t.Errorf("GetGatewayNamespace=%q, want %q", helper, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestGetGatewayNamespace_ReturnsEmptyWhenAbsent(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "holos-org-acme"},
+	}
+	if got := GetGatewayNamespace(ns); got != "" {
+		t.Errorf("expected empty string when annotation absent, got %q", got)
+	}
+}
+
+func TestGetGatewayNamespace_ReadsAnnotation(t *testing.T) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "holos-org-acme",
+			Annotations: map[string]string{
+				v1alpha2.AnnotationGatewayNamespace: "gw-system",
+			},
+		},
+	}
+	if got := GetGatewayNamespace(ns); got != "gw-system" {
+		t.Errorf("expected 'gw-system', got %q", got)
+	}
+}
+
+func TestSetGatewayNamespace_RoundTrip(t *testing.T) {
+	tests := []struct {
+		name              string
+		initial           string
+		write             string
+		wantValue         string
+		wantAnnotationSet bool
+	}{
+		{name: "write when absent", initial: "", write: "gw-system", wantValue: "gw-system", wantAnnotationSet: true},
+		{name: "overwrite existing", initial: "old", write: "new", wantValue: "new", wantAnnotationSet: true},
+		{name: "clear with empty", initial: "old", write: "", wantValue: "", wantAnnotationSet: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			annotations := map[string]string{}
+			if tc.initial != "" {
+				annotations[v1alpha2.AnnotationGatewayNamespace] = tc.initial
+			}
+			ns := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "holos-org-acme",
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+						resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
+					},
+					Annotations: annotations,
+				},
+			}
+			fakeClient := fake.NewClientset(ns)
+			k8s := NewK8sClient(fakeClient, testResolver())
+
+			if err := k8s.SetGatewayNamespace(context.Background(), "acme", tc.write); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			updated, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-acme", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("expected namespace, got %v", err)
+			}
+			got, ok := updated.Annotations[v1alpha2.AnnotationGatewayNamespace]
+			if ok != tc.wantAnnotationSet {
+				t.Errorf("annotation present=%t, want %t", ok, tc.wantAnnotationSet)
+			}
+			if got != tc.wantValue {
+				t.Errorf("annotation value=%q, want %q", got, tc.wantValue)
+			}
+		})
+	}
+}
+
 func TestUpdateOrganization_RejectsUnmanaged(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -285,7 +440,7 @@ func TestUpdateOrganization_RejectsUnmanaged(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	desc := "test"
-	_, err := k8s.UpdateOrganization(context.Background(), "fake", nil, &desc)
+	_, err := k8s.UpdateOrganization(context.Background(), "fake", nil, &desc, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
