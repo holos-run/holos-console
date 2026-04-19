@@ -12,6 +12,7 @@ import (
 	"os"
 	"testing"
 
+	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 )
@@ -22,5 +23,10 @@ func TestMain(m *testing.M) {
 		FolderPrefix:       "fld-",
 		ProjectPrefix:      "prj-",
 	})
-	os.Exit(m.Run())
+	// Wrap m.Run through crdmgrtesting.RunTestsWithSharedEnv so the
+	// process-singleton envtest Environment is Stop()'d after the last
+	// test in this package, rather than being reaped on os.Exit and
+	// leaving kube-apiserver/etcd subprocesses behind for a long-enough
+	// `go test` shutdown to race.
+	os.Exit(crdmgrtesting.RunTestsWithSharedEnv(m))
 }

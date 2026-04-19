@@ -1318,35 +1318,15 @@ func makeOrgNamespace(org string) *corev1.Namespace {
 	}
 }
 
-// marshalFixtureRules serializes a minimal rule fixture in the shape
-// templatepolicies.UnmarshalRules expects on the annotation.
-func marshalFixtureRules(t *testing.T, rules []map[string]any) string {
+// seedOrgRequirePolicy returns a TemplatePolicy-labeled ConfigMap placeholder
+// used by the HOL-582 regression guard. CreateProject intentionally ignores
+// policy contents at project-creation time (it never renders templates),
+// so this fixture only needs to exist — its rule body was previously
+// stashed on the legacy AnnotationTemplatePolicyRules annotation
+// (removed in HOL-663). TemplatePolicy data is now authoritatively
+// carried by the templates.holos.run TemplatePolicy CRD.
+func seedOrgRequirePolicy(t *testing.T, org, templateName, _ string) *corev1.ConfigMap {
 	t.Helper()
-	raw, err := json.Marshal(rules)
-	if err != nil {
-		t.Fatalf("marshal fixture rules: %v", err)
-	}
-	return string(raw)
-}
-
-// seedOrgRequirePolicy returns a TemplatePolicy ConfigMap containing a single
-// REQUIRE rule that mandates the named organization-scope template for every
-// project matching projectPattern.
-func seedOrgRequirePolicy(t *testing.T, org, templateName, projectPattern string) *corev1.ConfigMap {
-	t.Helper()
-	rules := []map[string]any{
-		{
-			"kind": "require",
-			"template": map[string]any{
-				"scope":      v1alpha2.TemplateScopeOrganization,
-				"scope_name": org,
-				"name":       templateName,
-			},
-			"target": map[string]any{
-				"project_pattern": projectPattern,
-			},
-		},
-	}
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "require-" + templateName,
@@ -1354,9 +1334,6 @@ func seedOrgRequirePolicy(t *testing.T, org, templateName, projectPattern string
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationTemplatePolicyRules: marshalFixtureRules(t, rules),
 			},
 		},
 	}
