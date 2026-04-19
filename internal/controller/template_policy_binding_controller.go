@@ -81,9 +81,23 @@ type TemplatePolicyBindingReconciler struct {
 }
 
 // SetupWithManager registers the reconciler with the supplied manager. In
-// addition to the primary For(&TemplatePolicyBinding{}), it adds a secondary
-// Watches on Template so the ResolvedRefs condition can transition when a
-// referenced Template appears or disappears.
+// addition to the primary For(&TemplatePolicyBinding{}), it adds three
+// secondary Watches:
+//
+//   - Template: ResolvedRefs depends on whether each ProjectTemplate
+//     target_ref resolves to an existing Template, so Template create/delete
+//     events must re-enqueue the binding.
+//   - TemplatePolicy: ResolvedRefs also depends on whether spec.policyRef
+//     resolves. TemplatePolicy appearing / being renamed / being deleted
+//     would otherwise leave the binding's Ready status stale until someone
+//     edits the binding spec.
+//   - Namespace: the ancestor-chain reachability check in
+//     policyNamespaceInAncestorChain reads `console.holos.run/parent` and
+//     `console.holos.run/resource-type` labels from Namespaces. An admin
+//     repairing a missing or wrong parent label must re-reconcile every
+//     binding whose policy lookup could be affected, and there is no
+//     cheap way to know which binding is affected without a list, so we
+//     re-enqueue every binding on any namespace change.
 func (r *TemplatePolicyBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.applyPrefixDefaults()
 	return ctrl.NewControllerManagedBy(mgr).
@@ -92,6 +106,14 @@ func (r *TemplatePolicyBindingReconciler) SetupWithManager(mgr ctrl.Manager) err
 		Watches(
 			&v1alpha1.Template{},
 			handler.EnqueueRequestsFromMapFunc(r.bindingsForTemplate),
+		).
+		Watches(
+			&v1alpha1.TemplatePolicy{},
+			handler.EnqueueRequestsFromMapFunc(r.bindingsForTemplatePolicy),
+		).
+		Watches(
+			&corev1.Namespace{},
+			handler.EnqueueRequestsFromMapFunc(r.bindingsForNamespace),
 		).
 		Complete(r)
 }
@@ -477,6 +499,65 @@ func (r *TemplatePolicyBindingReconciler) bindingsForTemplate(ctx context.Contex
 			})
 			break
 		}
+	}
+	return out
+}
+
+// bindingsForTemplatePolicy returns the reconcile requests for every binding
+// whose spec.policyRef matches the supplied TemplatePolicy. Scope + scopeName
+// are compared against the policy's own namespace (org-/fld- prefix stripped)
+// so that a policy create/delete event re-enqueues the bindings whose
+// ResolvedRefs condition depends on it.
+func (r *TemplatePolicyBindingReconciler) bindingsForTemplatePolicy(ctx context.Context, obj client.Object) []reconcile.Request {
+	policy, ok := obj.(*v1alpha1.TemplatePolicy)
+	if !ok {
+		return nil
+	}
+	var list v1alpha1.TemplatePolicyBindingList
+	if err := r.List(ctx, &list); err != nil {
+		return nil
+	}
+	var out []reconcile.Request
+	for _, b := range list.Items {
+		ns, ok := r.policyRefNamespace(b.Spec.PolicyRef)
+		if !ok {
+			continue
+		}
+		if ns != policy.Namespace || b.Spec.PolicyRef.Name != policy.Name {
+			continue
+		}
+		out = append(out, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: b.Namespace,
+				Name:      b.Name,
+			},
+		})
+	}
+	return out
+}
+
+// bindingsForNamespace re-enqueues every TemplatePolicyBinding on any
+// Namespace create/update/delete. ResolvedRefs depends on the ancestor-chain
+// walk, which reads Namespace labels (`console.holos.run/parent` and
+// `console.holos.run/resource-type`). An admin repairing a broken parent
+// label must re-reconcile every binding whose walk touches that namespace.
+// Because we cannot cheaply determine which bindings are affected without a
+// list (the label graph is the source of truth), we take the list + enqueue
+// path; controller-runtime's predicate filtering and the reconciler's own
+// no-change guard keep the cost bounded.
+func (r *TemplatePolicyBindingReconciler) bindingsForNamespace(ctx context.Context, obj client.Object) []reconcile.Request {
+	var list v1alpha1.TemplatePolicyBindingList
+	if err := r.List(ctx, &list); err != nil {
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(list.Items))
+	for _, b := range list.Items {
+		out = append(out, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: b.Namespace,
+				Name:      b.Name,
+			},
+		})
 	}
 	return out
 }

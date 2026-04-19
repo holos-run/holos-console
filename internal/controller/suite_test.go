@@ -552,9 +552,8 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 	}
 
 	// Stage 2: create the referenced TemplatePolicy. The binding
-	// reconciler does not Watch TemplatePolicy in HOL-620 (only Template),
-	// so the flip relies on the resync period. Bump the binding's spec
-	// to force a re-reconcile within the test window.
+	// reconciler Watches TemplatePolicy, so the create event enqueues
+	// the affected bindings without us poking their spec.
 	policy := &v1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "not-here-yet", Namespace: orgNS},
 		Spec: v1alpha1.TemplatePolicySpec{
@@ -571,15 +570,6 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 	}
 	if err := e.client.Create(context.Background(), policy); err != nil {
 		t.Fatalf("create policy: %v", err)
-	}
-
-	// Touch the binding's spec so the controller re-reconciles promptly.
-	if err := e.client.Get(context.Background(), bkey, read); err != nil {
-		t.Fatalf("re-get binding: %v", err)
-	}
-	read.Spec.Description = "poke"
-	if err := e.client.Update(context.Background(), read); err != nil {
-		t.Fatalf("poke binding: %v", err)
 	}
 
 	waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionTrue)
