@@ -344,6 +344,34 @@ func eventuallyGetPolicy(t *testing.T, k *K8sClient, namespace, name string) *te
 	}
 }
 
+// eventuallyGetPolicyAtResourceVersion polls until the cache-backed
+// GetPolicy returns an object whose ResourceVersion matches wantRV or
+// the deadline expires. Used between sequential Updates in a test so the
+// next Update's internal GetPolicy reads a fresh copy instead of a stale
+// cached one and trips the apiserver's optimistic-concurrency guard
+// ("the object has been modified; please apply ...").
+func eventuallyGetPolicyAtResourceVersion(t *testing.T, k *K8sClient, namespace, name, wantRV string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		p, err := k.GetPolicy(context.Background(), namespace, name)
+		if err == nil && p.ResourceVersion == wantRV {
+			return
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			t.Fatalf("unexpected GetPolicy error waiting for RV %q: %v", wantRV, err)
+		}
+		if time.Now().After(deadline) {
+			got := ""
+			if p != nil {
+				got = p.ResourceVersion
+			}
+			t.Fatalf("cache did not observe policy %q/%q at RV %q within deadline (latest seen RV=%q)", namespace, name, wantRV, got)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // eventuallyListPolicies polls K8sClient.ListPolicies until it returns at
 // least wantCount items or the deadline expires.
 func eventuallyListPolicies(t *testing.T, k *K8sClient, namespace string, wantCount int) []templatesv1alpha1.TemplatePolicy {
@@ -617,6 +645,10 @@ func TestUpdatePolicy(t *testing.T) {
 	if len(got.Spec.Rules) != 1 {
 		t.Errorf("rules should be unchanged when updateRules=false, got %d", len(got.Spec.Rules))
 	}
+	// Wait for the cache to catch up so the next UpdatePolicy's internal
+	// GetPolicy sees the new ResourceVersion and doesn't trip the
+	// optimistic-concurrency guard.
+	eventuallyGetPolicyAtResourceVersion(t, k, ns, "pol", got.ResourceVersion)
 
 	// Now replace rules too.
 	newRules := []*consolev1.TemplatePolicyRule{

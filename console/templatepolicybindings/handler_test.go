@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -1102,5 +1104,68 @@ func TestPolicyProbeErrorFailsInternal(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeInternal {
 		t.Errorf("expected CodeInternal, got %v: %v", connect.CodeOf(err), err)
+	}
+}
+
+// TestMapK8sError pins the taxonomy translation from Kubernetes
+// apimachinery error types to ConnectRPC codes. HOL-662 added IsInvalid
+// handling so CEL ValidatingAdmissionPolicy rejections and CRD schema
+// failures surface as InvalidArgument instead of the generic Internal
+// fallback. The table mirrors the one in templatepolicies so the two
+// handlers keep the same error taxonomy.
+func TestMapK8sError(t *testing.T) {
+	gvk := schema.GroupKind{Group: "templates.holos.run", Kind: "TemplatePolicyBinding"}
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{
+			name: "not found maps to NotFound",
+			err:  k8serrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "missing"),
+			want: connect.CodeNotFound,
+		},
+		{
+			name: "already exists maps to AlreadyExists",
+			err:  k8serrors.NewAlreadyExists(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "dupe"),
+			want: connect.CodeAlreadyExists,
+		},
+		{
+			name: "forbidden maps to PermissionDenied",
+			err:  k8serrors.NewForbidden(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "nope", errors.New("rbac")),
+			want: connect.CodePermissionDenied,
+		},
+		{
+			name: "unauthorized maps to Unauthenticated",
+			err:  k8serrors.NewUnauthorized("no token"),
+			want: connect.CodeUnauthenticated,
+		},
+		{
+			name: "bad request maps to InvalidArgument",
+			err:  k8serrors.NewBadRequest("malformed"),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "invalid (CEL VAP / CRD schema rejection) maps to InvalidArgument",
+			err:  k8serrors.NewInvalid(gvk, "bad", nil),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "generic error falls through to Internal",
+			err:  errors.New("boom"),
+			want: connect.CodeInternal,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mapK8sError(tc.err)
+			var cerr *connect.Error
+			if !errors.As(got, &cerr) {
+				t.Fatalf("expected *connect.Error, got %T: %v", got, got)
+			}
+			if cerr.Code() != tc.want {
+				t.Errorf("code=%v want %v (err=%v)", cerr.Code(), tc.want, tc.err)
+			}
+		})
 	}
 }

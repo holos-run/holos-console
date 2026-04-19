@@ -793,5 +793,15 @@ func mapK8sError(err error) error {
 	if k8serrors.IsBadRequest(err) {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	// Invalid: the apiserver rejected the object as malformed or
+	// admission-denied. Examples: CRD schema validation (MinItems,
+	// Required), OpenAPI type checks, and CEL ValidatingAdmissionPolicy
+	// rejections (HOL-618). These are client errors from the caller's
+	// perspective, not server failures, so surface them as
+	// InvalidArgument so the UI can present a meaningful message
+	// instead of a generic 500.
+	if k8serrors.IsInvalid(err) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	return connect.NewError(connect.CodeInternal, err)
 }
