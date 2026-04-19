@@ -4,14 +4,13 @@ import (
 	"context"
 	"log/slog"
 
-	corev1 "k8s.io/api/core/v1"
-
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// PolicyListerInNamespace reports the TemplatePolicy ConfigMaps stored in a
+// PolicyListerInNamespace reports the TemplatePolicy CRD objects stored in a
 // specific Kubernetes namespace. The folderResolver uses this to fetch
 // policies from each folder or organization namespace in the ancestor chain
 // without importing console/templatepolicies directly (which would create an
@@ -22,25 +21,12 @@ import (
 // method because the ancestor walk skips project-kind namespaces before
 // calling the lister, but implementations should still treat a project
 // namespace as a programming error and return an empty list.
+//
+// HOL-662 migrated the return type from corev1.ConfigMap to the CRD; the
+// CEL ValidatingAdmissionPolicy (HOL-618) is now the authoritative
+// enforcement point for the HOL-554 storage-isolation guardrail.
 type PolicyListerInNamespace interface {
-	ListPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error)
-}
-
-// RuleUnmarshaler decodes the JSON-serialized TemplatePolicy rules annotation
-// into proto rule values. The folderResolver delegates decoding to the
-// templatepolicies package so the resolver never hard-codes the wire shape.
-type RuleUnmarshaler interface {
-	UnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error)
-}
-
-// RuleUnmarshalerFunc is the adapter that turns a plain function into a
-// RuleUnmarshaler. Use it at wire-up time to pass
-// templatepolicies.UnmarshalRules.
-type RuleUnmarshalerFunc func(raw string) ([]*consolev1.TemplatePolicyRule, error)
-
-// UnmarshalRules satisfies RuleUnmarshaler by invoking the wrapped function.
-func (f RuleUnmarshalerFunc) UnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
-	return f(raw)
+	ListPoliciesInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicy, error)
 }
 
 // folderResolver is the real PolicyResolver implementation introduced in
@@ -56,28 +42,30 @@ func (f RuleUnmarshalerFunc) UnmarshalRules(raw string) ([]*consolev1.TemplatePo
 // target (matching on (kind, name, project_name)). Policies not covered
 // by any matching binding for the render target contribute nothing; an
 // annotated `target` field still present on a stale ConfigMap is ignored.
+//
+// HOL-662 removed the RuleUnmarshaler / BindingUnmarshaler seams — the CRD
+// spec stores rules and bindings as structured fields, so there is no
+// JSON annotation left to decode.
 type folderResolver struct {
-	policyLister       PolicyListerInNamespace
-	walker             WalkerInterface
-	resolver           *resolver.Resolver
-	unmarshaler        RuleUnmarshaler
-	bindingLister      BindingListerInNamespace
-	bindingUnmarshaler BindingUnmarshaler
+	policyLister  PolicyListerInNamespace
+	walker        WalkerInterface
+	resolver      *resolver.Resolver
+	bindingLister BindingListerInNamespace
 	// ancestorLister encapsulates the ancestor-chain traversal and
 	// folder-namespace-only filter used by render-time REQUIRE/EXCLUDE
 	// evaluation. HOL-582 removed the project-creation-time resolver that
 	// previously shared this helper; render-time is now the sole caller.
-	// When any of policyLister, walker, resolver, or unmarshaler is nil the
-	// fail-open branch in Resolve short-circuits before ancestorLister is
-	// consulted, so it is safe to construct from possibly-nil deps here.
+	// When any of policyLister, walker, or resolver is nil the fail-open
+	// branch in Resolve short-circuits before ancestorLister is consulted,
+	// so it is safe to construct from possibly-nil deps here.
 	ancestorLister *AncestorPolicyLister
 	// ancestorBindings encapsulates the same ancestor walk for
-	// TemplatePolicyBinding ConfigMaps. Nil when bindingLister or
-	// bindingUnmarshaler is nil; Resolve treats a nil ancestorBindings
-	// as "no bindings exist", which post-HOL-600 means "no rules
-	// contribute". This is the safe fail-open behavior: a wire-up that
-	// forgot to provide a binding lister returns the caller's explicit
-	// refs unchanged rather than misapplying rules.
+	// TemplatePolicyBinding CRD objects. Nil when bindingLister is nil;
+	// Resolve treats a nil ancestorBindings as "no bindings exist", which
+	// post-HOL-600 means "no rules contribute". This is the safe
+	// fail-open behavior: a wire-up that forgot to provide a binding
+	// lister returns the caller's explicit refs unchanged rather than
+	// misapplying rules.
 	ancestorBindings *AncestorBindingLister
 }
 
@@ -89,21 +77,19 @@ type folderResolver struct {
 // Production code must use NewFolderResolverWithBindings so the binding
 // evaluation path is live.
 //
-// Passing nil for any of the four rule-side arguments yields a resolver
+// Passing nil for any of the three rule-side arguments yields a resolver
 // that also returns the explicit refs unchanged (equivalent to
 // noopResolver), matching the fail-open contract in Resolve.
 func NewFolderResolver(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
 	r *resolver.Resolver,
-	unmarshaler RuleUnmarshaler,
 ) PolicyResolver {
 	return &folderResolver{
 		policyLister:   policyLister,
 		walker:         walker,
 		resolver:       r,
-		unmarshaler:    unmarshaler,
-		ancestorLister: NewAncestorPolicyLister(policyLister, walker, r, unmarshaler),
+		ancestorLister: NewAncestorPolicyLister(policyLister, walker, r),
 	}
 }
 
@@ -115,29 +101,24 @@ func NewFolderResolver(
 // names for the current target contribute nothing — the pre-HOL-600
 // legacy glob Target path is gone.
 //
-// Passing a nil binding lister or unmarshaler reduces the resolver to
-// "no rules contribute"; the caller's explicit refs pass through
-// unchanged. Passing a nil rule stack falls through to noopResolver
-// semantics as before.
+// Passing a nil binding lister reduces the resolver to "no rules
+// contribute"; the caller's explicit refs pass through unchanged. Passing
+// a nil rule stack falls through to noopResolver semantics as before.
 func NewFolderResolverWithBindings(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
 	r *resolver.Resolver,
-	unmarshaler RuleUnmarshaler,
 	bindingLister BindingListerInNamespace,
-	bindingUnmarshaler BindingUnmarshaler,
 ) PolicyResolver {
 	fr := &folderResolver{
-		policyLister:       policyLister,
-		walker:             walker,
-		resolver:           r,
-		unmarshaler:        unmarshaler,
-		bindingLister:      bindingLister,
-		bindingUnmarshaler: bindingUnmarshaler,
-		ancestorLister:     NewAncestorPolicyLister(policyLister, walker, r, unmarshaler),
+		policyLister:   policyLister,
+		walker:         walker,
+		resolver:       r,
+		bindingLister:  bindingLister,
+		ancestorLister: NewAncestorPolicyLister(policyLister, walker, r),
 	}
-	if bindingLister != nil && bindingUnmarshaler != nil && walker != nil && r != nil {
-		fr.ancestorBindings = NewAncestorBindingLister(bindingLister, walker, r, bindingUnmarshaler)
+	if bindingLister != nil && walker != nil && r != nil {
+		fr.ancestorBindings = NewAncestorBindingLister(bindingLister, walker, r)
 	}
 	return fr
 }
@@ -170,14 +151,13 @@ func (r *folderResolver) Resolve(
 	targetName string,
 	explicitRefs []*consolev1.LinkedTemplateRef,
 ) ([]*consolev1.LinkedTemplateRef, error) {
-	if r == nil || r.policyLister == nil || r.walker == nil || r.resolver == nil || r.unmarshaler == nil {
+	if r == nil || r.policyLister == nil || r.walker == nil || r.resolver == nil {
 		slog.WarnContext(ctx, "folder resolver is misconfigured; returning explicit refs unchanged",
 			slog.String("projectNs", projectNs),
 			slog.String("targetName", targetName),
 			slog.Bool("policyListerNil", r == nil || r.policyLister == nil),
 			slog.Bool("walkerNil", r == nil || r.walker == nil),
 			slog.Bool("resolverNil", r == nil || r.resolver == nil),
-			slog.Bool("unmarshalerNil", r == nil || r.unmarshaler == nil),
 		)
 		return explicitRefs, nil
 	}
@@ -199,12 +179,11 @@ func (r *folderResolver) Resolve(
 	// namespace on the ancestor chain, bundled with the (scope, scope_name,
 	// name) triple a binding uses to reference a specific policy. The
 	// ancestor-policy lister handles the HOL-554 storage-isolation skip
-	// (project namespaces are never read) and per-namespace parse/list
-	// errors. The returned slice preserves closest-ancestor-first order so
-	// REQUIRE injections closer to the project continue to appear later
-	// in the effective set (the dedup key is stable, so ordering only
-	// affects first-seen wins for explicit refs — which are set before
-	// this loop).
+	// (project namespaces are never read) and per-namespace list errors.
+	// The returned slice preserves closest-ancestor-first order so REQUIRE
+	// injections closer to the project continue to appear later in the
+	// effective set (the dedup key is stable, so ordering only affects
+	// first-seen wins for explicit refs — which are set before this loop).
 	policies, walkErr := r.ancestorLister.ListPolicies(ctx, projectNs)
 	if walkErr != nil {
 		// Degrade gracefully: a walker failure at resolve time should
@@ -481,4 +460,3 @@ func dedupRefs(refs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplate
 	}
 	return out, set, explicit
 }
-

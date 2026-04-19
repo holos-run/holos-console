@@ -106,11 +106,13 @@ func Command() *cobra.Command {
 	cmd.Flags().BoolVar(&logHealthChecks, "log-health-checks", false, "Log /healthz and /readyz requests (suppressed by default)")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 
-	// Subcommands. Migration commands run against the same cluster the
-	// server would otherwise serve; they reuse the namespace-prefix flags
-	// above so a cluster configured with non-default prefixes is walked
-	// correctly without re-declaring them on every subcommand.
-	cmd.AddCommand(newMigrateCommand())
+	// HOL-662 removed the one-shot `migrate template-policy-targets`
+	// subcommand: HOL-600 eliminated the legacy glob Target on policy
+	// rules and HOL-662 moved TemplatePolicy + TemplatePolicyBinding
+	// storage off ConfigMap annotations onto CRD spec, so the pre-CRD
+	// migration source format no longer exists in the cluster. Re-add a
+	// sibling migrate command here if a future storage migration needs
+	// its own one-shot.
 
 	return cmd
 }

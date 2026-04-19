@@ -380,27 +380,21 @@ func (s *Server) Serve(ctx context.Context) error {
 		// enforcement site for REQUIRE rules. TemplatePolicy reads route
 		// through a namespace-direct lister that never consults a project
 		// namespace (HOL-554 storage-isolation).
-		templatePoliciesK8s := templatepolicies.NewK8sClient(k8sClientset, nsResolver)
-		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(k8sClientset, nsResolver)
+		templatePoliciesK8s := templatepolicies.NewK8sClient(templateCtrlClient, nsResolver)
+		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(templateCtrlClient, nsResolver)
 		// HOL-596 wires the TemplatePolicyBinding evaluation path into the
 		// render-time resolver. Bindings take precedence on conflict: a
 		// binding whose target_refs match the current render target
 		// dereferences its policy_ref and injects (REQUIRE) / removes
-		// (EXCLUDE) the bound policy's template refs, and the rule's
-		// glob Target is ignored for that render target. Rules in
-		// policies with no matching binding for the target continue to
-		// use their glob Target fallback, so this is additive until
-		// HOL-599/HOL-600 complete the migration.
+		// (EXCLUDE) the bound policy's template refs. HOL-662 removed
+		// the JSON-annotation unmarshaler seams — the CRD spec carries
+		// rules and bindings as structured fields, so the resolver reads
+		// them directly.
 		policyResolverSeam := policyresolver.NewFolderResolverWithBindings(
 			templatePoliciesK8s,
 			nsWalker,
 			nsResolver,
-			policyresolver.RuleUnmarshalerFunc(templatepolicies.UnmarshalRules),
 			templatePolicyBindingsK8s,
-			policyresolver.BindingUnmarshalerAdapter{
-				PolicyRefFunc:  templatepolicybindings.UnmarshalPolicyRef,
-				TargetRefsFunc: templatepolicybindings.UnmarshalTargetRefs,
-			},
 		)
 		// AppliedRenderStateClient persists the effective render set to the
 		// owning folder namespace on successful Create/Update of a deployment
@@ -497,7 +491,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatePolicyBindingsHandler := templatepolicybindings.NewHandler(templatePolicyBindingsK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).
-			WithPolicyExistsResolver(templatepolicybindings.NewPolicyExistsAdapter(templatePoliciesK8s)).
+			WithPolicyExistsResolver(templatepolicybindings.NewPolicyExistsAdapter(templatePoliciesK8s, nsResolver)).
 			WithAncestorChainResolver(templatepolicybindings.NewAncestorChainAdapter(nsWalker)).
 			WithProjectExistsResolver(templatepolicybindings.NewProjectExistsAdapter(k8sClientset, nsResolver))
 		templatePolicyBindingsPath, templatePolicyBindingsHTTPHandler := consolev1connect.NewTemplatePolicyBindingServiceHandler(templatePolicyBindingsHandler, protectedInterceptors)

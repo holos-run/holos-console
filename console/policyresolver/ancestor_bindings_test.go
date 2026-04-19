@@ -5,9 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
-
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -15,13 +13,16 @@ import (
 
 // errorBindingLister returns a hardcoded error for a given namespace and
 // forwards all other namespaces to inner. Mirrors errorPolicyLister.
+//
+// HOL-662 switched the return type to the CRD; there is no JSON
+// annotation wire format left to simulate.
 type errorBindingLister struct {
 	inner   BindingListerInNamespace
 	failFor string
 	err     error
 }
 
-func (e *errorBindingLister) ListBindingsInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
+func (e *errorBindingLister) ListBindingsInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
 	if ns == e.failFor {
 		return nil, e.err
 	}
@@ -30,8 +31,13 @@ func (e *errorBindingLister) ListBindingsInNamespace(ctx context.Context, ns str
 
 // TestAncestorBindingLister_SkipsProjectNamespaces is the HOL-554
 // storage-isolation guardrail for bindings: even if a (forbidden) binding
-// ConfigMap is seeded in a project namespace, the lister must not pick it
-// up. Mirrors the guardrail already covered for TemplatePolicy rules.
+// CR is seeded in a project namespace, the lister must not pick it up.
+// Mirrors the guardrail already covered for TemplatePolicy rules.
+//
+// Post-HOL-618 the CEL ValidatingAdmissionPolicy rejects such a CR at
+// admission time; this defensive in-code skip remains as belt-and-
+// suspenders so a misconfigured cluster that lacks the VAP still honors
+// the isolation boundary.
 func TestAncestorBindingLister_SkipsProjectNamespaces(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
@@ -39,19 +45,17 @@ func TestAncestorBindingLister_SkipsProjectNamespaces(t *testing.T) {
 	// A forbidden binding stashed in a project namespace and a legitimate
 	// binding in the org namespace. Only the org-namespace binding should
 	// be returned.
-	bindings := map[string][]corev1.ConfigMap{
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["projectLilies"]: {
-			bindingCM(ns["projectLilies"], "pwned",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
-				[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-				t,
+			bindingCRD(ns["projectLilies"], "pwned",
+				orgPolicyRefCRD("audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 			),
 		},
 		ns["org"]: {
-			bindingCM(ns["org"], "legit",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
-				[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-				t,
+			bindingCRD(ns["org"], "legit",
+				orgPolicyRefCRD("audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 			),
 		},
 	}
@@ -60,10 +64,6 @@ func TestAncestorBindingLister_SkipsProjectNamespaces(t *testing.T) {
 		&bindingListerFromMap{items: bindings},
 		walker,
 		r,
-		BindingUnmarshalerAdapter{
-			PolicyRefFunc:  testUnmarshalPolicyRef,
-			TargetRefsFunc: testUnmarshalTargetRefs,
-		},
 	)
 
 	got, err := lister.ListBindings(context.Background(), ns["projectLilies"])
@@ -88,26 +88,17 @@ func TestAncestorBindingLister_PerNamespaceErrorIsLogged(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	inner := &bindingListerFromMap{items: map[string][]corev1.ConfigMap{
+	inner := &bindingListerFromMap{items: map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["org"]: {
-			bindingCM(ns["org"], "org-bind",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
-				[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-				t,
+			bindingCRD(ns["org"], "org-bind",
+				orgPolicyRefCRD("audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 			),
 		},
 	}}
 	wrapped := &errorBindingLister{inner: inner, failFor: ns["folderEng"], err: errors.New("boom")}
 
-	lister := NewAncestorBindingLister(
-		wrapped,
-		walker,
-		r,
-		BindingUnmarshalerAdapter{
-			PolicyRefFunc:  testUnmarshalPolicyRef,
-			TargetRefsFunc: testUnmarshalTargetRefs,
-		},
-	)
+	lister := NewAncestorBindingLister(wrapped, walker, r)
 
 	got, err := lister.ListBindings(context.Background(), ns["projectLilies"])
 	if err != nil {
@@ -121,7 +112,7 @@ func TestAncestorBindingLister_PerNamespaceErrorIsLogged(t *testing.T) {
 // TestAncestorBindingLister_Misconfigured returns nil without error on any
 // nil dependency — the fail-open contract mirrors AncestorPolicyLister.
 func TestAncestorBindingLister_Misconfigured(t *testing.T) {
-	l := NewAncestorBindingLister(nil, nil, nil, nil)
+	l := NewAncestorBindingLister(nil, nil, nil)
 	got, err := l.ListBindings(context.Background(), "holos-prj-x")
 	if err != nil {
 		t.Fatalf("expected nil error on misconfigured lister; got %v", err)
@@ -131,47 +122,64 @@ func TestAncestorBindingLister_Misconfigured(t *testing.T) {
 	}
 }
 
-// TestAncestorBindingLister_ParseErrorSkipsBinding verifies that a binding
-// whose policy_ref annotation fails to decode is skipped but does not abort
-// the traversal. A second well-formed binding in the same namespace is
-// returned unchanged.
-func TestAncestorBindingLister_ParseErrorSkipsBinding(t *testing.T) {
+// TestAncestorBindingLister_EmptyPolicyRefIsNoop verifies that a binding
+// whose spec.policyRef is the zero-value struct still returns in the
+// lister output — the folder resolver's coverage loop skips entries with
+// a nil PolicyRef so the binding contributes no rules, but listing it
+// preserves traversal (a peer binding in the same namespace must still
+// flow through). This is the post-HOL-662 equivalent of the pre-CRD
+// "ParseErrorSkipsBinding" case: the CRD itself validates policyRef via
+// kubebuilder tags, so admission rejects a malformed value at create
+// time rather than leaving a half-decoded entry on disk.
+func TestAncestorBindingLister_EmptyPolicyRefIsNoop(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	bad := bindingCM(ns["org"], "bad",
-		storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
-		[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-		t,
+	empty := bindingCRD(ns["org"], "empty",
+		templatesv1alpha1.LinkedTemplatePolicyRef{}, // zero value — unreachable in prod but defensive
+		[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 	)
-	bad.Annotations[v1alpha2.AnnotationTemplatePolicyBindingPolicyRef] = "{not valid json"
-
-	good := bindingCM(ns["org"], "good",
-		storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "audit"},
-		[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-		t,
+	good := bindingCRD(ns["org"], "good",
+		orgPolicyRefCRD("audit"),
+		[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 	)
 
-	bindings := map[string][]corev1.ConfigMap{
-		ns["org"]: {bad, good},
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
+		ns["org"]: {empty, good},
 	}
 
 	lister := NewAncestorBindingLister(
 		&bindingListerFromMap{items: bindings},
 		walker,
 		r,
-		BindingUnmarshalerAdapter{
-			PolicyRefFunc:  testUnmarshalPolicyRef,
-			TargetRefsFunc: testUnmarshalTargetRefs,
-		},
 	)
 
 	got, err := lister.ListBindings(context.Background(), ns["projectLilies"])
 	if err != nil {
 		t.Fatalf("ListBindings: %v", err)
 	}
-	if len(got) != 1 || got[0].Name != "good" {
-		t.Errorf("expected parse-error binding to be skipped and the good one returned; got %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("expected both bindings returned (resolver decides coverage); got %d", len(got))
+	}
+	// The empty one must have a nil PolicyRef — that is how the
+	// resolver's coverage loop skips it downstream.
+	var emptyResolved, goodResolved *ResolvedBinding
+	for _, rb := range got {
+		switch rb.Name {
+		case "empty":
+			emptyResolved = rb
+		case "good":
+			goodResolved = rb
+		}
+	}
+	if emptyResolved == nil || goodResolved == nil {
+		t.Fatalf("expected both bindings present; got %+v", got)
+	}
+	if emptyResolved.PolicyRef != nil {
+		t.Errorf("empty binding should have nil PolicyRef; got %+v", emptyResolved.PolicyRef)
+	}
+	if goodResolved.PolicyRef == nil || goodResolved.PolicyRef.GetName() != "audit" {
+		t.Errorf("good binding should decode to the audit policy; got %+v", goodResolved.PolicyRef)
 	}
 }
 
@@ -183,15 +191,14 @@ func TestAncestorBindingLister_DecodesPolicyRefAndTargets(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	bindings := map[string][]corev1.ConfigMap{
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["folderEng"]: {
-			bindingCM(ns["folderEng"], "eng-bind",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeFolder, ScopeName: "eng", Name: "eng-audit"},
-				[]storedTargetRefTest{
-					{Kind: "deployment", Name: "api", ProjectName: "lilies"},
-					{Kind: "project-template", Name: "baseline", ProjectName: "lilies"},
+			bindingCRD(ns["folderEng"], "eng-bind",
+				folderPolicyRefCRD("eng", "eng-audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{
+					deploymentTargetCRD("lilies", "api"),
+					projectTemplateTargetCRD("lilies", "baseline"),
 				},
-				t,
 			),
 		},
 	}
@@ -200,10 +207,6 @@ func TestAncestorBindingLister_DecodesPolicyRefAndTargets(t *testing.T) {
 		&bindingListerFromMap{items: bindings},
 		walker,
 		r,
-		BindingUnmarshalerAdapter{
-			PolicyRefFunc:  testUnmarshalPolicyRef,
-			TargetRefsFunc: testUnmarshalTargetRefs,
-		},
 	)
 
 	got, err := lister.ListBindings(context.Background(), ns["projectLilies"])

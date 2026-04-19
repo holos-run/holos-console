@@ -1,474 +1,254 @@
+// Package templatepolicies — K8sClient storage layer.
+//
+// HOL-662 rewrote this file to type the TemplatePolicy CRUD surface against
+// the templates.holos.run/v1alpha1 TemplatePolicy CRD and read/write through
+// a controller-runtime client.Client. Reads hit the informer cache the
+// controller manager populates; writes fall through to the API server and
+// the cache observes them on the next watch event.
+//
+// Signature shape: every method takes a Kubernetes namespace and a resource
+// name. The namespace is the authoritative identifier per HOL-619; callers
+// that still think in terms of (scope, scopeName) compute the namespace via
+// the package-level resolver shim in the handler.
+//
+// ProjectNamespaceError is gone — the CEL ValidatingAdmissionPolicy shipped
+// alongside the CRDs (HOL-618) rejects creation in a project-labelled
+// namespace at admission time, so the handler's extractPolicyScope is the
+// only defense-in-depth guard the client-side code needs to keep.
 package templatepolicies
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// K8sClient wraps Kubernetes client operations for TemplatePolicy ConfigMap
-// CRUD. TemplatePolicy objects live only in organization or folder namespaces;
-// any attempt to read, write, or delete a policy in a project namespace is
-// rejected before the request reaches the Kubernetes API (HOL-554).
+// K8sClient wraps TemplatePolicy CRUD operations against the CRD.
+//
+// Reads hit the controller-runtime cache — the informer keeps one watch
+// against the cluster and serves every List/Get out of local memory, so
+// ListPolicies does not pay a round-trip per call. Writes fall through to
+// the API server; the cache learns about them on the next watch event.
 type K8sClient struct {
-	client   kubernetes.Interface
+	client   ctrlclient.Client
 	Resolver *resolver.Resolver
 }
 
-// NewK8sClient creates a K8sClient for TemplatePolicy operations.
-func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient {
+// NewK8sClient returns a K8sClient bound to a controller-runtime client.Client
+// and a resolver. Production wiring passes the cache-backed client from the
+// embedded controller manager; tests may pass a fake ctrlclient or a direct
+// envtest-backed client.
+func NewK8sClient(client ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
 }
 
-// ProjectNamespaceError is returned whenever a caller attempts to read or write
-// a TemplatePolicy against a namespace the resolver classifies as a project
-// namespace. The offending namespace is exposed on the Namespace field so the
-// handler can surface it in its InvalidArgument response without re-deriving
-// it from string parsing.
-type ProjectNamespaceError struct {
-	Namespace string
-}
-
-func (e *ProjectNamespaceError) Error() string {
-	return fmt.Sprintf("template policies cannot be stored in project namespace %q; use the owning folder or organization namespace", e.Namespace)
-}
-
-// namespaceForScope translates a TemplateScopeRef into a Kubernetes namespace
-// name. This method never returns a project namespace — project scope is
-// rejected with InvalidArgument-equivalent semantics via ProjectNamespaceError.
-//
-// All CRUD methods on K8sClient funnel through this helper so the
-// folder-only-storage invariant lives in exactly one place. The handler must
-// not reach past this function into per-scope namespace derivation; doing so
-// would bypass the classification check.
-func (k *K8sClient) namespaceForScope(scope scopeshim.Scope, scopeName string) (string, error) {
-	var ns string
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		ns = k.Resolver.OrgNamespace(scopeName)
-	case scopeshim.ScopeFolder:
-		ns = k.Resolver.FolderNamespace(scopeName)
-	case scopeshim.ScopeProject:
-		// Project scope never produces a valid namespace for policy storage.
-		// We intentionally do NOT call the resolver's project-namespace
-		// helper here — the regression test in k8s_test.go asserts this
-		// package never references that helper. The namespace name we need
-		// for the error message is derived from the raw prefixes directly.
-		projectNs := k.Resolver.NamespacePrefix + k.Resolver.ProjectPrefix + scopeName
-		return "", &ProjectNamespaceError{Namespace: projectNs}
-	default:
-		return "", fmt.Errorf("unknown template scope %v", scope)
-	}
-
-	// Defense in depth: the resolver may classify a non-default prefix
-	// configuration as project even when the caller asked for org/folder. If
-	// that ever happens, reject rather than silently storing in a project
-	// namespace.
-	kind, _, err := k.Resolver.ResourceTypeFromNamespace(ns)
-	if err != nil {
-		// Prefix mismatch means the namespace is not managed by any known
-		// resource type. Let the caller decide; K8s will return the
-		// appropriate error on the subsequent request.
-		return ns, nil
-	}
-	if kind == v1alpha2.ResourceTypeProject {
-		return "", &ProjectNamespaceError{Namespace: ns}
-	}
-	return ns, nil
-}
-
-// ListPolicies returns every TemplatePolicy ConfigMap in the scope's namespace.
-func (k *K8sClient) ListPolicies(ctx context.Context, scope scopeshim.Scope, scopeName string) ([]corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
-	return k.listPoliciesInNamespace(ctx, ns)
-}
-
-// ListPoliciesInNamespace lists TemplatePolicy ConfigMaps in the given
-// namespace without routing through scope resolution. The folderResolver
-// (HOL-567) uses this during the ancestor walk so it can feed each folder or
-// organization namespace directly.
-//
-// The caller is responsible for ensuring the namespace is NOT a project
-// namespace — this method deliberately does NOT re-check the resource type,
-// because it is invoked from a walker that already skipped project-kind
-// namespaces. Re-validating here would duplicate the guard and make the
-// behavior slower than necessary.
-func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
-	if ns == "" {
-		return nil, fmt.Errorf("namespace is required")
-	}
-	return k.listPoliciesInNamespace(ctx, ns)
-}
-
-func (k *K8sClient) listPoliciesInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error) {
-	labelSelector := v1alpha2.LabelResourceType + "=" + v1alpha2.ResourceTypeTemplatePolicy
+// ListPolicies returns every TemplatePolicy in the given namespace.
+func (k *K8sClient) ListPolicies(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicy, error) {
 	slog.DebugContext(ctx, "listing template policies from kubernetes",
-		slog.String("namespace", ns),
-		slog.String("labelSelector", labelSelector),
+		slog.String("namespace", namespace),
 	)
-	list, err := k.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("listing template policies in %q: %w", ns, err)
+	var list templatesv1alpha1.TemplatePolicyList
+	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("listing template policies in %q: %w", namespace, err)
 	}
 	return list.Items, nil
 }
 
-// UnmarshalRules exposes the internal rule parser to other packages (notably
-// console/policyresolver) so the real TemplatePolicy resolver introduced in
-// HOL-567 can decode stored rules without re-implementing the JSON wire
-// shape. Returns an empty slice for the empty-string input so callers can
-// iterate without a nil check.
-func UnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
-	return unmarshalRules(raw)
+// ListPoliciesInNamespace is an alias for ListPolicies used by the
+// policyresolver ancestor walker (HOL-567). It is kept as a distinct method
+// name because the walker interface uses that signature.
+func (k *K8sClient) ListPoliciesInNamespace(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplatePolicy, error) {
+	if namespace == "" {
+		return nil, fmt.Errorf("namespace is required")
+	}
+	return k.ListPolicies(ctx, namespace)
 }
 
-// GetPolicy retrieves a single TemplatePolicy ConfigMap by name.
-func (k *K8sClient) GetPolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (*corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
+// GetPolicy retrieves a single TemplatePolicy by name.
+func (k *K8sClient) GetPolicy(ctx context.Context, namespace, name string) (*templatesv1alpha1.TemplatePolicy, error) {
 	slog.DebugContext(ctx, "getting template policy from kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("namespace", ns),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	return k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
+	var p templatesv1alpha1.TemplatePolicy
+	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
-// CreatePolicy creates a new TemplatePolicy ConfigMap. Rules are serialized as
-// JSON in the AnnotationTemplatePolicyRules annotation so the ConfigMap has no
-// data payload of its own — all policy state lives in annotations, mirroring
-// the linked-templates annotation pattern on Template ConfigMaps.
-func (k *K8sClient) CreatePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name, displayName, description, creatorEmail string, rules []*consolev1.TemplatePolicyRule) (*corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
-
-	rulesJSON, err := marshalRules(rules)
-	if err != nil {
-		return nil, err
-	}
-
-	cm := &corev1.ConfigMap{
+// CreatePolicy creates a new TemplatePolicy CRD. Rules are stored as
+// structured spec fields on the CRD directly; HOL-618 removed the JSON
+// annotation wire format. creatorEmail is not persisted at the CRD level —
+// the handler audits it separately.
+func (k *K8sClient) CreatePolicy(
+	ctx context.Context,
+	namespace, name, displayName, description, creatorEmail string,
+	rules []*consolev1.TemplatePolicyRule,
+) (*templatesv1alpha1.TemplatePolicy, error) {
+	slog.DebugContext(ctx, "creating template policy in kubernetes",
+		slog.String("namespace", namespace),
+		slog.String("name", name),
+	)
+	p := &templatesv1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: ns,
+			Namespace: namespace,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
-				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
 			},
 			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:         displayName,
-				v1alpha2.AnnotationDescription:         description,
-				v1alpha2.AnnotationCreatorEmail:        creatorEmail,
-				v1alpha2.AnnotationTemplatePolicyRules: string(rulesJSON),
+				v1alpha2.AnnotationCreatorEmail: creatorEmail,
 			},
 		},
+		Spec: templatesv1alpha1.TemplatePolicySpec{
+			DisplayName: displayName,
+			Description: description,
+			Rules:       protoRulesToCRD(rules),
+		},
 	}
-	slog.DebugContext(ctx, "creating template policy in kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("namespace", ns),
-		slog.String("name", name),
-	)
-	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
-}
-
-// UpdatePolicy updates an existing TemplatePolicy ConfigMap in place. Only
-// pointer fields that are non-nil are applied; callers can partial-update by
-// passing nil for fields they want preserved.
-//
-// When the existing ConfigMap still carries pre-HOL-600 legacy `target`
-// JSON payloads on its rules annotation, those payloads are preserved
-// on the rewrite so the HOL-599 migration CLI can still translate them
-// into TemplatePolicyBindings after a routine UpdatePolicy call. The
-// runtime resolver ignores the payload either way — preservation is
-// purely for migration safety.
-func (k *K8sClient) UpdatePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string, displayName, description *string, rules []*consolev1.TemplatePolicyRule, updateRules bool) (*corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
+	if err := k.client.Create(ctx, p); err != nil {
 		return nil, err
 	}
-	cm, err := k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
+	return p, nil
+}
+
+// UpdatePolicy mutates the addressable spec fields of an existing
+// TemplatePolicy. displayName/description follow nil-for-"leave alone"
+// semantics; rules are always replaced when updateRules is true.
+func (k *K8sClient) UpdatePolicy(
+	ctx context.Context,
+	namespace, name string,
+	displayName, description *string,
+	rules []*consolev1.TemplatePolicyRule,
+	updateRules bool,
+) (*templatesv1alpha1.TemplatePolicy, error) {
+	slog.DebugContext(ctx, "updating template policy in kubernetes",
+		slog.String("namespace", namespace),
+		slog.String("name", name),
+	)
+	p, err := k.GetPolicy(ctx, namespace, name)
 	if err != nil {
 		return nil, fmt.Errorf("getting template policy for update: %w", err)
 	}
-	if cm.Annotations == nil {
-		cm.Annotations = make(map[string]string)
-	}
 	if displayName != nil {
-		cm.Annotations[v1alpha2.AnnotationDisplayName] = *displayName
+		p.Spec.DisplayName = *displayName
 	}
 	if description != nil {
-		cm.Annotations[v1alpha2.AnnotationDescription] = *description
+		p.Spec.Description = *description
 	}
 	if updateRules {
-		legacyTargets := extractLegacyTargets(cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules])
-		rulesJSON, err := marshalRulesPreservingLegacy(rules, legacyTargets)
-		if err != nil {
-			return nil, err
-		}
-		cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules] = string(rulesJSON)
+		p.Spec.Rules = protoRulesToCRD(rules)
 	}
-	slog.DebugContext(ctx, "updating template policy in kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("namespace", ns),
-		slog.String("name", name),
-	)
-	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+	if err := k.client.Update(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
-// DeletePolicy deletes a TemplatePolicy ConfigMap. Not-found errors propagate
-// from the Kubernetes client so the handler can map them to connect.CodeNotFound.
-func (k *K8sClient) DeletePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string) error {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return err
-	}
+// DeletePolicy deletes a TemplatePolicy by name.
+func (k *K8sClient) DeletePolicy(ctx context.Context, namespace, name string) error {
 	slog.DebugContext(ctx, "deleting template policy from kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("namespace", ns),
+		slog.String("namespace", namespace),
 		slog.String("name", name),
 	)
-	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
-}
-
-// scopeLabelValue returns the label string for a TemplateScope. Only
-// organization and folder values are reachable; project is rejected upstream,
-// so fall through to empty string — which would make any ConfigMap unusable
-// and therefore catch any bug that routed a project scope through this
-// function.
-func scopeLabelValue(scope scopeshim.Scope) string {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return v1alpha2.TemplateScopeOrganization
-	case scopeshim.ScopeFolder:
-		return v1alpha2.TemplateScopeFolder
-	default:
-		return ""
+	p := &templatesv1alpha1.TemplatePolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	}
+	return k.client.Delete(ctx, p)
 }
 
-// storedRule is the JSON wire shape for a TemplatePolicyRule annotation
-// entry. Nested structs carry their own JSON representation so a
-// hand-authored ConfigMap without the latest generated types still
-// round-trips.
-//
-// HOL-600 removed the glob-based TemplatePolicyTarget from the proto,
-// but pre-migration ConfigMaps may still carry a "target" JSON key.
-// The decode struct preserves that payload as a raw message so a
-// routine policy update cannot silently destroy the only source of
-// truth the HOL-599 `migrate template-policy-targets` CLI needs to
-// translate legacy globs into TemplatePolicyBindings. The runtime
-// resolver never reads the value; it is only re-emitted on disk.
-type storedRule struct {
-	Kind     string            `json:"kind"`
-	Template storedTemplateRef `json:"template"`
-	// LegacyTarget is the pre-HOL-600 "target" JSON payload stored on
-	// the ConfigMap. The runtime ignores it (render-target selection
-	// runs through TemplatePolicyBinding), but marshalRules preserves
-	// it verbatim so a routine UpdatePolicy call does not strip data
-	// the HOL-599 migration still needs. New policies written by the
-	// current console leave this field empty; the field is only ever
-	// populated by unmarshaling a pre-migration ConfigMap.
-	LegacyTarget json.RawMessage `json:"target,omitempty"`
-}
-
-type storedTemplateRef struct {
-	Scope             string `json:"scope"`
-	ScopeName         string `json:"scope_name"`
-	Name              string `json:"name"`
-	VersionConstraint string `json:"version_constraint,omitempty"`
-}
-
-// legacyTargetQueue holds the pre-HOL-600 "target" JSON payloads
-// extracted from a stored rules annotation, keyed by (kind, template).
-// Each key maps to a FIFO queue so a policy with several rules that
-// share the same (kind, template) key but different legacy targets
-// round-trips each payload back to the matching position in the
-// rewritten annotation. Map-based preservation keyed by (kind,
-// template) alone would collapse those duplicates into a single
-// entry, silently corrupting the HOL-599 migrator's input.
-type legacyTargetQueue map[legacyRuleKey][]json.RawMessage
-
-type legacyRuleKey struct {
-	kind      string
-	scope     string
-	scopeName string
-	name      string
-}
-
-func legacyKeyForStoredRule(s storedRule) legacyRuleKey {
-	return legacyRuleKey{
-		kind:      s.Kind,
-		scope:     s.Template.Scope,
-		scopeName: s.Template.ScopeName,
-		name:      s.Template.Name,
+// protoRulesToCRD converts proto rules into the CRD spec shape. Kind values
+// are mapped from the proto's TEMPLATE_POLICY_KIND_{REQUIRE,EXCLUDE} enums
+// to the CRD's Require / Exclude TemplatePolicyKind strings.
+func protoRulesToCRD(rules []*consolev1.TemplatePolicyRule) []templatesv1alpha1.TemplatePolicyRule {
+	if len(rules) == 0 {
+		return nil
 	}
-}
-
-func legacyKeyForProtoRule(r *consolev1.TemplatePolicyRule) legacyRuleKey {
-	tmpl := r.GetTemplate()
-	return legacyRuleKey{
-		kind:      kindToString(r.GetKind()),
-		scope:     templateScopeLabel(scopeshim.RefScope(tmpl)),
-		scopeName: scopeshim.RefScopeName(tmpl),
-		name:      tmpl.GetName(),
-	}
-}
-
-// extractLegacyTargets decodes an existing rules annotation and returns a
-// FIFO queue of legacy "target" JSON payloads per (kind, template) key.
-// The caller consumes one payload from the front of the queue per
-// matching rule in the rewritten annotation so duplicate rules keep
-// their individual targets. The function is nil-safe: an empty
-// annotation or one without any legacy targets yields an empty queue
-// so marshalRulesPreservingLegacy can always be called unconditionally.
-func extractLegacyTargets(raw string) legacyTargetQueue {
-	out := make(legacyTargetQueue)
-	if raw == "" {
-		return out
-	}
-	var stored []storedRule
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return out
-	}
-	for _, s := range stored {
-		if len(s.LegacyTarget) == 0 {
-			continue
-		}
-		key := legacyKeyForStoredRule(s)
-		out[key] = append(out[key], s.LegacyTarget)
-	}
-	return out
-}
-
-// marshalRules serializes the supplied rules without any legacy target
-// payload. This is the correct shape for brand-new policies authored
-// after HOL-600: they carry no target data. For UpdatePolicy call
-// paths that might round-trip a pre-migration ConfigMap, use
-// marshalRulesPreservingLegacy instead so the HOL-599 migrator can
-// still recover the glob data.
-func marshalRules(rules []*consolev1.TemplatePolicyRule) ([]byte, error) {
-	return marshalRulesPreservingLegacy(rules, nil)
-}
-
-// marshalRulesPreservingLegacy serializes rules and re-emits any legacy
-// `target` JSON payload keyed by (kind, template) so a pre-migration
-// ConfigMap remains machine-readable to the HOL-599 migrator even
-// after an unrelated UpdatePolicy call. When a policy's rules contain
-// duplicate (kind, template) pairs, legacyTargets' FIFO queue hands
-// out payloads in the original order so each position keeps its own
-// target; rules whose key is absent (or whose queue is exhausted) are
-// written without a "target" field — identical to the post-HOL-600
-// shape.
-func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyTargets legacyTargetQueue) ([]byte, error) {
-	stored := make([]storedRule, 0, len(rules))
+	out := make([]templatesv1alpha1.TemplatePolicyRule, 0, len(rules))
 	for _, r := range rules {
 		if r == nil {
 			continue
 		}
-		sr := storedRule{
-			Kind: kindToString(r.GetKind()),
+		tmpl := r.GetTemplate()
+		rule := templatesv1alpha1.TemplatePolicyRule{
+			Kind: protoKindToCRD(r.GetKind()),
 		}
-		if tmpl := r.GetTemplate(); tmpl != nil {
-			sr.Template = storedTemplateRef{
+		if tmpl != nil {
+			rule.Template = templatesv1alpha1.LinkedTemplateRef{
 				Scope:             templateScopeLabel(scopeshim.RefScope(tmpl)),
 				ScopeName:         scopeshim.RefScopeName(tmpl),
 				Name:              tmpl.GetName(),
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
 		}
-		if legacyTargets != nil {
-			key := legacyKeyForProtoRule(r)
-			if queue := legacyTargets[key]; len(queue) > 0 {
-				sr.LegacyTarget = queue[0]
-				legacyTargets[key] = queue[1:]
-			}
-		}
-		stored = append(stored, sr)
+		out = append(out, rule)
 	}
-	b, err := json.Marshal(stored)
-	if err != nil {
-		return nil, fmt.Errorf("serializing template policy rules: %w", err)
-	}
-	return b, nil
+	return out
 }
 
-func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
-	if raw == "" {
-		return nil, nil
+// CRDRulesToProto converts CRD spec rules back into their proto representation.
+// Exported because ancestor_policies.go imports this package via a typed
+// interface — HOL-663 may fold this into a policyresolver helper.
+func CRDRulesToProto(rules []templatesv1alpha1.TemplatePolicyRule) []*consolev1.TemplatePolicyRule {
+	if len(rules) == 0 {
+		return nil
 	}
-	var stored []storedRule
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return nil, fmt.Errorf("parsing template policy rules: %w", err)
-	}
-	rules := make([]*consolev1.TemplatePolicyRule, 0, len(stored))
-	for _, s := range stored {
-		// Any legacy "target" payload is preserved on disk (see
-		// storedRule.LegacyTarget) but not surfaced on the proto —
-		// HOL-600 removed the glob evaluator and render-time
-		// selection runs through TemplatePolicyBinding.
+	out := make([]*consolev1.TemplatePolicyRule, 0, len(rules))
+	for i := range rules {
+		r := &rules[i]
 		rule := &consolev1.TemplatePolicyRule{
-			Kind: kindFromString(s.Kind),
+			Kind: crdKindToProto(r.Kind),
 			Template: scopeshim.NewLinkedTemplateRef(
-				scopeFromTemplateLabel(s.Template.Scope),
-				s.Template.ScopeName,
-				s.Template.Name,
-				s.Template.VersionConstraint,
+				scopeFromTemplateLabel(r.Template.Scope),
+				r.Template.ScopeName,
+				r.Template.Name,
+				r.Template.VersionConstraint,
 			),
 		}
-		rules = append(rules, rule)
+		out = append(out, rule)
 	}
-	return rules, nil
+	return out
 }
 
-func kindToString(k consolev1.TemplatePolicyKind) string {
+// protoKindToCRD maps the proto enum to the CRD's string kind.
+func protoKindToCRD(k consolev1.TemplatePolicyKind) templatesv1alpha1.TemplatePolicyKind {
 	switch k {
 	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE:
-		return "require"
+		return templatesv1alpha1.TemplatePolicyKindRequire
 	case consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE:
-		return "exclude"
+		return templatesv1alpha1.TemplatePolicyKindExclude
 	default:
 		return ""
 	}
 }
 
-func kindFromString(s string) consolev1.TemplatePolicyKind {
-	switch s {
-	case "require":
+// crdKindToProto is the inverse of protoKindToCRD.
+func crdKindToProto(k templatesv1alpha1.TemplatePolicyKind) consolev1.TemplatePolicyKind {
+	switch k {
+	case templatesv1alpha1.TemplatePolicyKindRequire:
 		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE
-	case "exclude":
+	case templatesv1alpha1.TemplatePolicyKindExclude:
 		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE
 	default:
 		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED
 	}
 }
 
-// templateScopeLabel mirrors templates.scopeLabelValue but lives here so this
-// package does not import console/templates (avoiding a dependency cycle
-// with the render-time resolver wiring in HOL-567).
+// templateScopeLabel mirrors templatepolicies.templateScopeLabel but lives
+// here so this package does not import console/templates (avoiding a
+// dependency cycle with the render-time resolver wiring in HOL-567).
 func templateScopeLabel(scope scopeshim.Scope) string {
 	switch scope {
 	case scopeshim.ScopeOrganization:
@@ -482,6 +262,7 @@ func templateScopeLabel(scope scopeshim.Scope) string {
 	}
 }
 
+// scopeFromTemplateLabel is the inverse of templateScopeLabel.
 func scopeFromTemplateLabel(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:

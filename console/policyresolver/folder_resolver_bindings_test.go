@@ -2,161 +2,98 @@ package policyresolver
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// storedPolicyRefTest mirrors the templatepolicybindings.storedPolicyRef wire
-// shape. Keeping a vendored copy in test code avoids a cross-package import
-// (and, more importantly, makes the test's assertions fail loudly if the
-// production wire shape drifts from what the resolver consumes).
-type storedPolicyRefTest struct {
-	Scope     string `json:"scope"`
-	ScopeName string `json:"scopeName"`
-	Name      string `json:"name"`
-}
-
-type storedTargetRefTest struct {
-	Kind        string `json:"kind"`
-	Name        string `json:"name"`
-	ProjectName string `json:"projectName"`
-}
-
-// testUnmarshalPolicyRef mirrors templatepolicybindings.UnmarshalPolicyRef.
-// A drift between the two would silently change test assertions, so the
-// minimal decoder is vendored here.
-func testUnmarshalPolicyRef(raw string) (*consolev1.LinkedTemplatePolicyRef, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	var sr storedPolicyRefTest
-	if err := json.Unmarshal([]byte(raw), &sr); err != nil {
-		return nil, err
-	}
-	// HOL-619 removed TemplateScopeRef from proto; the namespace is derived
-	// from (scope, scopeName) via the shim's default resolver so tests that
-	// build the wire-form via storedPolicyRefTest continue to exercise the
-	// same classification path the production unmarshaler uses.
-	return scopeshim.NewLinkedTemplatePolicyRef(
-		scopeFromTemplateLabelTest(sr.Scope),
-		sr.ScopeName,
-		sr.Name,
-	), nil
-}
-
-// testUnmarshalTargetRefs mirrors templatepolicybindings.UnmarshalTargetRefs.
-func testUnmarshalTargetRefs(raw string) ([]*consolev1.TemplatePolicyBindingTargetRef, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	var stored []storedTargetRefTest
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return nil, err
-	}
-	refs := make([]*consolev1.TemplatePolicyBindingTargetRef, 0, len(stored))
-	for _, s := range stored {
-		refs = append(refs, &consolev1.TemplatePolicyBindingTargetRef{
-			Kind:        targetKindFromStringTest(s.Kind),
-			Name:        s.Name,
-			ProjectName: s.ProjectName,
-		})
-	}
-	return refs, nil
-}
-
-func scopeFromTemplateLabelTest(label string) scopeshim.Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return scopeshim.ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return scopeshim.ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return scopeshim.ScopeProject
-	default:
-		return scopeshim.ScopeUnspecified
-	}
-}
-
-func targetKindFromStringTest(s string) consolev1.TemplatePolicyBindingTargetKind {
-	switch s {
-	case "project-template":
-		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE
-	case "deployment":
-		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT
-	default:
-		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED
-	}
-}
-
 // bindingListerFromMap adapts an in-memory map to BindingListerInNamespace.
-// Mirrors policyListerFromClient — tests feed per-namespace binding
-// ConfigMaps and the resolver reads them through the same ancestor-walking
-// lister production uses.
+// Mirrors policyListerFromClient — tests feed per-namespace
+// TemplatePolicyBinding CRs and the resolver reads them through the same
+// ancestor-walking lister production uses.
+//
+// HOL-662 switched the return type from corev1.ConfigMap to the CRD shape;
+// tests no longer vendor a ConfigMap decoder.
 type bindingListerFromMap struct {
-	items map[string][]corev1.ConfigMap
+	items map[string][]templatesv1alpha1.TemplatePolicyBinding
 }
 
-func (b *bindingListerFromMap) ListBindingsInNamespace(_ context.Context, ns string) ([]corev1.ConfigMap, error) {
+func (b *bindingListerFromMap) ListBindingsInNamespace(_ context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error) {
 	return b.items[ns], nil
 }
 
-// bindingCM returns a fake TemplatePolicyBinding ConfigMap with the given
-// policy_ref and target_refs encoded into the annotations. Mirrors policyCM
-// but populates the binding's JSON annotation wire shape.
-func bindingCM(namespace, name string, policyRef storedPolicyRefTest, targets []storedTargetRefTest, t *testing.T) corev1.ConfigMap {
-	policyJSON, err := json.Marshal(policyRef)
-	if err != nil {
-		t.Fatalf("marshal policy ref: %v", err)
-	}
-	targetsJSON, err := json.Marshal(targets)
-	if err != nil {
-		t.Fatalf("marshal target refs: %v", err)
-	}
-	return corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationTemplatePolicyBindingPolicyRef:  string(policyJSON),
-				v1alpha2.AnnotationTemplatePolicyBindingTargetRefs: string(targetsJSON),
-			},
+// bindingCRD returns a TemplatePolicyBinding CR populated with the given
+// policy_ref and target_refs. Mirrors policyCRD. Tests build fixtures from
+// this helper rather than constructing raw CRDs inline so the shape stays
+// consistent across the suite and so a schema drift surfaces in exactly one
+// place.
+func bindingCRD(
+	namespace, name string,
+	policyRef templatesv1alpha1.LinkedTemplatePolicyRef,
+	targets []templatesv1alpha1.TemplatePolicyBindingTargetRef,
+) templatesv1alpha1.TemplatePolicyBinding {
+	return templatesv1alpha1.TemplatePolicyBinding{
+		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+			PolicyRef:  policyRef,
+			TargetRefs: targets,
 		},
+		// metav1.ObjectMeta embedded directly — the CRD exposes the
+		// Name/Namespace fields via the anonymous ObjectMeta struct.
+		ObjectMeta: objectMetaCRD(name, namespace, v1alpha2.ResourceTypeTemplatePolicyBinding),
+	}
+}
+
+// orgPolicyRefCRD builds an organization-scoped CRD policy_ref.
+func orgPolicyRefCRD(policyName string) templatesv1alpha1.LinkedTemplatePolicyRef {
+	return templatesv1alpha1.LinkedTemplatePolicyRef{
+		Scope:     v1alpha2.TemplateScopeOrganization,
+		ScopeName: "acme",
+		Name:      policyName,
+	}
+}
+
+// folderPolicyRefCRD builds a folder-scoped CRD policy_ref.
+func folderPolicyRefCRD(folder, policyName string) templatesv1alpha1.LinkedTemplatePolicyRef {
+	return templatesv1alpha1.LinkedTemplatePolicyRef{
+		Scope:     v1alpha2.TemplateScopeFolder,
+		ScopeName: folder,
+		Name:      policyName,
+	}
+}
+
+// deploymentTargetCRD / projectTemplateTargetCRD return the binding-side
+// target refs the table cases use.
+func deploymentTargetCRD(project, name string) templatesv1alpha1.TemplatePolicyBindingTargetRef {
+	return templatesv1alpha1.TemplatePolicyBindingTargetRef{
+		Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+		Name:        name,
+		ProjectName: project,
+	}
+}
+
+func projectTemplateTargetCRD(project, name string) templatesv1alpha1.TemplatePolicyBindingTargetRef {
+	return templatesv1alpha1.TemplatePolicyBindingTargetRef{
+		Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
+		Name:        name,
+		ProjectName: project,
 	}
 }
 
 // newFolderResolverWithBindingsForTest constructs a resolver wired with
 // both rule-side and binding-side deps, so the tests in this file and
 // folder_resolver_test.go exercise the post-HOL-600 binding evaluation
-// path.
+// path. HOL-662 dropped the unmarshaler seams — construction is now
+// 4-arg.
 func newFolderResolverWithBindingsForTest(
 	policies PolicyListerInNamespace,
 	bindings *bindingListerFromMap,
 	walker WalkerInterface,
 	r *resolver.Resolver,
 ) PolicyResolver {
-	return NewFolderResolverWithBindings(
-		policies,
-		walker,
-		r,
-		RuleUnmarshalerFunc(testUnmarshalRules),
-		bindings,
-		BindingUnmarshalerAdapter{
-			PolicyRefFunc:  testUnmarshalPolicyRef,
-			TargetRefsFunc: testUnmarshalTargetRefs,
-		},
-	)
+	return NewFolderResolverWithBindings(policies, walker, r, bindings)
 }
 
 // TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError
@@ -171,18 +108,17 @@ func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testin
 
 	// No policies exist — the binding points at "missing" which has
 	// nothing to resolve to.
-	bindings := map[string][]corev1.ConfigMap{
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["org"]: {
-			bindingCM(ns["org"], "orphan",
-				storedPolicyRefTest{Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "missing"},
-				[]storedTargetRefTest{{Kind: "deployment", Name: "api", ProjectName: "lilies"}},
-				t,
+			bindingCRD(ns["org"], "orphan",
+				orgPolicyRefCRD("missing"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 			),
 		},
 	}
 
 	explicit := []*consolev1.LinkedTemplateRef{
-		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "explicit", ""),
+		orgTemplateRef("explicit"),
 	}
 	pl := &policyListerFromClient{items: nil}
 	bl := &bindingListerFromMap{items: bindings}
@@ -207,21 +143,19 @@ func TestFolderResolver_BindingsEmptyTargetListContributesNothing(t *testing.T) 
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	policies := map[string][]corev1.ConfigMap{
+	policies := map[string][]templatesv1alpha1.TemplatePolicy{
 		ns["org"]: {
-			policyCM(ns["org"], "audit", []storedRuleTest{
-				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
-			}, t),
+			policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
+				requireRuleCRD(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+			}),
 		},
 	}
-	// Binding with empty target_refs. The JSON wire shape is "[]" which
-	// decodes to an empty slice. The binding exists but covers nothing.
-	bindings := map[string][]corev1.ConfigMap{
+	// Binding with empty target_refs. The binding exists but covers nothing.
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["org"]: {
-			bindingCM(ns["org"], "empty-bind",
-				orgPolicyRefStored("audit"),
+			bindingCRD(ns["org"], "empty-bind",
+				orgPolicyRefCRD("audit"),
 				nil, // zero targets
-				t,
 			),
 		},
 	}
@@ -248,21 +182,20 @@ func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	policies := map[string][]corev1.ConfigMap{
+	policies := map[string][]templatesv1alpha1.TemplatePolicy{
 		ns["org"]: {
-			policyCM(ns["org"], "audit", []storedRuleTest{
-				requireRuleStored(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
-			}, t),
+			policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
+				requireRuleCRD(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+			}),
 		},
 	}
 	// Binding targets roses/api, render target is lilies/api — no
 	// match on project_name.
-	bindings := map[string][]corev1.ConfigMap{
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
 		ns["org"]: {
-			bindingCM(ns["org"], "audit-to-roses",
-				orgPolicyRefStored("audit"),
-				[]storedTargetRefTest{deploymentTargetStored("roses", "api")},
-				t,
+			bindingCRD(ns["org"], "audit-to-roses",
+				orgPolicyRefCRD("audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("roses", "api")},
 			),
 		},
 	}

@@ -4,75 +4,46 @@ import (
 	"context"
 	"log/slog"
 
-	corev1 "k8s.io/api/core/v1"
-
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// BindingListerInNamespace reports the TemplatePolicyBinding ConfigMaps stored
-// in a specific Kubernetes namespace. The folderResolver uses this to fetch
-// bindings from each folder or organization namespace in the ancestor chain
-// without importing console/templatepolicybindings directly (which would
-// create an import cycle once that package depends on console/policyresolver).
+// BindingListerInNamespace reports the TemplatePolicyBinding CRD objects
+// stored in a specific Kubernetes namespace. The folderResolver uses this
+// to fetch bindings from each folder or organization namespace in the
+// ancestor chain without importing console/templatepolicybindings directly
+// (which would create an import cycle once that package depends on
+// console/policyresolver).
 //
 // Implementations MUST only read from folder and organization namespaces.
 // The folderResolver guarantees it never passes a project namespace to this
 // method because the ancestor walk skips project-kind namespaces before
 // calling the lister, but implementations should still treat a project
 // namespace as a programming error and return an empty list.
+//
+// HOL-662 migrated the return type from corev1.ConfigMap to the CRD; the
+// CEL ValidatingAdmissionPolicy (HOL-618) is now the authoritative
+// enforcement point for the HOL-554 storage-isolation guardrail.
 type BindingListerInNamespace interface {
-	ListBindingsInNamespace(ctx context.Context, ns string) ([]corev1.ConfigMap, error)
+	ListBindingsInNamespace(ctx context.Context, ns string) ([]templatesv1alpha1.TemplatePolicyBinding, error)
 }
 
-// BindingUnmarshaler decodes the JSON-serialized policy_ref and target_refs
-// annotations on a TemplatePolicyBinding ConfigMap into proto values. The
-// folderResolver delegates decoding to console/templatepolicybindings so the
-// resolver never hard-codes the wire shape.
-type BindingUnmarshaler interface {
-	UnmarshalPolicyRef(raw string) (*consolev1.LinkedTemplatePolicyRef, error)
-	UnmarshalTargetRefs(raw string) ([]*consolev1.TemplatePolicyBindingTargetRef, error)
-}
-
-// BindingUnmarshalerAdapter adapts a pair of free-standing functions into a
-// BindingUnmarshaler. Use it at wire-up time to pass
-// templatepolicybindings.UnmarshalPolicyRef and .UnmarshalTargetRefs without
-// defining a one-shot type at the call site.
-type BindingUnmarshalerAdapter struct {
-	PolicyRefFunc  func(raw string) (*consolev1.LinkedTemplatePolicyRef, error)
-	TargetRefsFunc func(raw string) ([]*consolev1.TemplatePolicyBindingTargetRef, error)
-}
-
-// UnmarshalPolicyRef satisfies BindingUnmarshaler.
-func (a BindingUnmarshalerAdapter) UnmarshalPolicyRef(raw string) (*consolev1.LinkedTemplatePolicyRef, error) {
-	if a.PolicyRefFunc == nil {
-		return nil, nil
-	}
-	return a.PolicyRefFunc(raw)
-}
-
-// UnmarshalTargetRefs satisfies BindingUnmarshaler.
-func (a BindingUnmarshalerAdapter) UnmarshalTargetRefs(raw string) ([]*consolev1.TemplatePolicyBindingTargetRef, error) {
-	if a.TargetRefsFunc == nil {
-		return nil, nil
-	}
-	return a.TargetRefsFunc(raw)
-}
-
-// ResolvedBinding is the decoded form of a TemplatePolicyBinding ConfigMap,
-// keyed with the owning namespace so downstream evaluation can locate the
-// bound policy and record which binding contributed a ref. The folder
-// resolver consumes a slice of these from AncestorBindingLister.ListBindings.
+// ResolvedBinding is the decoded form of a TemplatePolicyBinding CRD, keyed
+// with the owning namespace so downstream evaluation can locate the bound
+// policy and record which binding contributed a ref. The folder resolver
+// consumes a slice of these from AncestorBindingLister.ListBindings.
 type ResolvedBinding struct {
 	// Name is the binding's DNS-label slug. Stable across updates.
 	Name string
 	// Namespace is the folder or organization namespace that owns the
-	// binding ConfigMap. Used by the resolver when it logs a warning for
-	// a binding whose policy_ref does not resolve.
+	// binding CRD. Used by the resolver when it logs a warning for a
+	// binding whose policy_ref does not resolve.
 	Namespace string
 	// PolicyRef identifies the TemplatePolicy the binding attaches. May
-	// be nil if the annotation is missing or malformed — the caller
+	// be nil if the binding's spec.policy_ref is empty — the caller
 	// treats that as "no-op" (a warning is logged by the lister).
 	PolicyRef *consolev1.LinkedTemplatePolicyRef
 	// TargetRefs enumerates the explicit render targets this binding
@@ -82,23 +53,21 @@ type ResolvedBinding struct {
 }
 
 // AncestorBindingLister walks the ancestor chain of a starting namespace and
-// collects every TemplatePolicyBinding ConfigMap stored in the folder and
+// collects every TemplatePolicyBinding CRD stored in the folder and
 // organization namespaces on that chain. Project namespaces are skipped to
 // mirror the HOL-554 storage-isolation guardrail already enforced for
 // TemplatePolicy — a binding in a project namespace is a misconfiguration
 // that must never be consumed at render time.
 //
 // This helper is used by the render-time `folderResolver` (HOL-596) to
-// evaluate binding-driven REQUIRE/EXCLUDE semantics alongside the legacy
-// glob-based TemplatePolicyRule.Target fallback. Centralizing the ancestor
-// walk here — and the slog-based error-logging contract that goes with it —
-// means the storage-isolation guardrail lives in exactly one place for
-// binding reads, matching the shape used by AncestorPolicyLister.
+// evaluate binding-driven REQUIRE/EXCLUDE semantics. Centralizing the
+// ancestor walk here — and the slog-based error-logging contract that goes
+// with it — means the storage-isolation guardrail lives in exactly one
+// place for binding reads, matching the shape used by AncestorPolicyLister.
 type AncestorBindingLister struct {
 	bindingLister BindingListerInNamespace
 	walker        WalkerInterface
 	resolver      *resolver.Resolver
-	unmarshaler   BindingUnmarshaler
 }
 
 // NewAncestorBindingLister returns a lister wired with the given dependencies.
@@ -109,13 +78,11 @@ func NewAncestorBindingLister(
 	bindingLister BindingListerInNamespace,
 	walker WalkerInterface,
 	r *resolver.Resolver,
-	unmarshaler BindingUnmarshaler,
 ) *AncestorBindingLister {
 	return &AncestorBindingLister{
 		bindingLister: bindingLister,
 		walker:        walker,
 		resolver:      r,
-		unmarshaler:   unmarshaler,
 	}
 }
 
@@ -132,21 +99,19 @@ func NewAncestorBindingLister(
 // every call".
 //
 // A walker failure returns (nil, err) so render-time callers can decide
-// whether to fall back to the legacy glob path (same behavior as
-// AncestorPolicyLister) or surface the failure.
+// how to surface the failure (same behavior as AncestorPolicyLister).
 //
-// Individual per-namespace lister or parse errors do not abort traversal;
-// they are logged and the namespace (or individual binding) is skipped. A
-// single corrupted TemplatePolicyBinding ConfigMap must not prevent
-// legitimate bindings in peer namespaces from being honored.
+// Individual per-namespace lister errors do not abort traversal; they are
+// logged and the namespace is skipped. A single corrupted
+// TemplatePolicyBinding must not prevent legitimate bindings in peer
+// namespaces from being honored.
 func (a *AncestorBindingLister) ListBindings(ctx context.Context, startNs string) ([]*ResolvedBinding, error) {
-	if a == nil || a.bindingLister == nil || a.walker == nil || a.resolver == nil || a.unmarshaler == nil {
+	if a == nil || a.bindingLister == nil || a.walker == nil || a.resolver == nil {
 		slog.WarnContext(ctx, "ancestor binding lister is misconfigured; returning no bindings",
 			slog.String("startNs", startNs),
 			slog.Bool("bindingListerNil", a == nil || a.bindingLister == nil),
 			slog.Bool("walkerNil", a == nil || a.walker == nil),
 			slog.Bool("resolverNil", a == nil || a.resolver == nil),
-			slog.Bool("unmarshalerNil", a == nil || a.unmarshaler == nil),
 		)
 		return nil, nil
 	}
@@ -168,7 +133,7 @@ func (a *AncestorBindingLister) ListBindings(ctx context.Context, startNs string
 		if kind == v1alpha2.ResourceTypeProject {
 			continue
 		}
-		cms, listErr := a.bindingLister.ListBindingsInNamespace(ctx, ns.Name)
+		items, listErr := a.bindingLister.ListBindingsInNamespace(ctx, ns.Name)
 		if listErr != nil {
 			slog.WarnContext(ctx, "failed to list template policy bindings in ancestor namespace",
 				slog.String("namespace", ns.Name),
@@ -176,37 +141,70 @@ func (a *AncestorBindingLister) ListBindings(ctx context.Context, startNs string
 			)
 			continue
 		}
-		for i := range cms {
-			cm := &cms[i]
-			policyRaw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyBindingPolicyRef]
-			targetsRaw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs]
-
-			policyRef, policyErr := a.unmarshaler.UnmarshalPolicyRef(policyRaw)
-			if policyErr != nil {
-				slog.WarnContext(ctx, "failed to parse template policy binding policy_ref; skipping binding",
-					slog.String("namespace", ns.Name),
-					slog.String("binding", cm.Name),
-					slog.Any("error", policyErr),
-				)
-				continue
-			}
-			targetRefs, targetsErr := a.unmarshaler.UnmarshalTargetRefs(targetsRaw)
-			if targetsErr != nil {
-				slog.WarnContext(ctx, "failed to parse template policy binding target_refs; skipping binding",
-					slog.String("namespace", ns.Name),
-					slog.String("binding", cm.Name),
-					slog.Any("error", targetsErr),
-				)
-				continue
-			}
-
+		for i := range items {
+			b := &items[i]
 			out = append(out, &ResolvedBinding{
-				Name:       cm.Name,
+				Name:       b.Name,
 				Namespace:  ns.Name,
-				PolicyRef:  policyRef,
-				TargetRefs: targetRefs,
+				PolicyRef:  crdPolicyRefToProto(b.Spec.PolicyRef),
+				TargetRefs: crdTargetRefsToProto(b.Spec.TargetRefs),
 			})
 		}
 	}
 	return out, nil
+}
+
+// crdPolicyRefToProto converts the CRD's policy_ref spec field into a proto
+// LinkedTemplatePolicyRef. Mirrors templatepolicybindings.CRDPolicyRefToProto;
+// duplicated here to avoid an import cycle with console/templatepolicybindings.
+func crdPolicyRefToProto(ref templatesv1alpha1.LinkedTemplatePolicyRef) *consolev1.LinkedTemplatePolicyRef {
+	if ref.Name == "" && ref.ScopeName == "" && ref.Scope == "" {
+		return nil
+	}
+	return scopeshim.NewLinkedTemplatePolicyRef(
+		scopeFromPolicyRefLabel(ref.Scope),
+		ref.ScopeName,
+		ref.Name,
+	)
+}
+
+// crdTargetRefsToProto converts the CRD's target_refs spec field into proto
+// TemplatePolicyBindingTargetRef values. Mirrors
+// templatepolicybindings.CRDTargetRefsToProto.
+func crdTargetRefsToProto(refs []templatesv1alpha1.TemplatePolicyBindingTargetRef) []*consolev1.TemplatePolicyBindingTargetRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]*consolev1.TemplatePolicyBindingTargetRef, 0, len(refs))
+	for i := range refs {
+		r := &refs[i]
+		out = append(out, &consolev1.TemplatePolicyBindingTargetRef{
+			Kind:        targetKindCRDToProto(r.Kind),
+			Name:        r.Name,
+			ProjectName: r.ProjectName,
+		})
+	}
+	return out
+}
+
+func scopeFromPolicyRefLabel(label string) scopeshim.Scope {
+	switch label {
+	case "organization":
+		return scopeshim.ScopeOrganization
+	case "folder":
+		return scopeshim.ScopeFolder
+	default:
+		return scopeshim.ScopeUnspecified
+	}
+}
+
+func targetKindCRDToProto(k templatesv1alpha1.TemplatePolicyBindingTargetKind) consolev1.TemplatePolicyBindingTargetKind {
+	switch k {
+	case templatesv1alpha1.TemplatePolicyBindingTargetKindProjectTemplate:
+		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE
+	case templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment:
+		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT
+	default:
+		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED
+	}
 }

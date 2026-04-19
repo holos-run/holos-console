@@ -8,10 +8,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/scopeshim"
@@ -108,19 +111,47 @@ func authedCtx(email string, roles []string) context.Context {
 	})
 }
 
-// newTestHandler builds a Handler wired to fake K8s and grant resolvers that
-// return the supplied `shareUsers` map for both org and folder lookups.
-// Tests that need to override individual resolvers can do so by calling the
-// `With*` builders on the returned Handler.
-func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, *fake.Clientset) {
+// newTestHandler builds a Handler wired to a fake controller-runtime client
+// and grant resolvers that return the supplied `shareUsers` map for both
+// org and folder lookups. Tests that need to override individual resolvers
+// can do so by calling the `With*` builders on the returned Handler.
+//
+// HOL-662 migrated the storage substrate from ConfigMaps to
+// TemplatePolicyBinding CRDs; the fake ctrlclient is a sufficient stand-in
+// for the CRUD envtest coverage in k8s_test.go.
+func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, client.Client) {
 	t.Helper()
-	fakeClient := fake.NewClientset()
+	ctrlClient := newFakeCtrlClient(t)
 	r := newTestResolver()
-	k := NewK8sClient(fakeClient, r)
+	k := NewK8sClient(ctrlClient, r)
 	h := NewHandler(k, r).
 		WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers}).
 		WithFolderGrantResolver(&stubFolderGrantResolver{users: shareUsers})
-	return h, fakeClient
+	return h, ctrlClient
+}
+
+// listBindings collects every TemplatePolicyBinding visible in the given
+// namespace through the fake ctrlclient. Used in handler tests to assert
+// on what the handler wrote (or did not write).
+func listBindings(t *testing.T, c client.Client, namespace string) []templatesv1alpha1.TemplatePolicyBinding {
+	t.Helper()
+	var list templatesv1alpha1.TemplatePolicyBindingList
+	if err := c.List(context.Background(), &list, client.InNamespace(namespace)); err != nil {
+		t.Fatalf("list bindings in %q: %v", namespace, err)
+	}
+	return list.Items
+}
+
+// getBindingCR retrieves a TemplatePolicyBinding by namespace/name,
+// returning nil if not found so tests can assert absence as easily as
+// presence.
+func getBindingCR(t *testing.T, c client.Client, namespace, name string) *templatesv1alpha1.TemplatePolicyBinding {
+	t.Helper()
+	var b templatesv1alpha1.TemplatePolicyBinding
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, &b); err != nil {
+		return nil
+	}
+	return &b
 }
 
 // newFolderScopeRef, newOrgScopeRef, and newProjectScopeRef are short
@@ -178,8 +209,8 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 
 	req := connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Namespace:   newProjectScopeRef("billing-web"),
-		Binding: basicBinding(newProjectScopeRef("billing-web")),
+		Namespace: newProjectScopeRef("billing-web"),
+		Binding:   basicBinding(newProjectScopeRef("billing-web")),
 	})
 	ctx := authedCtx("owner@example.com", nil)
 
@@ -194,9 +225,8 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 		t.Errorf("expected error to name %q, got %v", want, err)
 	}
 
-	cms, _ := fakeClient.CoreV1().ConfigMaps("holos-prj-billing-web").List(context.Background(), metav1.ListOptions{})
-	if len(cms.Items) != 0 {
-		t.Errorf("expected no ConfigMaps in project namespace, got %d", len(cms.Items))
+	if items := listBindings(t, fakeClient, "holos-prj-billing-web"); len(items) != 0 {
+		t.Errorf("expected no TemplatePolicyBindings in project namespace, got %d", len(items))
 	}
 }
 
@@ -267,9 +297,9 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 
 // TestCreateHappyPath exercises the full happy path: authenticated owner,
 // valid folder scope, folder-local policy reference, one deployment target
-// under an existing project. Verifies a ConfigMap lands in the folder
-// namespace with the expected labels and annotations, and the response
-// carries the binding name.
+// under an existing project. Verifies a TemplatePolicyBinding CRD lands in
+// the folder namespace with the expected labels and annotations, and the
+// response carries the binding name.
 func TestCreateHappyPath(t *testing.T) {
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 	h = h.
@@ -283,12 +313,12 @@ func TestCreateHappyPath(t *testing.T) {
 	// check does not depend on the ancestor resolver.
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
 		Namespace: folder,
-		Name:     "local-policy",
+		Name:      "local-policy",
 	}
 
 	resp, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Namespace:   folder,
-		Binding: binding,
+		Namespace: folder,
+		Binding:   binding,
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -297,20 +327,20 @@ func TestCreateHappyPath(t *testing.T) {
 		t.Errorf("expected response name %q, got %q", binding.GetName(), resp.Msg.GetName())
 	}
 
-	cm, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), binding.GetName(), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("fetching created binding: %v", err)
+	b := getBindingCR(t, fakeClient, "holos-fld-payments", binding.GetName())
+	if b == nil {
+		t.Fatal("expected created binding in folder namespace")
 	}
-	if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicyBinding {
-		t.Errorf("expected resource type label, got %q", cm.Labels[v1alpha2.LabelResourceType])
+	if b.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicyBinding {
+		t.Errorf("expected resource type label, got %q", b.Labels[v1alpha2.LabelResourceType])
 	}
-	if cm.Annotations[v1alpha2.AnnotationCreatorEmail] != "owner@example.com" {
-		t.Errorf("expected creator email annotation to be set from claims, got %q", cm.Annotations[v1alpha2.AnnotationCreatorEmail])
+	if b.Annotations[v1alpha2.AnnotationCreatorEmail] != "owner@example.com" {
+		t.Errorf("expected creator email annotation to be set from claims, got %q", b.Annotations[v1alpha2.AnnotationCreatorEmail])
 	}
 }
 
 // TestCreateRBACDenial confirms a caller with no grants sees
-// PermissionDenied and never writes a ConfigMap. The stub grant resolver
+// PermissionDenied and never writes a binding. The stub grant resolver
 // returns an empty map so the cascade evaluation yields
 // RoleUnspecified -> no permissions.
 func TestCreateRBACDenial(t *testing.T) {
@@ -324,12 +354,12 @@ func TestCreateRBACDenial(t *testing.T) {
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
 		Namespace: folder,
-		Name:     "local-policy",
+		Name:      "local-policy",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Namespace:   folder,
-		Binding: binding,
+		Namespace: folder,
+		Binding:   binding,
 	}))
 	if err == nil {
 		t.Fatal("expected permission denied")
@@ -338,9 +368,8 @@ func TestCreateRBACDenial(t *testing.T) {
 		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
 	}
 
-	cms, _ := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").List(context.Background(), metav1.ListOptions{})
-	if len(cms.Items) != 0 {
-		t.Errorf("expected no ConfigMaps on RBAC denial, got %d", len(cms.Items))
+	if items := listBindings(t, fakeClient, "holos-fld-payments"); len(items) != 0 {
+		t.Errorf("expected no TemplatePolicyBindings on RBAC denial, got %d", len(items))
 	}
 }
 
@@ -782,32 +811,37 @@ func TestCreateRejectsBadProjectName(t *testing.T) {
 }
 
 // TestUpdatePreservesImmutableFields verifies UpdateTemplatePolicyBinding
-// preserves created_at / creator_email from the stored ConfigMap: the
-// handler must never rewrite those annotations even if the inbound
-// binding carries different values. Also asserts policy_ref and
-// target_refs are replaced when present.
+// preserves created_at / creator_email from the stored CRD: the handler
+// must never rewrite those fields even if the inbound binding carries
+// different values. Also asserts policy_ref and target_refs are replaced
+// when present.
 func TestUpdatePreservesImmutableFields(t *testing.T) {
 	existingTime := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
-	existing := &corev1.ConfigMap{
+	existing := &templatesv1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bind-a",
 			Namespace: "holos-fld-payments",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicyBinding,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
 			},
 			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:                     "Existing Display",
-				v1alpha2.AnnotationDescription:                     "Existing Description",
-				v1alpha2.AnnotationCreatorEmail:                    "original@example.com",
-				v1alpha2.AnnotationTemplatePolicyBindingPolicyRef:  `{"scope":"organization","scopeName":"acme","name":"old-policy"}`,
-				v1alpha2.AnnotationTemplatePolicyBindingTargetRefs: `[]`,
+				v1alpha2.AnnotationCreatorEmail: "original@example.com",
 			},
 			CreationTimestamp: metav1.Time{Time: existingTime},
 		},
+		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+			DisplayName: "Existing Display",
+			Description: "Existing Description",
+			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
+				Scope:     "organization",
+				ScopeName: "acme",
+				Name:      "old-policy",
+			},
+			TargetRefs: nil,
+		},
 	}
-	fakeClient := fake.NewClientset(existing)
+	fakeClient := newFakeCtrlClient(t, existing)
 	r := newTestResolver()
 	k := NewK8sClient(fakeClient, r)
 	h := NewHandler(k, r).
@@ -819,7 +853,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 	folder := newFolderScopeRef("payments")
 	inbound := &consolev1.TemplatePolicyBinding{
-		Name:     "bind-a",
+		Name:      "bind-a",
 		Namespace: folder,
 		// Attempt to overwrite immutable fields — the handler must
 		// discard these (creator_email is not carried into the k8s
@@ -830,7 +864,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 		// preserves the stored value when the request carries "".
 		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
 			Namespace: folder,
-			Name:     "new-local-policy",
+			Name:      "new-local-policy",
 		},
 		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 			{
@@ -842,16 +876,16 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 	}
 
 	_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
-		Namespace:   folder,
-		Binding: inbound,
+		Namespace: folder,
+		Binding:   inbound,
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	updated, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "bind-a", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("fetching updated binding: %v", err)
+	updated := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-a")
+	if updated == nil {
+		t.Fatal("expected binding to still exist after update")
 	}
 	if updated.Annotations[v1alpha2.AnnotationCreatorEmail] != "original@example.com" {
 		t.Errorf("creator_email clobbered: %q", updated.Annotations[v1alpha2.AnnotationCreatorEmail])
@@ -859,25 +893,17 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 	if !updated.CreationTimestamp.Time.Equal(existingTime) {
 		t.Errorf("creation timestamp drifted: got %v, want %v", updated.CreationTimestamp.Time, existingTime)
 	}
-	if updated.Annotations[v1alpha2.AnnotationDisplayName] != "Updated Display" {
-		t.Errorf("display_name not applied: %q", updated.Annotations[v1alpha2.AnnotationDisplayName])
+	if updated.Spec.DisplayName != "Updated Display" {
+		t.Errorf("display_name not applied: %q", updated.Spec.DisplayName)
 	}
-	if updated.Annotations[v1alpha2.AnnotationDescription] != "Existing Description" {
-		t.Errorf("description clobbered when request left it empty: %q", updated.Annotations[v1alpha2.AnnotationDescription])
+	if updated.Spec.Description != "Existing Description" {
+		t.Errorf("description clobbered when request left it empty: %q", updated.Spec.Description)
 	}
-	parsedPolicy, err := unmarshalPolicyRef(updated.Annotations[v1alpha2.AnnotationTemplatePolicyBindingPolicyRef])
-	if err != nil {
-		t.Fatalf("parsing updated policy_ref: %v", err)
+	if updated.Spec.PolicyRef.Name != "new-local-policy" {
+		t.Errorf("policy_ref not replaced: got %q", updated.Spec.PolicyRef.Name)
 	}
-	if parsedPolicy.GetName() != "new-local-policy" {
-		t.Errorf("policy_ref not replaced: got %q", parsedPolicy.GetName())
-	}
-	parsedTargets, err := unmarshalTargetRefs(updated.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs])
-	if err != nil {
-		t.Fatalf("parsing updated target_refs: %v", err)
-	}
-	if len(parsedTargets) != 1 || parsedTargets[0].GetName() != "api" {
-		t.Errorf("target_refs not replaced as expected: %+v", parsedTargets)
+	if len(updated.Spec.TargetRefs) != 1 || updated.Spec.TargetRefs[0].Name != "api" {
+		t.Errorf("target_refs not replaced as expected: %+v", updated.Spec.TargetRefs)
 	}
 }
 
@@ -910,29 +936,40 @@ func TestUpdateMissingReturnsNotFound(t *testing.T) {
 	}
 }
 
-// TestGetRoundTripsAnnotations seeds a ConfigMap with a populated policy-
-// ref and targets annotation, then reads it back through the handler to
-// confirm the proto-level conversion is lossless.
+// TestGetRoundTripsAnnotations seeds a TemplatePolicyBinding CRD with a
+// populated spec and reads it back through the handler to confirm the
+// proto-level conversion is lossless.
 func TestGetRoundTripsAnnotations(t *testing.T) {
-	existing := &corev1.ConfigMap{
+	existing := &templatesv1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bind-a",
 			Namespace: "holos-fld-payments",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicyBinding,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
 			},
 			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:                     "Existing",
-				v1alpha2.AnnotationDescription:                     "Desc",
-				v1alpha2.AnnotationCreatorEmail:                    "original@example.com",
-				v1alpha2.AnnotationTemplatePolicyBindingPolicyRef:  `{"scope":"organization","scopeName":"acme","name":"require-reference-grant"}`,
-				v1alpha2.AnnotationTemplatePolicyBindingTargetRefs: `[{"kind":"deployment","name":"api","projectName":"payments-web"}]`,
+				v1alpha2.AnnotationCreatorEmail: "original@example.com",
+			},
+		},
+		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+			DisplayName: "Existing",
+			Description: "Desc",
+			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
+				Scope:     "organization",
+				ScopeName: "acme",
+				Name:      "require-reference-grant",
+			},
+			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
+				{
+					Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+					Name:        "api",
+					ProjectName: "payments-web",
+				},
 			},
 		},
 	}
-	fakeClient := fake.NewClientset(existing)
+	fakeClient := newFakeCtrlClient(t, existing)
 	r := newTestResolver()
 	h := NewHandler(NewK8sClient(fakeClient, r), r).
 		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
@@ -941,7 +978,7 @@ func TestGetRoundTripsAnnotations(t *testing.T) {
 
 	resp, err := h.GetTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.GetTemplatePolicyBindingRequest{
 		Namespace: newFolderScopeRef("payments"),
-		Name:  "bind-a",
+		Name:      "bind-a",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -958,11 +995,13 @@ func TestGetRoundTripsAnnotations(t *testing.T) {
 	}
 }
 
-// TestListReturnsOnlyBindings is a regression test for the label selector
-// on ListBindings; if the handler's List path accidentally matched other
-// resource types in the same namespace, this test would fail.
+// TestListReturnsOnlyBindings is a regression test for the List path.
+// Since TemplatePolicyBinding is now a dedicated CRD (HOL-662), a List
+// naturally only returns TemplatePolicyBinding objects — we no longer
+// rely on label filtering the way ConfigMap storage did. This test
+// confirms the happy List path returns a single seeded binding.
 func TestListReturnsOnlyBindings(t *testing.T) {
-	binding := &corev1.ConfigMap{
+	binding := &templatesv1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bind-a",
 			Namespace: "holos-fld-payments",
@@ -971,18 +1010,23 @@ func TestListReturnsOnlyBindings(t *testing.T) {
 				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
 			},
 		},
-	}
-	policy := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "policy-a",
-			Namespace: "holos-fld-payments",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+			DisplayName: "A",
+			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
+				Scope:     "folder",
+				ScopeName: "payments",
+				Name:      "local-policy",
+			},
+			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
+				{
+					Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+					Name:        "api",
+					ProjectName: "payments-web",
+				},
 			},
 		},
 	}
-	fakeClient := fake.NewClientset(binding, policy)
+	fakeClient := newFakeCtrlClient(t, binding)
 	r := newTestResolver()
 	h := NewHandler(NewK8sClient(fakeClient, r), r).
 		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"viewer@example.com": "viewer"}}).
@@ -1000,11 +1044,11 @@ func TestListReturnsOnlyBindings(t *testing.T) {
 	}
 }
 
-// TestDeleteRemovesConfigMap covers the happy-path Delete: the ConfigMap
-// must disappear from the fake clientset after the call, and the response
-// must succeed.
-func TestDeleteRemovesConfigMap(t *testing.T) {
-	existing := &corev1.ConfigMap{
+// TestDeleteRemovesBinding covers the happy-path Delete: the
+// TemplatePolicyBinding CRD must disappear from the fake client after
+// the call, and the response must succeed.
+func TestDeleteRemovesBinding(t *testing.T) {
+	existing := &templatesv1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bind-a",
 			Namespace: "holos-fld-payments",
@@ -1014,7 +1058,7 @@ func TestDeleteRemovesConfigMap(t *testing.T) {
 			},
 		},
 	}
-	fakeClient := fake.NewClientset(existing)
+	fakeClient := newFakeCtrlClient(t, existing)
 	r := newTestResolver()
 	h := NewHandler(NewK8sClient(fakeClient, r), r).
 		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"owner@example.com": "owner"}}).
@@ -1023,13 +1067,12 @@ func TestDeleteRemovesConfigMap(t *testing.T) {
 
 	_, err := h.DeleteTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyBindingRequest{
 		Namespace: newFolderScopeRef("payments"),
-		Name:  "bind-a",
+		Name:      "bind-a",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_, getErr := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "bind-a", metav1.GetOptions{})
-	if getErr == nil {
+	if b := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-a"); b != nil {
 		t.Error("expected binding to be deleted")
 	}
 }
@@ -1061,5 +1104,68 @@ func TestPolicyProbeErrorFailsInternal(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeInternal {
 		t.Errorf("expected CodeInternal, got %v: %v", connect.CodeOf(err), err)
+	}
+}
+
+// TestMapK8sError pins the taxonomy translation from Kubernetes
+// apimachinery error types to ConnectRPC codes. HOL-662 added IsInvalid
+// handling so CEL ValidatingAdmissionPolicy rejections and CRD schema
+// failures surface as InvalidArgument instead of the generic Internal
+// fallback. The table mirrors the one in templatepolicies so the two
+// handlers keep the same error taxonomy.
+func TestMapK8sError(t *testing.T) {
+	gvk := schema.GroupKind{Group: "templates.holos.run", Kind: "TemplatePolicyBinding"}
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{
+			name: "not found maps to NotFound",
+			err:  k8serrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "missing"),
+			want: connect.CodeNotFound,
+		},
+		{
+			name: "already exists maps to AlreadyExists",
+			err:  k8serrors.NewAlreadyExists(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "dupe"),
+			want: connect.CodeAlreadyExists,
+		},
+		{
+			name: "forbidden maps to PermissionDenied",
+			err:  k8serrors.NewForbidden(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicybindings"}, "nope", errors.New("rbac")),
+			want: connect.CodePermissionDenied,
+		},
+		{
+			name: "unauthorized maps to Unauthenticated",
+			err:  k8serrors.NewUnauthorized("no token"),
+			want: connect.CodeUnauthenticated,
+		},
+		{
+			name: "bad request maps to InvalidArgument",
+			err:  k8serrors.NewBadRequest("malformed"),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "invalid (CEL VAP / CRD schema rejection) maps to InvalidArgument",
+			err:  k8serrors.NewInvalid(gvk, "bad", nil),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "generic error falls through to Internal",
+			err:  errors.New("boom"),
+			want: connect.CodeInternal,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mapK8sError(tc.err)
+			var cerr *connect.Error
+			if !errors.As(got, &cerr) {
+				t.Fatalf("expected *connect.Error, got %T: %v", got, got)
+			}
+			if cerr.Code() != tc.want {
+				t.Errorf("code=%v want %v (err=%v)", cerr.Code(), tc.want, tc.err)
+			}
+		})
 	}
 }

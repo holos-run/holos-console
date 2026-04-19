@@ -9,10 +9,13 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/scopeshim"
@@ -129,15 +132,45 @@ func authedCtx(email string, roles []string) context.Context {
 	})
 }
 
-func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, *fake.Clientset) {
+// newTestHandler constructs a TemplatePolicyService handler wired against a
+// fake controller-runtime client seeded with no TemplatePolicy CRs. The
+// returned client is the shared fake, so tests can Get/List/Create CRs
+// directly to assert on storage side effects without going through the
+// handler. HOL-662 migrated the storage substrate from ConfigMaps to
+// TemplatePolicy CRDs; the fake ctrlclient is a sufficient stand-in for
+// the CRUD envtest coverage in k8s_test.go.
+func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, client.Client) {
 	t.Helper()
-	fakeClient := fake.NewClientset()
+	ctrlClient := newFakeCtrlClient(t)
 	r := newTestResolver()
-	k := NewK8sClient(fakeClient, r)
+	k := NewK8sClient(ctrlClient, r)
 	h := NewHandler(k, r).
 		WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers}).
 		WithFolderGrantResolver(&stubFolderGrantResolver{users: shareUsers})
-	return h, fakeClient
+	return h, ctrlClient
+}
+
+// listPolicies collects every TemplatePolicy visible in the given namespace
+// through the fake ctrlclient. Used in handler tests to assert on what the
+// handler wrote (or did not write).
+func listPolicies(t *testing.T, c client.Client, namespace string) []templatesv1alpha1.TemplatePolicy {
+	t.Helper()
+	var list templatesv1alpha1.TemplatePolicyList
+	if err := c.List(context.Background(), &list, client.InNamespace(namespace)); err != nil {
+		t.Fatalf("list policies in %q: %v", namespace, err)
+	}
+	return list.Items
+}
+
+// getPolicyCR retrieves a TemplatePolicy by namespace/name, returning nil
+// if not found so tests can assert absence as easily as presence.
+func getPolicyCR(t *testing.T, c client.Client, namespace, name string) *templatesv1alpha1.TemplatePolicy {
+	t.Helper()
+	var p templatesv1alpha1.TemplatePolicy
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, &p); err != nil {
+		return nil
+	}
+	return &p
 }
 
 // newFolderScope and newOrgScope are short constructors for the namespace
@@ -197,10 +230,13 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 		t.Errorf("expected error to name %q, got %v", want, err)
 	}
 
-	// Confirm nothing landed in the project namespace.
-	cms, _ := fakeClient.CoreV1().ConfigMaps("holos-prj-billing-web").List(context.Background(), metav1.ListOptions{})
-	if len(cms.Items) != 0 {
-		t.Errorf("expected no ConfigMaps in project namespace, got %d", len(cms.Items))
+	// Confirm nothing landed in the project namespace. The handler
+	// validation layer short-circuits the request before any CRD write,
+	// so the ctrlclient must not have a TemplatePolicy in the project
+	// namespace. This is belt-and-suspenders against the CEL VAP that
+	// enforces the same guarantee at admission time (HOL-618).
+	if got := listPolicies(t, fakeClient, "holos-prj-billing-web"); len(got) != 0 {
+		t.Errorf("expected no TemplatePolicy CRs in project namespace, got %d", len(got))
 	}
 }
 
@@ -513,15 +549,15 @@ func TestCreatePolicyHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
 	}
-	cm, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "require-httproute", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected ConfigMap: %v", err)
+	p := getPolicyCR(t, fakeClient, "holos-fld-payments", "require-httproute")
+	if p == nil {
+		t.Fatal("expected TemplatePolicy CRD to be created")
 	}
-	if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicy {
-		t.Errorf("expected template-policy label, got %q", cm.Labels[v1alpha2.LabelResourceType])
+	if p.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicy {
+		t.Errorf("expected template-policy label, got %q", p.Labels[v1alpha2.LabelResourceType])
 	}
-	if cm.Annotations[v1alpha2.AnnotationCreatorEmail] != "owner@example.com" {
-		t.Errorf("expected creator annotation, got %q", cm.Annotations[v1alpha2.AnnotationCreatorEmail])
+	if p.Annotations[v1alpha2.AnnotationCreatorEmail] != "owner@example.com" {
+		t.Errorf("expected creator annotation, got %q", p.Annotations[v1alpha2.AnnotationCreatorEmail])
 	}
 }
 
@@ -552,12 +588,15 @@ func TestCreatePolicyAtOrgScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy at org scope: %v", err)
 	}
-	cm, err := fakeClient.CoreV1().ConfigMaps("holos-org-acme").Get(context.Background(), "require-httproute", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected ConfigMap in org namespace: %v", err)
+	// HOL-662 dropped the LabelTemplateScope annotation — scope is now
+	// derived from the namespace (holos-org-*) by every reader via the
+	// package-level resolver. Assert on namespace instead.
+	p := getPolicyCR(t, fakeClient, "holos-org-acme", "require-httproute")
+	if p == nil {
+		t.Fatal("expected TemplatePolicy CRD in org namespace")
 	}
-	if cm.Labels[v1alpha2.LabelTemplateScope] != v1alpha2.TemplateScopeOrganization {
-		t.Errorf("expected organization scope label, got %q", cm.Labels[v1alpha2.LabelTemplateScope])
+	if p.Namespace != "holos-org-acme" {
+		t.Errorf("expected namespace=holos-org-acme, got %q", p.Namespace)
 	}
 }
 
@@ -580,31 +619,32 @@ func TestDeleteMissingPolicyReturnsNotFound(t *testing.T) {
 }
 
 // TestUpdatePreservesUnspecifiedFields verifies the display-name preservation
-// semantic documented on Handler.UpdateTemplatePolicy.
+// semantic documented on Handler.UpdateTemplatePolicy. HOL-662 stores the
+// policy as a TemplatePolicy CRD; display_name and description live on
+// Spec, not annotations.
 func TestUpdatePreservesUnspecifiedFields(t *testing.T) {
-	// Seed a policy via the K8s client directly so the test depends only on
-	// the handler Update code path.
-	fakeClient := fake.NewClientset()
-	existing := &corev1.ConfigMap{
+	// Seed a policy CRD directly so the test depends only on the handler
+	// Update code path. HOL-662 persists display_name / description on
+	// spec, so the fixture uses those.
+	existing := &templatesv1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "policy",
 			Namespace: "holos-fld-payments",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
 			},
 			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:         "Existing Name",
-				v1alpha2.AnnotationDescription:         "Existing Desc",
-				v1alpha2.AnnotationCreatorEmail:        "original@example.com",
-				v1alpha2.AnnotationTemplatePolicyRules: `[]`,
+				v1alpha2.AnnotationCreatorEmail: "original@example.com",
 			},
 		},
+		Spec: templatesv1alpha1.TemplatePolicySpec{
+			DisplayName: "Existing Name",
+			Description: "Existing Desc",
+			Rules:       nil,
+		},
 	}
-	if _, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Create(context.Background(), existing, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("seeding: %v", err)
-	}
+	fakeClient := newFakeCtrlClient(t, existing)
 
 	r := newTestResolver()
 	k := NewK8sClient(fakeClient, r)
@@ -616,27 +656,26 @@ func TestUpdatePreservesUnspecifiedFields(t *testing.T) {
 	_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
 		Namespace: newFolderScope("payments"),
 		Policy: &consolev1.TemplatePolicy{
-			Name:     "policy",
+			Name:      "policy",
 			Namespace: newFolderScope("payments"),
-			Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
+			Rules:     []*consolev1.TemplatePolicyRule{sampleRule()},
 		},
 	}))
 	if err != nil {
 		t.Fatalf("UpdateTemplatePolicy: %v", err)
 	}
-	after, _ := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "policy", metav1.GetOptions{})
-	if after.Annotations[v1alpha2.AnnotationDisplayName] != "Existing Name" {
-		t.Errorf("display name not preserved: %q", after.Annotations[v1alpha2.AnnotationDisplayName])
+	after := getPolicyCR(t, fakeClient, "holos-fld-payments", "policy")
+	if after == nil {
+		t.Fatal("policy disappeared after update")
 	}
-	if after.Annotations[v1alpha2.AnnotationDescription] != "Existing Desc" {
-		t.Errorf("description not preserved: %q", after.Annotations[v1alpha2.AnnotationDescription])
+	if after.Spec.DisplayName != "Existing Name" {
+		t.Errorf("display name not preserved: %q", after.Spec.DisplayName)
 	}
-	rules, err := unmarshalRules(after.Annotations[v1alpha2.AnnotationTemplatePolicyRules])
-	if err != nil {
-		t.Fatalf("unmarshalRules: %v", err)
+	if after.Spec.Description != "Existing Desc" {
+		t.Errorf("description not preserved: %q", after.Spec.Description)
 	}
-	if len(rules) != 1 {
-		t.Errorf("expected rules replaced with 1 entry, got %d", len(rules))
+	if len(after.Spec.Rules) != 1 {
+		t.Errorf("expected rules replaced with 1 entry, got %d", len(after.Spec.Rules))
 	}
 }
 
@@ -693,11 +732,10 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 		t.Errorf("expected folder scope from namespace %q, got scope=%v err=%v", got.GetNamespace(), gotScope, err)
 	}
 
-	// List directly via the fake client to verify no project-namespace
+	// List directly via the fake ctrlclient to verify no project-namespace
 	// artefacts leaked.
-	projectCms, _ := fakeClient.CoreV1().ConfigMaps("holos-prj-payments-web").List(context.Background(), metav1.ListOptions{})
-	if len(projectCms.Items) != 0 {
-		t.Errorf("expected 0 ConfigMaps in any project namespace, got %d", len(projectCms.Items))
+	if got := listPolicies(t, fakeClient, "holos-prj-payments-web"); len(got) != 0 {
+		t.Errorf("expected 0 TemplatePolicy CRs in any project namespace, got %d", len(got))
 	}
 }
 
@@ -818,36 +856,33 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 		},
 	}
 
-	fakeClient := fake.NewClientset()
+	// Seed a legitimate folder-scope policy CRD so the Delete / Update
+	// cases have something to attempt to mutate. Seed via the fake
+	// ctrlclient so the creation is not itself gated by RBAC.
+	existing := &templatesv1alpha1.TemplatePolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "require-httproute",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationCreatorEmail: "platform@example.com",
+			},
+		},
+		Spec: templatesv1alpha1.TemplatePolicySpec{
+			DisplayName: "Require HTTPRoute",
+			Description: "Force HTTPRoute for every project",
+			Rules:       nil,
+		},
+	}
+	fakeClient := newFakeCtrlClient(t, existing)
 	r := newTestResolver()
 	k := NewK8sClient(fakeClient, r)
 	h := NewHandler(k, r).
 		WithOrgGrantResolver(orgResolver).
 		WithFolderGrantResolver(folderResolver)
-
-	// Seed a legitimate folder-scope policy so the Delete / Update cases have
-	// something to attempt to mutate. Seed directly via the k8s client so the
-	// creation is not itself gated by RBAC.
-	existing := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "require-httproute",
-			Namespace: "holos-fld-payments",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplatePolicy,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:         "Require HTTPRoute",
-				v1alpha2.AnnotationDescription:         "Force HTTPRoute for every project",
-				v1alpha2.AnnotationCreatorEmail:        "platform@example.com",
-				v1alpha2.AnnotationTemplatePolicyRules: `[]`,
-			},
-		},
-	}
-	if _, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Create(context.Background(), existing, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("seeding folder-scope policy: %v", err)
-	}
 
 	// The user carries a project-owner role claim in their JWT-style
 	// Claims.Roles. Folder / org shareRoles maps are empty, so the role
@@ -945,24 +980,87 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 	}
 
 	// Belt-and-suspenders: after all the mutation attempts, the seeded
-	// ConfigMap in the folder namespace must still be unchanged — no rules
-	// annotation rewrite, no deletion. This catches any future regression in
-	// which a handler path accidentally writes before checkAccess.
-	after, err := fakeClient.CoreV1().ConfigMaps("holos-fld-payments").Get(context.Background(), "require-httproute", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("folder-scope policy unexpectedly missing after denied mutations: %v", err)
+	// TemplatePolicy CR in the folder namespace must still be unchanged —
+	// no rules rewrite, no deletion. This catches any future regression
+	// in which a handler path accidentally writes before checkAccess.
+	after := getPolicyCR(t, fakeClient, "holos-fld-payments", "require-httproute")
+	if after == nil {
+		t.Fatal("folder-scope policy unexpectedly missing after denied mutations")
 	}
-	if got, want := after.Annotations[v1alpha2.AnnotationTemplatePolicyRules], `[]`; got != want {
-		t.Errorf("folder-scope policy rules annotation mutated by denied caller: got %q want %q", got, want)
+	if len(after.Spec.Rules) != 0 {
+		t.Errorf("folder-scope policy rules mutated by denied caller: got %d rules want 0", len(after.Spec.Rules))
 	}
 	if got, want := after.Annotations[v1alpha2.AnnotationCreatorEmail], "platform@example.com"; got != want {
 		t.Errorf("folder-scope policy creator annotation mutated by denied caller: got %q want %q", got, want)
 	}
 
-	// And no ConfigMap should have landed in any project namespace, even
-	// though one of the Create cases targeted TEMPLATE_SCOPE_PROJECT.
-	projectCms, _ := fakeClient.CoreV1().ConfigMaps("holos-prj-billing-web").List(context.Background(), metav1.ListOptions{})
-	if len(projectCms.Items) != 0 {
-		t.Errorf("expected zero ConfigMaps in project namespace, got %d", len(projectCms.Items))
+	// And no TemplatePolicy should have landed in any project namespace,
+	// even though one of the Create cases targeted the project namespace
+	// (handler's extractPolicyScope rejects it before any write).
+	if got := listPolicies(t, fakeClient, "holos-prj-billing-web"); len(got) != 0 {
+		t.Errorf("expected zero TemplatePolicy CRs in project namespace, got %d", len(got))
+	}
+}
+
+// TestMapK8sError pins the taxonomy translation from the Kubernetes
+// apimachinery error types to ConnectRPC codes. HOL-662 added IsInvalid
+// handling so CEL ValidatingAdmissionPolicy rejections and CRD schema
+// failures surface to the UI as InvalidArgument instead of the generic
+// Internal fallback. The table is shared-shape with the binding
+// handler's test in templatepolicybindings/handler_test.go.
+func TestMapK8sError(t *testing.T) {
+	gvk := schema.GroupKind{Group: "templates.holos.run", Kind: "TemplatePolicy"}
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{
+			name: "not found maps to NotFound",
+			err:  k8serrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicies"}, "missing"),
+			want: connect.CodeNotFound,
+		},
+		{
+			name: "already exists maps to AlreadyExists",
+			err:  k8serrors.NewAlreadyExists(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicies"}, "dupe"),
+			want: connect.CodeAlreadyExists,
+		},
+		{
+			name: "forbidden maps to PermissionDenied",
+			err:  k8serrors.NewForbidden(schema.GroupResource{Group: gvk.Group, Resource: "templatepolicies"}, "nope", errors.New("rbac")),
+			want: connect.CodePermissionDenied,
+		},
+		{
+			name: "unauthorized maps to Unauthenticated",
+			err:  k8serrors.NewUnauthorized("no token"),
+			want: connect.CodeUnauthenticated,
+		},
+		{
+			name: "bad request maps to InvalidArgument",
+			err:  k8serrors.NewBadRequest("malformed"),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "invalid (CEL VAP / CRD schema rejection) maps to InvalidArgument",
+			err:  k8serrors.NewInvalid(gvk, "bad", nil),
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			name: "generic error falls through to Internal",
+			err:  errors.New("boom"),
+			want: connect.CodeInternal,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mapK8sError(tc.err)
+			var cerr *connect.Error
+			if !errors.As(got, &cerr) {
+				t.Fatalf("expected *connect.Error, got %T: %v", got, got)
+			}
+			if cerr.Code() != tc.want {
+				t.Errorf("code=%v want %v (err=%v)", cerr.Code(), tc.want, tc.err)
+			}
+		})
 	}
 }
