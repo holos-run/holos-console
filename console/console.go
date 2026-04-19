@@ -354,7 +354,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Namespace hierarchy walker for ancestor chain resolution. Used by
 		// the project grant resolver, the unified TemplateService handler,
 		// and the TemplatePolicy REQUIRE-rule folder resolver.
-		nsWalker := &resolver.Walker{Client: k8sClientset, Resolver: nsResolver}
+		//
+		// HOL-622 routes WalkAncestors through the controller-runtime
+		// cache-backed client when the embedded Manager is wired (the
+		// default production path). The informer cache populated by the
+		// Manager serves every per-hop Namespace Get without an apiserver
+		// round-trip — the AC "render-time list latency becomes O(cache
+		// lookup)" extends to the namespace lookups the walker performs.
+		// The Client field is retained as a fallback for test wiring and
+		// for any deployment that turns the Manager off.
+		var nsGetter resolver.NamespaceGetter
+		if s.controllerMgr != nil {
+			nsGetter = &resolver.CtrlRuntimeNamespaceGetter{Client: s.controllerMgr.GetClient()}
+		}
+		nsWalker := &resolver.Walker{Getter: nsGetter, Client: k8sClientset, Resolver: nsResolver}
 
 		// Unified templates K8s client (replaces both templates.K8sClient and
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
@@ -388,6 +401,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		// namespace (HOL-554 storage-isolation).
 		templatePoliciesK8s := templatepolicies.NewK8sClient(templateCtrlClient, nsResolver)
 		templatePolicyBindingsK8s := templatepolicybindings.NewK8sClient(templateCtrlClient, nsResolver)
+		// HOL-622: wire the shared informer cache so the resolver hot path
+		// (ListPoliciesInNamespace / ListBindingsInNamespace) pulls pointers
+		// to cache-owned CRD objects via the indexer's NamespaceIndex — no
+		// DeepCopy, no value-slice re-wrap. The acceptance criterion "no
+		// defensive copy on the hot path — resolver forwards cached pointers"
+		// is met by this wiring plus the indexer-backed path inside each
+		// K8sClient. Tests that exercise the CRUD surface without the full
+		// manager leave the cache nil and continue to use the delegating
+		// client path.
+		if s.controllerMgr != nil {
+			cache := s.controllerMgr.GetManager().GetCache()
+			templatePoliciesK8s = templatePoliciesK8s.WithCache(cache)
+			templatePolicyBindingsK8s = templatePolicyBindingsK8s.WithCache(cache)
+		}
 		// HOL-596 wires the TemplatePolicyBinding evaluation path into the
 		// render-time resolver. Bindings take precedence on conflict: a
 		// binding whose target_refs match the current render target
@@ -407,7 +434,19 @@ func (s *Server) Serve(ctx context.Context) error {
 		// or project-scope template. Reads consult ONLY folder/organization
 		// namespaces — any render-state artifact in a project namespace is
 		// ignored (HOL-554 storage-isolation guardrail).
-		appliedRenderStateClient := policyresolver.NewAppliedRenderStateClient(k8sClientset, nsResolver, nsWalker)
+		// HOL-622 threads the cache-backed controller-runtime client into the
+		// applied-render-state path. The embedded Manager's ConfigMap informer
+		// is primed with a label selector scoped to
+		// managed-by=holos-console,resource-type=render-state, so drift checks
+		// read from the shared cache alongside policy and binding reads. If
+		// the Manager is disabled we fall back to a nil client; the render-
+		// state client returns nil on a nil client so drift silently no-ops
+		// until a Manager is re-enabled.
+		var renderStateCtrlClient ctrlclient.Client
+		if s.controllerMgr != nil {
+			renderStateCtrlClient = s.controllerMgr.GetClient()
+		}
+		appliedRenderStateClient := policyresolver.NewAppliedRenderStateClient(renderStateCtrlClient, nsResolver, nsWalker)
 		// driftChecker composes the real TemplatePolicy resolver with the
 		// applied-render-state store so the deployments and templates
 		// handlers can surface drift (DeploymentStatusSummary.policy_drift,

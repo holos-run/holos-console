@@ -36,13 +36,25 @@ import (
 
 // TestFolderResolver_MultiPodFreshness verifies the cache-backed read
 // path across two independent ctrl-runtime Managers sharing the envtest
-// apiserver. Manager A's direct client seeds a namespace hierarchy and
-// an initial policy + binding; manager B's cache-backed client feeds a
-// folderResolver that observes them on first Resolve. Manager A then
-// writes a second policy + binding, and the test polls manager B's
+// apiserver. Manager A's cache-backed client seeds a policy + binding;
+// manager B's cache-backed client feeds a folderResolver that observes
+// them on first Resolve. Manager A then writes a second policy + binding
+// through the same cache-backed client, and the test polls manager B's
 // resolver until the new binding becomes effective — bounding the
 // acceptance criterion's "within one resync interval" clause with a
 // generous 30s deadline so a slow CI host does not flake.
+//
+// Writing the policy and binding CRs through manager A's cache-backed
+// client (envA.Client) — rather than the uncached envA.Direct — is
+// deliberate: it exercises the production write path and makes this
+// regression sensitive to any wiring bug in manager A's K8sClients. A
+// test that created via envA.Direct would still pass even if manager A
+// never plumbed a ctrl-runtime client onto its storage clients.
+//
+// The namespace fixtures use envA.Direct because the resolver's walker
+// consumes namespaces via client-go; routing those creates through the
+// cache-backed client would just add a propagation wait to the setup
+// without strengthening the contract under test.
 //
 // This is intentionally a single test (not table-driven): the expensive
 // bit is spinning up two Managers against the shared envtest, and a
@@ -178,11 +190,17 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 			},
 		},
 	}
-	if err := envA.Direct.Create(context.Background(), policyA); err != nil {
-		t.Fatalf("seed create policy: %v", err)
+	// Seed via envA.Client (cache-backed) — this exercises manager A's
+	// production write path. Writes fall through the delegating client to
+	// the apiserver; manager A's cache observes them on the next watch
+	// event, and manager B's cache observes them via its independent
+	// watch. Using envA.Direct here would mask a wiring bug where manager
+	// A failed to use its cache-backed client at all.
+	if err := envA.Client.Create(context.Background(), policyA); err != nil {
+		t.Fatalf("seed create policy (manager A cache-backed): %v", err)
 	}
-	if err := envA.Direct.Create(context.Background(), bindingA); err != nil {
-		t.Fatalf("seed create binding: %v", err)
+	if err := envA.Client.Create(context.Background(), bindingA); err != nil {
+		t.Fatalf("seed create binding (manager A cache-backed): %v", err)
 	}
 
 	// Build manager B's resolver stack. The kubernetes.Interface for the
@@ -243,11 +261,11 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 			},
 		},
 	}
-	if err := envA.Direct.Create(context.Background(), policyB); err != nil {
-		t.Fatalf("post-seed create policy: %v", err)
+	if err := envA.Client.Create(context.Background(), policyB); err != nil {
+		t.Fatalf("post-seed create policy (manager A cache-backed): %v", err)
 	}
-	if err := envA.Direct.Create(context.Background(), bindingB); err != nil {
-		t.Fatalf("post-seed create binding: %v", err)
+	if err := envA.Client.Create(context.Background(), bindingB); err != nil {
+		t.Fatalf("post-seed create binding (manager A cache-backed): %v", err)
 	}
 
 	// Freshness contract: B's resolver must observe the new binding within

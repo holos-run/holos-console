@@ -9,7 +9,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -36,17 +37,19 @@ import (
 // two helpers co-located avoids a cross-package dependency cycle between
 // templates and policyresolver.
 //
-// HOL-622 scope decision: render-state remains on ConfigMap storage. The
+// HOL-622 scope decision: render-state remains on ConfigMap storage (the
 // HOL-615 plan scopes the CRD migration to `Template`, `TemplatePolicy`, and
-// `TemplatePolicyBinding`; the applied-render-set is an implementation
-// detail of the drift surface — not a user-declared policy artifact — so it
-// continues to live as a managed ConfigMap in the folder/organization
-// namespace. A future phase may migrate this to a dedicated CRD, at which
-// point this client will route through the controller-runtime cache like
-// the policy readers above; until then the cache hit the resolver's List
-// paths enjoy is the sole HOL-622 optimization.
+// `TemplatePolicyBinding`), but the client now reads and writes through the
+// controller-runtime client.Client. Production wires the embedded Manager's
+// cache-backed client; with the render-state ConfigMap informer primed by
+// the Manager (scoped via a label selector so we don't watch every ConfigMap
+// in the cluster), drift-check reads land in the shared informer cache
+// alongside policy and binding reads. A future phase may migrate render
+// state to a dedicated CRD; the seam here does not change shape when that
+// happens because controller-runtime's client.Client surfaces both
+// ConfigMap and any future CRD uniformly.
 type AppliedRenderStateClient struct {
-	client   kubernetes.Interface
+	client   ctrlclient.Client
 	resolver *resolver.Resolver
 	walker   WalkerInterface
 }
@@ -60,7 +63,10 @@ type WalkerInterface interface {
 
 // NewAppliedRenderStateClient creates a client that reads and writes
 // applied-render-set records to the folder namespace that owns a project.
-func NewAppliedRenderStateClient(client kubernetes.Interface, r *resolver.Resolver, w WalkerInterface) *AppliedRenderStateClient {
+// HOL-622 migrated the underlying client type from client-go
+// kubernetes.Interface to controller-runtime client.Client so the read path
+// lands in the shared informer cache wired by the embedded Manager.
+func NewAppliedRenderStateClient(client ctrlclient.Client, r *resolver.Resolver, w WalkerInterface) *AppliedRenderStateClient {
 	return &AppliedRenderStateClient{client: client, resolver: r, walker: w}
 }
 
@@ -234,8 +240,11 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 
 	// Try to create first. On AlreadyExists, fall through to Update so
 	// re-applying an unchanged render set is idempotent and an edit that
-	// shrinks the applied set still overwrites the stored value.
-	_, createErr := c.client.CoreV1().ConfigMaps(folderNs).Create(ctx, cm, metav1.CreateOptions{})
+	// shrinks the applied set still overwrites the stored value. The
+	// controller-runtime client.Client writes go straight to the API server
+	// (the delegating client does not buffer writes); the create/update
+	// choreography mirrors the previous client-go implementation.
+	createErr := c.client.Create(ctx, cm)
 	if createErr == nil {
 		return nil
 	}
@@ -243,8 +252,8 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 		return fmt.Errorf("creating render state ConfigMap %q in %q: %w", cmName, folderNs, createErr)
 	}
 
-	existing, getErr := c.client.CoreV1().ConfigMaps(folderNs).Get(ctx, cmName, metav1.GetOptions{})
-	if getErr != nil {
+	existing := &corev1.ConfigMap{}
+	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: cmName}, existing); getErr != nil {
 		return fmt.Errorf("getting render state ConfigMap %q in %q for update: %w", cmName, folderNs, getErr)
 	}
 	if existing.Annotations == nil {
@@ -267,7 +276,7 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 	// standardized on LabelProject; scrub it so older values cannot linger
 	// on update after the canonical label is authoritative.
 	delete(existing.Labels, v1alpha2.LabelRenderTargetProject)
-	if _, updateErr := c.client.CoreV1().ConfigMaps(folderNs).Update(ctx, existing, metav1.UpdateOptions{}); updateErr != nil {
+	if updateErr := c.client.Update(ctx, existing); updateErr != nil {
 		return fmt.Errorf("updating render state ConfigMap %q in %q: %w", cmName, folderNs, updateErr)
 	}
 	return nil
@@ -309,8 +318,8 @@ func (c *AppliedRenderStateClient) ReadAppliedRenderSet(
 	}
 
 	cmName := renderStateConfigMapName(targetKind, project, targetName)
-	cm, getErr := c.client.CoreV1().ConfigMaps(folderNs).Get(ctx, cmName, metav1.GetOptions{})
-	if getErr != nil {
+	cm := &corev1.ConfigMap{}
+	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: cmName}, cm); getErr != nil {
 		if k8serrors.IsNotFound(getErr) {
 			return []*consolev1.LinkedTemplateRef{}, false, nil
 		}

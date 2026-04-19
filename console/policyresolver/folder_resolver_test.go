@@ -11,6 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -117,6 +119,45 @@ func buildFixture() (*fake.Clientset, *resolver.Resolver, map[string]string) {
 		mkNs(projectRoses, v1alpha2.ResourceTypeProject, folderTeamANs),
 	}
 	client := fake.NewClientset(objects...)
+
+	namespaces := map[string]string{
+		"org":            orgNs,
+		"folderEng":      folderEngNs,
+		"folderTeamA":    folderTeamANs,
+		"projectOrchids": projectOrchids,
+		"projectLilies":  projectLilies,
+		"projectRoses":   projectRoses,
+	}
+	return client, r, namespaces
+}
+
+// buildCtrlFixture is the HOL-622 counterpart to buildFixture. It returns a
+// controller-runtime fake client seeded with the same namespace hierarchy plus
+// a corev1 scheme wired for ConfigMap reads. Tests that exercise the
+// AppliedRenderStateClient (which migrated from client-go to ctrlclient) call
+// this helper instead of buildFixture so the applied-render-set path is
+// covered end-to-end by a controller-runtime client surface.
+func buildCtrlFixture() (ctrlclient.Client, *resolver.Resolver, map[string]string) {
+	r := baseResolver()
+	orgNs := r.OrgNamespace("acme")
+	folderEngNs := r.FolderNamespace("eng")
+	folderTeamANs := r.FolderNamespace("team-a")
+	projectOrchids := r.ProjectNamespace("orchids")
+	projectLilies := r.ProjectNamespace("lilies")
+	projectRoses := r.ProjectNamespace("roses")
+
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	objects := []ctrlclient.Object{
+		mkNs(orgNs, v1alpha2.ResourceTypeOrganization, ""),
+		mkNs(folderEngNs, v1alpha2.ResourceTypeFolder, orgNs),
+		mkNs(folderTeamANs, v1alpha2.ResourceTypeFolder, folderEngNs),
+		mkNs(projectOrchids, v1alpha2.ResourceTypeProject, orgNs),
+		mkNs(projectLilies, v1alpha2.ResourceTypeProject, folderEngNs),
+		mkNs(projectRoses, v1alpha2.ResourceTypeProject, folderTeamANs),
+	}
+	client := ctrlfake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 
 	namespaces := map[string]string{
 		"org":            orgNs,
