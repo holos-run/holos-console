@@ -41,6 +41,7 @@ import (
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
 	"github.com/holos-run/holos-console/console/templatepolicies"
@@ -257,6 +258,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Register services (protected - requires auth)
 	if k8sClientset != nil {
 		nsResolver := &resolver.Resolver{NamespacePrefix: s.cfg.NamespacePrefix, OrganizationPrefix: s.cfg.OrganizationPrefix, FolderPrefix: s.cfg.FolderPrefix, ProjectPrefix: s.cfg.ProjectPrefix}
+		// HOL-619: register the namespace resolver with the compatibility
+		// shim so that handlers and the policyresolver can classify
+		// namespaces back into (Scope, scopeName) during the transition
+		// from proto-level TemplateScopeRef to namespace-keyed resources.
+		// The shim is removed in phase 5 (HOL-624).
+		scopeshim.SetDefaultResolver(nsResolver)
 		slog.Info("kubernetes client initialized")
 
 		// Folder K8s client created first so the org handler can auto-create default folders.
