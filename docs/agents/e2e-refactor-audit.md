@@ -27,26 +27,26 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 
 ## Spec Inventory
 
-`frontend/e2e/` contains **11 spec files** totalling **1,576 test-lines** (plus `helpers.ts` at 250 lines). Each spec is enumerated below with every `test(...)` call it declares.
+`frontend/e2e/` contains **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). Each spec is enumerated below with every `test(...)` call it declares.
 
 ### Summary Table
 
 | Spec | Tests | Verdict |
 | --- | --: | --- |
-| `auth.spec.ts` | 11 | **Keep** (OIDC canonical E2E) |
-| `profile.spec.ts` | 5 | **Refactor-to-unit** |
+| `auth.spec.ts` | 14 | **Keep** (OIDC canonical E2E) — 13 Keep + 1 Refactor |
+| `profile.spec.ts` | 5 | **Refactor-to-unit** (all 5) |
 | `navigation.spec.ts` | 2 | **Split** (1 Keep, 1 Refactor) |
-| `create-dialogs.spec.ts` | 5 | **Split** (1 Keep, 4 Refactor) |
-| `org-settings.spec.ts` | 2 | **Refactor-to-unit** |
-| `deployments.spec.ts` | 3 | **Refactor-to-unit** |
-| `folders.spec.ts` | 5 | **Keep** (K8s CRUD) |
+| `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) |
+| `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) |
+| `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) |
+| `folders.spec.ts` | 6 | **Keep** (K8s CRUD) |
 | `folder-rbac.spec.ts` | 3 | **Keep** (K8s RBAC cascade) |
 | `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) |
-| `secrets.spec.ts` | 6 | **Split** (4 Keep, 2 mobile → delete/consolidate) |
-| `multi-persona.spec.ts` | 9 | **Split** (first 4 → Go tests, 3 → unit, 3 Keep) |
-| **Total** | **53** | **— Keep: 23, Refactor: 30** |
+| `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) |
+| `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) |
+| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** |
 
-Projected reduction: **~57% of E2E test bodies** move to unit/Go tests, leaving the E2E job focused on OIDC auth and real K8s round-trips.
+Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) — 23 move to unit/Go tests, 3 are deleted as redundant with existing coverage. The remaining E2E job is focused on OIDC auth and real K8s round-trips.
 
 ---
 
@@ -73,7 +73,7 @@ OIDC login against a real Dex server is the canonical E2E use case. Unit tests c
 | `Profile Page > should display iss claim from embedded Dex` | **Keep** | Specifically asserts the **real** embedded-Dex issuer — cannot be mocked. |
 | `Profile Page > should switch to raw JSON view and show complete claims` | **Refactor-to-unit (merge with smoke)** | Raw-view toggle is UI-only; already covered by `-profile.test.tsx` *"switches to raw view and shows JSON"*. Safe to delete from `auth.spec.ts`. |
 
-**Net:** 11 tests kept (two marked "minimize"), 1 deletable. HOL-658 cleanup ticket should drop the raw-view and redundant per-label assertions once the unit migration lands.
+**Net:** 13 tests kept (two marked "minimize"), 1 deletable. HOL-658 cleanup ticket should drop the raw-view and redundant per-label assertions once the unit migration lands.
 
 ### `profile.spec.ts` — Refactor-to-unit (all 5)
 
@@ -102,9 +102,9 @@ These tests exercise the API Access card's copy snippet and shell-history tabs. 
 
 This phase lives in **HOL-653** alongside the profile migration.
 
-### `create-dialogs.spec.ts` — Split (1 Keep, 4 Refactor)
+### `create-dialogs.spec.ts` — Refactor-to-unit (all 5)
 
-The dialog validation, auto-slug, and reset-affordance behaviours are pure form state. The "picker-menu-item-renders-at-bottom" assertions are also pure UI. The one case that must stay in E2E is the full **create → API round-trip → navigation to secrets** path.
+The dialog validation, auto-slug, and reset-affordance behaviours are pure form state. The "picker-menu-item-renders-at-bottom" assertions are also pure UI. The create → navigate-to-secrets case looks like a full-stack round-trip at first glance, but the only thing E2E verifies that a unit test cannot is that the **slug URL the router produces matches the slug the server created** — and that invariant is already covered by `secrets.spec.ts` (which creates a project and then a secret under it). With mocked `useCreateProject` and `useNavigate`, all five cases collapse into pure UI assertions.
 
 **Existing unit targets:** `frontend/src/components/create-project-dialog.test.tsx` (278 lines) and `frontend/src/components/create-org-dialog.test.tsx` (238 lines) — **extend these**, do not create new files.
 
