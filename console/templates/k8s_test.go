@@ -52,9 +52,8 @@ func testResolver() *resolver.Resolver {
 }
 
 var (
-	projectScope = scopeshim.ScopeProject
-	orgScope     = scopeshim.ScopeOrganization
-	folderScope  = scopeshim.ScopeFolder
+	orgScope    = scopeshim.ScopeOrganization
+	folderScope = scopeshim.ScopeFolder
 )
 
 // orgNS / folderNS / projectNS build v1alpha2-labeled Namespace fixtures so
@@ -238,11 +237,10 @@ func TestListTemplates(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	type row struct {
-		name       string
-		namespace  string
-		seed       []*templatesv1alpha1.Template
-		wantNames  []string
-		wantNonNil bool
+		name      string
+		namespace string
+		seed      []*templatesv1alpha1.Template
+		wantNames []string
 	}
 	cases := []row{
 		{
