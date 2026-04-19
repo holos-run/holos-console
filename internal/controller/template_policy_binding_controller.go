@@ -47,11 +47,11 @@ import (
 // Template in the namespace whose ProjectName matches the target's
 // ProjectName. Deployment targets are NOT resolved against Template objects
 // (a Deployment target refers to an apps/v1.Deployment, not a Template) —
-// they only contribute to Accepted via kind validation. HOL-621 wires the
-// policy-ref resolution through the same cache; the PolicyNotFound path is
-// intentionally not exercised in HOL-620 because the policy reference
-// resolution currently relies on a legacy ConfigMap-backed store the RPC
-// handlers own (HOL-621 migrates this path to the cache).
+// they only contribute to Accepted via kind validation. The binding also
+// resolves spec.policyRef against a TemplatePolicy in the scope namespace
+// implied by PolicyRef.Scope ("organization" or "folder") and reports
+// PolicyNotFound on the ResolvedRefs condition when the referenced policy
+// does not exist.
 //
 // RBAC markers for this reconciler live on the package doc comment in
 // rbac.go — controller-gen's rbac generator ignores markers on struct or
@@ -273,12 +273,52 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 		}
 		return metav1.Condition{}, fmt.Errorf("get Template %s/%s: %w", ns, ref.Name, err)
 	}
+
+	// spec.policyRef: the referenced TemplatePolicy must exist in the
+	// namespace implied by PolicyRef.Scope + PolicyRef.ScopeName. If the
+	// scope discriminator is invalid we leave ResolvedRefs on the earlier
+	// Accepted=False surface — ResolvedRefs specifically reports on
+	// existence, not well-formedness.
+	policyNs, ok := r.policyRefNamespace(binding.Spec.PolicyRef)
+	if ok {
+		var policy v1alpha1.TemplatePolicy
+		err := r.Get(ctx, types.NamespacedName{Namespace: policyNs, Name: binding.Spec.PolicyRef.Name}, &policy)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return metav1.Condition{
+					Type:   v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
+					Status: metav1.ConditionFalse,
+					Reason: v1alpha1.TemplatePolicyBindingReasonPolicyNotFound,
+					Message: fmt.Sprintf("TemplatePolicy %s/%s (scope=%s) not found",
+						policyNs, binding.Spec.PolicyRef.Name, binding.Spec.PolicyRef.Scope),
+				}, nil
+			}
+			return metav1.Condition{}, fmt.Errorf("get TemplatePolicy %s/%s: %w", policyNs, binding.Spec.PolicyRef.Name, err)
+		}
+	}
+
 	return metav1.Condition{
 		Type:    v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
 		Status:  metav1.ConditionTrue,
 		Reason:  v1alpha1.TemplatePolicyBindingReasonResolvedRefs,
-		Message: "every ProjectTemplate target_ref resolves to an existing Template",
+		Message: "every target_ref and policyRef resolves to an existing object",
 	}, nil
+}
+
+// policyRefNamespace maps a LinkedTemplatePolicyRef to the namespace the
+// referenced TemplatePolicy must live in. Returns ok=false for scope values
+// that do not map to a namespace — callers leave ResolvedRefs to fall through
+// to the policy-independent "refs ok" branch because scope validity is an
+// Accepted-level concern, not a ResolvedRefs-level concern.
+func (r *TemplatePolicyBindingReconciler) policyRefNamespace(ref v1alpha1.LinkedTemplatePolicyRef) (string, bool) {
+	switch strings.ToLower(ref.Scope) {
+	case "organization":
+		return r.NamespacePrefix + r.OrganizationPrefix + ref.ScopeName, true
+	case "folder":
+		return r.NamespacePrefix + r.FolderPrefix + ref.ScopeName, true
+	default:
+		return "", false
+	}
 }
 
 // projectNamespace maps a project name to the Kubernetes namespace the

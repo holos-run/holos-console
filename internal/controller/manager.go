@@ -68,9 +68,6 @@ func init() {
 // HOL-621 will re-evaluate when the cache becomes the authoritative read
 // path for RPC handlers.
 type Options struct {
-	// RestConfig is the *rest.Config the manager uses to talk to the API
-	// server. Required.
-	RestConfig *rest.Config
 	// MetricsBindAddress controls the controller-runtime metrics listener.
 	// Leave empty to disable — the console already exposes Prometheus
 	// metrics via its own /metrics handler. Use ":8081" or similar to
@@ -132,13 +129,22 @@ type Manager struct {
 	logger           *slog.Logger
 }
 
-// NewManager constructs a Manager from the provided Options. The typed
-// reconcilers are registered with `ctrl.NewControllerManagedBy(mgr)` inside
-// this constructor so callers get a fully-wired manager back — they only
-// need to call Start(ctx).
-func NewManager(opts Options) (*Manager, error) {
-	if opts.RestConfig == nil {
-		return nil, errors.New("controller.NewManager: RestConfig is required")
+// NewManager constructs a Manager from the provided rest config, scheme, and
+// Options. The typed reconcilers are registered with
+// `ctrl.NewControllerManagedBy(mgr)` inside this constructor so callers get a
+// fully-wired manager back — they only need to call Start(ctx).
+//
+// cfg is required; scheme is optional and falls back to the package-global
+// Scheme when nil so envtests and production callers can share the common
+// registration path. Callers that need additional types registered (e.g., a
+// test that adds apiextensions/v1 for CRD installation) should pass their own
+// scheme built on top of controller.Scheme.
+func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manager, error) {
+	if cfg == nil {
+		return nil, errors.New("controller.NewManager: rest config is required")
+	}
+	if scheme == nil {
+		scheme = Scheme
 	}
 	logger := opts.Logger
 	if logger == nil {
@@ -156,7 +162,7 @@ func NewManager(opts Options) (*Manager, error) {
 	}
 
 	ctrlOpts := ctrl.Options{
-		Scheme: Scheme,
+		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: opts.MetricsBindAddress,
 		},
@@ -171,7 +177,7 @@ func NewManager(opts Options) (*Manager, error) {
 		skip := true
 		ctrlOpts.Controller = config.Controller{SkipNameValidation: &skip}
 	}
-	mgr, err := ctrl.NewManager(opts.RestConfig, ctrlOpts)
+	mgr, err := ctrl.NewManager(cfg, ctrlOpts)
 	if err != nil {
 		return nil, fmt.Errorf("controller.NewManager: building manager: %w", err)
 	}
@@ -266,22 +272,40 @@ func (m *Manager) Start(ctx context.Context) error {
 	defer cancelWatch()
 
 	go func() {
-		deadline := m.cacheSyncTimeout
-		if deadline <= 0 {
-			deadline = 90 * time.Second
+		attempt := m.cacheSyncTimeout
+		if attempt <= 0 {
+			attempt = 90 * time.Second
 		}
-		waitCtx, cancelWait := context.WithTimeout(watchCtx, deadline)
-		defer cancelWait()
-		if ok := m.mgr.GetCache().WaitForCacheSync(waitCtx); ok {
-			m.ready.Store(true)
-			m.logger.Info("controller manager cache synced")
-			return
+		// Retry WaitForCacheSync until the watch context is cancelled
+		// (manager shutdown). Each attempt has a bounded deadline so the
+		// warn-log fires early enough for an operator to notice a
+		// degraded start, but Ready() can still flip to true the moment
+		// the cache finally warms on a slow cluster — without this
+		// outer loop a one-shot WaitForCacheSync that times out would
+		// leave /readyz at 503 forever even though the manager is
+		// healthy.
+		for {
+			if watchCtx.Err() != nil {
+				return
+			}
+			waitCtx, cancelWait := context.WithTimeout(watchCtx, attempt)
+			ok := m.mgr.GetCache().WaitForCacheSync(waitCtx)
+			cancelWait()
+			if ok {
+				m.ready.Store(true)
+				m.logger.Info("controller manager cache synced")
+				return
+			}
+			if watchCtx.Err() != nil {
+				// Parent context cancelled — shutdown in flight.
+				// Leave ready=false and return quietly.
+				return
+			}
+			// Deadline fired before any cache synced. Warn and try
+			// again on the next attempt window.
+			m.logger.Warn("controller manager cache did not sync within deadline; retrying",
+				"deadline", attempt)
 		}
-		// Either the deadline fired or the manager was cancelled
-		// before the caches went healthy. Leave ready=false so
-		// /readyz keeps reporting 503 and the pod rolls.
-		m.logger.Warn("controller manager cache did not sync within deadline",
-			"deadline", deadline)
 	}()
 
 	if err := m.mgr.Start(ctx); err != nil {

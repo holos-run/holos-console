@@ -117,8 +117,7 @@ func startEnv(t *testing.T) *env {
 func startManager(t *testing.T, cfg *rest.Config) (*controllerpkg.Manager, context.CancelFunc, <-chan error) {
 	t.Helper()
 
-	m, err := controllerpkg.NewManager(controllerpkg.Options{
-		RestConfig:                   cfg,
+	m, err := controllerpkg.NewManager(cfg, nil, controllerpkg.Options{
 		CacheSyncTimeout:             30 * time.Second,
 		SkipControllerNameValidation: true,
 	})
@@ -401,18 +400,41 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 	// namespace name MUST match the reconciler's projectNamespace
 	// computation: <NamespacePrefix><ProjectPrefix><projectName>.
 	// Defaults are NamespacePrefix="", ProjectPrefix="prj-" so project
-	// "mytarget" resolves to namespace "prj-mytarget".
+	// "mytarget" resolves to namespace "prj-mytarget". The binding's
+	// policyRef also needs a resolvable TemplatePolicy (ResolvedRefs
+	// now evaluates both target_refs and policyRef), so seed the
+	// organization namespace and the referenced policy.
+	orgNS := "org-transition-acme"
 	fldNS := "fld-binding-transition"
 	prjNS := "prj-mytarget"
+	mustCreateNamespace(t, e.client, orgNS, "organization")
 	mustCreateNamespace(t, e.client, fldNS, "folder")
 	mustCreateNamespace(t, e.client, prjNS, "project")
+
+	policy := &v1alpha1.TemplatePolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "require-one", Namespace: orgNS},
+		Spec: v1alpha1.TemplatePolicySpec{
+			DisplayName: "require-one",
+			Rules: []v1alpha1.TemplatePolicyRule{{
+				Kind: v1alpha1.TemplatePolicyKindRequire,
+				Template: v1alpha1.LinkedTemplateRef{
+					Scope:     "organization",
+					ScopeName: "transition-acme",
+					Name:      "the-template",
+				},
+			}},
+		},
+	}
+	if err := e.client.Create(context.Background(), policy); err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
 
 	binding := &v1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "bind", Namespace: fldNS},
 		Spec: v1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "Bind",
 			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "acme", Name: "require-one",
+				Scope: "organization", ScopeName: "transition-acme", Name: "require-one",
 			},
 			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
@@ -427,7 +449,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 	bkey := client.ObjectKeyFromObject(binding)
 
 	// Stage 1: Template does not exist -> ResolvedRefs=False with
-	// TemplateNotFound.
+	// TemplateNotFound (evaluated before the policy-ref branch).
 	read := &v1alpha1.TemplatePolicyBinding{}
 	cond := waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionFalse)
 	if cond.Reason != v1alpha1.TemplatePolicyBindingReasonTemplateNotFound {
@@ -447,6 +469,101 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 	}
 	if err := e.client.Create(context.Background(), tmpl); err != nil {
 		t.Fatalf("create template: %v", err)
+	}
+
+	waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionTrue)
+}
+
+// TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound asserts ResolvedRefs
+// reports PolicyNotFound when the binding's spec.policyRef points at a
+// TemplatePolicy that does not exist — even if every target_ref resolves.
+// After creating the referenced TemplatePolicy, ResolvedRefs flips True on
+// the next reconcile.
+func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
+	e := startEnv(t)
+	_, cancel, errCh := startManager(t, e.cfg)
+	t.Cleanup(func() { stopManager(t, cancel, errCh) })
+
+	// org-acme holds the TemplatePolicy; prj-target holds the referenced
+	// Template. Folder namespace fld-bind hosts the binding. Defaults:
+	// NamespacePrefix="", OrganizationPrefix="org-", FolderPrefix="fld-",
+	// ProjectPrefix="prj-".
+	orgNS := "org-acme"
+	fldNS := "fld-bind"
+	prjNS := "prj-target"
+	mustCreateNamespace(t, e.client, orgNS, "organization")
+	mustCreateNamespace(t, e.client, fldNS, "folder")
+	mustCreateNamespace(t, e.client, prjNS, "project")
+
+	// Pre-create the target Template so targetRefs resolve; that isolates
+	// the ResolvedRefs surface to the policyRef branch under test.
+	tmpl := &v1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "the-template", Namespace: prjNS},
+		Spec: v1alpha1.TemplateSpec{
+			DisplayName: "Target",
+			Enabled:     true,
+			CueTemplate: "package holos\n",
+		},
+	}
+	if err := e.client.Create(context.Background(), tmpl); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	binding := &v1alpha1.TemplatePolicyBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "bind-missing-policy", Namespace: fldNS},
+		Spec: v1alpha1.TemplatePolicyBindingSpec{
+			DisplayName: "Bind-with-missing-policy",
+			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
+				Scope: "organization", ScopeName: "acme", Name: "not-here-yet",
+			},
+			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
+				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
+				ProjectName: "target",
+				Name:        "the-template",
+			}},
+		},
+	}
+	if err := e.client.Create(context.Background(), binding); err != nil {
+		t.Fatalf("create binding: %v", err)
+	}
+	bkey := client.ObjectKeyFromObject(binding)
+
+	// Stage 1: policy does not exist -> ResolvedRefs=False PolicyNotFound.
+	read := &v1alpha1.TemplatePolicyBinding{}
+	cond := waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionFalse)
+	if cond.Reason != v1alpha1.TemplatePolicyBindingReasonPolicyNotFound {
+		t.Fatalf("ResolvedRefs reason=%q want %q", cond.Reason, v1alpha1.TemplatePolicyBindingReasonPolicyNotFound)
+	}
+
+	// Stage 2: create the referenced TemplatePolicy. The binding
+	// reconciler does not Watch TemplatePolicy in HOL-620 (only Template),
+	// so the flip relies on the resync period. Bump the binding's spec
+	// to force a re-reconcile within the test window.
+	policy := &v1alpha1.TemplatePolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "not-here-yet", Namespace: orgNS},
+		Spec: v1alpha1.TemplatePolicySpec{
+			DisplayName: "Policy",
+			Rules: []v1alpha1.TemplatePolicyRule{{
+				Kind: v1alpha1.TemplatePolicyKindRequire,
+				Template: v1alpha1.LinkedTemplateRef{
+					Scope:     "organization",
+					ScopeName: "acme",
+					Name:      "the-template",
+				},
+			}},
+		},
+	}
+	if err := e.client.Create(context.Background(), policy); err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+
+	// Touch the binding's spec so the controller re-reconciles promptly.
+	if err := e.client.Get(context.Background(), bkey, read); err != nil {
+		t.Fatalf("re-get binding: %v", err)
+	}
+	read.Spec.Description = "poke"
+	if err := e.client.Update(context.Background(), read); err != nil {
+		t.Fatalf("poke binding: %v", err)
 	}
 
 	waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionTrue)
@@ -572,8 +689,7 @@ func TestManager_SyncErrorWhenCRDMissing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = e.Stop() })
 
-	m, err := controllerpkg.NewManager(controllerpkg.Options{
-		RestConfig:                   cfg,
+	m, err := controllerpkg.NewManager(cfg, nil, controllerpkg.Options{
 		CacheSyncTimeout:             5 * time.Second,
 		SkipControllerNameValidation: true,
 	})
@@ -637,8 +753,7 @@ func TestManager_SyncErrorWhenCRDMissing(t *testing.T) {
 func TestManager_GracefulShutdown(t *testing.T) {
 	e := startEnv(t)
 
-	m, err := controllerpkg.NewManager(controllerpkg.Options{
-		RestConfig:                   e.cfg,
+	m, err := controllerpkg.NewManager(e.cfg, nil, controllerpkg.Options{
 		CacheSyncTimeout:             10 * time.Second,
 		SkipControllerNameValidation: true,
 	})

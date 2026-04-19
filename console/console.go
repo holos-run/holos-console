@@ -286,8 +286,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	// gate the console /readyz probe on mgr.Ready() so the pod stays 503
 	// until the cache is warm.
 	if k8sClientset != nil && restConfig != nil {
-		mgr, err := controllermgr.NewManager(controllermgr.Options{
-			RestConfig: restConfig,
+		mgr, err := controllermgr.NewManager(restConfig, nil, controllermgr.Options{
 			// controller-runtime enforces a process-global uniqueness
 			// check on controller names to prevent Prometheus metric
 			// collisions. The console metrics server is separate
