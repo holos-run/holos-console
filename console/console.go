@@ -453,11 +453,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		// itself cancels the reflector to avoid leaking LIST/WATCH retry
 		// goroutines and logs a warning.
 		deploymentStatusCache := statuscache.New(ctx, k8sClientset)
+		// HOL-644: bridge the deployments handler to the organization
+		// gateway-namespace annotation so PlatformInput.gatewayNamespace
+		// reflects the platform engineer's configured value (set via the
+		// Organization service in HOL-643) rather than the historical
+		// hard-coded "istio-ingress". Reuses the existing projectResolver
+		// (a *projects.ProjectGrantResolver) for the project→org lookup;
+		// the annotation read goes through orgsK8s.
+		gatewayResolver := organizations.NewGatewayNamespaceResolver(orgsK8s, projectResolver)
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
 			WithStatusCache(deploymentStatusCache).
-			WithPolicyDriftChecker(deploymentDriftAdapter)
+			WithPolicyDriftChecker(deploymentDriftAdapter).
+			WithOrganizationGatewayResolver(gatewayResolver)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

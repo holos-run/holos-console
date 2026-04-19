@@ -119,6 +119,20 @@ type ResourceApplier interface {
 	DiscoverNamespaces(ctx context.Context, project, deploymentName string) ([]string, error)
 }
 
+// OrganizationGatewayResolver resolves the configured ingress-gateway
+// namespace for the organization that owns a given project. Implementations
+// read the org namespace's gateway-namespace annotation
+// (v1alpha2.AnnotationGatewayNamespace, set via the Organization service in
+// HOL-643). Returning an empty string means the org has no override and the
+// caller should fall back to DefaultGatewayNamespace.
+//
+// The handler treats a non-nil error as a soft failure: it logs and falls
+// back to DefaultGatewayNamespace so a transient lookup failure (or a missing
+// org namespace in legacy test fixtures) cannot break renders.
+type OrganizationGatewayResolver interface {
+	GetGatewayNamespace(ctx context.Context, project string) (string, error)
+}
+
 // Handler implements the DeploymentService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentServiceHandler
@@ -133,6 +147,7 @@ type Handler struct {
 	ancestorTemplateProvider AncestorTemplateProvider
 	statusCache              statuscache.Cache
 	policyDriftChecker       PolicyDriftChecker
+	gatewayResolver          OrganizationGatewayResolver
 }
 
 // PolicyDriftChecker exposes the minimal surface a deployment needs from the
@@ -183,6 +198,19 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 // the full ancestor chain (org + folders) at render time.
 func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Handler {
 	h.ancestorTemplateProvider = atp
+	return h
+}
+
+// WithOrganizationGatewayResolver configures the handler with a resolver
+// that returns the ingress-gateway namespace configured on the project's
+// owning organization (see v1alpha2.AnnotationGatewayNamespace, persisted by
+// the Organization service in HOL-643). When set, buildPlatformInput
+// consults the resolver and falls back to DefaultGatewayNamespace only when
+// the annotation is absent (or the lookup fails). When unset, behavior is
+// unchanged from the legacy hard-coded default — a nil resolver keeps
+// existing test wiring working without modification.
+func (h *Handler) WithOrganizationGatewayResolver(r OrganizationGatewayResolver) *Handler {
+	h.gatewayResolver = r
 	return h
 }
 
@@ -1532,15 +1560,56 @@ func defaultPort(port int) int {
 	return port
 }
 
+// resolveGatewayNamespace returns the gateway namespace to inject into
+// PlatformInput for the given project. It consults the configured
+// OrganizationGatewayResolver (HOL-644) and falls back to
+// DefaultGatewayNamespace when no resolver is wired, when the resolver
+// errors, or when the org has no override annotation. Errors are logged at
+// WARN — they MUST NOT fail the render, since a transient lookup miss
+// should degrade to the historical hard-coded default rather than reject a
+// deployment.
+func (h *Handler) resolveGatewayNamespace(ctx context.Context, project string) string {
+	if h.gatewayResolver == nil {
+		return DefaultGatewayNamespace
+	}
+	gwNs, err := h.gatewayResolver.GetGatewayNamespace(ctx, project)
+	if err != nil {
+		slog.WarnContext(ctx, "could not resolve org gateway namespace, falling back to default",
+			slog.String("project", project),
+			slog.String("default", DefaultGatewayNamespace),
+			slog.Any("error", err),
+		)
+		return DefaultGatewayNamespace
+	}
+	if gwNs == "" {
+		return DefaultGatewayNamespace
+	}
+	return gwNs
+}
+
 // buildPlatformInput constructs a v1alpha2.PlatformInput from handler context.
 // When an AncestorWalker is configured, Folders is populated with the ordered
 // list of folder names in the ancestor chain (org → folders → project) so CUE
 // templates can reference platform.folders.
+//
+// GatewayNamespace resolution (HOL-526 phase 3, HOL-644):
+//
+//   - When an OrganizationGatewayResolver is configured AND it returns a
+//     non-empty value with no error, that value is injected. This lets a
+//     platform engineer pin gateway-namespace to a cluster-specific value
+//     (e.g. "ci-private-apps-gateway") via the org settings UI without
+//     forcing every template author to set platform.gatewayNamespace
+//     explicitly — and, critically, lets a template author who DOES set it
+//     unify cleanly with the backend value (no CUE conflict on string :
+//     "X" & string : "Y").
+//   - When the resolver is nil, errors, or returns empty, the value falls
+//     back to DefaultGatewayNamespace ("istio-ingress") so legacy clusters
+//     and unconfigured test wiring keep working unchanged.
 func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha2.PlatformInput {
 	pi := v1alpha2.PlatformInput{
 		Project:          project,
 		Namespace:        namespace,
-		GatewayNamespace: DefaultGatewayNamespace,
+		GatewayNamespace: h.resolveGatewayNamespace(ctx, project),
 	}
 	if claims != nil {
 		pi.Claims = v1alpha2.Claims{

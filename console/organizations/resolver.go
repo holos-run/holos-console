@@ -43,3 +43,60 @@ func (r *OrgGrantResolver) GetOrgDefaultGrants(ctx context.Context, org string) 
 	defaultRoles, _ := GetDefaultShareRoles(ns)
 	return defaultUsers, defaultRoles, nil
 }
+
+// ProjectOrgResolver maps a user-facing project name to the user-facing
+// organization name that owns it. It deliberately mirrors
+// settings.ProjectOrgResolver so the existing project→org mapping can be
+// reused without dragging the projects package into a cyclic import here.
+type ProjectOrgResolver interface {
+	GetProjectOrganization(ctx context.Context, project string) (string, error)
+}
+
+// GatewayNamespaceResolver looks up the configured ingress-gateway
+// namespace for the organization that owns a given project. It implements
+// the deployments.OrganizationGatewayResolver interface so the deployments
+// handler can inject the platform engineer's configured value (set via the
+// Organization service in HOL-643) into PlatformInput.gatewayNamespace —
+// removing the historical hard-coded "istio-ingress" injection that
+// conflicted with template authors who explicitly pinned a different value
+// (HOL-526).
+//
+// Resolution path: project → org name (via ProjectOrgResolver) → org
+// namespace (via K8sClient.GetOrganization) → gateway-namespace annotation
+// (via GetGatewayNamespace). Returns an empty string when the annotation is
+// absent so the caller can apply its own fallback (deployments.Handler
+// falls back to DefaultGatewayNamespace).
+type GatewayNamespaceResolver struct {
+	k8s         *K8sClient
+	projectOrgs ProjectOrgResolver
+}
+
+// NewGatewayNamespaceResolver constructs a GatewayNamespaceResolver. The
+// projectOrgs resolver is required: without it, we cannot map a project to
+// its owning organization and no annotation lookup is possible.
+func NewGatewayNamespaceResolver(k8s *K8sClient, projectOrgs ProjectOrgResolver) *GatewayNamespaceResolver {
+	return &GatewayNamespaceResolver{k8s: k8s, projectOrgs: projectOrgs}
+}
+
+// GetGatewayNamespace returns the value of the gateway-namespace annotation
+// on the organization namespace that owns the given project, or "" when the
+// annotation is unset. Returns an error only when the project→org lookup or
+// the org-namespace fetch fails; the deployments handler treats such errors
+// as soft failures and falls back to DefaultGatewayNamespace.
+func (r *GatewayNamespaceResolver) GetGatewayNamespace(ctx context.Context, project string) (string, error) {
+	if r.projectOrgs == nil {
+		return "", nil
+	}
+	org, err := r.projectOrgs.GetProjectOrganization(ctx, project)
+	if err != nil {
+		return "", err
+	}
+	if org == "" {
+		return "", nil
+	}
+	ns, err := r.k8s.GetOrganization(ctx, org)
+	if err != nil {
+		return "", err
+	}
+	return GetGatewayNamespace(ns), nil
+}

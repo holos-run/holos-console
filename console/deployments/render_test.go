@@ -1478,8 +1478,18 @@ func TestCueRenderer_GatewayNamespace(t *testing.T) {
 	})
 
 	t.Run("default gatewayNamespace istio-ingress is applied by Go", func(t *testing.T) {
-		// The Go handler defaults GatewayNamespace to "istio-ingress" before
-		// calling the renderer. This test verifies the default renders correctly.
+		// HOL-644: The default DefaultGatewayNamespace ("istio-ingress") is
+		// only applied by the Go handler when the org has no
+		// gateway-namespace annotation set. This test verifies the renderer
+		// continues to propagate that fallback value into the template
+		// unchanged when buildPlatformInput injects it (the resolver is
+		// unconfigured or the annotation is empty). When the org sets
+		// AnnotationGatewayNamespace to a custom value, the handler injects
+		// that value instead — see
+		// TestBuildPlatformInput_GatewayNamespace_TemplateUnifies (and the
+		// "configured resolver value is propagated verbatim" subtest of
+		// TestBuildPlatformInput_GatewayNamespace) in
+		// buildplatforminput_test.go.
 		system := v1alpha2.PlatformInput{
 			Project:          "my-project",
 			Namespace:        namespace,
