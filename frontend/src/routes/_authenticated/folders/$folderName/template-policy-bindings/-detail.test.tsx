@@ -102,7 +102,7 @@ function makeBinding() {
     description: 'Folder-level binding',
     creatorEmail: 'jane@example.com',
     policyRef: {
-      scopeRef: { scope: 2, scopeName: 'test-folder' },
+      namespace: "holos-fld-test-folder",
       name: 'folder-policy',
     },
     targetRefs: [

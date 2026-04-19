@@ -119,7 +119,7 @@ const linkableWithReleases = [
     displayName: 'Reference Grant',
     description: 'Default ReferenceGrant',
     forced: true,
-    scopeRef: { scope: 1, scopeName: 'default' },
+    namespace: "holos-org-default",
     releases: [
       { version: '1.0.0', changelog: 'Initial', templateName: 'reference-grant' },
     ],
@@ -129,7 +129,7 @@ const linkableWithReleases = [
     displayName: 'HTTPbin Platform',
     description: 'Platform HTTPRoute for go-httpbin',
     forced: false,
-    scopeRef: { scope: 1, scopeName: 'default' },
+    namespace: "holos-org-default",
     releases: releasesForHttpbin,
   },
   {
@@ -137,7 +137,7 @@ const linkableWithReleases = [
     displayName: 'Team Network Policy',
     description: 'Standard NetworkPolicy',
     forced: false,
-    scopeRef: { scope: 2, scopeName: 'team-a' },
+    namespace: "holos-fld-team-a",
     releases: [], // No releases
   },
 ]
@@ -355,7 +355,7 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
   it('pre-populates version selector with existing version constraint when opening edit dialog', async () => {
     setupDetailMocks(Role.OWNER, {
       linkedTemplates: [
-        { name: 'httpbin-platform', scope: 1, scopeName: 'default', versionConstraint: '1.1.0' },
+        { name: 'httpbin-platform', namespace: 'holos-org-default', versionConstraint: '1.1.0' },
       ],
     })
     const user = userEvent.setup()
@@ -372,7 +372,7 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     const mutateAsync = vi.fn().mockResolvedValue({})
     setupDetailMocks(Role.OWNER, {
       linkedTemplates: [
-        { name: 'httpbin-platform', scope: 1, scopeName: 'default', versionConstraint: '' },
+        { name: 'httpbin-platform', namespace: 'holos-org-default', versionConstraint: '' },
       ],
     })
     // Re-set the update mock after setupDetailMocks
@@ -440,7 +440,7 @@ describe('Version selector — DeploymentTemplateDetailPage', () => {
     const mutateAsync = vi.fn().mockResolvedValue({})
     setupDetailMocks(Role.OWNER, {
       linkedTemplates: [
-        { name: 'httpbin-platform', scope: 1, scopeName: 'default', versionConstraint: '1.1.0' },
+        { name: 'httpbin-platform', namespace: 'holos-org-default', versionConstraint: '1.1.0' },
       ],
     })
     ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })

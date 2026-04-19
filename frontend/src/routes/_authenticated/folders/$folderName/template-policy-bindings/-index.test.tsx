@@ -74,7 +74,7 @@ function makeBinding(
     creatorEmail: options.creatorEmail ?? '',
     policyRef: options.policyName
       ? {
-          scopeRef: { scope: 2, scopeName: 'test-folder' },
+          namespace: "holos-fld-test-folder",
           name: options.policyName,
         }
       : undefined,

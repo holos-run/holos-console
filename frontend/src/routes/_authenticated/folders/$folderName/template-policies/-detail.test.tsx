@@ -106,7 +106,7 @@ function setupMocks(
     name: string
     displayName?: string
     description?: string
-    policyRef?: { name: string; scopeRef?: { scope: number; scopeName: string } }
+    policyRef?: { name: string; namespace?: string }
     targetRefs?: Array<{ kind?: number; name: string; projectName?: string }>
   }> = [],
 ) {
@@ -204,7 +204,7 @@ describe('FolderTemplatePolicyDetailPage', () => {
           displayName: 'Binding for policy-a',
           policyRef: {
             name: 'policy-a',
-            scopeRef: { scope: 2, scopeName: 'test-folder' },
+            namespace: "holos-fld-test-folder",
           },
           targetRefs: [{ kind: 1, name: 'project-template', projectName: 'frontend' }],
         },
@@ -212,7 +212,7 @@ describe('FolderTemplatePolicyDetailPage', () => {
           name: 'binding-for-other',
           policyRef: {
             name: 'other-policy',
-            scopeRef: { scope: 2, scopeName: 'test-folder' },
+            namespace: "holos-fld-test-folder",
           },
           targetRefs: [],
         },
@@ -234,7 +234,7 @@ describe('FolderTemplatePolicyDetailPage', () => {
           name: 'binding-for-policy-a',
           policyRef: {
             name: 'policy-a',
-            scopeRef: { scope: 2, scopeName: 'test-folder' },
+            namespace: "holos-fld-test-folder",
           },
           targetRefs: [] as Array<{ kind?: number; name: string; projectName?: string }>,
         },

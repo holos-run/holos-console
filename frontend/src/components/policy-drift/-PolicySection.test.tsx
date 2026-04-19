@@ -2,16 +2,21 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { PolicySection, PolicyDriftBadge } from './PolicySection'
 import type { PolicyState, LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb'
+import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
 
-function makeRef(partial: Partial<LinkedTemplateRef>): LinkedTemplateRef {
+function makeRef(partial: Partial<LinkedTemplateRef> & { scope?: TemplateScope; scopeName?: string }): LinkedTemplateRef {
+  const scope = partial.scope ?? TemplateScope.ORGANIZATION
+  const scopeName = partial.scopeName ?? 'acme'
+  // Drop scope/scopeName test-fixture fields before spreading — they are
+  // not proto fields; the proto carries `namespace` directly.
+  const { scope: _s, scopeName: _sn, ...rest } = partial
+  void _s; void _sn
   return {
     $typeName: 'holos.console.v1.LinkedTemplateRef',
-    scope: TemplateScope.ORGANIZATION,
-    scopeName: 'acme',
+    namespace: namespaceFor(scope, scopeName),
     name: 'base',
     versionConstraint: '',
-    ...partial,
+    ...rest,
   } as LinkedTemplateRef
 }
 

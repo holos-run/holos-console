@@ -60,23 +60,48 @@ vi.mock('lucide-react', () => ({
 
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
 import { UpdatesAvailableBadge, UpgradeDialog } from './template-updates'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
 
 const testScope = { scope: TemplateScope.PROJECT, scopeName: 'test-project' } as any
 
 function makeUpdate(overrides: Record<string, unknown> = {}) {
+  // Allow tests to override via either a raw proto `ref` shape
+  // (`namespace/name/versionConstraint`) or the legacy authoring shape
+  // (`scope/scopeName/name/versionConstraint`) via the `ref` override. The
+  // legacy shape is converted here so existing tests keep working.
+  const overrideRef = (overrides as { ref?: unknown }).ref as
+    | {
+        scope?: number
+        scopeName?: string
+        namespace?: string
+        name?: string
+        versionConstraint?: string
+      }
+    | undefined
+  const ref = overrideRef
+    ? {
+        namespace:
+          overrideRef.namespace ??
+          (overrideRef.scope !== undefined
+            ? namespaceFor(overrideRef.scope, overrideRef.scopeName ?? '')
+            : ''),
+        name: overrideRef.name ?? '',
+        versionConstraint: overrideRef.versionConstraint ?? '',
+      }
+    : {
+        namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+        name: 'platform-security',
+        versionConstraint: '>=1.0.0 <2.0.0',
+      }
+  const { ref: _ref, ...rest } = overrides as { ref?: unknown; [k: string]: unknown }
+  void _ref
   return {
-    ref: {
-      scope: TemplateScope.ORGANIZATION,
-      scopeName: 'test-org',
-      name: 'platform-security',
-      versionConstraint: '>=1.0.0 <2.0.0',
-    },
+    ref,
     currentVersion: '1.0.0',
     latestCompatibleVersion: '1.2.0',
     latestVersion: '1.2.0',
     breakingUpdateAvailable: false,
-    ...overrides,
+    ...rest,
   }
 }
 
@@ -129,8 +154,8 @@ describe('UpdatesAvailableBadge', () => {
   it('renders badge with count for multiple updates', () => {
     ;(useCheckUpdates as Mock).mockReturnValue({
       data: [
-        makeUpdate({ ref: { scope: 1, scopeName: 'org', name: 'tmpl-a', versionConstraint: '' } }),
-        makeUpdate({ ref: { scope: 1, scopeName: 'org', name: 'tmpl-b', versionConstraint: '' } }),
+        makeUpdate({ ref: { namespace: 'holos-org-org', name: 'tmpl-a', versionConstraint: '' } }),
+        makeUpdate({ ref: { namespace: 'holos-org-org', name: 'tmpl-b', versionConstraint: '' } }),
       ],
       isPending: false,
       error: null,
@@ -207,10 +232,9 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        scope: TemplateScope.ORGANIZATION,
-        scopeName: 'test-org',
-        name: 'platform-security',
-        versionConstraint: '>=1.0.0 <2.0.0',
+        namespace: namespaceFor(TemplateScope.ORGANIZATION, "test-org"),
+        name: "platform-security",
+        versionConstraint: ">=1.0.0 <2.0.0",
       },
     ]
     const updates = [makeUpdate()]
@@ -241,10 +265,9 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        scope: TemplateScope.ORGANIZATION,
-        scopeName: 'test-org',
-        name: 'platform-security',
-        versionConstraint: '>=1.0.0 <2.0.0',
+        namespace: namespaceFor(TemplateScope.ORGANIZATION, "test-org"),
+        name: "platform-security",
+        versionConstraint: ">=1.0.0 <2.0.0",
       },
     ]
     const updates = [makeUpdate({
@@ -282,8 +305,7 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        scope: TemplateScope.ORGANIZATION,
-        scopeName: 'test-org',
+        namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
         name: 'platform-security',
         versionConstraint: '>=1.0.0 <2.0.0',
       },
@@ -338,8 +360,8 @@ describe('UpgradeDialog', () => {
 
   it('shows Update All button when multiple compatible updates exist', () => {
     const updates = [
-      makeUpdate({ ref: { scope: 1, scopeName: 'org', name: 'tmpl-a', versionConstraint: '' } }),
-      makeUpdate({ ref: { scope: 1, scopeName: 'org', name: 'tmpl-b', versionConstraint: '' } }),
+      makeUpdate({ ref: { namespace: 'holos-org-org', name: 'tmpl-a', versionConstraint: '' } }),
+      makeUpdate({ ref: { namespace: 'holos-org-org', name: 'tmpl-b', versionConstraint: '' } }),
     ]
     render(
       <UpgradeDialog

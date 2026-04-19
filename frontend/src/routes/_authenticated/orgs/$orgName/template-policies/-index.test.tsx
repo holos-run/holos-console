@@ -57,7 +57,7 @@ import { OrgTemplatePoliciesIndexPage } from './index'
 function makePolicy(name: string, require = 1, exclude = 0) {
   const rule = (kind: TemplatePolicyKind) => ({
     kind,
-    template: { scope: 1, scopeName: 'test-org', name: 'httproute', versionConstraint: '' },
+    template: { namespace: 'holos-org-test-org', name: 'httproute', versionConstraint: '' },
     target: { projectPattern: '*', deploymentPattern: '*' },
   })
   return {

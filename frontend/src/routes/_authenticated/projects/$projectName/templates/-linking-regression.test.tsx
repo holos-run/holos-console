@@ -94,11 +94,11 @@ import { DeploymentTemplateDetailPage } from './$templateName'
 // ---------------------------------------------------------------------------
 
 const mockOrgTemplates = [
-  { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, scopeRef: { scope: 1, scopeName: 'default' } },
-  { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
+  { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, namespace: "holos-org-default" },
+  { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, namespace: "holos-org-default" },
 ]
 const mockFolderTemplates = [
-  { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+  { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, namespace: "holos-fld-team-a" },
 ]
 const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
@@ -219,7 +219,7 @@ describe('Linking UI regression — CreateTemplatePage', () => {
       // arg[5] is linkedTemplates
       expect(lastCall[5]).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
+          expect.objectContaining({ name: 'httpbin-platform', namespace: 'holos-org-default' }),
         ]),
       )
     })
@@ -370,7 +370,7 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
     })
 
     it('preview receives linked templates argument via useRenderTemplate', () => {
-      setupDetailMocks(Role.OWNER, { linkedTemplates: [{ name: 'reference-grant', scope: 1, scopeName: 'default' }] })
+      setupDetailMocks(Role.OWNER, { linkedTemplates: [{ name: 'reference-grant', namespace: 'holos-org-default' }] })
       render(<DeploymentTemplateDetailPage />)
 
       const calls = (useRenderTemplate as Mock).mock.calls
@@ -378,7 +378,7 @@ describe('Linking UI regression — DeploymentTemplateDetailPage', () => {
       // arg[5] is linkedTemplates
       expect(lastCall[5]).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'reference-grant', scope: 1, scopeName: 'default' }),
+          expect.objectContaining({ name: 'reference-grant', namespace: 'holos-org-default' }),
         ]),
       )
     })

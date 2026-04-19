@@ -106,7 +106,7 @@ function setupMocks(
     name: string
     displayName?: string
     description?: string
-    policyRef?: { name: string; scopeRef?: { scope: number; scopeName: string } }
+    policyRef?: { name: string; namespace?: string }
     targetRefs?: Array<{ kind?: number; name: string; projectName?: string }>
   }> = [],
 ) {
@@ -186,7 +186,7 @@ describe('OrgTemplatePolicyDetailPage', () => {
           description: 'attaches policy-a to api deployments',
           policyRef: {
             name: 'policy-a',
-            scopeRef: { scope: 1, scopeName: 'test-org' },
+            namespace: "holos-org-test-org",
           },
           targetRefs: [
             { kind: 2, name: 'api', projectName: 'frontend' },
@@ -198,7 +198,7 @@ describe('OrgTemplatePolicyDetailPage', () => {
           displayName: 'Unrelated binding',
           policyRef: {
             name: 'policy-b',
-            scopeRef: { scope: 1, scopeName: 'test-org' },
+            namespace: "holos-org-test-org",
           },
           targetRefs: [{ kind: 2, name: 'api', projectName: 'frontend' }],
         },
@@ -218,7 +218,7 @@ describe('OrgTemplatePolicyDetailPage', () => {
           name: 'binding-for-policy-a',
           policyRef: {
             name: 'policy-a',
-            scopeRef: { scope: 1, scopeName: 'test-org' },
+            namespace: "holos-org-test-org",
           },
           targetRefs: [] as Array<{ kind?: number; name: string; projectName?: string }>,
         },

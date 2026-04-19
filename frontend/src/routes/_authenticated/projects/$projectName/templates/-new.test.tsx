@@ -266,11 +266,11 @@ describe('CreateTemplatePage', () => {
     // and disabled so the UI mirrors that the template is effectively
     // pinned; the user cannot opt out via the linking UI.
     const mockOrgTemplates = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, scopeRef: { scope: 1, scopeName: 'default' } },
-      { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Default ReferenceGrant for cross-namespace gateway routing', forced: true, namespace: "holos-org-default" },
+      { name: 'httpbin-platform', displayName: 'HTTPbin Platform', description: 'Platform HTTPRoute for go-httpbin', forced: false, namespace: "holos-org-default" },
     ]
     const mockFolderTemplates = [
-      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Standard NetworkPolicy for team namespaces', forced: false, namespace: "holos-fld-team-a" },
     ]
     const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
 
@@ -371,7 +371,7 @@ describe('CreateTemplatePage', () => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             linkedTemplates: expect.arrayContaining([
-              expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
+              expect.objectContaining({ name: 'httpbin-platform', namespace: 'holos-org-default' }),
             ]),
           }),
         )
@@ -382,8 +382,8 @@ describe('CreateTemplatePage', () => {
       // When an org and folder template share the same name, selecting one
       // must not affect the other and the mutation must carry the correct scope.
       const sameName = [
-        { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', forced: false, scopeRef: { scope: 1, scopeName: 'default' } },
-        { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', forced: false, scopeRef: { scope: 2, scopeName: 'team-a' } },
+        { name: 'shared-policy', displayName: 'Shared Policy (Org)', description: '', forced: false, namespace: "holos-org-default" },
+        { name: 'shared-policy', displayName: 'Shared Policy (Folder)', description: '', forced: false, namespace: "holos-fld-team-a" },
       ]
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: sameName, isPending: false })
       const mutateAsync = vi.fn().mockResolvedValue({})
@@ -403,7 +403,7 @@ describe('CreateTemplatePage', () => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             linkedTemplates: [
-              expect.objectContaining({ name: 'shared-policy', scope: 2, scopeName: 'team-a' }),
+              expect.objectContaining({ name: 'shared-policy', namespace: 'holos-fld-team-a' }),
             ],
           }),
         )
@@ -443,7 +443,7 @@ describe('CreateTemplatePage', () => {
       // arg[5] is linkedTemplates
       expect(lastCall[5]).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'httpbin-platform', scope: 1, scopeName: 'default' }),
+          expect.objectContaining({ name: 'httpbin-platform', namespace: 'holos-org-default' }),
         ]),
       )
     })
