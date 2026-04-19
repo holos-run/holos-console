@@ -106,14 +106,6 @@ func Command() *cobra.Command {
 	cmd.Flags().BoolVar(&logHealthChecks, "log-health-checks", false, "Log /healthz and /readyz requests (suppressed by default)")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 
-	// HOL-662 removed the one-shot `migrate template-policy-targets`
-	// subcommand: HOL-600 eliminated the legacy glob Target on policy
-	// rules and HOL-662 moved TemplatePolicy + TemplatePolicyBinding
-	// storage off ConfigMap annotations onto CRD spec, so the pre-CRD
-	// migration source format no longer exists in the cluster. Re-add a
-	// sibling migrate command here if a future storage migration needs
-	// its own one-shot.
-
 	return cmd
 }
 
