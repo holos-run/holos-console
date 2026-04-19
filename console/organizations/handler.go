@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
@@ -570,7 +571,19 @@ func (h *Handler) UpdateOrganization(
 		}
 	}
 
-	if _, err := h.k8s.UpdateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description); err != nil {
+	// Validate gateway_namespace before forwarding to k8s. Empty string is
+	// accepted as "clear the annotation"; non-empty values must conform to
+	// the Kubernetes DNS-1123 label rule (the same rule k8s applies to
+	// namespace names).
+	if req.Msg.GatewayNamespace != nil && *req.Msg.GatewayNamespace != "" {
+		if errs := validation.IsDNS1123Label(*req.Msg.GatewayNamespace); len(errs) > 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("gateway_namespace %q is not a valid DNS-1123 label: %s",
+					*req.Msg.GatewayNamespace, strings.Join(errs, "; ")))
+		}
+	}
+
+	if _, err := h.k8s.UpdateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, req.Msg.GatewayNamespace); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -919,6 +932,7 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 			org.Description = annotations[v1alpha2.AnnotationDescription]
 			org.CreatorEmail = annotations[v1alpha2.AnnotationCreatorEmail]
 			org.DefaultFolder = annotations[v1alpha2.AnnotationDefaultFolder]
+			org.GatewayNamespace = annotations[v1alpha2.AnnotationGatewayNamespace]
 		}
 		// Populate default sharing grants and creation timestamp from typed namespace
 		if nsTyped, ok := ns.(*corev1.Namespace); ok {

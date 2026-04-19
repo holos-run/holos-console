@@ -1214,6 +1214,187 @@ func TestUpdateOrganization_UpdateDefaultFolder_EmptyValue(t *testing.T) {
 	assertInvalidArgument(t, err)
 }
 
+// ---- UpdateOrganization gateway_namespace tests ----
+
+// gatewayNamespaceFromK8s reads the gateway-namespace annotation directly from
+// the fake clientset bypassing the handler. Used by the UpdateOrganization
+// gateway_namespace tests to assert the persisted annotation state.
+func gatewayNamespaceFromK8s(t *testing.T, h *Handler, org string) (string, bool) {
+	t.Helper()
+	ns, err := h.k8s.client.CoreV1().Namespaces().Get(context.Background(),
+		h.k8s.resolver.OrgNamespace(org), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get namespace: %v", err)
+	}
+	v, ok := ns.Annotations[v1alpha2.AnnotationGatewayNamespace]
+	return v, ok
+}
+
+func TestUpdateOrganization_GatewayNamespace_RoundTrip(t *testing.T) {
+	// Editor-permission table that walks set, preserve (nil), clear, and
+	// invalid-DNS-label paths through the handler so the proto field, the
+	// k8s annotation, and the buildOrganization read-back all stay in sync.
+	tests := []struct {
+		name             string
+		initial          string  // initial annotation value, "" means not set
+		input            *string // value sent in the update request
+		wantValue        string  // expected annotation after update
+		wantSet          bool    // whether the annotation should be present
+		wantInvalidArg   bool    // whether the call should return InvalidArgument
+		wantOrgFieldGet  bool    // whether to also assert via GetOrganization RPC
+		wantOrgFieldWant string
+	}{
+		{
+			name:             "set when absent",
+			initial:          "",
+			input:            ptr("gw-system"),
+			wantValue:        "gw-system",
+			wantSet:          true,
+			wantOrgFieldGet:  true,
+			wantOrgFieldWant: "gw-system",
+		},
+		{
+			name:             "preserve with nil",
+			initial:          "existing-gw",
+			input:            nil,
+			wantValue:        "existing-gw",
+			wantSet:          true,
+			wantOrgFieldGet:  true,
+			wantOrgFieldWant: "existing-gw",
+		},
+		{
+			name:             "clear with empty string",
+			initial:          "existing-gw",
+			input:            ptr(""),
+			wantValue:        "",
+			wantSet:          false,
+			wantOrgFieldGet:  true,
+			wantOrgFieldWant: "",
+		},
+		{
+			name:           "invalid DNS-1123 label rejected",
+			initial:        "existing-gw",
+			input:          ptr("Invalid_Name"),
+			wantValue:      "existing-gw", // unchanged
+			wantSet:        true,
+			wantInvalidArg: true,
+		},
+		{
+			name:           "invalid DNS-1123 label with dots rejected",
+			initial:        "",
+			input:          ptr("gw.example.com"),
+			wantValue:      "",
+			wantSet:        false,
+			wantInvalidArg: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+			if tc.initial != "" {
+				ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = tc.initial
+			}
+			handler := newTestHandler(ns)
+			ctx := contextWithClaims("alice@example.com")
+
+			_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
+				Name:             "acme",
+				GatewayNamespace: tc.input,
+			}))
+			if tc.wantInvalidArg {
+				assertInvalidArgument(t, err)
+			} else if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			got, ok := gatewayNamespaceFromK8s(t, handler, "acme")
+			if ok != tc.wantSet {
+				t.Errorf("annotation present=%t, want %t", ok, tc.wantSet)
+			}
+			if got != tc.wantValue {
+				t.Errorf("annotation value=%q, want %q", got, tc.wantValue)
+			}
+
+			if tc.wantOrgFieldGet {
+				resp, err := handler.GetOrganization(ctx, connect.NewRequest(&consolev1.GetOrganizationRequest{Name: "acme"}))
+				if err != nil {
+					t.Fatalf("GetOrganization: %v", err)
+				}
+				if resp.Msg.Organization.GatewayNamespace != tc.wantOrgFieldWant {
+					t.Errorf("Organization.GatewayNamespace=%q, want %q",
+						resp.Msg.Organization.GatewayNamespace, tc.wantOrgFieldWant)
+				}
+			}
+		})
+	}
+}
+
+func TestUpdateOrganization_GatewayNamespace_PreservesOtherAnnotations(t *testing.T) {
+	// Setting gateway_namespace must not perturb display_name or description.
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
+	ns.Annotations[v1alpha2.AnnotationDisplayName] = "ACME Corp"
+	ns.Annotations[v1alpha2.AnnotationDescription] = "the test org"
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
+		Name:             "acme",
+		GatewayNamespace: ptr("gw-system"),
+	}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	updated, err := handler.k8s.client.CoreV1().Namespaces().Get(context.Background(),
+		"holos-org-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get namespace: %v", err)
+	}
+	if updated.Annotations[v1alpha2.AnnotationDisplayName] != "ACME Corp" {
+		t.Errorf("display name perturbed: %q", updated.Annotations[v1alpha2.AnnotationDisplayName])
+	}
+	if updated.Annotations[v1alpha2.AnnotationDescription] != "the test org" {
+		t.Errorf("description perturbed: %q", updated.Annotations[v1alpha2.AnnotationDescription])
+	}
+	if updated.Annotations[v1alpha2.AnnotationGatewayNamespace] != "gw-system" {
+		t.Errorf("gateway-namespace=%q, want %q",
+			updated.Annotations[v1alpha2.AnnotationGatewayNamespace], "gw-system")
+	}
+}
+
+func TestListOrganizations_PopulatesGatewayNamespace(t *testing.T) {
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
+	ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = "gw-system"
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	resp, err := handler.ListOrganizations(ctx, connect.NewRequest(&consolev1.ListOrganizationsRequest{}))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Msg.Organizations) != 1 {
+		t.Fatalf("expected 1 org, got %d", len(resp.Msg.Organizations))
+	}
+	if resp.Msg.Organizations[0].GatewayNamespace != "gw-system" {
+		t.Errorf("Organization.GatewayNamespace=%q, want %q",
+			resp.Msg.Organizations[0].GatewayNamespace, "gw-system")
+	}
+}
+
+func TestUpdateOrganization_GatewayNamespace_ViewerDenies(t *testing.T) {
+	// Viewers are blocked from any UpdateOrganization mutation; gateway_namespace
+	// rides on the same PERMISSION_ORGANIZATIONS_WRITE check (no new permission).
+	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
+	handler := newTestHandler(ns)
+	ctx := contextWithClaims("alice@example.com")
+
+	_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
+		Name:             "acme",
+		GatewayNamespace: ptr("gw-system"),
+	}))
+	assertPermissionDenied(t, err)
+}
+
 // ---- PopulateDefaults tests ----
 
 // mockTemplateSeeder implements TemplateSeeder for tests.
