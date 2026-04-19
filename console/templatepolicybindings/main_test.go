@@ -10,10 +10,14 @@ import (
 	"os"
 	"testing"
 
+	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 func TestMain(m *testing.M) {
 	scopeshim.SetDefaultResolver(newTestResolver())
-	os.Exit(m.Run())
+	// Wrap m.Run through crdmgrtesting.RunTestsWithSharedEnv so the
+	// process-singleton envtest Environment is Stop()'d after the last
+	// test in this package runs.
+	os.Exit(crdmgrtesting.RunTestsWithSharedEnv(m))
 }

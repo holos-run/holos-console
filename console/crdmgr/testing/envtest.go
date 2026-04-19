@@ -22,9 +22,15 @@
 //   - Each StartManager(t) call builds a new controller-runtime Manager
 //     against the shared REST config, primes the informers the caller
 //     asks for, and registers t.Cleanup so the Manager is shut down at
-//     test-end. The underlying envtest binaries keep running until the
-//     process exits — Go's test binary calls os.Exit, which the
-//     envtest.Environment's background apiserver tolerates cleanly.
+//     test-end.
+//
+//   - The underlying envtest.Environment itself (the kube-apiserver +
+//     etcd subprocesses and their temp data dirs) is owned by the shared
+//     singleton. Consumers wire up deterministic teardown by calling
+//     RunTestsWithSharedEnv from their package's TestMain so the
+//     apiserver is stopped after every test in the package runs. A
+//     SIGINT / SIGTERM handler is also installed as a safety net so an
+//     interrupted `go test` run does not leak the apiserver.
 //
 // Skip semantics: when KUBEBUILDER_ASSETS is unset and no cached
 // kubebuilder-envtest download is present, StartManager calls t.Skip so
@@ -36,10 +42,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -298,10 +306,13 @@ func ensureSharedEnv(t *testing.T) {
 			return
 		}
 		shared = &sharedEnv{env: e, cfg: cfg}
-		// No Stop() registered: the envtest kube-apiserver binary is
-		// reaped when the Go test binary exits. Registering a shutdown
-		// hook via t.Cleanup would scope termination to the first
-		// test, breaking every subsequent test in the package.
+		// The singleton owns the apiserver/etcd subprocesses for the
+		// rest of the test binary's lifetime. Deterministic shutdown
+		// happens via RunTestsWithSharedEnv (invoked from the test
+		// package's TestMain); the signal handler below is a safety
+		// net that catches ^C / SIGTERM so an interrupted `go test`
+		// run does not leak envtest children.
+		installShutdownSignalHandler()
 	})
 	if sharedEnvErr != nil {
 		if errors.Is(sharedEnvErr, errSkipNoEnvtest) {
@@ -450,6 +461,66 @@ func detectEnvtestAssets() string {
 		}
 	}
 	return best
+}
+
+// RunTestsWithSharedEnv is the TestMain wrapper a consumer package uses
+// to guarantee the shared envtest.Environment is stopped after every
+// test in the package runs, rather than relying on the apiserver
+// subprocess being reaped when the test binary exits.
+//
+// Usage in a consumer package:
+//
+//	func TestMain(m *testing.M) {
+//	    os.Exit(crdmgrtesting.RunTestsWithSharedEnv(m))
+//	}
+//
+// The returned code is the exit code from m.Run(); callers pass it to
+// os.Exit themselves so os.Exit defers (such as this package's deferred
+// stopSharedEnv) run before the process actually exits.
+func RunTestsWithSharedEnv(m *testing.M) int {
+	code := m.Run()
+	stopSharedEnv()
+	return code
+}
+
+// stopSharedEnv shuts down the process-singleton envtest environment if
+// one was started. Idempotent: subsequent calls are no-ops. Safe to call
+// from both RunTestsWithSharedEnv and the signal handler.
+func stopSharedEnv() {
+	sharedStopOnce.Do(func() {
+		if shared == nil || shared.env == nil {
+			return
+		}
+		if err := shared.env.Stop(); err != nil {
+			// Stop() failures are logged but not fatal: we are already
+			// on the exit path, and leaving a stray message on stderr
+			// is the most useful thing we can do.
+			fmt.Fprintf(os.Stderr, "crdmgrtesting: envtest.Environment.Stop: %v\n", err)
+		}
+	})
+}
+
+var sharedStopOnce sync.Once
+
+// installShutdownSignalHandler registers a one-shot SIGINT / SIGTERM
+// handler that stops the shared envtest environment before re-raising
+// the signal default behavior (process exit with the conventional
+// 128+signo code). Installed from inside sharedEnvOnce so it is only
+// wired up if the shared env actually started.
+func installShutdownSignalHandler() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-ch
+		stopSharedEnv()
+		// Restore default disposition and re-raise so the process exits
+		// with the expected 128+signo code rather than swallowing the
+		// signal.
+		signal.Reset(sig.(syscall.Signal))
+		if p, err := os.FindProcess(os.Getpid()); err == nil {
+			_ = p.Signal(sig)
+		}
+	}()
 }
 
 // findRepoRoot walks up from this source file looking for go.mod.
