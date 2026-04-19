@@ -25,6 +25,7 @@ import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { LinkifiedText } from '@/components/linkified-text'
 import { UpgradeDialog } from '@/components/template-updates'
@@ -54,6 +55,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const scope = makeProjectScope(projectName)
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
   const { data: project } = useGetProject(projectName)
+  // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
+  // platform-input preview default so the preview matches what the backend
+  // will inject at render time. The project's parent organization is the
+  // source of truth for this setting.
+  const { data: org } = useGetOrganization(project?.organization ?? '')
   const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
   const updateMutation = useUpdateTemplate(scope, templateName)
   const deleteMutation = useDeleteTemplate(scope)
@@ -96,7 +102,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canDelete = userRole === Role.OWNER
   const canEditLinks = userRole === Role.OWNER
 
-  const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  // Falls back to "istio-ingress" when the org has not configured one.
+  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
+  const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "${gatewayNamespace}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   // handleReconcile triggers an UpdateTemplate with the template's current

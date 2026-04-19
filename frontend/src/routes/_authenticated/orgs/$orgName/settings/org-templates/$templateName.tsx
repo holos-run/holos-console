@@ -75,7 +75,11 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
 
-  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "istio-ingress"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  // Use the authoring org's configured gateway namespace (HOL-526) so the
+  // preview default matches what the backend injects at render time. Fall
+  // back to "istio-ingress" when the org has not configured one.
+  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
+  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "${gatewayNamespace}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {

@@ -42,6 +42,10 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 // Mock the debounce hook so tests don't have to manage timers by default.
@@ -52,6 +56,7 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 
 import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useRenderTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { useGetOrganization } from '@/queries/organizations'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentTemplateDetailPage } from './$templateName'
@@ -65,13 +70,14 @@ const mockTemplate = {
   linkedTemplates: [] as Array<{ name: string; scope: number; scopeName: string }>,
 }
 
-function setupMocks(userRole = Role.OWNER, templateOverrides?: Partial<typeof mockTemplate>, renderYaml = '') {
+function setupMocks(userRole = Role.OWNER, templateOverrides?: Partial<typeof mockTemplate>, renderYaml = '', orgGatewayNamespace?: string) {
   const template = { ...mockTemplate, ...templateOverrides }
   ;(useGetTemplate as Mock).mockReturnValue({ data: template, isPending: false, error: null })
   ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
   ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
   ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }), isPending: false })
-  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole, organization: 'test-org' }, isLoading: false })
+  ;(useGetOrganization as Mock).mockReturnValue({ data: { name: 'test-org', gatewayNamespace: orgGatewayNamespace ?? '' }, isPending: false, error: null })
   ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: renderYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
@@ -173,6 +179,7 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
     ;(useGetProject as Mock).mockReturnValue({ data: undefined, isLoading: true })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
@@ -183,7 +190,8 @@ describe('DeploymentTemplateDetailPage', () => {
     ;(useGetTemplate as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('not found') })
     ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
-    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
+    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER, organization: 'test-org' }, isLoading: false })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: { name: 'test-org', gatewayNamespace: '' }, isPending: false, error: null })
     ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     render(<DeploymentTemplateDetailPage />)
     expect(screen.getByText('not found')).toBeInTheDocument()
@@ -280,6 +288,28 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(platformInput.value).toContain('test-project')
     expect(platformInput.value).toContain('claims')
     expect(platformInput.value).toContain('email')
+  })
+
+  // HOL-646: the Platform Input preview default mirrors the authoring org's
+  // configured gatewayNamespace so the preview matches what the backend
+  // injects at render time. Falls back to "istio-ingress" when unset.
+  it('Platform Input uses org gatewayNamespace when configured', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n', 'custom-gateway-ns')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).toContain('gatewayNamespace: "custom-gateway-ns"')
+    expect(platformInput.value).not.toContain('gatewayNamespace: "istio-ingress"')
+  })
+
+  it('Platform Input falls back to istio-ingress when org gatewayNamespace is empty', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n', '')
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).toContain('gatewayNamespace: "istio-ingress"')
   })
 
   it('Project Input textarea contains name, image, tag, and port', async () => {

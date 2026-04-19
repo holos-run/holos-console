@@ -14,6 +14,7 @@ import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
+import { useGetOrganization } from '@/queries/organizations'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha2 (prepended by renderer).
@@ -239,6 +240,10 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const scope = makeProjectScope(projectName)
   const createMutation = useCreateTemplate(scope)
   const { data: project } = useGetProject(projectName)
+  // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
+  // platform-input preview default so the preview matches what the backend
+  // will inject at render time.
+  const { data: org } = useGetOrganization(project?.organization ?? '')
   const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
 
   const userRole = project?.userRole ?? Role.VIEWER
@@ -261,10 +266,12 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
   )
 
+  // Falls back to "istio-ingress" when the org has not configured one.
+  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
   const previewCuePlatformInput = `platform: {
 \tproject:          "${projectName}"
 \tnamespace:        "holos-prj-${projectName}"
-\tgatewayNamespace: "istio-ingress"
+\tgatewayNamespace: "${gatewayNamespace}"
 \tclaims: {
 \t\tiss:            "https://login.example.com"
 \t\tsub:            "user-abc123"
