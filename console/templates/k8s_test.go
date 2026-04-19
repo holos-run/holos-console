@@ -1,28 +1,22 @@
 // k8s_test.go exercises the HOL-661 rewrite of the Template CRUD surface
-// against the Template CRD. The tests run inline-envtest style: each test
-// starts its own envtest.Environment with the templates.holos.run CRDs
-// installed (shared-envtest extraction is the HOL-663 follow-up), builds a
-// K8sClient backed by a direct controller-runtime client, and exercises one
-// CRUD operation table-driven.
+// against the Template CRD. Each CRUD test builds a K8sClient against a
+// cache-backed controller-runtime client backed by the shared envtest
+// bootstrap in console/crdmgr/testing (extracted in HOL-663), and
+// exercises one operation table-driven.
 //
 // Cache freshness is covered by TestK8sClient_ListReflectsCreate, which
 // creates a Template and asserts a subsequent List reflects it within the
-// resync window. The remaining fake-client tests (ListEffectiveTemplateSources,
-// LinkedTemplatesAnnotation) continue to run against a fake
-// controller-runtime client because their inputs are still expressed as
-// ConfigMap fixtures and the bridge in testhelpers_test.go materializes
-// them into CRs — this keeps HOL-661's blast radius inside k8s.go and
-// k8s_test.go while the surrounding packages wait for HOL-662/HOL-663.
+// resync window. The remaining fake-client tests
+// (ListEffectiveTemplateSources, LinkedTemplatesAnnotation) continue to run
+// against a fake controller-runtime client because their inputs are still
+// expressed as ConfigMap fixtures and the bridge in testhelpers_test.go
+// materializes them into CRs.
 package templates
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -30,16 +24,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
@@ -155,143 +145,26 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-// envtestEnv wraps an envtest.Environment + direct client + rest config so
-// every CRUD test spins up its own isolated API server. One Environment per
-// test keeps tests independent when they need custom resolver settings or
-// different CRD fixtures — the shared-env helper comes in HOL-663.
-type envtestEnv struct {
-	env    *envtest.Environment
-	cfg    *rest.Config
-	client ctrlclient.Client // cache-backed delegating client from the manager
-	direct ctrlclient.Client // uncached client (API-server round-trip) for setup
-	core   kubernetes.Interface
-}
-
-// startEnvtest boots envtest with the templates.holos.run CRDs installed and
-// returns a cache-backed controller-runtime client + an uncached client for
-// setup plus a client-go Interface. Skips (does not fail) when envtest
-// binaries are not installed so developers without `setup-envtest use` can
-// still run `go test ./...`.
-//
-// Using the manager's cache-backed client is load-bearing for the HOL-661
-// acceptance criterion that Template reads go through the informer cache —
-// without it, TestK8sClient_ListReflectsCreate would pass even if K8sClient
-// regressed to a direct API read. The manager is started with the Template
-// scheme so its cache is populated via a watch on Templates.
-func startEnvtest(t *testing.T) *envtestEnv {
-	t.Helper()
-
-	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
-		if assets := detectEnvtestAssets(); assets != "" {
-			t.Setenv("KUBEBUILDER_ASSETS", assets)
-		} else {
-			t.Skip("envtest binaries not found; run `setup-envtest use` to download")
-		}
-	}
-
-	repoRoot, err := findRepoRoot()
-	if err != nil {
-		t.Fatalf("finding repo root: %v", err)
-	}
-
-	e := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
-		ErrorIfCRDPathMissing: true,
-	}
-	cfg, err := e.Start()
-	if err != nil {
-		t.Fatalf("starting envtest: %v", err)
-	}
-	t.Cleanup(func() {
-		if stopErr := e.Stop(); stopErr != nil {
-			t.Logf("stopping envtest: %v", stopErr)
-		}
-	})
-
-	scheme := testScheme(t)
-
-	// Uncached client for test setup (namespace Create, seed-write, etc.).
-	// Using the cache for setup would need Eventually-wrapped waits on every
-	// seed write, which tangles the test body — keep setup strict-read/write
-	// against the API server and reserve the cache client for the
-	// under-test K8sClient.
-	direct, err := ctrlclient.New(cfg, ctrlclient.Options{Scheme: scheme})
-	if err != nil {
-		t.Fatalf("constructing direct client: %v", err)
-	}
-
-	// Cache-backed delegating client: writes go to the API server, reads
-	// come from the informer cache. Mirrors the production wiring in
-	// console.go where K8sClient receives mgr.GetClient().
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress: "0", // disable metrics listener in tests
-		},
-		HealthProbeBindAddress: "0", // disable readiness listener
-	})
-	if err != nil {
-		t.Fatalf("constructing manager: %v", err)
-	}
-
-	// Prime the Template informer so the cache has the watch registered
-	// before we start the manager. Without this, the first List through the
-	// cache-backed client lazily registers the informer and may race the
-	// test write.
-	if _, err := mgr.GetCache().GetInformer(context.Background(), &templatesv1alpha1.Template{}); err != nil {
-		t.Fatalf("priming Template informer: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- mgr.Start(ctx)
-	}()
-
-	// Wait for the cache to sync before returning — every test that reads
-	// through K8sClient expects a hot cache. A manager that fails to sync
-	// inside the deadline indicates a broken CRD install or scheme
-	// mismatch, so abort loudly rather than let tests time out on List.
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer waitCancel()
-	if !mgr.GetCache().WaitForCacheSync(waitCtx) {
-		cancel()
-		t.Fatalf("manager cache did not sync within deadline")
-	}
-
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case err := <-errCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				t.Logf("manager exit: %v", err)
-			}
-		case <-time.After(10 * time.Second):
-			t.Logf("manager did not shut down within deadline")
-		}
-	})
-
-	core, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("constructing core client: %v", err)
-	}
-	return &envtestEnv{env: e, cfg: cfg, client: mgr.GetClient(), direct: direct, core: core}
-}
-
-// newEnvtestK8sClient builds a K8sClient backed by an envtest API server.
-// The K8sClient receives the manager's cache-backed client so every Get /
-// List the CRUD tests exercise goes through the informer cache — the
-// HOL-661 acceptance criterion the suite is supposed to regress against.
-// Writes go straight to the API server (controller-runtime default), so
-// the create-then-list freshness test catches any regression where the
+// newEnvtestK8sClient builds a K8sClient backed by the shared envtest
+// bootstrap in console/crdmgr/testing. The K8sClient receives the
+// manager's cache-backed client so every Get / List the CRUD tests
+// exercise goes through the informer cache — the HOL-661 acceptance
+// criterion the suite is supposed to regress against. Writes go
+// straight to the API server (controller-runtime default), so the
+// create-then-list freshness test catches any regression where the
 // cache-backed read path is bypassed.
-func newEnvtestK8sClient(t *testing.T) (*envtestEnv, *K8sClient) {
+func newEnvtestK8sClient(t *testing.T) (*crdmgrtesting.Env, *K8sClient) {
 	t.Helper()
-	e := startEnvtest(t)
-	// K8sClient receives the manager's cache-backed client so Get/List
-	// exercise the informer cache path; writes (Create/Update/Delete) flow
-	// through the same delegating client straight to the API server.
-	return e, NewK8sClient(e.core, e.client, testResolver())
+	env := crdmgrtesting.StartManager(t, crdmgrtesting.Options{
+		Scheme:          testScheme(t),
+		InformerObjects: []ctrlclient.Object{&templatesv1alpha1.Template{}},
+	})
+	if env == nil {
+		// Helper called t.Skip because envtest binaries are missing;
+		// propagate the skip to the caller.
+		t.SkipNow()
+	}
+	return env, NewK8sClient(env.Core, env.Client, testResolver())
 }
 
 // ensureNamespace creates a namespace if it does not already exist.
@@ -391,14 +264,14 @@ func TestListTemplates(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ensureNamespace(t, e.direct, tc.namespace)
+			ensureNamespace(t, e.Direct, tc.namespace)
 			for _, tmpl := range tc.seed {
-				ensureNamespace(t, e.direct, tmpl.Namespace)
-				if err := e.direct.Create(context.Background(), tmpl); err != nil {
+				ensureNamespace(t, e.Direct, tmpl.Namespace)
+				if err := e.Direct.Create(context.Background(), tmpl); err != nil {
 					t.Fatalf("seed create: %v", err)
 				}
 				t.Cleanup(func() {
-					_ = e.direct.Delete(context.Background(), tmpl)
+					_ = e.Direct.Delete(context.Background(), tmpl)
 				})
 			}
 
@@ -423,7 +296,7 @@ func TestGetTemplate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-get"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	seed := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{Name: "web-app", Namespace: ns},
@@ -434,7 +307,7 @@ func TestGetTemplate(t *testing.T) {
 			Enabled:     true,
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	// Wait for the cache to observe the seed before the first read so
@@ -479,7 +352,7 @@ func TestCreateTemplate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-create"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	cases := []struct {
 		name            string
@@ -533,7 +406,7 @@ func TestCreateTemplate(t *testing.T) {
 
 			// Read-your-own-write via direct client Get.
 			read := &templatesv1alpha1.Template{}
-			if err := e.direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: tc.resourceName}, read); err != nil {
+			if err := e.Direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: tc.resourceName}, read); err != nil {
 				t.Fatalf("Get after Create: %v", err)
 			}
 			if read.Spec.DisplayName != tc.displayName {
@@ -556,7 +429,7 @@ func TestUpdateTemplate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-update"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	seed := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{Name: "tmpl", Namespace: ns},
@@ -564,7 +437,7 @@ func TestUpdateTemplate(t *testing.T) {
 			DisplayName: "Before", Description: "before-desc", CueTemplate: "package holos\n",
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	// UpdateTemplate internally calls GetTemplate via the cache-backed
@@ -596,7 +469,7 @@ func TestDeleteTemplate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-delete"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	seed := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{Name: "goner", Namespace: ns},
@@ -604,7 +477,7 @@ func TestDeleteTemplate(t *testing.T) {
 			DisplayName: "Goner", CueTemplate: "package holos\n",
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	// Delete does not read through the cache, but keeping a sync barrier
@@ -617,7 +490,7 @@ func TestDeleteTemplate(t *testing.T) {
 		t.Fatalf("DeleteTemplate: %v", err)
 	}
 	read := &templatesv1alpha1.Template{}
-	err := e.direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "goner"}, read)
+	err := e.Direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "goner"}, read)
 	if err == nil {
 		t.Fatal("expected NotFound after delete")
 	}
@@ -650,7 +523,7 @@ func TestK8sClient_ListReflectsCreate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-cache"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	if _, err := k.CreateTemplate(
 		context.Background(), ns, "fresh", "Fresh", "", "package holos\n",
@@ -685,7 +558,7 @@ func TestCloneTemplate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-clone"
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	seed := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: ns},
@@ -693,7 +566,7 @@ func TestCloneTemplate(t *testing.T) {
 			DisplayName: "Src", Description: "desc", CueTemplate: "package holos\nfoo: true\n", Enabled: true,
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	// CloneTemplate calls GetTemplate on the source via the cache-backed
@@ -978,7 +851,7 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 
 	ns := "prj-links"
 	ctx := context.Background()
-	ensureNamespace(t, e.direct, ns)
+	ensureNamespace(t, e.Direct, ns)
 
 	t.Run("CreateTemplate stores linked refs in spec", func(t *testing.T) {
 		linked := []*consolev1.LinkedTemplateRef{
@@ -1044,56 +917,6 @@ func TestDefaultsJSONRoundTrip(t *testing.T) {
 	}
 	if tmpl.Spec.Defaults.Image != "ghcr.io/app" {
 		t.Errorf("image=%q want ghcr.io/app", tmpl.Spec.Defaults.Image)
-	}
-}
-
-// ------------------------------------------------------------------------
-// envtest helpers — detectEnvtestAssets + findRepoRoot mirror the copies in
-// internal/controller/suite_test.go and api/templates/v1alpha1/crd_test.go.
-// HOL-663 will extract a shared helper; for now we duplicate so the
-// templates package has zero test-only dependency on the other suites.
-// ------------------------------------------------------------------------
-
-func detectEnvtestAssets() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	base := filepath.Join(home, ".local", "share", "kubebuilder-envtest", "k8s")
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return ""
-	}
-	var best string
-	for _, en := range entries {
-		if !en.IsDir() {
-			continue
-		}
-		cand := filepath.Join(base, en.Name())
-		if _, err := os.Stat(filepath.Join(cand, "kube-apiserver")); err == nil {
-			if best == "" || en.Name() > filepath.Base(best) {
-				best = cand
-			}
-		}
-	}
-	return best
-}
-
-func findRepoRoot() (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("runtime.Caller failed")
-	}
-	dir := filepath.Dir(file)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("no go.mod above %q", file)
-		}
-		dir = parent
 	}
 }
 

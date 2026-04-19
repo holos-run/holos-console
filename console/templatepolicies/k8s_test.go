@@ -1,8 +1,7 @@
 // k8s_test.go exercises the HOL-662 rewrite of the TemplatePolicy CRUD
-// surface against the TemplatePolicy CRD. Each CRUD test starts its own
-// envtest.Environment with the templates.holos.run CRDs installed
-// (shared-envtest extraction is the HOL-663 follow-up), builds a K8sClient
-// backed by a cache-backed controller-runtime client, and exercises one
+// surface against the TemplatePolicy CRD. Each CRUD test builds a
+// K8sClient backed by the shared envtest bootstrap in
+// console/crdmgr/testing (extracted in HOL-663) and exercises one
 // operation table-driven.
 //
 // Cache freshness is covered by TestK8sClient_ListReflectsCreate, which
@@ -14,30 +13,21 @@ package templatepolicies
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -65,242 +55,31 @@ func sampleRule() *consolev1.TemplatePolicyRule {
 	}
 }
 
-// envtestEnv wraps an envtest.Environment + direct client + cache-backed
-// client + client-go Interface. Each CRUD test spins up its own isolated
-// API server — one Environment per test keeps tests independent. HOL-663
-// will extract a shared helper.
-type envtestEnv struct {
-	env    *envtest.Environment
-	cfg    *rest.Config
-	client ctrlclient.Client // cache-backed delegating client from the manager
-	direct ctrlclient.Client // uncached client (API-server round-trip) for setup
-	core   kubernetes.Interface
-}
-
-// startEnvtest boots envtest with the templates.holos.run CRDs (plus the
-// CEL ValidatingAdmissionPolicy that enforces the folder/org-only
-// storage-isolation guardrail) installed, and returns a cache-backed
-// controller-runtime client + an uncached client for setup plus a
-// client-go Interface. Skips (does not fail) when envtest binaries are not
-// installed so developers without `setup-envtest use` can still run
-// `go test ./...`.
+// newEnvtestK8sClient builds a K8sClient backed by the shared envtest
+// bootstrap in console/crdmgr/testing. The K8sClient receives the
+// manager's cache-backed client so every Get / List the CRUD tests
+// exercise goes through the informer cache — the HOL-662 acceptance
+// criterion the suite regresses against. Writes go straight to the API
+// server (controller-runtime default), so the create-then-list
+// freshness test catches any regression where the cache-backed read
+// path is bypassed.
 //
-// Using the manager's cache-backed client is load-bearing for the HOL-662
-// acceptance criterion that TemplatePolicy reads go through the informer
-// cache — without it, TestK8sClient_ListReflectsCreate would pass even if
-// K8sClient regressed to a direct API read.
-func startEnvtest(t *testing.T) *envtestEnv {
+// The helper also applies the folder/org-only CEL admission policies
+// from config/admission/ once per process and waits for the policy
+// this suite depends on (templatepolicy-folder-or-org-only) to be
+// registered so the admission-rejection regression does not race the
+// CEL compiler.
+func newEnvtestK8sClient(t *testing.T) (*crdmgrtesting.Env, *K8sClient) {
 	t.Helper()
-
-	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
-		if assets := detectEnvtestAssets(); assets != "" {
-			t.Setenv("KUBEBUILDER_ASSETS", assets)
-		} else {
-			t.Skip("envtest binaries not found; run `setup-envtest use` to download")
-		}
-	}
-
-	repoRoot, err := findRepoRoot()
-	if err != nil {
-		t.Fatalf("finding repo root: %v", err)
-	}
-
-	e := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
-		ErrorIfCRDPathMissing: true,
-	}
-	cfg, err := e.Start()
-	if err != nil {
-		t.Fatalf("starting envtest: %v", err)
-	}
-	t.Cleanup(func() {
-		if stopErr := e.Stop(); stopErr != nil {
-			t.Logf("stopping envtest: %v", stopErr)
-		}
+	env := crdmgrtesting.StartManager(t, crdmgrtesting.Options{
+		Scheme:                   testScheme(t),
+		InformerObjects:          []ctrlclient.Object{&templatesv1alpha1.TemplatePolicy{}},
+		WaitForAdmissionPolicies: []string{"templatepolicy-folder-or-org-only"},
 	})
-
-	scheme := testScheme(t)
-
-	// Uncached client for test setup (namespace Create, seed-write, etc.).
-	direct, err := ctrlclient.New(cfg, ctrlclient.Options{Scheme: scheme})
-	if err != nil {
-		t.Fatalf("constructing direct client: %v", err)
+	if env == nil {
+		t.SkipNow()
 	}
-
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress: "0",
-		},
-		HealthProbeBindAddress: "0",
-	})
-	if err != nil {
-		t.Fatalf("constructing manager: %v", err)
-	}
-
-	// Prime the TemplatePolicy informer so the cache has the watch
-	// registered before the manager starts. Without this, the first List
-	// through the cache-backed client lazily registers the informer and
-	// may race the test write.
-	if _, err := mgr.GetCache().GetInformer(context.Background(), &templatesv1alpha1.TemplatePolicy{}); err != nil {
-		t.Fatalf("priming TemplatePolicy informer: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- mgr.Start(ctx)
-	}()
-
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer waitCancel()
-	if !mgr.GetCache().WaitForCacheSync(waitCtx) {
-		cancel()
-		t.Fatalf("manager cache did not sync within deadline")
-	}
-
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case err := <-errCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				t.Logf("manager exit: %v", err)
-			}
-		case <-time.After(10 * time.Second):
-			t.Logf("manager did not shut down within deadline")
-		}
-	})
-
-	core, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("constructing core client: %v", err)
-	}
-
-	// envtest has no built-in ValidatingAdmissionPolicy installer — the VAP
-	// manifests live in config/admission/ and must be applied through the
-	// generic client after Start() returns. This keeps the
-	// TestCreatePolicyRejectedByAdmissionInProjectNamespace regression in
-	// lockstep with the production policy surface.
-	ctx2 := context.Background()
-	if err := applyAdmissionYAMLFiles(ctx2, direct, filepath.Join(repoRoot, "config", "admission")); err != nil {
-		t.Fatalf("applying admission policies: %v", err)
-	}
-	// Wait for the VAP relevant to this package to be registered. envtest
-	// acknowledges the Create immediately; the apiserver's CEL compiler
-	// needs a tick to pick it up before the guard starts rejecting writes.
-	waitForAdmissionPolicy(t, ctx2, direct, "templatepolicy-folder-or-org-only")
-
-	return &envtestEnv{env: e, cfg: cfg, client: mgr.GetClient(), direct: direct, core: core}
-}
-
-// applyAdmissionYAMLFiles reads every *.yaml file in dir and applies each
-// ValidatingAdmissionPolicy / ValidatingAdmissionPolicyBinding document
-// through the controller-runtime client. Mirrors the helper used by
-// api/templates/v1alpha1/crd_test.go — duplicated here so this package does
-// not import the v1alpha1 test package (test packages cannot be imported).
-func applyAdmissionYAMLFiles(ctx context.Context, c ctrlclient.Client, dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("read dir: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			return fmt.Errorf("read %s: %w", e.Name(), err)
-		}
-		for _, doc := range splitYAMLDocuments(data) {
-			if len(strings.TrimSpace(string(doc))) == 0 {
-				continue
-			}
-			if err := applyAdmissionDoc(ctx, c, doc); err != nil {
-				return fmt.Errorf("apply doc from %s: %w", e.Name(), err)
-			}
-		}
-	}
-	return nil
-}
-
-func splitYAMLDocuments(data []byte) [][]byte {
-	var docs [][]byte
-	var current []byte
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == "---" {
-			if len(current) > 0 {
-				docs = append(docs, current)
-			}
-			current = nil
-			continue
-		}
-		current = append(current, []byte(line+"\n")...)
-	}
-	if len(current) > 0 {
-		docs = append(docs, current)
-	}
-	return docs
-}
-
-func applyAdmissionDoc(ctx context.Context, c ctrlclient.Client, doc []byte) error {
-	kindProbe := struct {
-		Kind string `json:"kind"`
-	}{}
-	if err := yaml.Unmarshal(doc, &kindProbe); err != nil {
-		return fmt.Errorf("unmarshal kind: %w", err)
-	}
-	switch kindProbe.Kind {
-	case "ValidatingAdmissionPolicy":
-		policy := &admissionregistrationv1.ValidatingAdmissionPolicy{}
-		if err := yaml.Unmarshal(doc, policy); err != nil {
-			return fmt.Errorf("unmarshal policy: %w", err)
-		}
-		if err := c.Create(ctx, policy); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		return nil
-	case "ValidatingAdmissionPolicyBinding":
-		binding := &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}
-		if err := yaml.Unmarshal(doc, binding); err != nil {
-			return fmt.Errorf("unmarshal binding: %w", err)
-		}
-		if err := c.Create(ctx, binding); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported admission kind %q", kindProbe.Kind)
-	}
-}
-
-// waitForAdmissionPolicy polls for a ValidatingAdmissionPolicy to be
-// registered with the API server. Mirrors the helper in crd_test.go.
-// Without this poll, the first Create race the apiserver's CEL compiler
-// and the test sees a false negative.
-func waitForAdmissionPolicy(t *testing.T, ctx context.Context, c ctrlclient.Client, name string) {
-	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		vap := &admissionregistrationv1.ValidatingAdmissionPolicy{}
-		if err := c.Get(ctx, types.NamespacedName{Name: name}, vap); err == nil {
-			return
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	t.Fatalf("admission policy %q not registered within deadline", name)
-}
-
-// newEnvtestK8sClient builds a K8sClient backed by an envtest API server.
-// The K8sClient receives the manager's cache-backed client so every Get /
-// List the CRUD tests exercise goes through the informer cache — the
-// HOL-662 acceptance criterion the suite regresses against. Writes go
-// straight to the API server (controller-runtime default), so the
-// create-then-list freshness test catches any regression where the
-// cache-backed read path is bypassed.
-func newEnvtestK8sClient(t *testing.T) (*envtestEnv, *K8sClient) {
-	t.Helper()
-	e := startEnvtest(t)
-	return e, NewK8sClient(e.client, newTestResolver())
+	return env, NewK8sClient(env.Client, newTestResolver())
 }
 
 // ensureNamespace creates a namespace if it does not already exist.
@@ -451,14 +230,14 @@ func TestListPolicies(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ensureNamespace(t, e.direct, tc.namespace, v1alpha2.ResourceTypeFolder)
+			ensureNamespace(t, e.Direct, tc.namespace, v1alpha2.ResourceTypeFolder)
 			for _, p := range tc.seed {
-				ensureNamespace(t, e.direct, p.Namespace, v1alpha2.ResourceTypeFolder)
-				if err := e.direct.Create(context.Background(), p); err != nil {
+				ensureNamespace(t, e.Direct, p.Namespace, v1alpha2.ResourceTypeFolder)
+				if err := e.Direct.Create(context.Background(), p); err != nil {
 					t.Fatalf("seed create: %v", err)
 				}
 				t.Cleanup(func() {
-					_ = e.direct.Delete(context.Background(), p)
+					_ = e.Direct.Delete(context.Background(), p)
 				})
 			}
 
@@ -479,7 +258,7 @@ func TestGetPolicy(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-fld-get"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeFolder)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeFolder)
 
 	seed := &templatesv1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "require-httproute", Namespace: ns},
@@ -496,7 +275,7 @@ func TestGetPolicy(t *testing.T) {
 			},
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	_ = eventuallyGetPolicy(t, k, ns, "require-httproute")
@@ -539,7 +318,7 @@ func TestCreatePolicy(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-fld-create"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeFolder)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeFolder)
 
 	cases := []struct {
 		name         string
@@ -590,7 +369,7 @@ func TestCreatePolicy(t *testing.T) {
 
 			// Read-your-own-write via direct client Get.
 			read := &templatesv1alpha1.TemplatePolicy{}
-			if err := e.direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: tc.resourceName}, read); err != nil {
+			if err := e.Direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: tc.resourceName}, read); err != nil {
 				t.Fatalf("Get after Create: %v", err)
 			}
 			if read.Spec.DisplayName != tc.displayName {
@@ -607,7 +386,7 @@ func TestUpdatePolicy(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-fld-update"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeFolder)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeFolder)
 
 	seed := &templatesv1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "pol", Namespace: ns},
@@ -624,7 +403,7 @@ func TestUpdatePolicy(t *testing.T) {
 			},
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	// UpdatePolicy internally calls GetPolicy via the cache-backed client,
@@ -676,7 +455,7 @@ func TestDeletePolicy(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-fld-delete"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeFolder)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeFolder)
 
 	seed := &templatesv1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "goner", Namespace: ns},
@@ -692,7 +471,7 @@ func TestDeletePolicy(t *testing.T) {
 			},
 		},
 	}
-	if err := e.direct.Create(context.Background(), seed); err != nil {
+	if err := e.Direct.Create(context.Background(), seed); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 	_ = eventuallyGetPolicy(t, k, ns, "goner")
@@ -701,7 +480,7 @@ func TestDeletePolicy(t *testing.T) {
 		t.Fatalf("DeletePolicy: %v", err)
 	}
 	read := &templatesv1alpha1.TemplatePolicy{}
-	err := e.direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "goner"}, read)
+	err := e.Direct.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "goner"}, read)
 	if err == nil {
 		t.Fatal("expected NotFound after delete")
 	}
@@ -729,7 +508,7 @@ func TestK8sClient_ListReflectsCreate(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-fld-cache"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeFolder)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeFolder)
 
 	if _, err := k.CreatePolicy(
 		context.Background(), ns, "fresh", "Fresh", "", "creator@example.com",
@@ -767,7 +546,7 @@ func TestCreatePolicyRejectedByAdmissionInProjectNamespace(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "holos-prj-billing-web"
-	ensureNamespace(t, e.direct, ns, v1alpha2.ResourceTypeProject)
+	ensureNamespace(t, e.Direct, ns, v1alpha2.ResourceTypeProject)
 
 	_, err := k.CreatePolicy(
 		context.Background(), ns, "policy-test", "Test", "", "creator@example.com",
@@ -821,54 +600,6 @@ func TestPackageDoesNotCallProjectNamespace(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Fatalf("package must not call %s — found in: %v", target, matches)
-	}
-}
-
-// ------------------------------------------------------------------------
-// envtest helpers — detectEnvtestAssets + findRepoRoot mirror the copies
-// in console/templates/k8s_test.go. HOL-663 will extract a shared helper.
-// ------------------------------------------------------------------------
-
-func detectEnvtestAssets() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	base := filepath.Join(home, ".local", "share", "kubebuilder-envtest", "k8s")
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return ""
-	}
-	var best string
-	for _, en := range entries {
-		if !en.IsDir() {
-			continue
-		}
-		cand := filepath.Join(base, en.Name())
-		if _, err := os.Stat(filepath.Join(cand, "kube-apiserver")); err == nil {
-			if best == "" || en.Name() > filepath.Base(best) {
-				best = cand
-			}
-		}
-	}
-	return best
-}
-
-func findRepoRoot() (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("runtime.Caller failed")
-	}
-	dir := filepath.Dir(file)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("no go.mod above %q", file)
-		}
-		dir = parent
 	}
 }
 
