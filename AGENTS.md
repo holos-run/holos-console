@@ -15,6 +15,7 @@ opening a PR.
 - [Testing Patterns](docs/agents/testing-patterns.md) — Go table-driven tests, Vitest + RTL for UI, Playwright for E2E, multi-persona helpers.
 - [Testing Guide](docs/testing.md) — Full decision-rule table and ConnectRPC mock worked example.
 - [E2E Testing](docs/e2e-testing.md) — Tight iteration loop, port overrides, multi-persona helpers, and which tests need Kubernetes.
+- [E2E Refactor Audit](docs/agents/e2e-refactor-audit.md) — Per-spec verdict (Keep / Refactor-to-unit / Split / Delete) with target test files and mocks for each row; consumed by HOL-653 through HOL-658.
 
 ## Guardrails
 
