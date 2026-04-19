@@ -70,7 +70,7 @@ func recordAppliedTemplateHandler(
 	objs = append(objs, seedObjs...)
 	fakeClient := fake.NewClientset(objs...)
 
-	h := newTestHandler(fakeClient, map[string]string{"owner@localhost": "owner"})
+	h := newTestHandler(t, fakeClient, map[string]string{"owner@localhost": "owner"})
 	// Replace the no-op resolver wired by newTestHandler with the test's
 	// controlled instance so assertions can pin the effective ref set.
 	h.policyResolver = policyResolver
@@ -497,55 +497,16 @@ func TestHandler_UpdateTemplate_NilCheckerIsSafe(t *testing.T) {
 	}
 }
 
-// TestHandler_UpdateTemplate_SkipsRecordOnMalformedExistingLinks verifies
-// that when update_linked_templates=false and the stored
-// AnnotationLinkedTemplates cannot be parsed, the write-through is
-// skipped rather than recording an empty set (review round 1 P2 finding).
-// Persisting nil in that case would silently overwrite the applied set
-// with a value that no longer matches the preserved K8s annotation,
-// producing false drift on the next policy-state read.
-func TestHandler_UpdateTemplate_SkipsRecordOnMalformedExistingLinks(t *testing.T) {
-	resolver := &recordingResolver{}
-	checker := &stubProjectTemplateDriftChecker{}
-
-	// Seed a template with a malformed linked-templates annotation so the
-	// parser fails on the pre-update read. The handler should log the
-	// failure and skip the write-through rather than record nil.
-	existing := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "web-app",
-			Namespace: "prj-my-project",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationEnabled:         "true",
-				v1alpha2.AnnotationLinkedTemplates: "{not-json",
-			},
-		},
-		Data: map[string]string{CueTemplateKey: "#Input: { name: string }\n"},
-	}
-	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
-
-	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Namespace: projectScopeRef("my-project"),
-		Template: &consolev1.Template{
-			Name:        "web-app",
-			CueTemplate: validCue,
-		},
-		UpdateLinkedTemplates: false,
-	})
-	// The handler's UpdateTemplate itself may return an error for
-	// malformed-annotation inputs today (see
-	// TestUpdateTemplateMalformedLinkedAnnotation). This test focuses on
-	// the write-through skip regardless of the outer RPC outcome.
-	_, _ = h.UpdateTemplate(ownerCtx(), req)
-	if checker.recordCalls != 0 {
-		t.Errorf("RecordApplied called %d times on malformed-annotation preserve-links path; want 0", checker.recordCalls)
-	}
-}
+// NOTE: TestHandler_UpdateTemplate_SkipsRecordOnMalformedExistingLinks was
+// removed in HOL-661. Before HOL-661 the update-path parsed a JSON
+// annotation to recover the existing linked-template set on the
+// preserve-links branch, and could fail the parse — the skip-record
+// behavior guarded against silently persisting an empty applied set in
+// that case. After HOL-661 the existing refs are read from
+// Template.Spec.LinkedTemplates directly (typed CRD field) — there is no
+// JSON parse step that can fail, so the invariant no longer exists.
+// The other RecordApplied tests in this file cover the success and
+// read-failure paths that are still meaningful.
 
 // TestHandler_UpdateTemplate_ResolverFailureIsSwallowed verifies that a
 // resolver failure on the write-through path does not fail the RPC — the

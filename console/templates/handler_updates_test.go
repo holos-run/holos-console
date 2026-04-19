@@ -95,7 +95,7 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -121,7 +121,7 @@ func TestCheckUpdates(t *testing.T) {
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -152,7 +152,7 @@ func TestCheckUpdates(t *testing.T) {
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.5.0")
 		r3 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2, r3)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -192,7 +192,7 @@ func TestCheckUpdates(t *testing.T) {
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -221,7 +221,7 @@ func TestCheckUpdates(t *testing.T) {
 		// Single release: current == latest, no update.
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -259,7 +259,7 @@ func TestCheckUpdates(t *testing.T) {
 			Data: map[string]string{CueTemplateKey: validCue},
 		}
 		fakeClient := fake.NewClientset(projectNs, tmpl)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -290,7 +290,7 @@ func TestCheckUpdates(t *testing.T) {
 		// gateway: has no updates
 		r3 := makeReleaseCMInNS("org-"+org, "gateway", "1.0.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl1, tmpl2, r1, r2, r3)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -320,7 +320,7 @@ func TestCheckUpdates(t *testing.T) {
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -358,7 +358,7 @@ func TestCheckUpdates(t *testing.T) {
 		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -383,7 +383,7 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -412,7 +412,7 @@ func TestCheckUpdates(t *testing.T) {
 		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.5.0")
 		r3 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2, r3)
-		handler := newTestHandler(fakeClient, shareUsers)
+		handler := newTestHandler(t, fakeClient, shareUsers)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{

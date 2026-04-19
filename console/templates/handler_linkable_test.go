@@ -133,9 +133,10 @@ func makeReleaseCMWithData(ns, templateName, version, cue, defaults string) *cor
 // newLinkableTestHandler builds a Handler with an AncestorWalker wired up for
 // testing ListLinkableTemplates. Uses org-level grant resolver since linkable
 // templates come from ancestor (org/folder) scopes.
-func newLinkableTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string, walker AncestorWalker) *Handler {
+func newLinkableTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, walker AncestorWalker) *Handler {
+	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := NewK8sClient(fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 	handler.WithAncestorWalker(walker)
@@ -161,7 +162,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -197,7 +198,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -231,7 +232,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -269,7 +270,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -307,7 +308,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -337,7 +338,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -386,7 +387,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 	makeHandler := func(scope scopeshim.Scope, ancestors []*corev1.Namespace) *Handler {
 		fakeClient := fake.NewClientset(orgNsObj, folderNsObj, orgTemplate, folderTemplate)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-		k8s := NewK8sClient(fakeClient, r)
+		k8s := newTestK8sClient(t, fakeClient, r)
 		handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(&stubAncestorWalker{ancestors: ancestors})
 		// Wire whichever grant resolver matches the request scope so

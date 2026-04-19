@@ -176,7 +176,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 
 			// ownerEmail gets "owner"; no one else is in the grants map so
 			// their project-read check fails closed.
-			h := newTestHandler(fakeClient, map[string]string{ownerEmail: "owner"})
+			h := newTestHandler(t, fakeClient, map[string]string{ownerEmail: "owner"})
 			if c.checker != nil {
 				h = h.WithProjectTemplateDriftChecker(c.checker)
 			}

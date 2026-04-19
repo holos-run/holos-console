@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -18,7 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -187,14 +186,18 @@ func (h *Handler) ListTemplates(
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListTemplates(ctx, scope, scopeName)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	crds, err := h.k8s.ListTemplates(ctx, ns)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	templates := make([]*consolev1.Template, 0, len(cms))
-	for _, cm := range cms {
-		templates = append(templates, configMapToTemplate(&cm, scope, scopeName))
+	templates := make([]*consolev1.Template, 0, len(crds))
+	for i := range crds {
+		templates = append(templates, templateCRDToProto(&crds[i], scope))
 	}
 
 	slog.InfoContext(ctx, "templates listed",
@@ -234,7 +237,11 @@ func (h *Handler) GetTemplate(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	tmpl, err := h.k8s.GetTemplate(ctx, ns, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -249,7 +256,7 @@ func (h *Handler) GetTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplateResponse{
-		Template: configMapToTemplate(cm, scope, scopeName),
+		Template: templateCRDToProto(tmpl, scope),
 	}), nil
 }
 
@@ -297,12 +304,16 @@ func (h *Handler) GetTemplateDefaults(
 		}), nil
 	}
 
-	cm, err := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	tmpl, err := h.k8s.GetTemplate(ctx, ns, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	cueSource := cm.Data[CueTemplateKey]
+	cueSource := tmpl.Spec.CueTemplate
 	extracted, err := ExtractDefaults(cueSource)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to extract template defaults",
@@ -373,7 +384,11 @@ func (h *Handler) CreateTemplate(
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567).
-	_, err = h.k8s.CreateTemplate(ctx, scope, scopeName, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled, tmpl.LinkedTemplates)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -453,21 +468,18 @@ func (h *Handler) UpdateTemplate(
 	var linkedTemplates []*consolev1.LinkedTemplateRef
 	var explicitRefsForRecord []*consolev1.LinkedTemplateRef
 	skipRecordPreservedLinks := false
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
 		// (being removed) and new (being added) linked template scopes.
-		existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+		existing, getErr := h.k8s.GetTemplate(ctx, ns, name)
 		if getErr != nil {
 			return nil, mapK8sError(getErr)
 		}
-		var existingRefs []*consolev1.LinkedTemplateRef
-		if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-			var parseErr error
-			existingRefs, parseErr = unmarshalLinkedTemplates(raw)
-			if parseErr != nil {
-				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("parsing stored linked-templates annotation: %w", parseErr))
-			}
-		}
+		existingRefs := crdLinkedToProto(existing.Spec.LinkedTemplates)
 		// Merge old and new refs to check all affected scopes.
 		allRefs := append(existingRefs, tmpl.LinkedTemplates...)
 		if len(allRefs) > 0 {
@@ -501,7 +513,7 @@ func (h *Handler) UpdateTemplate(
 		// original links, producing false drift on the next policy-state
 		// read (review findings P2 from codex round 1).
 		if scope == scopeshim.ScopeProject && h.projectTemplateDriftChecker != nil {
-			existingCM, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, name)
+			existing, getErr := h.k8s.GetTemplate(ctx, ns, name)
 			if getErr != nil {
 				slog.WarnContext(ctx, "failed to read existing template for applied-set write-through, skipping record",
 					slog.String("scope", scope.String()),
@@ -510,27 +522,15 @@ func (h *Handler) UpdateTemplate(
 					slog.Any("error", getErr),
 				)
 				skipRecordPreservedLinks = true
-			} else if raw, ok := existingCM.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-				existingRefs, parseErr := unmarshalLinkedTemplates(raw)
-				if parseErr != nil {
-					slog.WarnContext(ctx, "failed to parse existing linked-templates annotation for applied-set write-through, skipping record",
-						slog.String("scope", scope.String()),
-						slog.String("scopeName", scopeName),
-						slog.String("name", name),
-						slog.Any("error", parseErr),
-					)
-					skipRecordPreservedLinks = true
-				} else {
-					explicitRefsForRecord = existingRefs
-				}
+			} else if refs := crdLinkedToProto(existing.Spec.LinkedTemplates); len(refs) > 0 {
+				explicitRefsForRecord = refs
 			}
-			// If the template exists with no AnnotationLinkedTemplates,
-			// the template has zero explicit links; explicitRefsForRecord
-			// stays nil which is the correct baseline and we do NOT skip.
+			// If the template exists with no linked templates, zero
+			// explicit links is the correct baseline and we do NOT skip.
 		}
 	}
 
-	_, err = h.k8s.UpdateTemplate(ctx, scope, scopeName, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
+	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -636,7 +636,11 @@ func (h *Handler) DeleteTemplate(
 		return nil, err
 	}
 
-	if err := h.k8s.DeleteTemplate(ctx, scope, scopeName, name); err != nil {
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	if err := h.k8s.DeleteTemplate(ctx, ns, name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -680,7 +684,11 @@ func (h *Handler) CloneTemplate(
 		return nil, err
 	}
 
-	_, err = h.k8s.CloneTemplate(ctx, scope, scopeName, sourceName, newName, req.Msg.DisplayName)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	_, err = h.k8s.CloneTemplate(ctx, ns, sourceName, newName, req.Msg.DisplayName)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -916,7 +924,7 @@ func (h *Handler) ListLinkableTemplates(
 		if entryScope == scopeshim.ScopeUnspecified {
 			continue
 		}
-		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, entryScope, entryName)
+		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, ns.Name)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to list linkable templates from namespace",
 				slog.String("namespace", ns.Name),
@@ -1046,7 +1054,7 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.
 			continue
 		}
 
-		cms, err := h.k8s.ListTemplates(ctx, ancestorScope, ancestorName)
+		crds, err := h.k8s.ListTemplates(ctx, ns.Name)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to list templates from ancestor, skipping",
 				slog.String("namespace", ns.Name),
@@ -1055,21 +1063,20 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.
 			continue
 		}
 
-		for _, cm := range cms {
-			enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
-			if !enabled {
+		for i := range crds {
+			crd := &crds[i]
+			if !crd.Spec.Enabled {
 				continue
 			}
 			ref := linkedRef{
 				scope:     scopeLabelValue(ancestorScope),
 				scopeName: ancestorName,
-				name:      cm.Name,
+				name:      crd.Name,
 			}
 			if !linkedSet[ref] {
 				continue
 			}
-			tmplCopy := cm
-			result = append(result, configMapToTemplate(&tmplCopy, ancestorScope, ancestorName))
+			result = append(result, templateCRDToProto(crd, ancestorScope))
 		}
 	}
 
@@ -1339,29 +1346,29 @@ func (h *Handler) CheckUpdates(
 
 	// Collect templates to check. If template_name is specified, check only
 	// that template's linked refs. Otherwise check all templates in scope.
-	var templates []corev1.ConfigMap
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	var templates []templatesv1alpha1.Template
 	if req.Msg.TemplateName != "" {
-		cm, getErr := h.k8s.GetTemplate(ctx, scope, scopeName, req.Msg.TemplateName)
+		tmpl, getErr := h.k8s.GetTemplate(ctx, ns, req.Msg.TemplateName)
 		if getErr != nil {
 			return nil, mapK8sError(getErr)
 		}
-		templates = []corev1.ConfigMap{*cm}
+		templates = []templatesv1alpha1.Template{*tmpl}
 	} else {
-		cms, listErr := h.k8s.ListTemplates(ctx, scope, scopeName)
+		list, listErr := h.k8s.ListTemplates(ctx, ns)
 		if listErr != nil {
 			return nil, mapK8sError(listErr)
 		}
-		templates = cms
+		templates = list
 	}
 
 	var updates []*consolev1.TemplateUpdate
-	for _, tmpl := range templates {
-		raw, ok := tmpl.Annotations[v1alpha2.AnnotationLinkedTemplates]
-		if !ok || raw == "" {
-			continue
-		}
-		refs, err := unmarshalLinkedTemplates(raw)
-		if err != nil {
+	for i := range templates {
+		refs := crdLinkedToProto(templates[i].Spec.LinkedTemplates)
+		if len(refs) == 0 {
 			continue
 		}
 		for _, ref := range refs {
@@ -1469,13 +1476,55 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	return update, nil
 }
 
-// extractScope was formerly a package-level helper that validated a
-// TemplateScopeRef. HOL-619 removed TemplateScopeRef; the method-based shim
-// in legacy_shim.go ((h *Handler).extractScope(namespace)) now owns the
-// classification. Call sites in this file were updated to the method form.
+// extractScope converts an incoming namespace to the legacy
+// `(scope, scopeName)` pair the handler still uses for RBAC checks and
+// slog attributes. Returns InvalidArgument when the namespace is empty or
+// cannot be classified, matching the pre-HOL-619 contract that rejected
+// TEMPLATE_SCOPE_UNSPECIFIED.
 //
-// This deliberate-absence comment exists so future readers don't grep for a
-// missing free function and wonder whether it was lost in a merge.
+// HOL-621 moved this helper out of the now-deleted legacy_shim.go and
+// into handler.go alongside the other scope plumbing; the RBAC tables
+// are keyed on scope, so the handler still needs the enum even though
+// storage no longer does.
+func (h *Handler) extractScope(namespace string) (scopeshim.Scope, string, error) {
+	if namespace == "" {
+		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
+	}
+	if h.k8s == nil || h.k8s.Resolver == nil {
+		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+	}
+	scope, scopeName, err := scopeshim.FromNamespace(h.k8s.Resolver, namespace)
+	if err != nil {
+		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return scope, scopeName, nil
+}
+
+// namespaceFor is the inverse of extractScope. The handler owns both
+// directions now that K8sClient works in namespace-terms; extractScope
+// serves the incoming-request path and namespaceFor serves the outgoing
+// storage path.
+func (h *Handler) namespaceFor(scope scopeshim.Scope, scopeName string) (string, error) {
+	if h.k8s == nil || h.k8s.Resolver == nil {
+		return "", fmt.Errorf("namespace resolver not wired")
+	}
+	ns, err := scopeshim.NamespaceFor(h.k8s.Resolver, scope, scopeName)
+	if err != nil {
+		return "", err
+	}
+	return ns, nil
+}
+
+// mustNamespaceFor is a convenience wrapper that maps an unclassifiable
+// (scope, scopeName) pair to connect.CodeInternal. Callers that already
+// validated the scope via extractScope use this to reduce boilerplate.
+func (h *Handler) mustNamespaceFor(scope scopeshim.Scope, scopeName string) (string, error) {
+	ns, err := h.namespaceFor(scope, scopeName)
+	if err != nil {
+		return "", connect.NewError(connect.CodeInternal, err)
+	}
+	return ns, nil
+}
 
 // validateTemplateName checks that the name is a valid DNS label.
 func validateTemplateName(name string) error {
@@ -1592,16 +1641,15 @@ func (h *Handler) GetProjectTemplatePolicyState(
 	// Read the template so we can pass its owner-linked refs to the
 	// resolver. The caller must have read access to the owning project for
 	// this to succeed.
-	cm, err := h.k8s.GetTemplate(ctx, scopeshim.ScopeProject, project, name)
+	projectNs, nsErr := h.mustNamespaceFor(scopeshim.ScopeProject, project)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+	tmpl, err := h.k8s.GetTemplate(ctx, projectNs, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-	var explicitRefs []*consolev1.LinkedTemplateRef
-	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-		if refs, parseErr := unmarshalLinkedTemplates(raw); parseErr == nil {
-			explicitRefs = refs
-		}
-	}
+	explicitRefs := crdLinkedToProto(tmpl.Spec.LinkedTemplates)
 
 	if h.projectTemplateDriftChecker == nil {
 		return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{

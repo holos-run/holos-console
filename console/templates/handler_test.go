@@ -257,12 +257,22 @@ func TestValidateCueSyntax(t *testing.T) {
 // newTestHandler builds a Handler wired to a fake K8s client and stub grant
 // resolver for link permission tests. The grant resolver maps emails to roles
 // via shareUsers so tests can control which role the caller has.
-func newTestHandler(fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+func newTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+	h, _ := newTestHandlerAndK8s(t, fakeClient, shareUsers)
+	return h
+}
+
+// newTestHandlerAndK8s is the variant that also returns the K8sClient the
+// handler was wired with. Tests that need to assert on CRD state after a
+// handler call read through the K8sClient so the HOL-661 ctrl.Client path
+// is observable from within the test.
+func newTestHandlerAndK8s(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) (*Handler, *K8sClient) {
+	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := NewK8sClient(fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
-	return handler
+	return handler, k8s
 }
 
 // orgLinkedRef returns a LinkedTemplateRef pointing at an org-scope template.
@@ -351,7 +361,7 @@ func TestCreateTemplateLinkPermissions(t *testing.T) {
 				ownerEmail:  "owner",
 				editorEmail: "editor",
 			}
-			handler := newTestHandler(fakeClient, shareUsers)
+			handler := newTestHandler(t, fakeClient, shareUsers)
 
 			// Use a unique template name per test to avoid AlreadyExists.
 			templateName := fmt.Sprintf("tmpl-%d", i)
@@ -502,7 +512,7 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				ownerEmail:  "owner",
 				editorEmail: "editor",
 			}
-			handler := newTestHandler(fakeClient, shareUsers)
+			handler, k8s := newTestHandlerAndK8s(t, fakeClient, shareUsers)
 
 			ctx := authedCtx(tt.email, nil)
 			req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
@@ -529,96 +539,45 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				t.Fatalf("expected no error, got %v", err)
 			}
 
+			// Post-HOL-661 linked templates live on Template.Spec.LinkedTemplates
+			// (typed), not on the legacy ConfigMap annotation. Read through the
+			// K8sClient so the assertions observe production storage.
+			updated, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, "web-app")
+			if getErr != nil {
+				t.Fatalf("failed to get updated Template: %v", getErr)
+			}
+
 			// Verify link preservation when update_linked_templates=false.
 			if tt.wantLinksPreserved {
-				updated, getErr := fakeClient.CoreV1().ConfigMaps("prj-"+project).Get(context.Background(), "web-app", metav1.GetOptions{})
-				if getErr != nil {
-					t.Fatalf("failed to get updated ConfigMap: %v", getErr)
+				if len(updated.Spec.LinkedTemplates) == 0 {
+					t.Fatal("expected linked templates to be preserved, but spec.linkedTemplates is empty")
 				}
-				raw, ok := updated.Annotations[v1alpha2.AnnotationLinkedTemplates]
-				if !ok {
-					t.Fatal("expected linked-templates annotation to be preserved")
-				}
-				if raw != existingLinkedJSON {
-					t.Errorf("expected links preserved as %q, got %q", existingLinkedJSON, raw)
+				got := updated.Spec.LinkedTemplates[0]
+				if got.Scope != "organization" || got.ScopeName != "acme" || got.Name != "httproute" {
+					t.Errorf("expected preserved org/acme/httproute link, got %+v", got)
 				}
 			}
 
 			// Verify link clearing when update_linked_templates=true with empty or nil list.
 			if tt.wantLinksCleared {
-				updated, getErr := fakeClient.CoreV1().ConfigMaps("prj-"+project).Get(context.Background(), "web-app", metav1.GetOptions{})
-				if getErr != nil {
-					t.Fatalf("failed to get updated ConfigMap: %v", getErr)
-				}
-				if raw, ok := updated.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok {
-					t.Errorf("expected linked-templates annotation to be removed, but found %q", raw)
+				if len(updated.Spec.LinkedTemplates) != 0 {
+					t.Errorf("expected linked templates to be cleared, but found %d entries: %+v", len(updated.Spec.LinkedTemplates), updated.Spec.LinkedTemplates)
 				}
 			}
 		})
 	}
+	_ = existingLinkedJSON
 }
 
-// TestUpdateTemplateMalformedLinkedAnnotation verifies that UpdateTemplate returns
-// an error when the stored linked-templates annotation is malformed JSON, rather
-// than silently discarding the parse error (which would leave existingRefs empty
-// and allow an EDITOR to bypass link permission checks).
-func TestUpdateTemplateMalformedLinkedAnnotation(t *testing.T) {
-	const project = "my-project"
-	const ownerEmail = "platform@localhost"
-
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-" + project,
-		},
-	}
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "web-app",
-			Namespace: "prj-" + project,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationDisplayName:     "Web App",
-				v1alpha2.AnnotationDescription:     "A web app",
-				v1alpha2.AnnotationEnabled:         "false",
-				v1alpha2.AnnotationLinkedTemplates: `{not valid json`,
-			},
-		},
-		Data: map[string]string{
-			CueTemplateKey: validCue,
-		},
-	}
-
-	fakeClient := fake.NewClientset(ns, cm)
-	shareUsers := map[string]string{
-		ownerEmail: "owner",
-	}
-	handler := newTestHandler(fakeClient, shareUsers)
-
-	ctx := authedCtx(ownerEmail, nil)
-	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Namespace: projectScopeRef(project),
-		Template: &consolev1.Template{
-			Name:        "web-app",
-			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef("acme", "httproute"),
-			},
-		},
-		UpdateLinkedTemplates: true,
-	})
-
-	_, err := handler.UpdateTemplate(ctx, req)
-	if err == nil {
-		t.Fatal("expected error for malformed linked-templates annotation, got nil")
-	}
-	if connect.CodeOf(err) != connect.CodeInternal {
-		t.Errorf("expected code %v, got %v: %v", connect.CodeInternal, connect.CodeOf(err), err)
-	}
-}
+// NOTE: TestUpdateTemplateMalformedLinkedAnnotation was removed in HOL-661.
+// Before HOL-661 linked templates were persisted as a JSON annotation on the
+// Template ConfigMap, and the update-path parsed that annotation to enforce
+// scoped link permissions against the pre-existing refs. The test guarded
+// against a silent JSON-parse failure allowing an EDITOR to bypass those
+// checks. After HOL-661 linked templates are a typed field on
+// Template.Spec.LinkedTemplates — there is no JSON parse step to fail, so
+// the invariant the test asserted no longer exists. Permission enforcement
+// still happens via crdLinkedToProto on the typed spec.
 
 // trackingRenderer records which renderer method was called so tests can
 // verify that renderTemplateGrouped dispatches correctly.
@@ -690,7 +649,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-		k8s := NewK8sClient(fakeClient, r)
+		k8s := newTestK8sClient(t, fakeClient, r)
 		renderer := &trackingRenderer{}
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
@@ -781,7 +740,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-		k8s := NewK8sClient(fakeClient, r)
+		k8s := newTestK8sClient(t, fakeClient, r)
 		renderer := &trackingRenderer{}
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
@@ -828,7 +787,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		fakeClient := fake.NewClientset(orgNsObj, prjNsObj)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-		k8s := NewK8sClient(fakeClient, r)
+		k8s := newTestK8sClient(t, fakeClient, r)
 		renderer := &trackingRenderer{}
 		// No walker configured.
 		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
@@ -900,7 +859,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-		k8s := NewK8sClient(fakeClient, r)
+		k8s := newTestK8sClient(t, fakeClient, r)
 
 		// Preview path: runs via renderTemplateGrouped + ListEffectiveTemplateSources.
 		renderer := &trackingRenderer{}
@@ -1233,7 +1192,7 @@ input: #ProjectInput & {
 			shareUsers := map[string]string{ownerEmail: "owner"}
 
 			r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-			k8s := NewK8sClient(fakeClient, r)
+			k8s := newTestK8sClient(t, fakeClient, r)
 			handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 			handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
@@ -1287,7 +1246,7 @@ input: #ProjectInput & {
 // that is independent of RBAC or storage state.
 func TestGetTemplateDefaultsValidation(t *testing.T) {
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := NewK8sClient(fake.NewClientset(), r)
+	k8s := newTestK8sClient(t, fake.NewClientset(), r)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{})
 	handler.WithOrgGrantResolver(&stubOrgGrantResolver{})
