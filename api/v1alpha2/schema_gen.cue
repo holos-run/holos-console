@@ -138,47 +138,34 @@
 // Decision 3 and Decision 6).
 #AnnotationParent: "console.holos.run/parent"
 
-// AnnotationLinkedOrgTemplates stores the list of explicitly linked platform
-// template names as a JSON array on a deployment template ConfigMap.
-// Superseded in v1alpha2 by AnnotationLinkedTemplates (which also carries
-// scope information and version constraints).
+// AnnotationLinkedOrgTemplates stores the list of explicitly linked
+// platform template names as a JSON array on a legacy v1alpha2
+// deployment template ConfigMap. Read-only compatibility shim —
+// new deployments serialize linked templates via the
+// templates.holos.run Template CRD (HOL-621); this annotation is
+// only consulted when migrating older ConfigMap-shaped deployment
+// templates forward. No production code writes this annotation.
 // Example: ["microservice-v2", "istio-gateway"]
 #AnnotationLinkedOrgTemplates: "console.holos.run/linked-org-templates"
 
-// AnnotationLinkedTemplates stores the list of explicitly linked cross-level
-// template references as a JSON array of LinkedTemplateRef objects on a
-// template ConfigMap. Replaces AnnotationLinkedOrgTemplates in v1alpha2.
+// AnnotationLinkedTemplates is the wire format used to bridge
+// Template CRDs to the deployment handler. Template CRD storage
+// keeps linked refs in a structured Spec field (HOL-621), but the
+// deployment handler still consumes deployment-template ConfigMaps
+// and reads the linked refs off this JSON-annotation. The
+// templateCRDToConfigMap adapter in console/templates writes the
+// annotation on the fly so deployments can keep its existing
+// reader. Once the deployments package is ported off ConfigMaps
+// (HOL-615 Phase 6 and friends), this constant and its adapter
+// both go away.
 // Example: [{"scope":"organization","scope_name":"acme","name":"microservice-v2"}]
 #AnnotationLinkedTemplates: "console.holos.run/linked-templates"
 
-// LabelTemplateScope identifies the hierarchy level of a template ConfigMap.
+// LabelTemplateScope identifies the hierarchy level of a Template.
 // Values: "organization", "folder", "project" (ADR 021 Decision 4).
+// Still surfaced on CRD-stored Templates via the scheme label
+// setters in console/templates.
 #LabelTemplateScope: "console.holos.run/template-scope"
-
-// AnnotationTemplatePolicyRules stores the JSON-serialized list of
-// TemplatePolicyRule entries for a TemplatePolicy ConfigMap. The handler
-// serializes the proto rules on write and round-trips them back on read;
-// this mirrors the AnnotationLinkedTemplates pattern used on Template
-// ConfigMaps (HOL-556).
-#AnnotationTemplatePolicyRules: "console.holos.run/template-policy-rules"
-
-// AnnotationTemplatePolicyBindingPolicyRef stores the JSON-serialized
-// scope-qualified reference to the TemplatePolicy a
-// TemplatePolicyBinding attaches. The wire shape is
-// `{"scope":"organization|folder","scopeName":"<slug>","name":"<slug>"}`.
-// A binding always references exactly one policy; use multiple
-// bindings to attach multiple policies to overlapping target sets
-// (ADR 029, HOL-590).
-#AnnotationTemplatePolicyBindingPolicyRef: "console.holos.run/template-policy-binding-policy-ref"
-
-// AnnotationTemplatePolicyBindingTargetRefs stores the JSON-serialized
-// list of explicit render targets a TemplatePolicyBinding applies its
-// policy to. The wire shape is a JSON array of
-// `{"kind":"project-template|deployment","name":"<slug>","projectName":"<slug>"}`
-// entries. Handlers MUST reject duplicates — two entries with the
-// same (kind, projectName, name) triple — and MUST reject
-// UNSPECIFIED kind. Order is not significant (ADR 029, HOL-590).
-#AnnotationTemplatePolicyBindingTargetRefs: "console.holos.run/template-policy-binding-target-refs"
 
 // AnnotationExternalLinkPrefix is the Holos-authored annotation-key
 // prefix for external links surfaced on a deployment. Links are keyed

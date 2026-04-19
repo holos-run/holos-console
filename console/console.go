@@ -359,12 +359,18 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Unified templates K8s client (replaces both templates.K8sClient and
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
 		//
-		// HOL-621: Template CRUD now routes through the embedded controller
-		// manager's cache-backed client.Client; Release CRUD still uses the
-		// client-go kubernetes.Interface until the Release CRD lands
-		// (HOL-615 Phase 6). The template client is only wired when the
-		// controller manager was successfully initialized above — without
-		// it there is no cache to read from.
+		// HOL-621 / HOL-661: Template CRUD routes through the embedded
+		// controller-runtime manager's cache-backed client.Client — reads
+		// observe the shared informer cache, writes fall through to the
+		// apiserver. The same manager block above guarantees that a
+		// non-nil k8sClientset implies a non-nil controllerMgr, but we
+		// keep the defensive nil-check so a future refactor that
+		// decouples those paths doesn't silently panic.
+		//
+		// The k8sClientset handle is still needed here because Release
+		// CRUD reads and writes ConfigMaps via client-go — HOL-615 Phase 6
+		// will migrate Releases to a CRD, at which point the
+		// kubernetes.Interface parameter drops out entirely.
 		var templateCtrlClient ctrlclient.Client
 		if s.controllerMgr != nil {
 			templateCtrlClient = s.controllerMgr.GetClient()
