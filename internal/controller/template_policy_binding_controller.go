@@ -1,0 +1,358 @@
+/*
+Copyright 2026 The Holos Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+)
+
+// TemplatePolicyBindingReconciler reconciles a TemplatePolicyBinding. The
+// binding contract mirrors the Gateway API HTTPRoute status surface: an
+// Accepted condition that reflects spec sanity, a ResolvedRefs condition
+// that reflects whether every target and policy reference names a real
+// object, and a top-level Ready aggregation.
+//
+// Every Template change enqueues the bindings whose .spec.targetRefs match.
+// HOL-620 resolves ProjectTemplate target references by looking up a
+// Template in the namespace whose ProjectName matches the target's
+// ProjectName. Deployment targets are NOT resolved against Template objects
+// (a Deployment target refers to an apps/v1.Deployment, not a Template) —
+// they only contribute to Accepted via kind validation. HOL-621 wires the
+// policy-ref resolution through the same cache; the PolicyNotFound path is
+// intentionally not exercised in HOL-620 because the policy reference
+// resolution currently relies on a legacy ConfigMap-backed store the RPC
+// handlers own (HOL-621 migrates this path to the cache).
+//
+// RBAC markers for this reconciler live on the package doc comment in
+// rbac.go — controller-gen's rbac generator ignores markers on struct or
+// method doc comments.
+type TemplatePolicyBindingReconciler struct {
+	client.Client
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
+
+	// ProjectNamespacePrefix, OrganizationPrefix, FolderPrefix, and
+	// ProjectPrefix mirror the resolver.Resolver used elsewhere in the
+	// console. They default to empty + "org-"/"fld-"/"prj-" when the
+	// caller leaves them blank. HOL-620 only needs ProjectNamespace
+	// prefixing for ProjectTemplate target-ref resolution; the rest are
+	// here so HOL-621 storage wiring can reuse the same struct.
+	NamespacePrefix    string
+	OrganizationPrefix string
+	FolderPrefix       string
+	ProjectPrefix      string
+}
+
+// SetupWithManager registers the reconciler with the supplied manager. In
+// addition to the primary For(&TemplatePolicyBinding{}), it adds a secondary
+// Watches on Template so the ResolvedRefs condition can transition when a
+// referenced Template appears or disappears.
+func (r *TemplatePolicyBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.applyPrefixDefaults()
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&v1alpha1.TemplatePolicyBinding{}).
+		Named("template-policy-binding-controller").
+		Watches(
+			&v1alpha1.Template{},
+			handler.EnqueueRequestsFromMapFunc(r.bindingsForTemplate),
+		).
+		Complete(r)
+}
+
+func (r *TemplatePolicyBindingReconciler) applyPrefixDefaults() {
+	if r.OrganizationPrefix == "" {
+		r.OrganizationPrefix = "org-"
+	}
+	if r.FolderPrefix == "" {
+		r.FolderPrefix = "fld-"
+	}
+	if r.ProjectPrefix == "" {
+		r.ProjectPrefix = "prj-"
+	}
+}
+
+// Reconcile implements the reconciliation loop for TemplatePolicyBinding.
+// See TemplateReconciler.Reconcile for the overall contract; the binding
+// kind differs in that ResolvedRefs is a first-class component condition.
+func (r *TemplatePolicyBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	r.applyPrefixDefaults()
+
+	var binding v1alpha1.TemplatePolicyBinding
+	if err := r.Get(ctx, req.NamespacedName, &binding); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get TemplatePolicyBinding: %w", err)
+	}
+
+	gen := binding.Generation
+
+	accepted := bindingAcceptedCondition(&binding)
+	resolved, err := r.bindingResolvedRefsCondition(ctx, &binding)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("resolving target refs: %w", err)
+	}
+	components := []metav1.Condition{accepted, resolved}
+
+	proposed := make([]metav1.Condition, 0, 3)
+	for _, c := range components {
+		c.ObservedGeneration = gen
+		proposed = append(proposed, c)
+	}
+	ready := aggregateReady(components,
+		v1alpha1.TemplatePolicyBindingReasonReady,
+		v1alpha1.TemplatePolicyBindingReasonNotReady,
+		"TemplatePolicyBinding is accepted and every referenced Template exists.",
+		"TemplatePolicyBinding is not Ready; see component conditions for details.")
+	ready.Type = v1alpha1.TemplatePolicyBindingConditionReady
+	ready.ObservedGeneration = gen
+	proposed = append(proposed, ready)
+
+	target := binding.DeepCopy()
+	target.Status.ObservedGeneration = gen
+	newConds := append([]metav1.Condition(nil), binding.Status.Conditions...)
+	for _, pc := range proposed {
+		mergeCondition(&newConds, gen, pc)
+	}
+	target.Status.Conditions = newConds
+
+	if binding.Status.ObservedGeneration == gen &&
+		conditionsEqualIgnoringTransitionTime(binding.Status.Conditions, target.Status.Conditions) {
+		logger.V(1).Info("TemplatePolicyBinding status unchanged; skipping update", "generation", gen)
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.Status().Update(ctx, target); err != nil {
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("update TemplatePolicyBinding status: %w", err)
+	}
+	if ready.Status == metav1.ConditionTrue {
+		r.Recorder.Eventf(target, "Normal", v1alpha1.TemplatePolicyBindingReasonReady, "TemplatePolicyBinding is Ready")
+	} else {
+		r.Recorder.Eventf(target, "Warning", ready.Reason, "%s", ready.Message)
+	}
+	return ctrl.Result{}, nil
+}
+
+// bindingAcceptedCondition enforces the invariants the reconciler owns: at
+// least one target_ref, every target_ref kind is one of the allowed enum
+// values, and no duplicate (kind, projectName, name) tuples. The CRD schema
+// enforces MinItems=1 + the kind enum; we re-check here so the condition
+// surface is populated on objects that bypassed the admission path.
+func bindingAcceptedCondition(binding *v1alpha1.TemplatePolicyBinding) metav1.Condition {
+	if len(binding.Spec.TargetRefs) == 0 {
+		return metav1.Condition{
+			Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+			Status:  metav1.ConditionFalse,
+			Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+			Message: "spec.targetRefs must contain at least one target",
+		}
+	}
+	seen := make(map[string]struct{}, len(binding.Spec.TargetRefs))
+	for i, ref := range binding.Spec.TargetRefs {
+		switch ref.Kind {
+		case v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
+			v1alpha1.TemplatePolicyBindingTargetKindDeployment:
+			// OK
+		default:
+			return metav1.Condition{
+				Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+				Message: fmt.Sprintf("spec.targetRefs[%d].kind %q is not a valid TemplatePolicyBindingTargetKind", i, ref.Kind),
+			}
+		}
+		if ref.Name == "" || ref.ProjectName == "" {
+			return metav1.Condition{
+				Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+				Message: fmt.Sprintf("spec.targetRefs[%d] must set both name and projectName", i),
+			}
+		}
+		key := fmt.Sprintf("%s|%s|%s", ref.Kind, ref.ProjectName, ref.Name)
+		if _, dup := seen[key]; dup {
+			return metav1.Condition{
+				Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+				Message: fmt.Sprintf("spec.targetRefs[%d] duplicates an earlier target with kind=%s, projectName=%s, name=%s", i, ref.Kind, ref.ProjectName, ref.Name),
+			}
+		}
+		seen[key] = struct{}{}
+	}
+	if binding.Spec.PolicyRef.Name == "" || binding.Spec.PolicyRef.ScopeName == "" {
+		return metav1.Condition{
+			Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+			Status:  metav1.ConditionFalse,
+			Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+			Message: "spec.policyRef must set both name and scopeName",
+		}
+	}
+	return metav1.Condition{
+		Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+		Status:  metav1.ConditionTrue,
+		Reason:  v1alpha1.TemplatePolicyBindingReasonAccepted,
+		Message: "spec passed reconciler validation",
+	}
+}
+
+// bindingResolvedRefsCondition checks whether every ProjectTemplate target
+// ref resolves to an existing Template. The check reads through the
+// client.Client handed to the reconciler by the manager, so it consults
+// the informer cache HOL-620 just populated. Deployment target refs do
+// not resolve against Template objects — they only check kind validity,
+// which Accepted already covers.
+func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx context.Context, binding *v1alpha1.TemplatePolicyBinding) (metav1.Condition, error) {
+	// If the spec is already rejected by bindingAcceptedCondition, short-
+	// circuit ResolvedRefs with InvalidTargetKind so the condition pair
+	// makes sense end-to-end. We still return True-for-none rather than
+	// an error: ResolvedRefs reports what we *can* observe.
+	for _, ref := range binding.Spec.TargetRefs {
+		if ref.Kind != v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate &&
+			ref.Kind != v1alpha1.TemplatePolicyBindingTargetKindDeployment {
+			return metav1.Condition{
+				Type:    v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidTargetKind,
+				Message: fmt.Sprintf("targetRefs[*].kind %q is not a valid TemplatePolicyBindingTargetKind", ref.Kind),
+			}, nil
+		}
+	}
+
+	for _, ref := range binding.Spec.TargetRefs {
+		if ref.Kind != v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate {
+			continue
+		}
+		ns := r.projectNamespace(ref.ProjectName)
+		var tmpl v1alpha1.Template
+		err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: ref.Name}, &tmpl)
+		if err == nil {
+			continue
+		}
+		if apierrors.IsNotFound(err) {
+			return metav1.Condition{
+				Type:    v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1alpha1.TemplatePolicyBindingReasonTemplateNotFound,
+				Message: fmt.Sprintf("ProjectTemplate %s/%s not found", ref.ProjectName, ref.Name),
+			}, nil
+		}
+		return metav1.Condition{}, fmt.Errorf("get Template %s/%s: %w", ns, ref.Name, err)
+	}
+	return metav1.Condition{
+		Type:    v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
+		Status:  metav1.ConditionTrue,
+		Reason:  v1alpha1.TemplatePolicyBindingReasonResolvedRefs,
+		Message: "every ProjectTemplate target_ref resolves to an existing Template",
+	}, nil
+}
+
+// projectNamespace maps a project name to the Kubernetes namespace the
+// project owns. Mirrors console/resolver.Resolver.ProjectNamespace — kept
+// as a thin local helper so the controller does not depend on the heavier
+// resolver package during HOL-620. HOL-621 replaces this with a shared
+// resolver once the cache becomes the authoritative read path.
+func (r *TemplatePolicyBindingReconciler) projectNamespace(projectName string) string {
+	return r.NamespacePrefix + r.ProjectPrefix + projectName
+}
+
+// bindingsForTemplate returns the reconcile requests for every binding
+// whose spec.targetRefs includes a ProjectTemplate ref to the supplied
+// Template object. Called by the Watches handler set up in SetupWithManager
+// so that a Template appearing/disappearing re-enqueues the affected
+// bindings and their ResolvedRefs condition flips in the same reconcile
+// cycle as the watch event.
+func (r *TemplatePolicyBindingReconciler) bindingsForTemplate(ctx context.Context, obj client.Object) []reconcile.Request {
+	tmpl, ok := obj.(*v1alpha1.Template)
+	if !ok {
+		return nil
+	}
+	projectName := r.projectNameForNamespace(tmpl.Namespace)
+	if projectName == "" {
+		// The Template does not live in a project-labeled namespace,
+		// so no ProjectTemplate target can reference it. We still
+		// check via a label lookup below for the future case where
+		// a binding names a non-project-namespace target.
+	}
+
+	var list v1alpha1.TemplatePolicyBindingList
+	if err := r.List(ctx, &list); err != nil {
+		return nil
+	}
+	var out []reconcile.Request
+	for _, b := range list.Items {
+		for _, ref := range b.Spec.TargetRefs {
+			if ref.Kind != v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate {
+				continue
+			}
+			if ref.Name != tmpl.Name {
+				continue
+			}
+			if projectName != "" && ref.ProjectName != projectName {
+				continue
+			}
+			out = append(out, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: b.Namespace,
+					Name:      b.Name,
+				},
+			})
+			break
+		}
+	}
+	return out
+}
+
+// projectNameForNamespace inverts the projectNamespace function: given a
+// namespace name, it returns the project name if and only if the namespace
+// matches <NamespacePrefix><ProjectPrefix><projectName>. Returns empty
+// string otherwise. Intentionally prefix-only: HOL-620 does not consult
+// the Namespace cache for a console.holos.run/resource-type=project label
+// check — HOL-621 layers that in once the cache is the authoritative read
+// path.
+func (r *TemplatePolicyBindingReconciler) projectNameForNamespace(namespace string) string {
+	prefix := r.NamespacePrefix + r.ProjectPrefix
+	if !strings.HasPrefix(namespace, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(namespace, prefix)
+}
+
+// Explicit reference to corev1 keeps the namespace informer primed by
+// manager.go importable — otherwise goimports would strip the import when
+// the file gets fmt-ed.
+var _ = corev1.SchemeGroupVersion

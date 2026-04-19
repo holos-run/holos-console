@@ -141,6 +141,7 @@ manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers
 		rbac:roleName=holos-console-templates \
 		object:headerFile="hack/boilerplate.go.txt" \
 		paths="./api/templates/..." \
+		paths="./internal/controller/..." \
 		output:crd:artifacts:config=config/crd \
 		output:rbac:artifacts:config=config/rbac
 

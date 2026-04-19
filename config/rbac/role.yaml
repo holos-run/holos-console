@@ -1,25 +1,30 @@
-# Hand-authored placeholder ClusterRole for the holos-console service account.
-#
-# HOL-618 ships this placeholder so the kind bootstrap can apply RBAC in the
-# documented order (CRD -> admission -> RBAC -> rolling deploy) before the
-# reconcilers land. HOL-620 adds +kubebuilder:rbac markers to each reconciler
-# and regenerates this file via `make manifests`; when that happens this file
-# becomes a generated artifact and the hand-authored comment at the top is
-# replaced by the controller-gen header.
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: holos-console-templates
-  labels:
-    app.kubernetes.io/managed-by: holos-console
-    app.kubernetes.io/part-of: holos-console
 rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - templates.holos.run
   resources:
-  - templates
   - templatepolicies
   - templatepolicybindings
+  - templates
   verbs:
   - create
   - delete
@@ -31,26 +36,18 @@ rules:
 - apiGroups:
   - templates.holos.run
   resources:
-  - templates/status
-  - templatepolicies/status
-  - templatepolicybindings/status
+  - templatepolicies/finalizers
+  - templatepolicybindings/finalizers
+  - templates/finalizers
   verbs:
-  - get
-  - patch
   - update
 - apiGroups:
   - templates.holos.run
   resources:
-  - templates/finalizers
-  - templatepolicies/finalizers
-  - templatepolicybindings/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
+  - templatepolicies/status
+  - templatepolicybindings/status
+  - templates/status
   verbs:
   - get
-  - list
-  - watch
+  - patch
+  - update
