@@ -1010,6 +1010,25 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 
 // Ensure defaults serialize through the DefaultsKey JSON path the test
 // helpers use. Covers the DefaultsKey-read path in configMapToTemplateCRD.
+// TestTemplateCRDToProto_PropagatesVersion locks in that the CRD->proto
+// converter copies spec.version into the wire shape. Without this coverage,
+// GetTemplate / ListTemplates would silently drop spec.version because the
+// old ConfigMap storage had no equivalent field (codex round 2, HOL-661).
+func TestTemplateCRDToProto_PropagatesVersion(t *testing.T) {
+	tmpl := &templatesv1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-app", Namespace: "prj-demo"},
+		Spec: templatesv1alpha1.TemplateSpec{
+			DisplayName: "Web App",
+			CueTemplate: "package holos\n",
+			Version:     "1.2.3",
+		},
+	}
+	got := templateCRDToProto(tmpl, scopeshim.ScopeProject)
+	if got.Version != "1.2.3" {
+		t.Errorf("Version=%q want 1.2.3", got.Version)
+	}
+}
+
 func TestDefaultsJSONRoundTrip(t *testing.T) {
 	raw, err := json.Marshal(&consolev1.TemplateDefaults{Image: "ghcr.io/app", Tag: "1.0"})
 	if err != nil {

@@ -800,6 +800,7 @@ func templateCRDToProto(tmpl *templatesv1alpha1.Template, scope scopeshim.Scope)
 		Description:     tmpl.Spec.Description,
 		CueTemplate:     tmpl.Spec.CueTemplate,
 		Enabled:         tmpl.Spec.Enabled,
+		Version:         tmpl.Spec.Version,
 		LinkedTemplates: crdLinkedToProto(tmpl.Spec.LinkedTemplates),
 	}
 
