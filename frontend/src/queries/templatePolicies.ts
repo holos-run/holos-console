@@ -12,7 +12,7 @@ import type {
   TemplatePolicy,
   TemplatePolicyRule,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
-import type { TemplateScopeRef } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { type TemplateScopeRef, namespaceForRef } from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
@@ -43,7 +43,7 @@ export function useListTemplatePolicies(scope: TemplateScopeRef) {
   return useQuery({
     queryKey: templatePolicyListKey(scope),
     queryFn: async () => {
-      const response = await client.listTemplatePolicies({ scope })
+      const response = await client.listTemplatePolicies({ namespace: namespaceForRef(scope) })
       return response.policies
     },
     enabled: isAuthenticated && !!scope.scopeName,
@@ -61,7 +61,7 @@ export function useGetTemplatePolicy(scope: TemplateScopeRef, name: string) {
   return useQuery({
     queryKey: templatePolicyGetKey(scope, name),
     queryFn: async () => {
-      const response = await client.getTemplatePolicy({ scope, name })
+      const response = await client.getTemplatePolicy({ namespace: namespaceForRef(scope), name })
       return response.policy
     },
     enabled: isAuthenticated && !!scope.scopeName && !!name,
@@ -82,17 +82,19 @@ export function useCreateTemplatePolicy(scope: TemplateScopeRef) {
       displayName: string
       description: string
       rules: TemplatePolicyRule[]
-    }) =>
-      client.createTemplatePolicy({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.createTemplatePolicy({
+        namespace: ns,
         policy: create(TemplatePolicySchema, {
           name: params.name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName,
           description: params.description,
           rules: params.rules,
         }),
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
     },
@@ -112,17 +114,19 @@ export function useUpdateTemplatePolicy(scope: TemplateScopeRef, name: string) {
       displayName?: string
       description?: string
       rules: TemplatePolicyRule[]
-    }) =>
-      client.updateTemplatePolicy({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.updateTemplatePolicy({
+        namespace: ns,
         policy: create(TemplatePolicySchema, {
           name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           rules: params.rules,
         }),
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
       queryClient.invalidateQueries({ queryKey: templatePolicyGetKey(scope, name) })
@@ -140,7 +144,7 @@ export function useDeleteTemplatePolicy(scope: TemplateScopeRef) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { name: string }) =>
-      client.deleteTemplatePolicy({ scope, ...params }),
+      client.deleteTemplatePolicy({ namespace: namespaceForRef(scope), ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
     },
