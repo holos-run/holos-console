@@ -70,14 +70,14 @@ vi.mock('lucide-react', () => ({
 
 import { useListReleases, useCreateRelease } from '@/queries/templates'
 import { TemplateReleases } from './template-releases'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
 
 const testScope = { scope: TemplateScope.ORGANIZATION, scopeName: 'test-org' } as any
 
 function makeRelease(version: string, changelog: string, upgradeAdvice = '', createdAt?: Date) {
   return {
     templateName: 'my-template',
-    scopeRef: testScope,
+    namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
     version,
     changelog,
     upgradeAdvice,

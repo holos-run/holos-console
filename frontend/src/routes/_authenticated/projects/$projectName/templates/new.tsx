@@ -11,8 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { TemplateScope, namespaceFor, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
 import type { LinkedTemplateRef } from '@/queries/templates'
+import { create } from '@bufbuild/protobuf'
+import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
@@ -260,10 +263,10 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 
   // Group linkable templates by scope for display.
   const orgTemplates = linkableTemplates.filter(
-    (t) => t.scopeRef?.scope === TemplateScope.ORGANIZATION,
+    (t) => scopeFromNamespace(t.namespace) === TemplateScope.ORGANIZATION,
   )
   const folderTemplates = linkableTemplates.filter(
-    (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
+    (t) => scopeFromNamespace(t.namespace) === TemplateScope.FOLDER,
   )
 
   // Fall back to "istio-ingress" only after the org query has successfully
@@ -302,7 +305,11 @@ ${gatewayNamespaceLine}\tclaims: {
   const previewLinkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys.map((key) => {
     const parsed = parseLinkableKey(key)
     const vc = selectedVersionConstraints.get(key) ?? ''
-    return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
+    return {
+      namespace: namespaceFor(parsed.scope, parsed.scopeName),
+      name: parsed.name,
+      versionConstraint: vc,
+    } as LinkedTemplateRef
   })
 
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
@@ -339,7 +346,11 @@ ${gatewayNamespaceLine}\tclaims: {
         .map((key) => {
           const parsed = parseLinkableKey(key)
           const vc = selectedVersionConstraints.get(key) ?? ''
-          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
+          return create(LinkedTemplateRefSchema, {
+            namespace: namespaceFor(parsed.scope, parsed.scopeName),
+            name: parsed.name,
+            versionConstraint: vc,
+          })
         })
 
       await createMutation.mutateAsync({
@@ -438,7 +449,7 @@ ${gatewayNamespaceLine}\tclaims: {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
                     {orgTemplates.map((t) => {
-                      const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
                       const hasReleases = t.releases && t.releases.length > 0
                       const forced = !!t.forced
                       return (
@@ -498,7 +509,7 @@ ${gatewayNamespaceLine}\tclaims: {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
                     {folderTemplates.map((t) => {
-                      const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                      const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
                       const hasReleases = t.releases && t.releases.length > 0
                       const forced = !!t.forced
                       return (

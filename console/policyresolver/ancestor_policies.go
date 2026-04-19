@@ -6,6 +6,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -26,7 +27,7 @@ type ResolvedPolicy struct {
 	// Scope is the TemplateScope derived from Namespace (organization or
 	// folder). Project scope is unreachable because project namespaces
 	// are skipped during the ancestor walk.
-	Scope consolev1.TemplateScope
+	Scope scopeshim.Scope
 	// ScopeName is the folder or organization name derived from
 	// Namespace.
 	ScopeName string
@@ -209,7 +210,7 @@ func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string)
 			continue
 		}
 		scope := templateScopeForResourceType(kind)
-		if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		if scope == scopeshim.ScopeUnspecified {
 			// Non-policy-bearing resource type (e.g. the render-state or
 			// template-policy-binding kind itself); skip quietly.
 			continue
@@ -260,13 +261,13 @@ func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string)
 // of a namespace onto the TemplateScope enum used by binding policy_refs.
 // Only organization and folder namespaces store TemplatePolicy objects;
 // every other type maps to UNSPECIFIED so callers can skip the entry.
-func templateScopeForResourceType(kind string) consolev1.TemplateScope {
+func templateScopeForResourceType(kind string) scopeshim.Scope {
 	switch kind {
 	case v1alpha2.ResourceTypeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.ResourceTypeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }

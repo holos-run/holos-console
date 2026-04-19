@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { LinkedTemplateRef, TemplateScopeRef } from "./policy_state_pb";
+import type { LinkedTemplateRef } from "./policy_state_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -60,7 +60,8 @@ export declare type TemplatePolicyRule = Message<"holos.console.v1.TemplatePolic
 
   /**
    * template identifies the template this rule applies to. The referenced
-   * template may live in any scope the policy's owning scope can reach.
+   * template may live in any namespace the policy's owning namespace can
+   * reach.
    *
    * @generated from field: holos.console.v1.LinkedTemplateRef template = 2;
    */
@@ -75,31 +76,29 @@ export declare const TemplatePolicyRuleSchema: GenMessage<TemplatePolicyRule>;
 
 /**
  * TemplatePolicy is a named resource that declares one or more rules
- * attaching templates to projects within its scope.
+ * attaching templates to projects within its namespace.
  *
- * Storage MUST live in the folder or organization namespace identified by
- * scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
- * design note. Backend handlers MUST reject any namespace whose resolver
- * classification is `ResourceTypeProject`. TEMPLATE_SCOPE_PROJECT (defined in
- * templates.proto) is explicitly unsupported for policies.
+ * Storage MUST live in a folder or organization namespace. Project-namespace
+ * storage is forbidden and enforced by the HOL-618 admission plugin.
  *
  * @generated from message holos.console.v1.TemplatePolicy
  */
 export declare type TemplatePolicy = Message<"holos.console.v1.TemplatePolicy"> & {
   /**
-   * name is the unique identifier (DNS label slug) within the scope.
+   * name is the unique identifier (DNS label slug) within the namespace.
    *
    * @generated from field: string name = 1;
    */
   name: string;
 
   /**
-   * scope_ref identifies the owning scope (level + name). Only
-   * TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+   * namespace is the Kubernetes namespace that owns this policy. MUST be an
+   * organization or folder namespace — project namespaces are rejected by
+   * admission.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope_ref = 2;
+   * @generated from field: string namespace = 2;
    */
-  scopeRef?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * display_name is a human-readable name for UI presentation.
@@ -145,18 +144,18 @@ export declare type TemplatePolicy = Message<"holos.console.v1.TemplatePolicy"> 
 export declare const TemplatePolicySchema: GenMessage<TemplatePolicy>;
 
 /**
- * ListTemplatePoliciesRequest requests all policies visible in the given scope.
+ * ListTemplatePoliciesRequest requests all policies visible in the given
+ * namespace.
  *
  * @generated from message holos.console.v1.ListTemplatePoliciesRequest
  */
 export declare type ListTemplatePoliciesRequest = Message<"holos.console.v1.ListTemplatePoliciesRequest"> & {
   /**
-   * scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-   * TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+   * namespace is the Kubernetes namespace that owns the policies.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 };
 
 /**
@@ -184,18 +183,17 @@ export declare type ListTemplatePoliciesResponse = Message<"holos.console.v1.Lis
 export declare const ListTemplatePoliciesResponseSchema: GenMessage<ListTemplatePoliciesResponse>;
 
 /**
- * GetTemplatePolicyRequest requests a single policy by name within a scope.
+ * GetTemplatePolicyRequest requests a single policy by (namespace, name).
  *
  * @generated from message holos.console.v1.GetTemplatePolicyRequest
  */
 export declare type GetTemplatePolicyRequest = Message<"holos.console.v1.GetTemplatePolicyRequest"> & {
   /**
-   * scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-   * TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+   * namespace is the Kubernetes namespace that owns the policy.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * name is the policy's DNS label slug.
@@ -230,21 +228,21 @@ export declare type GetTemplatePolicyResponse = Message<"holos.console.v1.GetTem
 export declare const GetTemplatePolicyResponseSchema: GenMessage<GetTemplatePolicyResponse>;
 
 /**
- * CreateTemplatePolicyRequest creates a new policy in the given scope.
+ * CreateTemplatePolicyRequest creates a new policy in the given namespace.
  *
  * @generated from message holos.console.v1.CreateTemplatePolicyRequest
  */
 export declare type CreateTemplatePolicyRequest = Message<"holos.console.v1.CreateTemplatePolicyRequest"> & {
   /**
-   * scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-   * TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+   * namespace is the Kubernetes namespace that will own the policy. MUST be
+   * an organization or folder namespace.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
-   * policy is the policy to create. name, scope_ref, and rules are required.
+   * policy is the policy to create. name, namespace, and rules are required.
    *
    * @generated from field: holos.console.v1.TemplatePolicy policy = 2;
    */
@@ -282,12 +280,11 @@ export declare const CreateTemplatePolicyResponseSchema: GenMessage<CreateTempla
  */
 export declare type UpdateTemplatePolicyRequest = Message<"holos.console.v1.UpdateTemplatePolicyRequest"> & {
   /**
-   * scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-   * TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+   * namespace is the Kubernetes namespace that owns the policy.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * policy carries the new values; name identifies which policy to update.
@@ -324,12 +321,11 @@ export declare const UpdateTemplatePolicyResponseSchema: GenMessage<UpdateTempla
  */
 export declare type DeleteTemplatePolicyRequest = Message<"holos.console.v1.DeleteTemplatePolicyRequest"> & {
   /**
-   * scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-   * TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
+   * namespace is the Kubernetes namespace that owns the policy.
    *
-   * @generated from field: holos.console.v1.TemplateScopeRef scope = 1;
+   * @generated from field: string namespace = 1;
    */
-  scope?: TemplateScopeRef;
+  namespace: string;
 
   /**
    * name is the policy's DNS label slug.
@@ -406,12 +402,11 @@ export declare const TemplatePolicyKindSchema: GenEnum<TemplatePolicyKind>;
  * every project — or to block one from matching projects — is to author a
  * TemplatePolicy.
  *
- * Storage MUST live in the folder or organization namespace identified by
- * scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
- * design note. Backend handlers MUST reject any namespace whose resolver
- * classification is `ResourceTypeProject`. The TEMPLATE_SCOPE_PROJECT enum
- * value (defined in templates.proto) is explicitly unsupported for policies;
- * only TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+ * Storage MUST live in a folder or organization namespace (`namespace`).
+ * Project-namespace storage is forbidden and is enforced by the HOL-618
+ * admission plugin; a CEL policy rejects any TemplatePolicy object created
+ * in a project namespace so the proto layer no longer needs to carry a
+ * discriminator for that rejection (HOL-619).
  *
  * Backend handler wiring (HOL-556), storage enforcement, and render-time
  * resolver integration (HOL-567) are complete; the resolver consults
@@ -423,7 +418,8 @@ export declare const TemplatePolicyKindSchema: GenEnum<TemplatePolicyKind>;
 export declare const TemplatePolicyService: GenService<{
   /**
    * ListTemplatePolicies returns all TemplatePolicy resources visible in the
-   * given scope. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the scope.
+   * given namespace. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the
+   * owning resource.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.ListTemplatePolicies
    */
@@ -433,8 +429,8 @@ export declare const TemplatePolicyService: GenService<{
     output: typeof ListTemplatePoliciesResponseSchema;
   },
   /**
-   * GetTemplatePolicy retrieves a single policy by name within a scope.
-   * Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+   * GetTemplatePolicy retrieves a single policy by (namespace, name).
+   * Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.GetTemplatePolicy
    */
@@ -444,11 +440,10 @@ export declare const TemplatePolicyService: GenService<{
     output: typeof GetTemplatePolicyResponseSchema;
   },
   /**
-   * CreateTemplatePolicy creates a new policy at the given scope. The scope
-   * MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER; the handler
-   * MUST reject TEMPLATE_SCOPE_PROJECT and any namespace that the resolver
-   * classifies as `ResourceTypeProject`.
-   * Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+   * CreateTemplatePolicy creates a new policy in the given namespace. The
+   * namespace MUST be an organization or folder namespace; admission
+   * (HOL-618) rejects project-namespace creates.
+   * Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.CreateTemplatePolicy
    */
@@ -459,7 +454,7 @@ export declare const TemplatePolicyService: GenService<{
   },
   /**
    * UpdateTemplatePolicy updates an existing policy.
-   * Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+   * Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy
    */
@@ -470,7 +465,7 @@ export declare const TemplatePolicyService: GenService<{
   },
   /**
    * DeleteTemplatePolicy deletes a policy.
-   * Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+   * Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy
    */

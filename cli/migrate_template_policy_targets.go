@@ -19,6 +19,7 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -152,7 +153,7 @@ type PolicyMigrationPlan struct {
 	// write the policy_ref on the binding and to route subsequent
 	// UpdatePolicy / CreateBinding calls through the correct K8s
 	// namespace.
-	Scope consolev1.TemplateScope
+	Scope scopeshim.Scope
 	// ScopeName is the folder or organization slug derived from
 	// PolicyNamespace.
 	ScopeName string
@@ -643,18 +644,18 @@ func policyHasNonEmptyTargets(rules []ruleWire) bool {
 // policy-owning namespace. Only organization and folder namespaces reach
 // here; the classification helper already filtered project and unknown
 // kinds out of the policy-bearing slice.
-func templateScopeFromNamespace(r *resolver.Resolver, ns string) (consolev1.TemplateScope, string, error) {
+func templateScopeFromNamespace(r *resolver.Resolver, ns string) (scopeshim.Scope, string, error) {
 	kind, name, err := r.ResourceTypeFromNamespace(ns)
 	if err != nil {
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, "", err
+		return scopeshim.ScopeUnspecified, "", err
 	}
 	switch kind {
 	case v1alpha2.ResourceTypeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, name, nil
+		return scopeshim.ScopeOrganization, name, nil
 	case v1alpha2.ResourceTypeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, name, nil
+		return scopeshim.ScopeFolder, name, nil
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, "",
+		return scopeshim.ScopeUnspecified, "",
 			fmt.Errorf("namespace %q is not a policy-bearing scope (got %q)", ns, kind)
 	}
 }
@@ -926,11 +927,11 @@ func bindingTargetKindString(k consolev1.TemplatePolicyBindingTargetKind) string
 // templateScopeAnnotationValue is the scope label the binding's annotation
 // carries. Matches templatepolicybindings.scopeLabelValue one-for-one so
 // the runtime resolver decodes what the migrator writes.
-func templateScopeAnnotationValue(scope consolev1.TemplateScope) string {
+func templateScopeAnnotationValue(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return v1alpha2.TemplateScopeFolder
 	default:
 		return ""
@@ -943,13 +944,10 @@ func templateScopeAnnotationValue(scope consolev1.TemplateScope) string {
 // wrote — there is no separate binding-handler code path for migrated
 // bindings.
 func createBindingFromPlan(ctx context.Context, client kubernetes.Interface, plan *PolicyMigrationPlan) error {
-	policyRef := &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     plan.Scope,
-			ScopeName: plan.ScopeName,
-		},
-		Name: plan.PolicyName,
-	}
+	// HOL-619 replaced LinkedTemplatePolicyRef.scope_ref with a flat
+	// namespace field; build the proto through the shim so the owning
+	// Kubernetes namespace is filled in from the default resolver.
+	policyRef := scopeshim.NewLinkedTemplatePolicyRef(plan.Scope, plan.ScopeName, plan.PolicyName)
 	policyJSON, err := marshalBindingPolicyRef(policyRef)
 	if err != nil {
 		return err
@@ -1000,10 +998,12 @@ type storedTargetRefWire struct {
 func marshalBindingPolicyRef(ref *consolev1.LinkedTemplatePolicyRef) ([]byte, error) {
 	sr := storedPolicyRefWire{}
 	if ref != nil {
-		if s := ref.GetScopeRef(); s != nil {
-			sr.Scope = templateScopeAnnotationValue(s.GetScope())
-			sr.ScopeName = s.GetScopeName()
-		}
+		// HOL-619 collapsed the scope_ref discriminator into a flat
+		// namespace on LinkedTemplatePolicyRef; classify it through the
+		// shim so the persisted annotation JSON keeps its existing
+		// (scope, scopeName) key until HOL-621 rewrites this layer.
+		sr.Scope = templateScopeAnnotationValue(scopeshim.PolicyRefScope(ref))
+		sr.ScopeName = scopeshim.PolicyRefScopeName(ref)
 		sr.Name = ref.GetName()
 	}
 	b, err := json.Marshal(sr)
@@ -1207,11 +1207,11 @@ func printMigrationSummary(w io.Writer, res *MigrationResult, apply bool) {
 
 // scopeDisplay returns a short, operator-friendly label for a TemplateScope.
 // Used only in the printed plan.
-func scopeDisplay(scope consolev1.TemplateScope) string {
+func scopeDisplay(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return "organization"
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return "folder"
 	default:
 		return strings.ToLower(scope.String())

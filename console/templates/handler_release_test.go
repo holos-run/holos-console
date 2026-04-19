@@ -12,6 +12,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -36,11 +37,12 @@ func (s *stubOrgGrantResolver) GetOrgGrants(_ context.Context, _ string) (map[st
 	return s.users, s.roles, s.err
 }
 
-func orgScopeRef(org string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName: org,
-	}
+// orgScopeRef returns the Kubernetes namespace string for the named
+// organization scope. HOL-619 collapsed the TemplateScopeRef enum so the
+// helper now emits a namespace string the handler will classify via the
+// scopeshim resolver.
+func orgScopeRef(org string) string {
+	return scopeshim.DefaultResolver().OrgNamespace(org)
 }
 
 func TestCreateRelease(t *testing.T) {
@@ -59,7 +61,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName:  templateName,
 				Version:       "1.0.0",
@@ -115,7 +117,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0-beta.1",
@@ -139,7 +141,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0+build.123",
@@ -182,7 +184,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0",
@@ -206,7 +208,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "not-a-version",
@@ -230,7 +232,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				Version:     "1.0.0",
 				CueTemplate: validCue,
@@ -253,7 +255,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				CueTemplate:  validCue,
@@ -281,7 +283,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := authedCtx(viewerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0",
@@ -309,7 +311,7 @@ func TestCreateRelease(t *testing.T) {
 			Tag:   "1.0.0",
 		}
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0",
@@ -337,7 +339,7 @@ func TestCreateRelease(t *testing.T) {
 
 		ctx := context.Background() // no claims
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 			Release: &consolev1.Release{
 				TemplateName: templateName,
 				Version:      "1.0.0",
@@ -394,7 +396,7 @@ func TestListReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 		})
 
@@ -422,7 +424,7 @@ func TestListReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 		})
 
@@ -442,7 +444,7 @@ func TestListReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
-			Scope: orgScopeRef(org),
+			Namespace: orgScopeRef(org),
 		})
 
 		_, err := handler.ListReleases(ctx, req)
@@ -489,7 +491,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "1.2.3",
 		})
@@ -523,7 +525,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "9.9.9",
 		})
@@ -544,7 +546,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "bad",
 		})
@@ -565,7 +567,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Scope:        orgScopeRef(org),
+			Namespace:        orgScopeRef(org),
 			TemplateName: templateName,
 		})
 

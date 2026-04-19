@@ -13,7 +13,7 @@ import type {
   TemplatePolicyBindingTargetRef,
   LinkedTemplatePolicyRef,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
-import type { TemplateScopeRef } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { type TemplateScopeRef, namespaceForRef } from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types/enums used by UI consumers.
@@ -42,7 +42,7 @@ export function useListTemplatePolicyBindings(scope: TemplateScopeRef) {
   return useQuery({
     queryKey: bindingListKey(scope),
     queryFn: async () => {
-      const response = await client.listTemplatePolicyBindings({ scope })
+      const response = await client.listTemplatePolicyBindings({ namespace: namespaceForRef(scope) })
       return response.bindings
     },
     enabled: isAuthenticated && !!scope.scopeName,
@@ -60,7 +60,7 @@ export function useGetTemplatePolicyBinding(scope: TemplateScopeRef, name: strin
   return useQuery({
     queryKey: bindingGetKey(scope, name),
     queryFn: async () => {
-      const response = await client.getTemplatePolicyBinding({ scope, name })
+      const response = await client.getTemplatePolicyBinding({ namespace: namespaceForRef(scope), name })
       return response.binding
     },
     enabled: isAuthenticated && !!scope.scopeName && !!name,
@@ -82,18 +82,20 @@ export function useCreateTemplatePolicyBinding(scope: TemplateScopeRef) {
       description: string
       policyRef: LinkedTemplatePolicyRef
       targetRefs: TemplatePolicyBindingTargetRef[]
-    }) =>
-      client.createTemplatePolicyBinding({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.createTemplatePolicyBinding({
+        namespace: ns,
         binding: create(TemplatePolicyBindingSchema, {
           name: params.name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName,
           description: params.description,
           policyRef: params.policyRef,
           targetRefs: params.targetRefs,
         }),
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
     },
@@ -117,18 +119,20 @@ export function useUpdateTemplatePolicyBinding(
       description?: string
       policyRef: LinkedTemplatePolicyRef
       targetRefs: TemplatePolicyBindingTargetRef[]
-    }) =>
-      client.updateTemplatePolicyBinding({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.updateTemplatePolicyBinding({
+        namespace: ns,
         binding: create(TemplatePolicyBindingSchema, {
           name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           policyRef: params.policyRef,
           targetRefs: params.targetRefs,
         }),
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
       queryClient.invalidateQueries({ queryKey: bindingGetKey(scope, name) })
@@ -146,7 +150,7 @@ export function useDeleteTemplatePolicyBinding(scope: TemplateScopeRef) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { name: string }) =>
-      client.deleteTemplatePolicyBinding({ scope, ...params }),
+      client.deleteTemplatePolicyBinding({ namespace: namespaceForRef(scope), ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
     },

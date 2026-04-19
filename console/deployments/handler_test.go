@@ -17,6 +17,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -1387,7 +1388,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 			WithAncestorTemplateProvider(atp)
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "policy", ""),
 		}
 		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
@@ -1415,7 +1416,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil)
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
 		}
 		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
@@ -1439,7 +1440,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 			WithAncestorTemplateProvider(atp)
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
 		}
 		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
@@ -1469,7 +1470,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 			WithAncestorTemplateProvider(atp)
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "policy", ""),
 		}
 		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {
@@ -1496,7 +1497,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 			WithAncestorTemplateProvider(atp)
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "policy"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "policy", ""),
 		}
 		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
 		if err != nil {

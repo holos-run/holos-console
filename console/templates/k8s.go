@@ -11,6 +11,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
@@ -41,13 +42,13 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 }
 
 // namespaceForScope returns the Kubernetes namespace for the given scope and name.
-func (k *K8sClient) namespaceForScope(scope consolev1.TemplateScope, scopeName string) (string, error) {
+func (k *K8sClient) namespaceForScope(scope scopeshim.Scope, scopeName string) (string, error) {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return k.Resolver.OrgNamespace(scopeName), nil
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return k.Resolver.FolderNamespace(scopeName), nil
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return k.Resolver.ProjectNamespace(scopeName), nil
 	default:
 		return "", fmt.Errorf("unknown template scope %v", scope)
@@ -55,13 +56,13 @@ func (k *K8sClient) namespaceForScope(scope consolev1.TemplateScope, scopeName s
 }
 
 // scopeLabelValue returns the label string for a TemplateScope enum value.
-func scopeLabelValue(scope consolev1.TemplateScope) string {
+func scopeLabelValue(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return v1alpha2.TemplateScopeFolder
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return v1alpha2.TemplateScopeProject
 	default:
 		return ""
@@ -69,7 +70,7 @@ func scopeLabelValue(scope consolev1.TemplateScope) string {
 }
 
 // ListTemplates returns all template ConfigMaps for the given scope and name.
-func (k *K8sClient) ListTemplates(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]corev1.ConfigMap, error) {
+func (k *K8sClient) ListTemplates(ctx context.Context, scope scopeshim.Scope, scopeName string) ([]corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -91,7 +92,7 @@ func (k *K8sClient) ListTemplates(ctx context.Context, scope consolev1.TemplateS
 }
 
 // GetTemplate retrieves a template ConfigMap by name for the given scope.
-func (k *K8sClient) GetTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) GetTemplate(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -106,7 +107,7 @@ func (k *K8sClient) GetTemplate(ctx context.Context, scope consolev1.TemplateSco
 }
 
 // CreateTemplate creates a new template ConfigMap at the given scope.
-func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, enabled bool, linkedTemplates []*consolev1.LinkedTemplateRef) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateTemplate(ctx context.Context, scope scopeshim.Scope, scopeName, name, displayName, description, cueTemplate string, defaults *consolev1.TemplateDefaults, enabled bool, linkedTemplates []*consolev1.LinkedTemplateRef) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -157,7 +158,7 @@ func (k *K8sClient) CreateTemplate(ctx context.Context, scope consolev1.Template
 
 // UpdateTemplate updates an existing template ConfigMap.
 // Only non-nil pointer fields are updated.
-func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, enabled *bool, linkedTemplates []*consolev1.LinkedTemplateRef, clearLinks bool) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdateTemplate(ctx context.Context, scope scopeshim.Scope, scopeName, name string, displayName, description, cueTemplate *string, defaults *consolev1.TemplateDefaults, clearDefaults bool, enabled *bool, linkedTemplates []*consolev1.LinkedTemplateRef, clearLinks bool) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -216,7 +217,7 @@ func (k *K8sClient) UpdateTemplate(ctx context.Context, scope consolev1.Template
 }
 
 // DeleteTemplate deletes a template ConfigMap.
-func (k *K8sClient) DeleteTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) error {
+func (k *K8sClient) DeleteTemplate(ctx context.Context, scope scopeshim.Scope, scopeName, name string) error {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return err
@@ -231,7 +232,7 @@ func (k *K8sClient) DeleteTemplate(ctx context.Context, scope consolev1.Template
 }
 
 // CloneTemplate copies an existing template to a new name within the same scope.
-func (k *K8sClient) CloneTemplate(ctx context.Context, scope consolev1.TemplateScope, scopeName, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CloneTemplate(ctx context.Context, scope scopeshim.Scope, scopeName, sourceName, newName, newDisplayName string) (*corev1.ConfigMap, error) {
 	source, err := k.GetTemplate(ctx, scope, scopeName, sourceName)
 	if err != nil {
 		return nil, fmt.Errorf("getting source template for clone: %w", err)
@@ -279,7 +280,7 @@ func NewProjectScopedResolver(k8s *K8sClient) *ProjectScopedResolver {
 
 // GetTemplate satisfies deployments.TemplateResolver using project scope.
 func (r *ProjectScopedResolver) GetTemplate(ctx context.Context, project, name string) (*corev1.ConfigMap, error) {
-	return r.k8s.GetTemplate(ctx, consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, project, name)
+	return r.k8s.GetTemplate(ctx, scopeshim.ScopeProject, project, name)
 }
 
 // ListTemplatesInNamespace returns all template ConfigMaps in a specific namespace.
@@ -521,27 +522,29 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 // ListLinkableTemplateInfos returns all enabled templates at the given scope
 // as LinkableTemplate proto messages. Used by the TemplateService to populate
 // the linking UI.
-func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]*consolev1.LinkableTemplate, error) {
+func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope scopeshim.Scope, scopeName string) ([]*consolev1.LinkableTemplate, error) {
 	cms, err := k.ListTemplates(ctx, scope, scopeName)
 	if err != nil {
 		return nil, err
 	}
+	// `Forced` is the linking-UI signal for "always applied" checkboxes.
+	// This linkable-list path does not yet run TemplatePolicy REQUIRE
+	// evaluation for each candidate, so Forced is always false here;
+	// the render-time resolver is the authoritative source of truth.
+	// Tracked for promotion in the forced-in-linkable follow-up.
+	//
+	// HOL-619 moved LinkableTemplate to namespace-keyed identity. The
+	// authoritative namespace is the ConfigMap's own namespace; callers
+	// that need the legacy (scope, scopeName) discriminator should
+	// classify it via scopeshim.FromNamespace.
 	var result []*consolev1.LinkableTemplate
 	for _, cm := range cms {
 		enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 		if !enabled {
 			continue
 		}
-		// `Forced` is the linking-UI signal for "always applied" checkboxes.
-		// This linkable-list path does not yet run TemplatePolicy REQUIRE
-		// evaluation for each candidate, so Forced is always false here;
-		// the render-time resolver is the authoritative source of truth.
-		// Tracked for promotion in the forced-in-linkable follow-up.
 		result = append(result, &consolev1.LinkableTemplate{
-			ScopeRef: &consolev1.TemplateScopeRef{
-				Scope:     scope,
-				ScopeName: scopeName,
-			},
+			Namespace:   cm.Namespace,
 			Name:        cm.Name,
 			DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 			Description: cm.Annotations[v1alpha2.AnnotationDescription],
@@ -556,7 +559,7 @@ func (k *K8sClient) ListLinkableTemplateInfos(ctx context.Context, scope console
 func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
 	_, err := k.CreateTemplate(
 		ctx,
-		consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		scopeshim.ScopeOrganization,
 		org,
 		DefaultReferenceGrantName,
 		"HTTPRoute",
@@ -574,7 +577,7 @@ func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
 func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) error {
 	_, err := k.CreateTemplate(
 		ctx,
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		project,
 		"example-httpbin",
 		"Example Httpbin",
@@ -591,7 +594,7 @@ func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) err
 // specific semver version. The ConfigMap name follows the pattern
 // {template-name}--v{major}-{minor}-{patch}. Returns AlreadyExists if the
 // version has already been published.
-func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string, version *semver.Version, cueTemplate string, defaults *consolev1.TemplateDefaults, changelog, upgradeAdvice string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateRelease(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string, version *semver.Version, cueTemplate string, defaults *consolev1.TemplateDefaults, changelog, upgradeAdvice string) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -642,7 +645,7 @@ func (k *K8sClient) CreateRelease(ctx context.Context, scope consolev1.TemplateS
 
 // ListReleases returns all release ConfigMaps for a template, sorted by version
 // descending (newest first).
-func (k *K8sClient) ListReleases(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string) ([]corev1.ConfigMap, error) {
+func (k *K8sClient) ListReleases(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string) ([]corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -670,7 +673,7 @@ func (k *K8sClient) ListReleases(ctx context.Context, scope consolev1.TemplateSc
 }
 
 // GetRelease retrieves a specific release ConfigMap by template name and version.
-func (k *K8sClient) GetRelease(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string, version *semver.Version) (*corev1.ConfigMap, error) {
+func (k *K8sClient) GetRelease(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string, version *semver.Version) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -720,14 +723,17 @@ func sortReleaseConfigMapsDesc(items []corev1.ConfigMap) {
 	copy(items, sorted)
 }
 
-// configMapToRelease converts a Kubernetes ConfigMap to a Release protobuf message.
-func configMapToRelease(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.Release {
+// configMapToRelease converts a Kubernetes ConfigMap to a Release protobuf
+// message. HOL-619 moved Release to namespace-keyed identity — the returned
+// proto carries cm.Namespace directly. The caller's (scope, scopeName) pair
+// is accepted for signature parity with the pre-HOL-619 call sites and is
+// intentionally unused by this function.
+func configMapToRelease(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.Release {
+	_ = scope
+	_ = scopeName
 	release := &consolev1.Release{
-		TemplateName: cm.Labels[v1alpha2.LabelReleaseOf],
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     scope,
-			ScopeName: scopeName,
-		},
+		TemplateName:  cm.Labels[v1alpha2.LabelReleaseOf],
+		Namespace:     cm.Namespace,
 		Version:       cm.Annotations[v1alpha2.AnnotationTemplateVersion],
 		Changelog:     cm.Data[v1alpha2.ChangelogKey],
 		UpgradeAdvice: cm.Data[v1alpha2.UpgradeAdviceKey],
@@ -748,7 +754,7 @@ func configMapToRelease(cm *corev1.ConfigMap, scope consolev1.TemplateScope, sco
 
 // ListReleaseVersions returns all parsed semver versions for a template's
 // releases. Releases with invalid version annotations are skipped.
-func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName string) ([]*semver.Version, error) {
+func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string) ([]*semver.Version, error) {
 	cms, err := k.ListReleases(ctx, scope, scopeName, templateName)
 	if err != nil {
 		return nil, err
@@ -770,7 +776,7 @@ func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope consolev1.Tem
 // source from the latest matching release. If no releases exist (pre-versioning
 // backwards compatibility), it falls back to the live template ConfigMap's CUE
 // source.
-func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope consolev1.TemplateScope, scopeName, templateName, versionConstraint string) (string, error) {
+func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope scopeshim.Scope, scopeName, templateName, versionConstraint string) (string, error) {
 	versions, err := k.ListReleaseVersions(ctx, scope, scopeName, templateName)
 	if err != nil {
 		return "", fmt.Errorf("listing release versions for %s: %w", templateName, err)
@@ -806,10 +812,14 @@ func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope consolev1.
 	return cm.Data[CueTemplateKey], nil
 }
 
-// configMapToTemplate converts a Kubernetes ConfigMap to a Template protobuf message.
-// The scope and scopeName must be provided by the caller since they are encoded
-// in the namespace (which the ConfigMap stores but the proto carries explicitly).
-func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.Template {
+// configMapToTemplate converts a Kubernetes ConfigMap to a Template proto
+// message. HOL-619 replaced the (scope, scopeName) discriminator with the
+// Kubernetes namespace; the returned Template carries cm.Namespace directly.
+// The caller's (scope, scopeName) pair is accepted for signature parity
+// with the pre-HOL-619 call sites and is intentionally unused here.
+func configMapToTemplate(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.Template {
+	_ = scope
+	_ = scopeName
 	cueSource := cm.Data[CueTemplateKey]
 	enabled, _ := strconv.ParseBool(cm.Annotations[v1alpha2.AnnotationEnabled])
 	// The `mandatory` field was removed from Template in HOL-555; the
@@ -818,14 +828,11 @@ func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, sc
 	// (render-time resolution via policyresolver.FolderResolver).
 	tmpl := &consolev1.Template{
 		Name:        cm.Name,
+		Namespace:   cm.Namespace,
 		DisplayName: cm.Annotations[v1alpha2.AnnotationDisplayName],
 		Description: cm.Annotations[v1alpha2.AnnotationDescription],
 		CueTemplate: cueSource,
 		Enabled:     enabled,
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     scope,
-			ScopeName: scopeName,
-		},
 	}
 
 	// Populate linked templates from the v1alpha2 annotation.
@@ -844,7 +851,7 @@ func configMapToTemplate(cm *corev1.ConfigMap, scope consolev1.TemplateScope, sc
 
 	// Priority 1: CUE extraction from the template source (ADR 018 design, ADR 025 per-field extraction).
 	// Only project-scope templates carry deployment defaults.
-	if scope == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT && cueSource != "" {
+	if scope == scopeshim.ScopeProject && cueSource != "" {
 		extracted, err := ExtractDefaults(cueSource)
 		if err != nil {
 			slog.Warn("failed to extract defaults from CUE template; falling back to annotation",
@@ -882,10 +889,13 @@ type linkedRef struct {
 }
 
 // linkedRefFromProto converts a proto LinkedTemplateRef to a linkedRef key.
+// HOL-619 replaced the (scope, scopeName) discriminator on LinkedTemplateRef
+// with a Kubernetes namespace; classify it through the shim so the internal
+// storage key stays stable until HOL-621 rewrites this layer.
 func linkedRefFromProto(ref *consolev1.LinkedTemplateRef) linkedRef {
 	return linkedRef{
-		scope:     scopeLabelValue(ref.Scope),
-		scopeName: ref.ScopeName,
+		scope:     scopeLabelValue(scopeshim.RefScope(ref)),
+		scopeName: scopeshim.RefScopeName(ref),
 		name:      ref.Name,
 	}
 }
@@ -903,9 +913,13 @@ func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error)
 		if r == nil {
 			continue
 		}
+		// HOL-619 replaced (scope, scopeName) with namespace on
+		// LinkedTemplateRef; classify via the shim so the on-disk
+		// annotation keeps its existing stable key until HOL-621
+		// rewrites this layer.
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(r.Scope),
-			ScopeName:         r.ScopeName,
+			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
+			ScopeName:         scopeshim.RefScopeName(r),
 			Name:              r.Name,
 			VersionConstraint: r.VersionConstraint,
 		})
@@ -931,27 +945,27 @@ func unmarshalLinkedTemplates(raw string) ([]*consolev1.LinkedTemplateRef, error
 	}
 	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, s := range stored {
-		refs = append(refs, &consolev1.LinkedTemplateRef{
-			Scope:             scopeFromLabel(s.Scope),
-			ScopeName:         s.ScopeName,
-			Name:              s.Name,
-			VersionConstraint: s.VersionConstraint,
-		})
+		refs = append(refs, scopeshim.NewLinkedTemplateRef(
+			scopeFromLabel(s.Scope),
+			s.ScopeName,
+			s.Name,
+			s.VersionConstraint,
+		))
 	}
 	return refs, nil
 }
 
 // scopeFromLabel converts a label string back to a TemplateScope enum value.
-func scopeFromLabel(label string) consolev1.TemplateScope {
+func scopeFromLabel(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.TemplateScopeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	case v1alpha2.TemplateScopeProject:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+		return scopeshim.ScopeProject
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }
 
@@ -978,17 +992,17 @@ func scopeNameFromNs(r *resolver.Resolver, ns, scopeLabel string) string {
 }
 
 // scopeAndNameFromNs infers the scope and logical name from a Kubernetes namespace.
-func scopeAndNameFromNs(r *resolver.Resolver, ns string) (consolev1.TemplateScope, string) {
+func scopeAndNameFromNs(r *resolver.Resolver, ns string) (scopeshim.Scope, string) {
 	if name, err := r.OrgFromNamespace(ns); err == nil {
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, name
+		return scopeshim.ScopeOrganization, name
 	}
 	if name, err := r.FolderFromNamespace(ns); err == nil {
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, name
+		return scopeshim.ScopeFolder, name
 	}
 	if name, err := r.ProjectFromNamespace(ns); err == nil {
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, name
+		return scopeshim.ScopeProject, name
 	}
-	return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED, ""
+	return scopeshim.ScopeUnspecified, ""
 }
 
 // AncestorTemplateResolver adapts K8sClient + a walker + a PolicyResolver

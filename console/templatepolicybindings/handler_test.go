@@ -14,6 +14,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -56,7 +57,7 @@ type stubPolicyResolver struct {
 	calls  int
 }
 
-func (s *stubPolicyResolver) PolicyExists(_ context.Context, _ consolev1.TemplateScope, _, _ string) (bool, error) {
+func (s *stubPolicyResolver) PolicyExists(_ context.Context, _ scopeshim.Scope, _, _ string) (bool, error) {
 	s.calls++
 	if s.err != nil {
 		return false, s.err
@@ -88,7 +89,7 @@ type stubProjectResolver struct {
 	calls  int
 }
 
-func (s *stubProjectResolver) ProjectExists(_ context.Context, _ consolev1.TemplateScope, _, project string) (bool, error) {
+func (s *stubProjectResolver) ProjectExists(_ context.Context, _ scopeshim.Scope, _, project string) (bool, error) {
 	s.calls++
 	if s.err != nil {
 		return false, s.err
@@ -123,43 +124,37 @@ func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, *fake
 }
 
 // newFolderScopeRef, newOrgScopeRef, and newProjectScopeRef are short
-// constructors for proto types used in every table-driven case below.
-func newFolderScopeRef(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-		ScopeName: name,
-	}
+// constructors that return the Kubernetes namespace string for the named
+// scope. HOL-619 collapsed the TemplateScopeRef enum; the namespace is
+// now the sole scope discriminator on request / proto messages.
+func newFolderScopeRef(name string) string {
+	return scopeshim.DefaultResolver().FolderNamespace(name)
 }
 
-func newOrgScopeRef(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName: name,
-	}
+func newOrgScopeRef(name string) string {
+	return scopeshim.DefaultResolver().OrgNamespace(name)
 }
 
-func newProjectScopeRef(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
-		ScopeName: name,
-	}
+func newProjectScopeRef(name string) string {
+	return scopeshim.DefaultResolver().ProjectNamespace(name)
 }
 
-// basicBinding builds a binding whose scope_ref matches the supplied
-// request scope with a default policy_ref + single target_ref. The outer
-// request scope and the embedded binding scope must line up for the
-// handler to accept the request; this helper keeps the invariant in one
-// place.
-func basicBinding(scope *consolev1.TemplateScopeRef) *consolev1.TemplatePolicyBinding {
+// basicBinding builds a binding whose namespace matches the supplied
+// request namespace with a default policy_ref + single target_ref. The
+// outer request namespace and the embedded binding namespace must line up
+// for the handler to accept the request; this helper keeps the invariant
+// in one place.
+func basicBinding(namespace string) *consolev1.TemplatePolicyBinding {
 	return &consolev1.TemplatePolicyBinding{
 		Name:        "bind-reference-grant",
 		DisplayName: "Bind reference grant",
 		Description: "Attach reference-grant policy to payments-web",
-		ScopeRef:    scope,
-		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
-			ScopeRef: newOrgScopeRef("acme"),
-			Name:     "require-reference-grant",
-		},
+		Namespace:   namespace,
+		PolicyRef: scopeshim.NewLinkedTemplatePolicyRef(
+			scopeshim.ScopeOrganization,
+			"acme",
+			"require-reference-grant",
+		),
 		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 			{
 				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
@@ -183,7 +178,7 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 
 	req := connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   newProjectScopeRef("billing-web"),
+		Namespace:   newProjectScopeRef("billing-web"),
 		Binding: basicBinding(newProjectScopeRef("billing-web")),
 	})
 	ctx := authedCtx("owner@example.com", nil)
@@ -221,7 +216,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "list",
 			run: func() error {
 				_, err := h.ListTemplatePolicyBindings(ctx, connect.NewRequest(&consolev1.ListTemplatePolicyBindingsRequest{
-					Scope: newProjectScopeRef("billing-web"),
+					Namespace: newProjectScopeRef("billing-web"),
 				}))
 				return err
 			},
@@ -230,7 +225,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "get",
 			run: func() error {
 				_, err := h.GetTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.GetTemplatePolicyBindingRequest{
-					Scope: newProjectScopeRef("billing-web"),
+					Namespace: newProjectScopeRef("billing-web"),
 					Name:  "any",
 				}))
 				return err
@@ -240,7 +235,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "update",
 			run: func() error {
 				_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
-					Scope:   newProjectScopeRef("billing-web"),
+					Namespace:   newProjectScopeRef("billing-web"),
 					Binding: basicBinding(newProjectScopeRef("billing-web")),
 				}))
 				return err
@@ -250,7 +245,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "delete",
 			run: func() error {
 				_, err := h.DeleteTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyBindingRequest{
-					Scope: newProjectScopeRef("billing-web"),
+					Namespace: newProjectScopeRef("billing-web"),
 					Name:  "any",
 				}))
 				return err
@@ -287,12 +282,12 @@ func TestCreateHappyPath(t *testing.T) {
 	// Override policy_ref to stay in the same folder so the reachability
 	// check does not depend on the ancestor resolver.
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "local-policy",
 	}
 
 	resp, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err != nil {
@@ -328,12 +323,12 @@ func TestCreateRBACDenial(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "local-policy",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -358,12 +353,12 @@ func TestCreateUnauthenticated(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "local-policy",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(context.Background(), connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -388,7 +383,7 @@ func TestCreateValidation(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	validPolicyRef := func() *consolev1.LinkedTemplatePolicyRef {
 		return &consolev1.LinkedTemplatePolicyRef{
-			ScopeRef: folder,
+			Namespace: folder,
 			Name:     "local-policy",
 		}
 	}
@@ -409,7 +404,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "missing policy_ref",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:       "bad",
-				ScopeRef:   folder,
+				Namespace:   folder,
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{validTarget()},
 			},
 			wantMsg: "policy_ref is required",
@@ -418,30 +413,30 @@ func TestCreateValidation(t *testing.T) {
 			name: "policy_ref missing scope_ref",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:       "bad",
-				ScopeRef:   folder,
+				Namespace:   folder,
 				PolicyRef:  &consolev1.LinkedTemplatePolicyRef{Name: "x"},
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{validTarget()},
 			},
-			wantMsg: "policy_ref.scope_ref is required",
+			wantMsg: "binding.policy_ref.namespace is required",
 		},
 		{
 			name: "policy_ref project scope",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:     "bad",
-				ScopeRef: folder,
+				Namespace: folder,
 				PolicyRef: &consolev1.LinkedTemplatePolicyRef{
-					ScopeRef: newProjectScopeRef("p"),
+					Namespace: newProjectScopeRef("p"),
 					Name:     "x",
 				},
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{validTarget()},
 			},
-			wantMsg: "policy_ref.scope_ref cannot be TEMPLATE_SCOPE_PROJECT",
+			wantMsg: "policy_ref.namespace cannot be a project namespace",
 		},
 		{
 			name: "target_refs empty",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:       "bad",
-				ScopeRef:   folder,
+				Namespace:   folder,
 				PolicyRef:  validPolicyRef(),
 				TargetRefs: nil,
 			},
@@ -451,7 +446,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "target kind unspecified",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					{
@@ -467,7 +462,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "target name missing",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					{
@@ -482,7 +477,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "target project_name invalid DNS label",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					{
@@ -498,7 +493,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "target name invalid DNS label",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					{
@@ -514,7 +509,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "target project_name missing",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					{
@@ -529,7 +524,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "duplicate target triples",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:      "bad",
-				ScopeRef:  folder,
+				Namespace:  folder,
 				PolicyRef: validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
 					validTarget(),
@@ -542,7 +537,7 @@ func TestCreateValidation(t *testing.T) {
 			name: "invalid name",
 			binding: &consolev1.TemplatePolicyBinding{
 				Name:       "Bad_Name",
-				ScopeRef:   folder,
+				Namespace:   folder,
 				PolicyRef:  validPolicyRef(),
 				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{validTarget()},
 			},
@@ -552,7 +547,7 @@ func TestCreateValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-				Scope:   folder,
+				Namespace:   folder,
 				Binding: tt.binding,
 			}))
 			if err == nil {
@@ -568,13 +563,14 @@ func TestCreateValidation(t *testing.T) {
 	}
 }
 
-// TestCreateScopeRefMismatch covers the proto-contract check on
-// binding.scope_ref. The reviewer called out in the sibling
-// templatepolicies handler tests that the handler previously accepted
-// mismatched scope_ref values; the binding handler must fail the same
-// way so a stored binding cannot claim a scope different from its
-// actual namespace.
-func TestCreateScopeRefMismatch(t *testing.T) {
+// TestCreateNamespaceMismatch covers the proto-contract check on
+// binding.namespace. HOL-619 replaced binding.scope_ref with a top-level
+// binding.namespace that must match the request namespace. The reviewer
+// called out in the sibling templatepolicies handler tests that the
+// handler previously accepted mismatched scope_ref values; the binding
+// handler must fail the same way so a stored binding cannot claim a
+// namespace different from the one it actually lives in.
+func TestCreateNamespaceMismatch(t *testing.T) {
 	h, _ := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 	h = h.
 		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
@@ -583,45 +579,45 @@ func TestCreateScopeRefMismatch(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		reqRef  *consolev1.TemplateScopeRef
-		bindRef *consolev1.TemplateScopeRef
+		reqNs   string
+		bindNs  string
 		wantMsg string
 	}{
 		{
-			name:    "nil binding scope_ref",
-			reqRef:  newFolderScopeRef("payments"),
-			bindRef: nil,
-			wantMsg: "binding.scope_ref is required",
+			name:    "empty binding namespace",
+			reqNs:   newFolderScopeRef("payments"),
+			bindNs:  "",
+			wantMsg: "binding.namespace",
 		},
 		{
 			name:    "mismatched folder name",
-			reqRef:  newFolderScopeRef("payments"),
-			bindRef: newFolderScopeRef("identity"),
-			wantMsg: "must match request scope",
+			reqNs:   newFolderScopeRef("payments"),
+			bindNs:  newFolderScopeRef("identity"),
+			wantMsg: "must match request namespace",
 		},
 		{
 			name:    "mismatched org vs folder",
-			reqRef:  newFolderScopeRef("payments"),
-			bindRef: newOrgScopeRef("acme"),
-			wantMsg: "must match request scope",
+			reqNs:   newFolderScopeRef("payments"),
+			bindNs:  newOrgScopeRef("acme"),
+			wantMsg: "must match request namespace",
 		},
 		{
-			name:    "project scope_ref at folder request",
-			reqRef:  newFolderScopeRef("payments"),
-			bindRef: newProjectScopeRef("payments-web"),
-			wantMsg: "cannot be TEMPLATE_SCOPE_PROJECT",
+			name:    "project namespace at folder request",
+			reqNs:   newFolderScopeRef("payments"),
+			bindNs:  newProjectScopeRef("payments-web"),
+			wantMsg: "must match request namespace",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := basicBinding(tt.bindRef)
+			b := basicBinding(tt.bindNs)
 			b.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-				ScopeRef: tt.reqRef,
-				Name:     "p",
+				Namespace: tt.reqNs,
+				Name:      "p",
 			}
 			_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-				Scope:   tt.reqRef,
-				Binding: b,
+				Namespace: tt.reqNs,
+				Binding:   b,
 			}))
 			if err == nil {
 				t.Fatal("expected rejection")
@@ -651,12 +647,12 @@ func TestCreateRejectsMissingPolicy(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "does-not-exist",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -691,12 +687,12 @@ func TestCreateRejectsOutOfChainPolicy(t *testing.T) {
 	// Policy lives in a different organization scope than the binding's
 	// folder; the ancestor walker says "not reachable".
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: newOrgScopeRef("other-org"),
+		Namespace: newOrgScopeRef("other-org"),
 		Name:     "platform-policy",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -729,12 +725,12 @@ func TestCreateAcceptsAncestorPolicy(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: newOrgScopeRef("acme"),
+		Namespace: newOrgScopeRef("acme"),
 		Name:     "platform-policy",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err != nil {
@@ -759,7 +755,7 @@ func TestCreateRejectsBadProjectName(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "local-policy",
 	}
 	binding.TargetRefs = []*consolev1.TemplatePolicyBindingTargetRef{
@@ -771,7 +767,7 @@ func TestCreateRejectsBadProjectName(t *testing.T) {
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -824,7 +820,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	inbound := &consolev1.TemplatePolicyBinding{
 		Name:     "bind-a",
-		ScopeRef: folder,
+		Namespace: folder,
 		// Attempt to overwrite immutable fields — the handler must
 		// discard these (creator_email is not carried into the k8s
 		// client's Update at all; created_at is a k8s-managed field).
@@ -833,7 +829,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 		// Description intentionally left empty to confirm the handler
 		// preserves the stored value when the request carries "".
 		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
-			ScopeRef: folder,
+			Namespace: folder,
 			Name:     "new-local-policy",
 		},
 		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
@@ -846,7 +842,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 	}
 
 	_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: inbound,
 	}))
 	if err != nil {
@@ -898,12 +894,12 @@ func TestUpdateMissingReturnsNotFound(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "local-policy",
 	}
 
 	_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {
@@ -944,7 +940,7 @@ func TestGetRoundTripsAnnotations(t *testing.T) {
 	ctx := authedCtx("viewer@example.com", nil)
 
 	resp, err := h.GetTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.GetTemplatePolicyBindingRequest{
-		Scope: newFolderScopeRef("payments"),
+		Namespace: newFolderScopeRef("payments"),
 		Name:  "bind-a",
 	}))
 	if err != nil {
@@ -994,7 +990,7 @@ func TestListReturnsOnlyBindings(t *testing.T) {
 	ctx := authedCtx("viewer@example.com", nil)
 
 	resp, err := h.ListTemplatePolicyBindings(ctx, connect.NewRequest(&consolev1.ListTemplatePolicyBindingsRequest{
-		Scope: newFolderScopeRef("payments"),
+		Namespace: newFolderScopeRef("payments"),
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1026,7 +1022,7 @@ func TestDeleteRemovesConfigMap(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.DeleteTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyBindingRequest{
-		Scope: newFolderScopeRef("payments"),
+		Namespace: newFolderScopeRef("payments"),
 		Name:  "bind-a",
 	}))
 	if err != nil {
@@ -1052,12 +1048,12 @@ func TestPolicyProbeErrorFailsInternal(t *testing.T) {
 	folder := newFolderScopeRef("payments")
 	binding := basicBinding(folder)
 	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: folder,
+		Namespace: folder,
 		Name:     "whatever",
 	}
 
 	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Scope:   folder,
+		Namespace:   folder,
 		Binding: binding,
 	}))
 	if err == nil {

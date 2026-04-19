@@ -12,6 +12,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -26,25 +27,24 @@ func (s *stubFolderGrantResolver) GetFolderGrants(_ context.Context, _ string) (
 	return s.users, s.roles, s.err
 }
 
-// folderScopeRef returns a folder-scoped TemplateScopeRef.
-func folderScopeRef(folder string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-		ScopeName: folder,
-	}
+// folderScopeRef returns the Kubernetes namespace string for the named
+// folder scope. HOL-619 collapsed the TemplateScopeRef enum; the namespace
+// is now the sole scope discriminator on request / proto messages.
+func folderScopeRef(folder string) string {
+	return scopeshim.DefaultResolver().FolderNamespace(folder)
 }
 
 // enabledTemplateCMForScope creates an enabled template ConfigMap in the given
 // namespace with a scope-appropriate LabelTemplateScope value. Used by tests
 // that need same-scope (non-org) templates such as folder-owned templates.
-func enabledTemplateCMForScope(ns, name, displayName, description string, scope consolev1.TemplateScope) *corev1.ConfigMap {
+func enabledTemplateCMForScope(ns, name, displayName, description string, scope scopeshim.Scope) *corev1.ConfigMap {
 	var scopeLabel string
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		scopeLabel = v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		scopeLabel = v1alpha2.TemplateScopeFolder
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		scopeLabel = v1alpha2.TemplateScopeProject
 	}
 	return &corev1.ConfigMap{
@@ -165,7 +165,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -201,7 +201,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -235,7 +235,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -273,7 +273,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -311,7 +311,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -341,7 +341,7 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-			Scope: projectScopeRef(project),
+			Namespace: projectScopeRef(project),
 		})
 
 		resp, err := handler.ListLinkableTemplates(ctx, req)
@@ -379,11 +379,11 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 	orgNsObj := orgNS(org)
 	folderNsObj := folderNS(folder)
 
-	orgTemplate := enabledTemplateCMForScope("org-"+org, "org-httproute", "OrgHTTPRoute", "org-owned", consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION)
-	folderTemplate := enabledTemplateCMForScope("fld-"+folder, "folder-gateway", "FolderGateway", "folder-owned", consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER)
+	orgTemplate := enabledTemplateCMForScope("org-"+org, "org-httproute", "OrgHTTPRoute", "org-owned", scopeshim.ScopeOrganization)
+	folderTemplate := enabledTemplateCMForScope("fld-"+folder, "folder-gateway", "FolderGateway", "folder-owned", scopeshim.ScopeFolder)
 
 	// Build a fresh handler per subtest so fakeClient state is isolated.
-	makeHandler := func(scope consolev1.TemplateScope, ancestors []*corev1.Namespace) *Handler {
+	makeHandler := func(scope scopeshim.Scope, ancestors []*corev1.Namespace) *Handler {
 		fakeClient := fake.NewClientset(orgNsObj, folderNsObj, orgTemplate, folderTemplate)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := NewK8sClient(fakeClient, r)
@@ -392,9 +392,9 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		// Wire whichever grant resolver matches the request scope so
 		// checkAccess passes.
 		switch scope {
-		case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+		case scopeshim.ScopeOrganization:
 			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: orgUsers})
-		case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+		case scopeshim.ScopeFolder:
 			handler.WithFolderGrantResolver(&stubFolderGrantResolver{users: folderUsers})
 		}
 		return handler
@@ -408,8 +408,8 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 
 	tests := []struct {
 		description      string
-		scope            *consolev1.TemplateScopeRef
-		requestScope     consolev1.TemplateScope
+		scope            string
+		requestScope     scopeshim.Scope
 		ancestors        []*corev1.Namespace
 		includeSelfScope bool
 		want             want
@@ -417,7 +417,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "org scope with include_self_scope=false returns empty (no ancestors)",
 			scope:            orgScopeRef(org),
-			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			requestScope:     scopeshim.ScopeOrganization,
 			ancestors:        []*corev1.Namespace{orgNsObj},
 			includeSelfScope: false,
 			want: want{
@@ -427,7 +427,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "org scope with include_self_scope=true returns org templates",
 			scope:            orgScopeRef(org),
-			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			requestScope:     scopeshim.ScopeOrganization,
 			ancestors:        []*corev1.Namespace{orgNsObj},
 			includeSelfScope: true,
 			want: want{
@@ -437,7 +437,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "folder scope with include_self_scope=false returns only ancestor (org) templates",
 			scope:            folderScopeRef(folder),
-			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			requestScope:     scopeshim.ScopeFolder,
 			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
 			includeSelfScope: false,
 			want: want{
@@ -447,7 +447,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "folder scope with include_self_scope=true returns both folder and org templates",
 			scope:            folderScopeRef(folder),
-			requestScope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			requestScope:     scopeshim.ScopeFolder,
 			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
 			includeSelfScope: true,
 			want: want{
@@ -462,7 +462,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 
 			ctx := authedCtx(ownerEmail, nil)
 			req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-				Scope:            tt.scope,
+				Namespace:            tt.scope,
 				IncludeSelfScope: tt.includeSelfScope,
 			})
 

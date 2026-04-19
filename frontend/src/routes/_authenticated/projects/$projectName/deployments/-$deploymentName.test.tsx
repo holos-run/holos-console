@@ -1496,9 +1496,9 @@ describe('DeploymentDetailPage', () => {
       ;(useGetDeploymentPolicyState as Mock).mockReturnValue({
         data: {
           $typeName: 'holos.console.v1.PolicyState',
-          appliedSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
-          currentSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
-          addedRefs: drift ? [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'sidecar', versionConstraint: '' }] : [],
+          appliedSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'base', versionConstraint: '' }],
+          currentSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'base', versionConstraint: '' }],
+          addedRefs: drift ? [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'sidecar', versionConstraint: '' }] : [],
           removedRefs: [],
           drift,
           hasAppliedState: true,

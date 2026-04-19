@@ -7,7 +7,8 @@ import {
   type RuleDraft,
 } from './rule-draft'
 import { TemplatePolicyKind } from '@/queries/templatePolicies'
-import { TemplateScope, linkableKey } from '@/queries/templates'
+import { linkableKey } from '@/queries/templates'
+import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
 
 // HOL-598: The rule draft is no longer a vehicle for glob Target authoring.
 // Attachment is expressed exclusively via TemplatePolicyBinding. These tests
@@ -43,7 +44,7 @@ describe('rule-draft (HOL-598)', () => {
       const proto = ruleDraftToProto(draft)
       expect(proto.kind).toBe(TemplatePolicyKind.REQUIRE)
       expect(proto.template?.name).toBe('httproute')
-      expect(proto.template?.scopeName).toBe('acme')
+      expect(proto.template?.namespace).toBe(namespaceFor(TemplateScope.ORGANIZATION, 'acme'))
       expect(proto.template?.versionConstraint).toBe('^1.0.0')
       // AC: target must be unset (or explicitly empty) on every new/edited rule.
       expect(proto.target).toBeUndefined()
@@ -71,8 +72,7 @@ describe('rule-draft (HOL-598)', () => {
       const draft = ruleProtoToDraft({
         kind: TemplatePolicyKind.REQUIRE,
         template: {
-          scope: TemplateScope.ORGANIZATION,
-          scopeName: 'acme',
+          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'acme'),
           name: 'httproute',
           versionConstraint: '',
         },

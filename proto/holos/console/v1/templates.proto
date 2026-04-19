@@ -5,7 +5,6 @@ package holos.console.v1;
 import "google/protobuf/timestamp.proto";
 import "holos/console/v1/deployments.proto";
 import "holos/console/v1/policy_state.proto";
-import "holos/console/v1/rbac.proto";
 
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
 
@@ -14,46 +13,51 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // separate DeploymentTemplateService and OrgTemplateService from v1alpha1
 // (ADR 021 Decision 1).
 //
-// The TemplateScope enum and TemplateScopeRef message discriminate the level
-// at which a template is stored and authored. All CRUD operations carry a
-// TemplateScopeRef so the handler can locate the owning Kubernetes Namespace.
+// All CRUD operations carry a `namespace` that owns the template. The
+// backend resolver classifies the namespace into its hierarchy kind
+// (organization, folder, project) — callers do not supply the kind
+// directly. HOL-619 replaced the earlier TemplateScope / TemplateScopeRef
+// discriminator with this namespace-only model.
 service TemplateService {
-  // ListTemplates returns all templates the user can see in the given scope.
+  // ListTemplates returns all templates the user can see in the given
+  // namespace.
   rpc ListTemplates(ListTemplatesRequest) returns (ListTemplatesResponse);
 
-  // GetTemplate retrieves a template by name within a scope.
+  // GetTemplate retrieves a template by (namespace, name).
   rpc GetTemplate(GetTemplateRequest) returns (GetTemplateResponse);
 
-  // CreateTemplate creates a new template in the given scope.
-  // Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+  // CreateTemplate creates a new template in the given namespace.
+  // Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
   rpc CreateTemplate(CreateTemplateRequest) returns (CreateTemplateResponse);
 
   // UpdateTemplate updates an existing template.
-  // Requires PERMISSION_TEMPLATES_WRITE on the owning scope.
+  // Requires PERMISSION_TEMPLATES_WRITE on the owning resource.
   rpc UpdateTemplate(UpdateTemplateRequest) returns (UpdateTemplateResponse);
 
   // DeleteTemplate deletes a template.
-  // Requires PERMISSION_TEMPLATES_DELETE on the owning scope.
+  // Requires PERMISSION_TEMPLATES_DELETE on the owning resource.
   rpc DeleteTemplate(DeleteTemplateRequest) returns (DeleteTemplateResponse);
 
   // RenderTemplate evaluates a CUE template with inputs and returns rendered
   // Kubernetes resource manifests. Supports draft (unsaved) templates.
   rpc RenderTemplate(RenderTemplateRequest) returns (RenderTemplateResponse);
 
-  // CloneTemplate copies an existing template to a new name within the same scope.
+  // CloneTemplate copies an existing template to a new name within the same
+  // namespace.
   rpc CloneTemplate(CloneTemplateRequest) returns (CloneTemplateResponse);
 
-  // ListLinkableTemplates returns all enabled templates in ancestor scopes that
-  // the given scope may link against. For a project scope, this is all enabled
-  // templates in parent folders and the organization. For a folder scope, it is
-  // all enabled templates in parent folders and the organization above it.
-  // Replaces ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
+  // ListLinkableTemplates returns all enabled templates in ancestor
+  // namespaces that the given namespace may link against. For a project
+  // namespace, this is all enabled templates in parent folders and the
+  // organization. For a folder namespace, it is all enabled templates in
+  // parent folders and the organization above it. Replaces
+  // ListLinkableOrgTemplates from v1alpha1 (ADR 021 Decision 7).
   rpc ListLinkableTemplates(ListLinkableTemplatesRequest) returns (ListLinkableTemplatesResponse);
 
-  // ListAncestorTemplates returns templates from all ancestor scopes of the
-  // given scope. Used by the renderer to compute the effective template set;
-  // TemplatePolicy REQUIRE rules (TemplatePolicyService) drive which ancestor
-  // templates are forced onto the project.
+  // ListAncestorTemplates returns templates from all ancestor namespaces of
+  // the given namespace. Used by the renderer to compute the effective
+  // template set; TemplatePolicy REQUIRE rules (TemplatePolicyService) drive
+  // which ancestor templates are forced onto the project.
   rpc ListAncestorTemplates(ListAncestorTemplatesRequest) returns (ListAncestorTemplatesResponse);
 
   // CreateRelease publishes a new versioned release of a template, capturing
@@ -64,37 +68,35 @@ service TemplateService {
   // ListReleases returns all releases for a template, ordered by version.
   rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
 
-  // GetRelease retrieves a single release by template name, scope, and version.
+  // GetRelease retrieves a single release by (namespace, template_name,
+  // version).
   rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
 
   // CheckUpdates returns available version updates for linked templates in a
-  // given scope, comparing current pinned versions against published releases.
+  // given namespace, comparing current pinned versions against published
+  // releases.
   rpc CheckUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
 
-  // GetTemplateDefaults returns the defaults a template provides for deployment
-  // form fields. The handler evaluates the template's `defaults` CUE block via
-  // ExtractDefaults and returns the same TemplateDefaults message that
-  // Template.defaults would carry on GetTemplate. Inline `*` defaults declared
-  // on `input` fields are NOT read — only the top-level `defaults` CUE block is
-  // considered. References ADR 027.
+  // GetTemplateDefaults returns the defaults a template provides for
+  // deployment form fields. The handler evaluates the template's `defaults`
+  // CUE block via ExtractDefaults and returns the same TemplateDefaults
+  // message that Template.defaults would carry on GetTemplate. Inline `*`
+  // defaults declared on `input` fields are NOT read — only the top-level
+  // `defaults` CUE block is considered. References ADR 027.
   //
   // This RPC gives the Create Deployment form an explicit, testable hook to
   // call on template selection and on the "Load defaults" action. It is
-  // complementary to Template.defaults on list/get responses, which is retained
-  // for backwards compatibility.
+  // complementary to Template.defaults on list/get responses, which is
+  // retained for backwards compatibility.
   rpc GetTemplateDefaults(GetTemplateDefaultsRequest) returns (GetTemplateDefaultsResponse);
 
   // GetProjectTemplatePolicyState returns the full TemplatePolicy drift
   // snapshot for a project-scope Template. Mirrors
   // DeploymentService.GetDeploymentPolicyState but keyed by
-  // (scope=project, project slug, template name). Introduced in HOL-567.
+  // (project namespace, template name). Introduced in HOL-567.
   //
-  // Scope decision (AC from HOL-567): the parallel `policy_drift` surface
-  // for project-scope Templates is provided via this RPC rather than a new
-  // `ProjectTemplateStatusSummary` message, because project-scope templates
-  // do not carry a live-status concept in the current UI — the list view
-  // shows metadata only. A dedicated RPC keeps list responses cheap and
-  // makes the drift query symmetric with deployments.
+  // A dedicated RPC keeps list responses cheap and makes the drift query
+  // symmetric with deployments.
   rpc GetProjectTemplatePolicyState(GetProjectTemplatePolicyStateRequest) returns (GetProjectTemplatePolicyStateResponse);
 }
 
@@ -123,10 +125,11 @@ message TemplateDefaults {
 
 // GetTemplateDefaultsRequest requests the defaults block for a template.
 message GetTemplateDefaultsRequest {
-  // scope identifies the owning scope of the template. Only
-  // TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
-  // preserved for symmetry with other template RPCs and future use.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the template. Only
+  // project namespaces carry meaningful defaults today, but this RPC is
+  // accepted at any scope for symmetry; non-project namespaces return an
+  // empty TemplateDefaults.
+  string namespace = 1;
   // name is the template's DNS label slug.
   string name = 2;
 }
@@ -140,13 +143,13 @@ message GetTemplateDefaultsResponse {
 }
 
 // Template is a CUE template that produces Kubernetes resource manifests.
-// It is stored as a Kubernetes ConfigMap in the namespace of its owning scope.
-// (ADR 021 Decision 4)
+// It is stored as a Kubernetes ConfigMap in the namespace identified by
+// `namespace` (ADR 021 Decision 4).
 message Template {
-  // name is the unique identifier (DNS label slug) within the scope.
+  // name is the unique identifier (DNS label slug) within the namespace.
   string name = 1;
-  // scope_ref identifies the owning scope (level + name).
-  TemplateScopeRef scope_ref = 2;
+  // namespace is the Kubernetes namespace that owns this template.
+  string namespace = 2;
   // display_name is a human-readable name.
   string display_name = 3;
   // description explains what the template produces.
@@ -154,12 +157,12 @@ message Template {
   // cue_template is the CUE source code.
   string cue_template = 5;
   // defaults provides optional default values for deployment form fields.
-  // Only meaningful for project-scope templates.
+  // Only meaningful for project-namespace templates.
   TemplateDefaults defaults = 6;
-  // linked_templates lists templates in ancestor scopes to unify with this
-  // template at render time. Replaces linked_org_templates from v1alpha1.
-  // Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
-  // always unify regardless of this list.
+  // linked_templates lists templates in ancestor namespaces to unify with
+  // this template at render time. Replaces linked_org_templates from
+  // v1alpha1. Ancestor templates forced onto a project by a TemplatePolicy
+  // REQUIRE rule always unify regardless of this list.
   repeated LinkedTemplateRef linked_templates = 7;
 
   // Field 8 previously held `bool mandatory`. Removed in HOL-555 in favor of
@@ -179,9 +182,9 @@ message Template {
   string version = 10;
 }
 
-// ListTemplatesRequest requests all templates visible in the given scope.
+// ListTemplatesRequest requests all templates visible in the given namespace.
 message ListTemplatesRequest {
-  TemplateScopeRef scope = 1;
+  string namespace = 1;
 }
 
 // ListTemplatesResponse contains the list of templates.
@@ -189,9 +192,9 @@ message ListTemplatesResponse {
   repeated Template templates = 1;
 }
 
-// GetTemplateRequest requests a single template by name within a scope.
+// GetTemplateRequest requests a single template by (namespace, name).
 message GetTemplateRequest {
-  TemplateScopeRef scope = 1;
+  string namespace = 1;
   string name = 2;
 }
 
@@ -200,9 +203,9 @@ message GetTemplateResponse {
   Template template = 1;
 }
 
-// CreateTemplateRequest creates a new template in the given scope.
+// CreateTemplateRequest creates a new template in the given namespace.
 message CreateTemplateRequest {
-  TemplateScopeRef scope = 1;
+  string namespace = 1;
   Template template = 2;
 }
 
@@ -213,7 +216,7 @@ message CreateTemplateResponse {
 
 // UpdateTemplateRequest updates an existing template.
 message UpdateTemplateRequest {
-  TemplateScopeRef scope = 1;
+  string namespace = 1;
   Template template = 2;
   // update_linked_templates signals that the linked_templates field on the template
   // message should be written. When false (default), existing linked templates are
@@ -228,7 +231,7 @@ message UpdateTemplateResponse {}
 
 // DeleteTemplateRequest deletes a template.
 message DeleteTemplateRequest {
-  TemplateScopeRef scope = 1;
+  string namespace = 1;
   string name = 2;
 }
 
@@ -240,8 +243,9 @@ message DeleteTemplateResponse {}
 // the cue_template field is rendered directly without requiring a saved record.
 // (ADR 021 Decision 6)
 message RenderTemplateRequest {
-  // scope identifies the owning scope for resolving ancestor templates.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the render target, used
+  // to resolve ancestor templates.
+  string namespace = 1;
   // cue_template is the CUE source to evaluate. May be a draft (unsaved) value.
   string cue_template = 2;
   // cue_platform_input contains CUE source for platform-provided values
@@ -252,8 +256,8 @@ message RenderTemplateRequest {
   // cue_template at the "input" path to supply concrete values for template
   // parameters matching the ProjectInput schema.
   string cue_project_input = 4;
-  // linked_templates lists scope-qualified template references to include in
-  // preview unification. Allows draft templates to preview their effective
+  // linked_templates lists (namespace, name) template references to include
+  // in preview unification. Allows draft templates to preview their effective
   // rendering with the chosen linking list before saving.
   repeated LinkedTemplateRef linked_templates = 5;
 }
@@ -315,10 +319,11 @@ message RenderTemplateResponse {
   optional string project_resources_structured_json = 11;
 }
 
-// CloneTemplateRequest copies an existing template to a new name within the same scope.
+// CloneTemplateRequest copies an existing template to a new name within the
+// same namespace.
 message CloneTemplateRequest {
-  // scope identifies the owning scope.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the template.
+  string namespace = 1;
   // source_name is the name of the template to copy.
   string source_name = 2;
   // name is the DNS label slug for the new template.
@@ -332,26 +337,28 @@ message CloneTemplateResponse {
   string name = 1;
 }
 
-// ListLinkableTemplatesRequest requests enabled templates in ancestor scopes
-// that the given scope may explicitly link.
+// ListLinkableTemplatesRequest requests enabled templates in ancestor
+// namespaces that the given namespace may explicitly link.
 message ListLinkableTemplatesRequest {
-  // scope is the starting scope (e.g. SCOPE_PROJECT for a project template).
-  // The handler walks up the hierarchy and returns enabled ancestor templates.
-  TemplateScopeRef scope = 1;
+  // namespace is the starting namespace (e.g. a project namespace for a
+  // project template). The handler walks up the hierarchy and returns enabled
+  // ancestor templates.
+  string namespace = 1;
   // include_self_scope, when true, also returns enabled templates at the
-  // request's own scope in addition to ancestor-scope templates. Default false
-  // preserves the existing semantics for project-template linking UIs, which
-  // only link against ancestor-scope templates. The TemplatePolicy editor sets
-  // this to true so org-scope policies can pick org-scope templates (there are
-  // no ancestors to pick from otherwise) and folder-scope policies can pick
-  // templates owned by the same folder. See HOL-561.
+  // request's own namespace in addition to ancestor-namespace templates.
+  // Default false preserves the existing semantics for project-template
+  // linking UIs, which only link against ancestor-namespace templates. The
+  // TemplatePolicy editor sets this to true so org-namespace policies can
+  // pick org-namespace templates (there are no ancestors to pick from
+  // otherwise) and folder-namespace policies can pick templates owned by the
+  // same folder. See HOL-561.
   bool include_self_scope = 2;
 }
 
 // LinkableTemplate describes a single template available for explicit linking.
 message LinkableTemplate {
-  // scope_ref identifies the scope that owns this template.
-  TemplateScopeRef scope_ref = 1;
+  // namespace is the Kubernetes namespace that owns this template.
+  string namespace = 1;
   // name is the template's DNS label slug.
   string name = 2;
   // display_name is the human-readable name.
@@ -392,13 +399,14 @@ message ListLinkableTemplatesResponse {
   repeated LinkableTemplate templates = 1;
 }
 
-// ListAncestorTemplatesRequest requests templates from all ancestor scopes.
+// ListAncestorTemplatesRequest requests templates from all ancestor
+// namespaces of the given namespace.
 message ListAncestorTemplatesRequest {
-  // scope is the starting scope (e.g. SCOPE_PROJECT).
-  TemplateScopeRef scope = 1;
+  // namespace is the starting namespace (e.g. a project namespace).
+  string namespace = 1;
 }
 
-// ListAncestorTemplatesResponse contains ancestor templates grouped by scope.
+// ListAncestorTemplatesResponse contains ancestor templates.
 message ListAncestorTemplatesResponse {
   repeated Template templates = 1;
 }
@@ -409,8 +417,8 @@ message ListAncestorTemplatesResponse {
 message Release {
   // template_name is the DNS label slug of the template this release belongs to.
   string template_name = 1;
-  // scope_ref identifies the owning scope of the template.
-  TemplateScopeRef scope_ref = 2;
+  // namespace is the Kubernetes namespace that owns the template.
+  string namespace = 2;
   // version is the semver version string (e.g. "1.2.3").
   string version = 3;
   // changelog describes what changed in this release.
@@ -445,9 +453,9 @@ message TemplateUpdate {
 
 // CreateReleaseRequest publishes a new release for a template.
 message CreateReleaseRequest {
-  // scope identifies the owning scope of the template.
-  TemplateScopeRef scope = 1;
-  // release is the release to create. template_name, scope_ref, version,
+  // namespace is the Kubernetes namespace that owns the template.
+  string namespace = 1;
+  // release is the release to create. template_name, namespace, version,
   // cue_template, and defaults are required.
   Release release = 2;
 }
@@ -459,8 +467,8 @@ message CreateReleaseResponse {
 
 // ListReleasesRequest requests all releases for a template.
 message ListReleasesRequest {
-  // scope identifies the owning scope of the template.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the template.
+  string namespace = 1;
   // template_name is the DNS label slug of the template.
   string template_name = 2;
 }
@@ -470,10 +478,11 @@ message ListReleasesResponse {
   repeated Release releases = 1;
 }
 
-// GetReleaseRequest requests a single release by template, scope, and version.
+// GetReleaseRequest requests a single release by (namespace, template_name,
+// version).
 message GetReleaseRequest {
-  // scope identifies the owning scope of the template.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the template.
+  string namespace = 1;
   // template_name is the DNS label slug of the template.
   string template_name = 2;
   // version is the semver version string to retrieve.
@@ -485,12 +494,14 @@ message GetReleaseResponse {
   Release release = 1;
 }
 
-// CheckUpdatesRequest asks for available updates for linked templates in a scope.
+// CheckUpdatesRequest asks for available updates for linked templates in a
+// namespace.
 message CheckUpdatesRequest {
-  // scope identifies the scope whose linked templates should be checked.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace whose linked templates should be
+  // checked.
+  string namespace = 1;
   // template_name is the template whose linked templates should be checked.
-  // If empty, all templates in the scope are checked.
+  // If empty, all templates in the namespace are checked.
   string template_name = 2;
   // include_current, when true, causes the response to include entries for
   // linked templates that are already at their latest compatible version (i.e.
@@ -508,7 +519,7 @@ message CheckUpdatesResponse {
 
 // Note: PolicyState, GetDeploymentPolicyStateRequest/Response, and
 // GetProjectTemplatePolicyStateRequest/Response messages live in
-// policy_state.proto — alongside the LinkedTemplateRef / TemplateScope /
-// TemplateScopeRef foundational types — so both DeploymentService and
-// TemplateService can register the corresponding RPCs without creating an
-// import cycle. See policy_state.proto for message definitions.
+// policy_state.proto — alongside the LinkedTemplateRef foundational type —
+// so both DeploymentService and TemplateService can register the
+// corresponding RPCs without creating an import cycle. See
+// policy_state.proto for message definitions.

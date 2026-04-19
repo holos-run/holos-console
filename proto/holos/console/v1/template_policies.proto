@@ -4,7 +4,6 @@ package holos.console.v1;
 
 import "google/protobuf/timestamp.proto";
 import "holos/console/v1/policy_state.proto";
-import "holos/console/v1/templates.proto";
 
 option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
 
@@ -15,12 +14,11 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // every project — or to block one from matching projects — is to author a
 // TemplatePolicy.
 //
-// Storage MUST live in the folder or organization namespace identified by
-// scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
-// design note. Backend handlers MUST reject any namespace whose resolver
-// classification is `ResourceTypeProject`. The TEMPLATE_SCOPE_PROJECT enum
-// value (defined in templates.proto) is explicitly unsupported for policies;
-// only TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
+// Storage MUST live in a folder or organization namespace (`namespace`).
+// Project-namespace storage is forbidden and is enforced by the HOL-618
+// admission plugin; a CEL policy rejects any TemplatePolicy object created
+// in a project namespace so the proto layer no longer needs to carry a
+// discriminator for that rejection (HOL-619).
 //
 // Backend handler wiring (HOL-556), storage enforcement, and render-time
 // resolver integration (HOL-567) are complete; the resolver consults
@@ -28,26 +26,26 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // templates for every matching project render.
 service TemplatePolicyService {
   // ListTemplatePolicies returns all TemplatePolicy resources visible in the
-  // given scope. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the scope.
+  // given namespace. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the
+  // owning resource.
   rpc ListTemplatePolicies(ListTemplatePoliciesRequest) returns (ListTemplatePoliciesResponse);
 
-  // GetTemplatePolicy retrieves a single policy by name within a scope.
-  // Requires PERMISSION_TEMPLATE_POLICIES_READ on the scope.
+  // GetTemplatePolicy retrieves a single policy by (namespace, name).
+  // Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
   rpc GetTemplatePolicy(GetTemplatePolicyRequest) returns (GetTemplatePolicyResponse);
 
-  // CreateTemplatePolicy creates a new policy at the given scope. The scope
-  // MUST be TEMPLATE_SCOPE_ORGANIZATION or TEMPLATE_SCOPE_FOLDER; the handler
-  // MUST reject TEMPLATE_SCOPE_PROJECT and any namespace that the resolver
-  // classifies as `ResourceTypeProject`.
-  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  // CreateTemplatePolicy creates a new policy in the given namespace. The
+  // namespace MUST be an organization or folder namespace; admission
+  // (HOL-618) rejects project-namespace creates.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
   rpc CreateTemplatePolicy(CreateTemplatePolicyRequest) returns (CreateTemplatePolicyResponse);
 
   // UpdateTemplatePolicy updates an existing policy.
-  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the scope.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
   rpc UpdateTemplatePolicy(UpdateTemplatePolicyRequest) returns (UpdateTemplatePolicyResponse);
 
   // DeleteTemplatePolicy deletes a policy.
-  // Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the scope.
+  // Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
   rpc DeleteTemplatePolicy(DeleteTemplatePolicyRequest) returns (DeleteTemplatePolicyResponse);
 }
 
@@ -98,7 +96,8 @@ message TemplatePolicyRule {
   // kind is REQUIRE or EXCLUDE.
   TemplatePolicyKind kind = 1;
   // template identifies the template this rule applies to. The referenced
-  // template may live in any scope the policy's owning scope can reach.
+  // template may live in any namespace the policy's owning namespace can
+  // reach.
   LinkedTemplateRef template = 2;
   // Field 3 (target) was the legacy glob-based TemplatePolicyTarget that
   // HOL-600 removed. It is reserved so the number is never reused.
@@ -107,19 +106,17 @@ message TemplatePolicyRule {
 }
 
 // TemplatePolicy is a named resource that declares one or more rules
-// attaching templates to projects within its scope.
+// attaching templates to projects within its namespace.
 //
-// Storage MUST live in the folder or organization namespace identified by
-// scope_ref. Project-scope storage is forbidden — see HOL-554 storage-isolation
-// design note. Backend handlers MUST reject any namespace whose resolver
-// classification is `ResourceTypeProject`. TEMPLATE_SCOPE_PROJECT (defined in
-// templates.proto) is explicitly unsupported for policies.
+// Storage MUST live in a folder or organization namespace. Project-namespace
+// storage is forbidden and enforced by the HOL-618 admission plugin.
 message TemplatePolicy {
-  // name is the unique identifier (DNS label slug) within the scope.
+  // name is the unique identifier (DNS label slug) within the namespace.
   string name = 1;
-  // scope_ref identifies the owning scope (level + name). Only
-  // TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
-  TemplateScopeRef scope_ref = 2;
+  // namespace is the Kubernetes namespace that owns this policy. MUST be an
+  // organization or folder namespace — project namespaces are rejected by
+  // admission.
+  string namespace = 2;
   // display_name is a human-readable name for UI presentation.
   string display_name = 3;
   // description explains what the policy enforces.
@@ -133,11 +130,11 @@ message TemplatePolicy {
   google.protobuf.Timestamp created_at = 7;
 }
 
-// ListTemplatePoliciesRequest requests all policies visible in the given scope.
+// ListTemplatePoliciesRequest requests all policies visible in the given
+// namespace.
 message ListTemplatePoliciesRequest {
-  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the policies.
+  string namespace = 1;
 }
 
 // ListTemplatePoliciesResponse contains the list of policies.
@@ -145,11 +142,10 @@ message ListTemplatePoliciesResponse {
   repeated TemplatePolicy policies = 1;
 }
 
-// GetTemplatePolicyRequest requests a single policy by name within a scope.
+// GetTemplatePolicyRequest requests a single policy by (namespace, name).
 message GetTemplatePolicyRequest {
-  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the policy.
+  string namespace = 1;
   // name is the policy's DNS label slug.
   string name = 2;
 }
@@ -159,12 +155,12 @@ message GetTemplatePolicyResponse {
   TemplatePolicy policy = 1;
 }
 
-// CreateTemplatePolicyRequest creates a new policy in the given scope.
+// CreateTemplatePolicyRequest creates a new policy in the given namespace.
 message CreateTemplatePolicyRequest {
-  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-  TemplateScopeRef scope = 1;
-  // policy is the policy to create. name, scope_ref, and rules are required.
+  // namespace is the Kubernetes namespace that will own the policy. MUST be
+  // an organization or folder namespace.
+  string namespace = 1;
+  // policy is the policy to create. name, namespace, and rules are required.
   TemplatePolicy policy = 2;
 }
 
@@ -175,9 +171,8 @@ message CreateTemplatePolicyResponse {
 
 // UpdateTemplatePolicyRequest updates an existing policy.
 message UpdateTemplatePolicyRequest {
-  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the policy.
+  string namespace = 1;
   // policy carries the new values; name identifies which policy to update.
   TemplatePolicy policy = 2;
 }
@@ -187,9 +182,8 @@ message UpdateTemplatePolicyResponse {}
 
 // DeleteTemplatePolicyRequest deletes a policy.
 message DeleteTemplatePolicyRequest {
-  // scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-  // TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-  TemplateScopeRef scope = 1;
+  // namespace is the Kubernetes namespace that owns the policy.
+  string namespace = 1;
   // name is the policy's DNS label slug.
   string name = 2;
 }

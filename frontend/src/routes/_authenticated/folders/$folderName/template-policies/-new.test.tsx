@@ -54,11 +54,7 @@ vi.mock('@/queries/templates', async () => {
       data: [
         {
           $typeName: 'holos.console.v1.LinkableTemplate',
-          scopeRef: {
-            $typeName: 'holos.console.v1.TemplateScopeRef',
-            scope: 2,
-            scopeName: 'test-folder',
-          },
+          namespace: 'holos-fld-test-folder',
           name: 'folder-gateway',
           displayName: 'FolderGateway',
           description: '',
@@ -67,11 +63,7 @@ vi.mock('@/queries/templates', async () => {
         },
         {
           $typeName: 'holos.console.v1.LinkableTemplate',
-          scopeRef: {
-            $typeName: 'holos.console.v1.TemplateScopeRef',
-            scope: 1,
-            scopeName: 'test-org',
-          },
+          namespace: 'holos-org-test-org',
           name: 'httproute',
           displayName: 'HTTPRoute',
           description: '',

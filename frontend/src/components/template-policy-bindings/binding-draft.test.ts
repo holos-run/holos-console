@@ -13,6 +13,7 @@ import {
 } from './binding-draft'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import { TemplateScope } from '@/queries/templates'
+import { namespaceFor } from '@/lib/scope-shim'
 
 describe('policyKey / parsePolicyKey', () => {
   it('round-trips a composite key', () => {
@@ -175,7 +176,7 @@ describe('bindingProtoToDraft', () => {
       displayName: 'Bind A',
       description: 'desc',
       policyRef: {
-        scopeRef: { scope: TemplateScope.FOLDER, scopeName: 'team' },
+        namespace: namespaceFor(TemplateScope.FOLDER, 'team'),
         name: 'policy-a',
       } as never,
       targetRefs: [
@@ -235,8 +236,7 @@ describe('draftToPolicyRef / draftToMutationParams', () => {
     }
     const ref = draftToPolicyRef(draft)
     expect(ref.name).toBe('policy-a')
-    expect(ref.scopeRef?.scope).toBe(TemplateScope.FOLDER)
-    expect(ref.scopeRef?.scopeName).toBe('team')
+    expect(ref.namespace).toBe(namespaceFor(TemplateScope.FOLDER, 'team'))
   })
 
   it('draftToMutationParams trims whitespace on user-editable fields', () => {

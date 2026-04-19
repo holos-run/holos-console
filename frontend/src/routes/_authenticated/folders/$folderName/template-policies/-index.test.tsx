@@ -57,7 +57,7 @@ import { FolderTemplatePoliciesIndexPage } from './index'
 function makeRule(kind: TemplatePolicyKind) {
   return {
     kind,
-    template: { scope: 1, scopeName: 'test-org', name: 'http', versionConstraint: '' },
+    template: { namespace: 'holos-org-test-org', name: 'http', versionConstraint: '' },
     target: { projectPattern: '*', deploymentPattern: '*' },
   }
 }

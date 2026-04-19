@@ -83,22 +83,20 @@ func (TemplatePolicyBindingTargetKind) EnumDescriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{0}
 }
 
-// LinkedTemplatePolicyRef is a scope-qualified reference to a
-// TemplatePolicy. Mirrors LinkedTemplateRef (policy_state.proto) in intent,
-// but uses TemplateScopeRef directly as a nested message rather than
-// inlining separate scope and scope_name fields — the (scope, scope_name)
-// pair is always carried together, so the nested form removes a class of
-// "half-populated ref" bugs. A binding must reference exactly one policy;
-// the referenced policy must live in a scope the binding's owning scope
-// can reach (ancestor chain or same scope).
+// LinkedTemplatePolicyRef is a (namespace, name) reference to a
+// TemplatePolicy. A binding must reference exactly one policy; the
+// referenced policy must live in a namespace the binding's owning namespace
+// can reach (ancestor chain or the same namespace).
+//
+// HOL-619 collapsed the previous nested TemplateScopeRef discriminator into
+// a flat (namespace, name) pair.
 type LinkedTemplatePolicyRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope_ref identifies the hierarchy level and name that owns the
-	// referenced TemplatePolicy. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid — TemplatePolicy cannot live at
-	// project scope.
-	ScopeRef *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
-	// name is the TemplatePolicy's DNS label slug within scope_ref.
+	// namespace is the Kubernetes namespace that owns the referenced
+	// TemplatePolicy. MUST be an organization or folder namespace —
+	// TemplatePolicy cannot live in a project namespace.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// name is the TemplatePolicy's DNS label slug within `namespace`.
 	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -134,11 +132,11 @@ func (*LinkedTemplatePolicyRef) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LinkedTemplatePolicyRef) GetScopeRef() *TemplateScopeRef {
+func (x *LinkedTemplatePolicyRef) GetNamespace() string {
 	if x != nil {
-		return x.ScopeRef
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *LinkedTemplatePolicyRef) GetName() string {
@@ -225,16 +223,15 @@ func (x *TemplatePolicyBindingTargetRef) GetProjectName() string {
 // supersede the glob-based TemplatePolicyRule.Target selector in HOL-599 /
 // HOL-600 (ADR 029).
 //
-// Storage MUST live in the folder or organization namespace identified by
-// scope_ref. Project-scope storage is forbidden. Handlers MUST reject
-// TEMPLATE_SCOPE_PROJECT on scope_ref.
+// Storage MUST live in a folder or organization namespace. Project-namespace
+// storage is forbidden and enforced by the HOL-618 admission plugin.
 type TemplatePolicyBinding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// name is the unique identifier (DNS label slug) within the scope.
+	// name is the unique identifier (DNS label slug) within the namespace.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// scope_ref identifies the owning scope (level + name). Only
-	// TEMPLATE_SCOPE_ORGANIZATION and TEMPLATE_SCOPE_FOLDER are valid.
-	ScopeRef *TemplateScopeRef `protobuf:"bytes,2,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
+	// namespace is the Kubernetes namespace that owns this binding. MUST be
+	// an organization or folder namespace.
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// display_name is a human-readable name for UI presentation.
 	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// description explains what the binding attaches and why.
@@ -298,11 +295,11 @@ func (x *TemplatePolicyBinding) GetName() string {
 	return ""
 }
 
-func (x *TemplatePolicyBinding) GetScopeRef() *TemplateScopeRef {
+func (x *TemplatePolicyBinding) GetNamespace() string {
 	if x != nil {
-		return x.ScopeRef
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *TemplatePolicyBinding) GetDisplayName() string {
@@ -348,12 +345,11 @@ func (x *TemplatePolicyBinding) GetCreatedAt() *timestamppb.Timestamp {
 }
 
 // ListTemplatePolicyBindingsRequest requests all bindings visible in the
-// given scope.
+// given namespace.
 type ListTemplatePolicyBindingsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-	Scope         *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the bindings.
+	Namespace     string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -388,11 +384,11 @@ func (*ListTemplatePolicyBindingsRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ListTemplatePolicyBindingsRequest) GetScope() *TemplateScopeRef {
+func (x *ListTemplatePolicyBindingsRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 // ListTemplatePolicyBindingsResponse contains the list of bindings.
@@ -440,13 +436,12 @@ func (x *ListTemplatePolicyBindingsResponse) GetBindings() []*TemplatePolicyBind
 	return nil
 }
 
-// GetTemplatePolicyBindingRequest requests a single binding by name within
-// a scope.
+// GetTemplatePolicyBindingRequest requests a single binding by (namespace,
+// name).
 type GetTemplatePolicyBindingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the binding.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the binding's DNS label slug.
 	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -483,11 +478,11 @@ func (*GetTemplatePolicyBindingRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GetTemplatePolicyBindingRequest) GetScope() *TemplateScopeRef {
+func (x *GetTemplatePolicyBindingRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *GetTemplatePolicyBindingRequest) GetName() string {
@@ -543,13 +538,13 @@ func (x *GetTemplatePolicyBindingResponse) GetBinding() *TemplatePolicyBinding {
 }
 
 // CreateTemplatePolicyBindingRequest creates a new binding in the given
-// scope.
+// namespace.
 type CreateTemplatePolicyBindingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	// binding is the binding to create. name, scope_ref, policy_ref, and
+	// namespace is the Kubernetes namespace that will own the binding. MUST
+	// be an organization or folder namespace.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// binding is the binding to create. name, namespace, policy_ref, and
 	// target_refs are required.
 	Binding       *TemplatePolicyBinding `protobuf:"bytes,2,opt,name=binding,proto3" json:"binding,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -586,11 +581,11 @@ func (*CreateTemplatePolicyBindingRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *CreateTemplatePolicyBindingRequest) GetScope() *TemplateScopeRef {
+func (x *CreateTemplatePolicyBindingRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *CreateTemplatePolicyBindingRequest) GetBinding() *TemplatePolicyBinding {
@@ -649,9 +644,8 @@ func (x *CreateTemplatePolicyBindingResponse) GetName() string {
 // UpdateTemplatePolicyBindingRequest updates an existing binding.
 type UpdateTemplatePolicyBindingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the binding.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// binding carries the new values; name identifies which binding to
 	// update.
 	Binding       *TemplatePolicyBinding `protobuf:"bytes,2,opt,name=binding,proto3" json:"binding,omitempty"`
@@ -689,11 +683,11 @@ func (*UpdateTemplatePolicyBindingRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *UpdateTemplatePolicyBindingRequest) GetScope() *TemplateScopeRef {
+func (x *UpdateTemplatePolicyBindingRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *UpdateTemplatePolicyBindingRequest) GetBinding() *TemplatePolicyBinding {
@@ -743,9 +737,8 @@ func (*UpdateTemplatePolicyBindingResponse) Descriptor() ([]byte, []int) {
 // DeleteTemplatePolicyBindingRequest deletes a binding.
 type DeleteTemplatePolicyBindingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope. Only TEMPLATE_SCOPE_ORGANIZATION and
-	// TEMPLATE_SCOPE_FOLDER are valid; TEMPLATE_SCOPE_PROJECT is rejected.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the binding.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the binding's DNS label slug.
 	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -782,11 +775,11 @@ func (*DeleteTemplatePolicyBindingRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policy_bindings_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *DeleteTemplatePolicyBindingRequest) GetScope() *TemplateScopeRef {
+func (x *DeleteTemplatePolicyBindingRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *DeleteTemplatePolicyBindingRequest) GetName() string {
@@ -837,17 +830,17 @@ var File_holos_console_v1_template_policy_bindings_proto protoreflect.FileDescri
 
 const file_holos_console_v1_template_policy_bindings_proto_rawDesc = "" +
 	"\n" +
-	"/holos/console/v1/template_policy_bindings.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#holos/console/v1/policy_state.proto\"n\n" +
-	"\x17LinkedTemplatePolicyRef\x12?\n" +
-	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
+	"/holos/console/v1/template_policy_bindings.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"K\n" +
+	"\x17LinkedTemplatePolicyRef\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\x9e\x01\n" +
 	"\x1eTemplatePolicyBindingTargetRef\x12E\n" +
 	"\x04kind\x18\x01 \x01(\x0e21.holos.console.v1.TemplatePolicyBindingTargetKindR\x04kind\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
-	"\fproject_name\x18\x03 \x01(\tR\vprojectName\"\xae\x03\n" +
+	"\fproject_name\x18\x03 \x01(\tR\vprojectName\"\x8b\x03\n" +
 	"\x15TemplatePolicyBinding\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
-	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12!\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12H\n" +
 	"\n" +
@@ -856,27 +849,27 @@ const file_holos_console_v1_template_policy_bindings_proto_rawDesc = "" +
 	"targetRefs\x12#\n" +
 	"\rcreator_email\x18\a \x01(\tR\fcreatorEmail\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"]\n" +
-	"!ListTemplatePolicyBindingsRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"i\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"A\n" +
+	"!ListTemplatePolicyBindingsRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"i\n" +
 	"\"ListTemplatePolicyBindingsResponse\x12C\n" +
-	"\bbindings\x18\x01 \x03(\v2'.holos.console.v1.TemplatePolicyBindingR\bbindings\"o\n" +
-	"\x1fGetTemplatePolicyBindingRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\bbindings\x18\x01 \x03(\v2'.holos.console.v1.TemplatePolicyBindingR\bbindings\"S\n" +
+	"\x1fGetTemplatePolicyBindingRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"e\n" +
 	" GetTemplatePolicyBindingResponse\x12A\n" +
-	"\abinding\x18\x01 \x01(\v2'.holos.console.v1.TemplatePolicyBindingR\abinding\"\xa1\x01\n" +
-	"\"CreateTemplatePolicyBindingRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12A\n" +
+	"\abinding\x18\x01 \x01(\v2'.holos.console.v1.TemplatePolicyBindingR\abinding\"\x85\x01\n" +
+	"\"CreateTemplatePolicyBindingRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12A\n" +
 	"\abinding\x18\x02 \x01(\v2'.holos.console.v1.TemplatePolicyBindingR\abinding\"9\n" +
 	"#CreateTemplatePolicyBindingResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xa1\x01\n" +
-	"\"UpdateTemplatePolicyBindingRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12A\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x85\x01\n" +
+	"\"UpdateTemplatePolicyBindingRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12A\n" +
 	"\abinding\x18\x02 \x01(\v2'.holos.console.v1.TemplatePolicyBindingR\abinding\"%\n" +
-	"#UpdateTemplatePolicyBindingResponse\"r\n" +
-	"\"DeleteTemplatePolicyBindingRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"#UpdateTemplatePolicyBindingResponse\"V\n" +
+	"\"DeleteTemplatePolicyBindingRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"%\n" +
 	"#DeleteTemplatePolicyBindingResponse*\xc4\x01\n" +
 	"\x1fTemplatePolicyBindingTargetKind\x123\n" +
@@ -919,40 +912,32 @@ var file_holos_console_v1_template_policy_bindings_proto_goTypes = []any{
 	(*UpdateTemplatePolicyBindingResponse)(nil), // 11: holos.console.v1.UpdateTemplatePolicyBindingResponse
 	(*DeleteTemplatePolicyBindingRequest)(nil),  // 12: holos.console.v1.DeleteTemplatePolicyBindingRequest
 	(*DeleteTemplatePolicyBindingResponse)(nil), // 13: holos.console.v1.DeleteTemplatePolicyBindingResponse
-	(*TemplateScopeRef)(nil),                    // 14: holos.console.v1.TemplateScopeRef
-	(*timestamppb.Timestamp)(nil),               // 15: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil),               // 14: google.protobuf.Timestamp
 }
 var file_holos_console_v1_template_policy_bindings_proto_depIdxs = []int32{
-	14, // 0: holos.console.v1.LinkedTemplatePolicyRef.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	0,  // 1: holos.console.v1.TemplatePolicyBindingTargetRef.kind:type_name -> holos.console.v1.TemplatePolicyBindingTargetKind
-	14, // 2: holos.console.v1.TemplatePolicyBinding.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	1,  // 3: holos.console.v1.TemplatePolicyBinding.policy_ref:type_name -> holos.console.v1.LinkedTemplatePolicyRef
-	2,  // 4: holos.console.v1.TemplatePolicyBinding.target_refs:type_name -> holos.console.v1.TemplatePolicyBindingTargetRef
-	15, // 5: holos.console.v1.TemplatePolicyBinding.created_at:type_name -> google.protobuf.Timestamp
-	14, // 6: holos.console.v1.ListTemplatePolicyBindingsRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 7: holos.console.v1.ListTemplatePolicyBindingsResponse.bindings:type_name -> holos.console.v1.TemplatePolicyBinding
-	14, // 8: holos.console.v1.GetTemplatePolicyBindingRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 9: holos.console.v1.GetTemplatePolicyBindingResponse.binding:type_name -> holos.console.v1.TemplatePolicyBinding
-	14, // 10: holos.console.v1.CreateTemplatePolicyBindingRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 11: holos.console.v1.CreateTemplatePolicyBindingRequest.binding:type_name -> holos.console.v1.TemplatePolicyBinding
-	14, // 12: holos.console.v1.UpdateTemplatePolicyBindingRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 13: holos.console.v1.UpdateTemplatePolicyBindingRequest.binding:type_name -> holos.console.v1.TemplatePolicyBinding
-	14, // 14: holos.console.v1.DeleteTemplatePolicyBindingRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	4,  // 15: holos.console.v1.TemplatePolicyBindingService.ListTemplatePolicyBindings:input_type -> holos.console.v1.ListTemplatePolicyBindingsRequest
-	6,  // 16: holos.console.v1.TemplatePolicyBindingService.GetTemplatePolicyBinding:input_type -> holos.console.v1.GetTemplatePolicyBindingRequest
-	8,  // 17: holos.console.v1.TemplatePolicyBindingService.CreateTemplatePolicyBinding:input_type -> holos.console.v1.CreateTemplatePolicyBindingRequest
-	10, // 18: holos.console.v1.TemplatePolicyBindingService.UpdateTemplatePolicyBinding:input_type -> holos.console.v1.UpdateTemplatePolicyBindingRequest
-	12, // 19: holos.console.v1.TemplatePolicyBindingService.DeleteTemplatePolicyBinding:input_type -> holos.console.v1.DeleteTemplatePolicyBindingRequest
-	5,  // 20: holos.console.v1.TemplatePolicyBindingService.ListTemplatePolicyBindings:output_type -> holos.console.v1.ListTemplatePolicyBindingsResponse
-	7,  // 21: holos.console.v1.TemplatePolicyBindingService.GetTemplatePolicyBinding:output_type -> holos.console.v1.GetTemplatePolicyBindingResponse
-	9,  // 22: holos.console.v1.TemplatePolicyBindingService.CreateTemplatePolicyBinding:output_type -> holos.console.v1.CreateTemplatePolicyBindingResponse
-	11, // 23: holos.console.v1.TemplatePolicyBindingService.UpdateTemplatePolicyBinding:output_type -> holos.console.v1.UpdateTemplatePolicyBindingResponse
-	13, // 24: holos.console.v1.TemplatePolicyBindingService.DeleteTemplatePolicyBinding:output_type -> holos.console.v1.DeleteTemplatePolicyBindingResponse
-	20, // [20:25] is the sub-list for method output_type
-	15, // [15:20] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	0,  // 0: holos.console.v1.TemplatePolicyBindingTargetRef.kind:type_name -> holos.console.v1.TemplatePolicyBindingTargetKind
+	1,  // 1: holos.console.v1.TemplatePolicyBinding.policy_ref:type_name -> holos.console.v1.LinkedTemplatePolicyRef
+	2,  // 2: holos.console.v1.TemplatePolicyBinding.target_refs:type_name -> holos.console.v1.TemplatePolicyBindingTargetRef
+	14, // 3: holos.console.v1.TemplatePolicyBinding.created_at:type_name -> google.protobuf.Timestamp
+	3,  // 4: holos.console.v1.ListTemplatePolicyBindingsResponse.bindings:type_name -> holos.console.v1.TemplatePolicyBinding
+	3,  // 5: holos.console.v1.GetTemplatePolicyBindingResponse.binding:type_name -> holos.console.v1.TemplatePolicyBinding
+	3,  // 6: holos.console.v1.CreateTemplatePolicyBindingRequest.binding:type_name -> holos.console.v1.TemplatePolicyBinding
+	3,  // 7: holos.console.v1.UpdateTemplatePolicyBindingRequest.binding:type_name -> holos.console.v1.TemplatePolicyBinding
+	4,  // 8: holos.console.v1.TemplatePolicyBindingService.ListTemplatePolicyBindings:input_type -> holos.console.v1.ListTemplatePolicyBindingsRequest
+	6,  // 9: holos.console.v1.TemplatePolicyBindingService.GetTemplatePolicyBinding:input_type -> holos.console.v1.GetTemplatePolicyBindingRequest
+	8,  // 10: holos.console.v1.TemplatePolicyBindingService.CreateTemplatePolicyBinding:input_type -> holos.console.v1.CreateTemplatePolicyBindingRequest
+	10, // 11: holos.console.v1.TemplatePolicyBindingService.UpdateTemplatePolicyBinding:input_type -> holos.console.v1.UpdateTemplatePolicyBindingRequest
+	12, // 12: holos.console.v1.TemplatePolicyBindingService.DeleteTemplatePolicyBinding:input_type -> holos.console.v1.DeleteTemplatePolicyBindingRequest
+	5,  // 13: holos.console.v1.TemplatePolicyBindingService.ListTemplatePolicyBindings:output_type -> holos.console.v1.ListTemplatePolicyBindingsResponse
+	7,  // 14: holos.console.v1.TemplatePolicyBindingService.GetTemplatePolicyBinding:output_type -> holos.console.v1.GetTemplatePolicyBindingResponse
+	9,  // 15: holos.console.v1.TemplatePolicyBindingService.CreateTemplatePolicyBinding:output_type -> holos.console.v1.CreateTemplatePolicyBindingResponse
+	11, // 16: holos.console.v1.TemplatePolicyBindingService.UpdateTemplatePolicyBinding:output_type -> holos.console.v1.UpdateTemplatePolicyBindingResponse
+	13, // 17: holos.console.v1.TemplatePolicyBindingService.DeleteTemplatePolicyBinding:output_type -> holos.console.v1.DeleteTemplatePolicyBindingResponse
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_template_policy_bindings_proto_init() }
@@ -960,7 +945,6 @@ func file_holos_console_v1_template_policy_bindings_proto_init() {
 	if File_holos_console_v1_template_policy_bindings_proto != nil {
 		return
 	}
-	file_holos_console_v1_policy_state_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

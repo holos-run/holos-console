@@ -8,16 +8,23 @@ import {
   ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
 import type { LinkableTemplate, Release, TemplateUpdate, TemplateDefaults } from '@/gen/holos/console/v1/templates_pb.js'
+import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import {
-  TemplateScopeRefSchema,
+  type TemplateScopeRef,
   TemplateScope,
-} from '@/gen/holos/console/v1/policy_state_pb.js'
-import type { TemplateScopeRef, LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
+  namespaceForRef,
+  scopeFromNamespace,
+  scopeNameFromNamespace,
+  makeScope,
+  makeOrgScope,
+  makeFolderScope,
+  makeProjectScope,
+} from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
 // Re-export types used by consumers.
 export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults }
-export { TemplateScope }
+export { TemplateScope, makeScope, makeOrgScope, makeFolderScope, makeProjectScope }
 
 /** Build a composite key that uniquely identifies a linkable template across scopes. */
 export function linkableKey(scope: number | undefined, scopeName: string | undefined, name: string): string {
@@ -28,26 +35,6 @@ export function linkableKey(scope: number | undefined, scopeName: string | undef
 export function parseLinkableKey(key: string): { scope: number; scopeName: string; name: string } {
   const parts = key.split('/')
   return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
-}
-
-// makeScope is a helper to build a TemplateScopeRef from scope and scopeName.
-export function makeScope(scope: TemplateScope, scopeName: string): TemplateScopeRef {
-  return create(TemplateScopeRefSchema, { scope, scopeName })
-}
-
-// makeOrgScope builds a TemplateScopeRef for an organization-scoped template.
-export function makeOrgScope(org: string): TemplateScopeRef {
-  return makeScope(TemplateScope.ORGANIZATION, org)
-}
-
-// makeFolderScope builds a TemplateScopeRef for a folder-scoped template.
-export function makeFolderScope(folder: string): TemplateScopeRef {
-  return makeScope(TemplateScope.FOLDER, folder)
-}
-
-// makeProjectScope builds a TemplateScopeRef for a project-scoped template.
-export function makeProjectScope(project: string): TemplateScopeRef {
-  return makeScope(TemplateScope.PROJECT, project)
 }
 
 function templateListKey(scope: TemplateScopeRef) {
@@ -69,7 +56,7 @@ export function useListTemplates(scope: TemplateScopeRef) {
   return useQuery({
     queryKey: templateListKey(scope),
     queryFn: async () => {
-      const response = await client.listTemplates({ scope })
+      const response = await client.listTemplates({ namespace: namespaceForRef(scope) })
       return response.templates
     },
     enabled: isAuthenticated && !!scope.scopeName,
@@ -99,7 +86,7 @@ export function useGetTemplateDefaults(
   return useQuery({
     queryKey: templateDefaultsKey(scope, name),
     queryFn: async () => {
-      const response = await client.getTemplateDefaults({ scope, name })
+      const response = await client.getTemplateDefaults({ namespace: namespaceForRef(scope), name })
       return response.defaults
     },
     enabled: isAuthenticated && !!scope.scopeName && !!name && callerEnabled,
@@ -113,7 +100,7 @@ export function useGetTemplate(scope: TemplateScopeRef, name: string) {
   return useQuery({
     queryKey: templateGetKey(scope, name),
     queryFn: async () => {
-      const response = await client.getTemplate({ scope, name })
+      const response = await client.getTemplate({ namespace: namespaceForRef(scope), name })
       return response.template
     },
     enabled: isAuthenticated && !!scope.scopeName && !!name,
@@ -132,19 +119,21 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       cueTemplate: string
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
-    }) =>
-      client.createTemplate({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.createTemplate({
+        namespace: ns,
         template: {
           name: params.name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName,
           description: params.description,
           cueTemplate: params.cueTemplate,
           enabled: params.enabled ?? false,
           linkedTemplates: params.linkedTemplates ?? [],
         },
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
     },
@@ -163,20 +152,22 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
       updateLinkedTemplates?: boolean
-    }) =>
-      client.updateTemplate({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.updateTemplate({
+        namespace: ns,
         updateLinkedTemplates: params.updateLinkedTemplates ?? false,
         template: {
           name,
-          scopeRef: scope,
+          namespace: ns,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           cueTemplate: params.cueTemplate ?? '',
           enabled: params.enabled ?? false,
           linkedTemplates: params.linkedTemplates ?? [],
         },
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
       queryClient.invalidateQueries({ queryKey: templateGetKey(scope, name) })
@@ -199,7 +190,8 @@ export function useDeleteTemplate(scope: TemplateScopeRef) {
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string }) => client.deleteTemplate({ scope, ...params }),
+    mutationFn: (params: { name: string }) =>
+      client.deleteTemplate({ namespace: namespaceForRef(scope), ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
     },
@@ -212,7 +204,7 @@ export function useCloneTemplate(scope: TemplateScopeRef) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
-      client.cloneTemplate({ scope, ...params }),
+      client.cloneTemplate({ namespace: namespaceForRef(scope), ...params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
     },
@@ -237,7 +229,7 @@ export function useListLinkableTemplates(
   return useQuery({
     queryKey: linkableTemplatesKey(scope, includeSelfScope),
     queryFn: async () => {
-      const response = await client.listLinkableTemplates({ scope, includeSelfScope })
+      const response = await client.listLinkableTemplates({ namespace: namespaceForRef(scope), includeSelfScope })
       return response.templates
     },
     enabled: isAuthenticated && !!scope.scopeName,
@@ -261,7 +253,7 @@ export function useListReleases(scope: TemplateScopeRef, templateName: string) {
   return useQuery({
     queryKey: releaseListKey(scope, templateName),
     queryFn: async () => {
-      const response = await client.listReleases({ scope, templateName })
+      const response = await client.listReleases({ namespace: namespaceForRef(scope), templateName })
       return response.releases
     },
     enabled: isAuthenticated && !!scope.scopeName && !!templateName,
@@ -275,7 +267,7 @@ export function useGetRelease(scope: TemplateScopeRef, templateName: string, ver
   return useQuery({
     queryKey: releaseGetKey(scope, templateName, version),
     queryFn: async () => {
-      const response = await client.getRelease({ scope, templateName, version })
+      const response = await client.getRelease({ namespace: namespaceForRef(scope), templateName, version })
       return response.release
     },
     enabled: isAuthenticated && !!scope.scopeName && !!templateName && !!version,
@@ -293,19 +285,21 @@ export function useCreateRelease(scope: TemplateScopeRef, templateName: string) 
       upgradeAdvice?: string
       cueTemplate: string
       defaults?: Release['defaults']
-    }) =>
-      client.createRelease({
-        scope,
+    }) => {
+      const ns = namespaceForRef(scope)
+      return client.createRelease({
+        namespace: ns,
         release: create(ReleaseSchema, {
           templateName,
-          scopeRef: scope,
+          namespace: ns,
           version: params.version,
           changelog: params.changelog,
           upgradeAdvice: params.upgradeAdvice ?? '',
           cueTemplate: params.cueTemplate,
           defaults: params.defaults,
         }),
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: releaseListKey(scope, templateName) })
     },
@@ -333,7 +327,7 @@ export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', opti
   return useQuery({
     queryKey: [...checkUpdatesKey(scope, templateName), includeCurrent] as const,
     queryFn: async () => {
-      const response = await client.checkUpdates({ scope, templateName, includeCurrent })
+      const response = await client.checkUpdates({ namespace: namespaceForRef(scope), templateName, includeCurrent })
       return response.updates
     },
     enabled: isAuthenticated && !!scope.scopeName && callerEnabled,
@@ -360,7 +354,7 @@ export function useGetProjectTemplatePolicyState(scope: TemplateScopeRef, name: 
   return useQuery({
     queryKey: projectTemplatePolicyStateKey(scope, name),
     queryFn: async () => {
-      const response = await client.getProjectTemplatePolicyState({ scope, name })
+      const response = await client.getProjectTemplatePolicyState({ namespace: namespaceForRef(scope), name })
       return response.state
     },
     enabled:
@@ -388,12 +382,14 @@ export function useRenderTemplate(
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   // Serialize linked templates into the query key so the query refetches when
   // the linked selection changes.
-  const linkedKey = linkedTemplates.map(t => `${t.scope}/${t.scopeName}/${t.name}@${t.versionConstraint ?? ''}`).join(',')
+  const linkedKey = linkedTemplates
+    .map(t => `${scopeFromNamespace(t.namespace)}/${scopeNameFromNamespace(t.namespace)}/${t.name}@${t.versionConstraint ?? ''}`)
+    .join(',')
   return useQuery({
     queryKey: ['templates', 'render', scope.scope, scope.scopeName, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
     queryFn: async () => {
       const response = await client.renderTemplate({
-        scope,
+        namespace: namespaceForRef(scope),
         cueTemplate,
         cueProjectInput: cueInput,
         cuePlatformInput,

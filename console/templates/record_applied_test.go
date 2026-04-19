@@ -14,6 +14,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -129,8 +130,8 @@ func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string,
 	stored := make([]storedRef, 0, len(refs))
 	for _, r := range refs {
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(r.GetScope()),
-			ScopeName:         r.GetScopeName(),
+			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
+			ScopeName:         scopeshim.RefScopeName(r),
 			Name:              r.GetName(),
 			VersionConstraint: r.GetVersionConstraint(),
 		})
@@ -160,7 +161,7 @@ func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker)
 
 	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:            "web-app",
 			CueTemplate:     validCue,
@@ -235,7 +236,7 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 
 	h.recordProjectTemplateApplied(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+		scopeshim.ScopeOrganization,
 		"acme",
 		"httproute",
 		nil,
@@ -246,7 +247,7 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 
 	h.recordProjectTemplateApplied(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"audit",
 		nil,
@@ -270,7 +271,7 @@ func TestHandler_CreateTemplate_WarnButSucceedOnRecordFailure(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker)
 
 	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -293,7 +294,7 @@ func TestHandler_CreateTemplate_NilCheckerIsSafe(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, nil)
 
 	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -328,7 +329,7 @@ func TestHandler_CreateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -358,7 +359,7 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_NewLinks(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:            "web-app",
 			CueTemplate:     validCue,
@@ -396,7 +397,7 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_PreserveLinks(t *testing
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -432,7 +433,7 @@ func TestHandler_UpdateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -457,7 +458,7 @@ func TestHandler_UpdateTemplate_WarnButSucceedOnRecordFailure(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -481,7 +482,7 @@ func TestHandler_UpdateTemplate_NilCheckerIsSafe(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, nil, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -529,7 +530,7 @@ func TestHandler_UpdateTemplate_SkipsRecordOnMalformedExistingLinks(t *testing.T
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,
@@ -557,7 +558,7 @@ func TestHandler_UpdateTemplate_ResolverFailureIsSwallowed(t *testing.T) {
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Scope: projectScopeRef("my-project"),
+		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
 			Name:        "web-app",
 			CueTemplate: validCue,

@@ -35,6 +35,7 @@ import { TargetRefEditor } from './TargetRefEditor'
 import { useListProjects } from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
 import { useListTemplates, TemplateScope } from '@/queries/templates'
+import { namespaceFor } from '@/lib/scope-shim'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import type { TargetRefDraft } from './binding-draft'
 
@@ -53,7 +54,7 @@ function stubQueries({
     {
       name: 'ingress',
       displayName: 'Ingress',
-      scopeRef: { scope: TemplateScope.PROJECT, scopeName: 'proj-a' },
+      namespace: namespaceFor(TemplateScope.PROJECT, 'proj-a'),
     },
   ],
   deployments = [{ name: 'web', displayName: 'Web' }],
@@ -62,7 +63,7 @@ function stubQueries({
   projectTemplates?: Array<{
     name: string
     displayName: string
-    scopeRef: { scope: number; scopeName: string }
+    namespace: string
   }>
   deployments?: Array<{ name: string; displayName: string }>
 } = {}) {

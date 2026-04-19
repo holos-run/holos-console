@@ -13,6 +13,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -47,7 +48,7 @@ func orgNS(org string) *corev1.Namespace {
 }
 
 // templateConfigMap builds a v1alpha2-labeled template ConfigMap for tests.
-func templateConfigMap(scope consolev1.TemplateScope, scopePrefix, scopeName, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
+func templateConfigMap(scope scopeshim.Scope, scopePrefix, scopeName, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -70,7 +71,7 @@ func templateConfigMap(scope consolev1.TemplateScope, scopePrefix, scopeName, na
 }
 
 func projectTemplateConfigMap(project, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
-	return templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT, "prj-", project, name, displayName, description, cueTemplate)
+	return templateConfigMap(scopeshim.ScopeProject, "prj-", project, name, displayName, description, cueTemplate)
 }
 
 // orgTemplateConfigMap builds a test fixture for an organization-scope
@@ -78,7 +79,7 @@ func projectTemplateConfigMap(project, name, displayName, description, cueTempla
 // annotation (HOL-565); callers pass a value that is ignored so existing test
 // call sites continue to compile.
 func orgTemplateConfigMap(org, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
-	cm := templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, "org-", org, name, displayName, description, cueTemplate)
+	cm := templateConfigMap(scopeshim.ScopeOrganization, "org-", org, name, displayName, description, cueTemplate)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -90,9 +91,9 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-var projectScope = consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
-var orgScope = consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
-var folderScope = consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+var projectScope = scopeshim.ScopeProject
+var orgScope = scopeshim.ScopeOrganization
+var folderScope = scopeshim.ScopeFolder
 
 func folderNS(folder string) *corev1.Namespace {
 	return &corev1.Namespace{
@@ -112,7 +113,7 @@ func folderNS(folder string) *corev1.Namespace {
 // (HOL-565); callers pass a value that is ignored so existing test call
 // sites continue to compile.
 func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
-	cm := templateConfigMap(consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, "fld-", folder, name, displayName, description, cueTemplate)
+	cm := templateConfigMap(scopeshim.ScopeFolder, "fld-", folder, name, displayName, description, cueTemplate)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -441,8 +442,8 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 		k8s := NewK8sClient(fakeClient, testResolver())
 
 		linked := []*consolev1.LinkedTemplateRef{
-			{Scope: orgScope, ScopeName: "acme", Name: "httproute"},
-			{Scope: orgScope, ScopeName: "acme", Name: "policy-floor"},
+			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
+			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "policy-floor", ""),
 		}
 		cm, err := k8s.CreateTemplate(context.Background(), projectScope, "my-project", "web-app", "Web App", "desc", "#Input: {}\n", nil, false, linked)
 		if err != nil {
@@ -482,12 +483,7 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 
 // folderLinkedRefWithConstraint builds a folder-scope LinkedTemplateRef with a version constraint.
 func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.LinkedTemplateRef {
-	return &consolev1.LinkedTemplateRef{
-		Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-		ScopeName:         folder,
-		Name:              name,
-		VersionConstraint: constraint,
-	}
+	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, constraint)
 }
 
 // stubHierarchyWalker implements RenderHierarchyWalker for testing
@@ -534,7 +530,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
+			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -558,8 +554,8 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
-			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
+			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", "httproute", ""),
+			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -602,7 +598,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
+			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -660,7 +656,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{err: fmt.Errorf("walk failed")}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: folderScope, ScopeName: "payments", Name: "payments-policy"},
+			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -703,8 +699,8 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: orgScope, ScopeName: "my-org", Name: sharedName},
-			{Scope: folderScope, ScopeName: "payments", Name: sharedName},
+			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", sharedName, ""),
+			scopeshim.NewLinkedTemplateRef(folderScope, "payments", sharedName, ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -734,7 +730,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			{Scope: orgScope, ScopeName: "my-org", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", "httproute", ""),
 		}
 
 		deploymentSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())

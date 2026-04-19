@@ -48,6 +48,7 @@ import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import { useListProjects } from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
 import { useListTemplates, TemplateScope, makeOrgScope } from '@/queries/templates'
+import { namespaceFor } from '@/lib/scope-shim'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 
 const ORG_SCOPE = makeOrgScope('test-org')
@@ -62,14 +63,14 @@ function stubQueries({
     name: string
     displayName: string
     description: string
-    scopeRef?: { scope: number; scopeName: string }
+    namespace?: string
   }>
   projects?: Array<{ name: string; displayName: string }>
   deployments?: Array<{ name: string; displayName: string }>
   projectTemplates?: Array<{
     name: string
     displayName: string
-    scopeRef: { scope: number; scopeName: string }
+    namespace: string
   }>
 }) {
   ;(useListTemplatePolicies as Mock).mockReturnValue({
@@ -188,7 +189,7 @@ describe('BindingForm', () => {
           name: 'require-http',
           displayName: 'Require HTTP',
           description: '',
-          scopeRef: { scope: TemplateScope.ORGANIZATION, scopeName: 'test-org' },
+          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
         },
       ],
       projects: [{ name: 'proj-a', displayName: 'Project A' }],
@@ -248,7 +249,7 @@ describe('BindingForm', () => {
           name: 'require-http',
           displayName: 'Require HTTP',
           description: '',
-          scopeRef: { scope: TemplateScope.ORGANIZATION, scopeName: 'test-org' },
+          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
         },
       ],
       projects: [{ name: 'proj-a', displayName: 'Project A' }],
@@ -256,7 +257,7 @@ describe('BindingForm', () => {
         {
           name: 'ingress',
           displayName: 'Ingress',
-          scopeRef: { scope: TemplateScope.PROJECT, scopeName: 'proj-a' },
+          namespace: namespaceFor(TemplateScope.PROJECT, 'proj-a'),
         },
       ],
     })
@@ -318,7 +319,7 @@ describe('BindingForm', () => {
     expect(arg.displayName).toBe('Bind HTTPRoute')
     expect(arg.description).toBe('Attach on proj-a ingress')
     expect(arg.policyRef?.name).toBe('require-http')
-    expect(arg.policyRef?.scopeRef?.scopeName).toBe('test-org')
+    expect(arg.policyRef?.namespace).toBe(namespaceFor(TemplateScope.ORGANIZATION, 'test-org'))
     expect(arg.targetRefs).toHaveLength(1)
     expect(arg.targetRefs[0]).toMatchObject({
       kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,

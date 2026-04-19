@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -76,7 +77,7 @@ func (e *e2eDriftChecker) RecordApplied(_ context.Context, project, name string,
 // end-to-end test does not pull in the full policyresolver fixture.
 func diffRefs(applied, current []*consolev1.LinkedTemplateRef) bool {
 	type k struct {
-		scope consolev1.TemplateScope
+		scope scopeshim.Scope
 		sn    string
 		n     string
 		vc    string
@@ -86,14 +87,14 @@ func diffRefs(applied, current []*consolev1.LinkedTemplateRef) bool {
 		if r == nil {
 			continue
 		}
-		as[k{r.GetScope(), r.GetScopeName(), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
+		as[k{scopeshim.RefScope(r), scopeshim.RefScopeName(r), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
 	}
 	cs := make(map[k]struct{}, len(current))
 	for _, r := range current {
 		if r == nil {
 			continue
 		}
-		cs[k{r.GetScope(), r.GetScopeName(), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
+		cs[k{scopeshim.RefScope(r), scopeshim.RefScopeName(r), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
 	}
 	if len(as) != len(cs) {
 		return true
@@ -125,8 +126,8 @@ func TestHandler_CreateDeployment_DriftBecomesFalseAfterRecord(t *testing.T) {
 	// path) and the drift checker's currentFn (query path) return this
 	// same value so applied == current and drift is false when recorded.
 	policyOutput := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "audit"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "audit", ""),
 	}
 
 	// The AncestorTemplateProvider stub returns the policy-resolved set as

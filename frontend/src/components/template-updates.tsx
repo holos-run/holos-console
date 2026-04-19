@@ -21,7 +21,7 @@ import {
 import { ArrowUpCircle, AlertTriangle } from 'lucide-react'
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
 import type { TemplateScopeRef, TemplateUpdate, LinkedTemplateRef } from '@/queries/templates'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { TemplateScope, scopeFromNamespace } from '@/lib/scope-shim'
 import { toast } from 'sonner'
 
 // scopeLabel returns a human-readable scope label.
@@ -101,8 +101,7 @@ export function UpgradeDialog({
   ): LinkedTemplateRef[] {
     return currentLinked.map((lt) => {
       if (
-        lt.scope === update.ref?.scope &&
-        lt.scopeName === update.ref?.scopeName &&
+        lt.namespace === update.ref?.namespace &&
         lt.name === update.ref?.name
       ) {
         // Build new constraint: >=newVersion <nextMajor
@@ -189,13 +188,13 @@ export function UpgradeDialog({
                   ? update.latestVersion
                   : update.latestCompatibleVersion
                 return (
-                  <TableRow key={`${ref?.scope}/${ref?.scopeName}/${ref?.name}`}>
+                  <TableRow key={`${ref?.namespace}/${ref?.name}`}>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{ref?.name}</span>
                         {ref && (
                           <span className="text-xs text-muted-foreground">
-                            {scopeLabel(ref.scope)}
+                            {scopeLabel(scopeFromNamespace(ref.namespace))}
                           </span>
                         )}
                       </div>

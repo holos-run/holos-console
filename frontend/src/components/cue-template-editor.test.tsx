@@ -14,7 +14,7 @@ vi.mock('@/queries/templates', () => ({
 
 import { CueTemplateEditor } from './cue-template-editor'
 import { useRenderTemplate } from '@/queries/templates'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { TemplateScope } from '@/lib/scope-shim'
 import { create } from '@bufbuild/protobuf'
 
 // testScope is a placeholder scope used in tests.

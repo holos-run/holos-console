@@ -2,75 +2,53 @@
 // @generated from file holos/console/v1/policy_state.proto (package holos.console.v1, syntax proto3)
 /* eslint-disable */
 
-import { enumDesc, fileDesc, messageDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
+import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 
 /**
  * Describes the file holos/console/v1/policy_state.proto.
  */
 export const file_holos_console_v1_policy_state = /*@__PURE__*/
-  fileDesc("CiNob2xvcy9jb25zb2xlL3YxL3BvbGljeV9zdGF0ZS5wcm90bxIQaG9sb3MuY29uc29sZS52MSJWChBUZW1wbGF0ZVNjb3BlUmVmEi4KBXNjb3BlGAEgASgOMh8uaG9sb3MuY29uc29sZS52MS5UZW1wbGF0ZVNjb3BlEhIKCnNjb3BlX25hbWUYAiABKAkigQEKEUxpbmtlZFRlbXBsYXRlUmVmEi4KBXNjb3BlGAEgASgOMh8uaG9sb3MuY29uc29sZS52MS5UZW1wbGF0ZVNjb3BlEhIKCnNjb3BlX25hbWUYAiABKAkSDAoEbmFtZRgDIAEoCRIaChJ2ZXJzaW9uX2NvbnN0cmFpbnQYBCABKAkinwIKC1BvbGljeVN0YXRlEjgKC2FwcGxpZWRfc2V0GAEgAygLMiMuaG9sb3MuY29uc29sZS52MS5MaW5rZWRUZW1wbGF0ZVJlZhI4CgtjdXJyZW50X3NldBgCIAMoCzIjLmhvbG9zLmNvbnNvbGUudjEuTGlua2VkVGVtcGxhdGVSZWYSNwoKYWRkZWRfcmVmcxgDIAMoCzIjLmhvbG9zLmNvbnNvbGUudjEuTGlua2VkVGVtcGxhdGVSZWYSOQoMcmVtb3ZlZF9yZWZzGAQgAygLMiMuaG9sb3MuY29uc29sZS52MS5MaW5rZWRUZW1wbGF0ZVJlZhINCgVkcmlmdBgFIAEoCBIZChFoYXNfYXBwbGllZF9zdGF0ZRgGIAEoCCJACh9HZXREZXBsb3ltZW50UG9saWN5U3RhdGVSZXF1ZXN0Eg8KB3Byb2plY3QYASABKAkSDAoEbmFtZRgCIAEoCSJQCiBHZXREZXBsb3ltZW50UG9saWN5U3RhdGVSZXNwb25zZRIsCgVzdGF0ZRgBIAEoCzIdLmhvbG9zLmNvbnNvbGUudjEuUG9saWN5U3RhdGUiZwokR2V0UHJvamVjdFRlbXBsYXRlUG9saWN5U3RhdGVSZXF1ZXN0EjEKBXNjb3BlGAEgASgLMiIuaG9sb3MuY29uc29sZS52MS5UZW1wbGF0ZVNjb3BlUmVmEgwKBG5hbWUYAiABKAkiVQolR2V0UHJvamVjdFRlbXBsYXRlUG9saWN5U3RhdGVSZXNwb25zZRIsCgVzdGF0ZRgBIAEoCzIdLmhvbG9zLmNvbnNvbGUudjEuUG9saWN5U3RhdGUqhwEKDVRlbXBsYXRlU2NvcGUSHgoaVEVNUExBVEVfU0NPUEVfVU5TUEVDSUZJRUQQABIfChtURU1QTEFURV9TQ09QRV9PUkdBTklaQVRJT04QARIZChVURU1QTEFURV9TQ09QRV9GT0xERVIQAhIaChZURU1QTEFURV9TQ09QRV9QUk9KRUNUEANCQ1pBZ2l0aHViLmNvbS9ob2xvcy1ydW4vaG9sb3MtY29uc29sZS9nZW4vaG9sb3MvY29uc29sZS92MTtjb25zb2xldjFiBnByb3RvMw");
-
-/**
- * Describes the message holos.console.v1.TemplateScopeRef.
- * Use `create(TemplateScopeRefSchema)` to create a new message.
- */
-export const TemplateScopeRefSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 0);
+  fileDesc("CiNob2xvcy9jb25zb2xlL3YxL3BvbGljeV9zdGF0ZS5wcm90bxIQaG9sb3MuY29uc29sZS52MSJQChFMaW5rZWRUZW1wbGF0ZVJlZhIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRIaChJ2ZXJzaW9uX2NvbnN0cmFpbnQYAyABKAkinwIKC1BvbGljeVN0YXRlEjgKC2FwcGxpZWRfc2V0GAEgAygLMiMuaG9sb3MuY29uc29sZS52MS5MaW5rZWRUZW1wbGF0ZVJlZhI4CgtjdXJyZW50X3NldBgCIAMoCzIjLmhvbG9zLmNvbnNvbGUudjEuTGlua2VkVGVtcGxhdGVSZWYSNwoKYWRkZWRfcmVmcxgDIAMoCzIjLmhvbG9zLmNvbnNvbGUudjEuTGlua2VkVGVtcGxhdGVSZWYSOQoMcmVtb3ZlZF9yZWZzGAQgAygLMiMuaG9sb3MuY29uc29sZS52MS5MaW5rZWRUZW1wbGF0ZVJlZhINCgVkcmlmdBgFIAEoCBIZChFoYXNfYXBwbGllZF9zdGF0ZRgGIAEoCCJACh9HZXREZXBsb3ltZW50UG9saWN5U3RhdGVSZXF1ZXN0Eg8KB3Byb2plY3QYASABKAkSDAoEbmFtZRgCIAEoCSJQCiBHZXREZXBsb3ltZW50UG9saWN5U3RhdGVSZXNwb25zZRIsCgVzdGF0ZRgBIAEoCzIdLmhvbG9zLmNvbnNvbGUudjEuUG9saWN5U3RhdGUiRwokR2V0UHJvamVjdFRlbXBsYXRlUG9saWN5U3RhdGVSZXF1ZXN0EhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJIlUKJUdldFByb2plY3RUZW1wbGF0ZVBvbGljeVN0YXRlUmVzcG9uc2USLAoFc3RhdGUYASABKAsyHS5ob2xvcy5jb25zb2xlLnYxLlBvbGljeVN0YXRlQkNaQWdpdGh1Yi5jb20vaG9sb3MtcnVuL2hvbG9zLWNvbnNvbGUvZ2VuL2hvbG9zL2NvbnNvbGUvdjE7Y29uc29sZXYxYgZwcm90bzM");
 
 /**
  * Describes the message holos.console.v1.LinkedTemplateRef.
  * Use `create(LinkedTemplateRefSchema)` to create a new message.
  */
 export const LinkedTemplateRefSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 1);
+  messageDesc(file_holos_console_v1_policy_state, 0);
 
 /**
  * Describes the message holos.console.v1.PolicyState.
  * Use `create(PolicyStateSchema)` to create a new message.
  */
 export const PolicyStateSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 2);
+  messageDesc(file_holos_console_v1_policy_state, 1);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentPolicyStateRequest.
  * Use `create(GetDeploymentPolicyStateRequestSchema)` to create a new message.
  */
 export const GetDeploymentPolicyStateRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 3);
+  messageDesc(file_holos_console_v1_policy_state, 2);
 
 /**
  * Describes the message holos.console.v1.GetDeploymentPolicyStateResponse.
  * Use `create(GetDeploymentPolicyStateResponseSchema)` to create a new message.
  */
 export const GetDeploymentPolicyStateResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 4);
+  messageDesc(file_holos_console_v1_policy_state, 3);
 
 /**
  * Describes the message holos.console.v1.GetProjectTemplatePolicyStateRequest.
  * Use `create(GetProjectTemplatePolicyStateRequestSchema)` to create a new message.
  */
 export const GetProjectTemplatePolicyStateRequestSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 5);
+  messageDesc(file_holos_console_v1_policy_state, 4);
 
 /**
  * Describes the message holos.console.v1.GetProjectTemplatePolicyStateResponse.
  * Use `create(GetProjectTemplatePolicyStateResponseSchema)` to create a new message.
  */
 export const GetProjectTemplatePolicyStateResponseSchema = /*@__PURE__*/
-  messageDesc(file_holos_console_v1_policy_state, 6);
-
-/**
- * Describes the enum holos.console.v1.TemplateScope.
- */
-export const TemplateScopeSchema = /*@__PURE__*/
-  enumDesc(file_holos_console_v1_policy_state, 0);
-
-/**
- * TemplateScope identifies the hierarchy level at which a template is stored.
- * (ADR 021 Decision 1)
- *
- * @generated from enum holos.console.v1.TemplateScope
- */
-export const TemplateScope = /*@__PURE__*/
-  tsEnum(TemplateScopeSchema);
+  messageDesc(file_holos_console_v1_policy_state, 5);
 

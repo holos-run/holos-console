@@ -20,11 +20,12 @@ import {
  * Run with: make test-e2e
  */
 
-// TEMPLATE_SCOPE_FOLDER = 2
-const SCOPE_FOLDER = 2
-
 /**
  * Create a folder-scoped template via the RPC API.
+ *
+ * HOL-619: TemplateScope / TemplateScopeRef were removed from proto. Requests
+ * now carry a Kubernetes namespace (e.g., holos-fld-<folder>) in place of the
+ * legacy (scope, scopeName) pair.
  */
 async function apiCreateFolderTemplate(
   page: Page,
@@ -42,7 +43,7 @@ async function apiCreateFolderTemplate(
 
   await page.evaluate(
     async ({ folderName, templateName, cueSource, token }) => {
-      // CreateTemplateRequest shape: { scope: TemplateScopeRef, template: Template }
+      // CreateTemplateRequest shape (post HOL-619): { namespace, template }.
       // Template fields use camelCase JSON names matching the proto snake_case fields.
       const resp = await fetch('/holos.console.v1.TemplateService/CreateTemplate', {
         method: 'POST',
@@ -52,7 +53,7 @@ async function apiCreateFolderTemplate(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          scope: { scope: 2 /* TEMPLATE_SCOPE_FOLDER */, scopeName: folderName },
+          namespace: `holos-fld-${folderName}`,
           template: {
             name: templateName,
             displayName: templateName,
@@ -89,7 +90,7 @@ async function apiDeleteFolderTemplate(
   })
 
   await page.evaluate(
-    async ({ folderName, organization, templateName, token, scope }) => {
+    async ({ folderName, organization, templateName, token }) => {
       const resp = await fetch('/holos.console.v1.TemplateService/DeleteTemplate', {
         method: 'POST',
         headers: {
@@ -98,7 +99,7 @@ async function apiDeleteFolderTemplate(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          scope: { scope, scopeName: folderName },
+          namespace: `holos-fld-${folderName}`,
           name: templateName,
           organization,
         }),
@@ -108,7 +109,7 @@ async function apiDeleteFolderTemplate(
         throw new Error(`DeleteTemplate failed (${resp.status}): ${text}`)
       }
     },
-    { folderName, organization, templateName, token, scope: SCOPE_FOLDER },
+    { folderName, organization, templateName, token },
   )
 }
 

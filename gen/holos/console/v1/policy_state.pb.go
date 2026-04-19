@@ -21,141 +21,30 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// TemplateScope identifies the hierarchy level at which a template is stored.
-// (ADR 021 Decision 1)
-type TemplateScope int32
-
-const (
-	TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED TemplateScope = 0
-	// TEMPLATE_SCOPE_ORGANIZATION — authored by platform engineers.
-	TemplateScope_TEMPLATE_SCOPE_ORGANIZATION TemplateScope = 1
-	// TEMPLATE_SCOPE_FOLDER — authored by SREs.
-	TemplateScope_TEMPLATE_SCOPE_FOLDER TemplateScope = 2
-	// TEMPLATE_SCOPE_PROJECT — authored by product engineers.
-	TemplateScope_TEMPLATE_SCOPE_PROJECT TemplateScope = 3
-)
-
-// Enum value maps for TemplateScope.
-var (
-	TemplateScope_name = map[int32]string{
-		0: "TEMPLATE_SCOPE_UNSPECIFIED",
-		1: "TEMPLATE_SCOPE_ORGANIZATION",
-		2: "TEMPLATE_SCOPE_FOLDER",
-		3: "TEMPLATE_SCOPE_PROJECT",
-	}
-	TemplateScope_value = map[string]int32{
-		"TEMPLATE_SCOPE_UNSPECIFIED":  0,
-		"TEMPLATE_SCOPE_ORGANIZATION": 1,
-		"TEMPLATE_SCOPE_FOLDER":       2,
-		"TEMPLATE_SCOPE_PROJECT":      3,
-	}
-)
-
-func (x TemplateScope) Enum() *TemplateScope {
-	p := new(TemplateScope)
-	*p = x
-	return p
-}
-
-func (x TemplateScope) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (TemplateScope) Descriptor() protoreflect.EnumDescriptor {
-	return file_holos_console_v1_policy_state_proto_enumTypes[0].Descriptor()
-}
-
-func (TemplateScope) Type() protoreflect.EnumType {
-	return &file_holos_console_v1_policy_state_proto_enumTypes[0]
-}
-
-func (x TemplateScope) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use TemplateScope.Descriptor instead.
-func (TemplateScope) EnumDescriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{0}
-}
-
-// TemplateScopeRef identifies the owning scope of a template.
-// (ADR 021 Decision 1)
-type TemplateScopeRef struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope is the hierarchy level.
-	Scope TemplateScope `protobuf:"varint,1,opt,name=scope,proto3,enum=holos.console.v1.TemplateScope" json:"scope,omitempty"`
-	// scope_name is the org name, folder name, or project name.
-	ScopeName     string `protobuf:"bytes,2,opt,name=scope_name,json=scopeName,proto3" json:"scope_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TemplateScopeRef) Reset() {
-	*x = TemplateScopeRef{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TemplateScopeRef) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TemplateScopeRef) ProtoMessage() {}
-
-func (x *TemplateScopeRef) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TemplateScopeRef.ProtoReflect.Descriptor instead.
-func (*TemplateScopeRef) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *TemplateScopeRef) GetScope() TemplateScope {
-	if x != nil {
-		return x.Scope
-	}
-	return TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
-}
-
-func (x *TemplateScopeRef) GetScopeName() string {
-	if x != nil {
-		return x.ScopeName
-	}
-	return ""
-}
-
-// LinkedTemplateRef is a scope-qualified reference to a template used in the
-// explicit linking list (ADR 021 Decision 5). Replaces the flat string list
-// from v1alpha1's console.holos.run/linked-org-templates annotation.
+// LinkedTemplateRef is a (namespace, name) reference to a template used in
+// the explicit linking list (ADR 021 Decision 5). Replaces the flat string
+// list from v1alpha1's console.holos.run/linked-org-templates annotation.
+//
+// Fields were renumbered in HOL-619 when the scope discriminator was dropped.
 type LinkedTemplateRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the hierarchy level of the linked template.
-	Scope TemplateScope `protobuf:"varint,1,opt,name=scope,proto3,enum=holos.console.v1.TemplateScope" json:"scope,omitempty"`
-	// scope_name is the org/folder/project name for the linked template.
-	ScopeName string `protobuf:"bytes,2,opt,name=scope_name,json=scopeName,proto3" json:"scope_name,omitempty"`
+	// namespace is the Kubernetes namespace that owns the linked template. The
+	// resolver classifies the namespace into its hierarchy kind (organization,
+	// folder, project) at render time — callers supply the namespace only.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the template name.
-	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// version_constraint is a semver range string (e.g. ">=2.0.0 <3.0.0") that
 	// restricts which release versions of the linked template are compatible.
 	// Empty means no constraint (latest version is used).
-	VersionConstraint string `protobuf:"bytes,4,opt,name=version_constraint,json=versionConstraint,proto3" json:"version_constraint,omitempty"`
+	VersionConstraint string `protobuf:"bytes,3,opt,name=version_constraint,json=versionConstraint,proto3" json:"version_constraint,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LinkedTemplateRef) Reset() {
 	*x = LinkedTemplateRef{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[1]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -167,7 +56,7 @@ func (x *LinkedTemplateRef) String() string {
 func (*LinkedTemplateRef) ProtoMessage() {}
 
 func (x *LinkedTemplateRef) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[1]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -180,19 +69,12 @@ func (x *LinkedTemplateRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkedTemplateRef.ProtoReflect.Descriptor instead.
 func (*LinkedTemplateRef) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{1}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LinkedTemplateRef) GetScope() TemplateScope {
+func (x *LinkedTemplateRef) GetNamespace() string {
 	if x != nil {
-		return x.Scope
-	}
-	return TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
-}
-
-func (x *LinkedTemplateRef) GetScopeName() string {
-	if x != nil {
-		return x.ScopeName
+		return x.Namespace
 	}
 	return ""
 }
@@ -252,7 +134,7 @@ type PolicyState struct {
 
 func (x *PolicyState) Reset() {
 	*x = PolicyState{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[2]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -264,7 +146,7 @@ func (x *PolicyState) String() string {
 func (*PolicyState) ProtoMessage() {}
 
 func (x *PolicyState) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[2]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -277,7 +159,7 @@ func (x *PolicyState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyState.ProtoReflect.Descriptor instead.
 func (*PolicyState) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{2}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PolicyState) GetAppliedSet() []*LinkedTemplateRef {
@@ -337,7 +219,7 @@ type GetDeploymentPolicyStateRequest struct {
 
 func (x *GetDeploymentPolicyStateRequest) Reset() {
 	*x = GetDeploymentPolicyStateRequest{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[3]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -349,7 +231,7 @@ func (x *GetDeploymentPolicyStateRequest) String() string {
 func (*GetDeploymentPolicyStateRequest) ProtoMessage() {}
 
 func (x *GetDeploymentPolicyStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[3]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -362,7 +244,7 @@ func (x *GetDeploymentPolicyStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentPolicyStateRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentPolicyStateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{3}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetDeploymentPolicyStateRequest) GetProject() string {
@@ -390,7 +272,7 @@ type GetDeploymentPolicyStateResponse struct {
 
 func (x *GetDeploymentPolicyStateResponse) Reset() {
 	*x = GetDeploymentPolicyStateResponse{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[4]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -402,7 +284,7 @@ func (x *GetDeploymentPolicyStateResponse) String() string {
 func (*GetDeploymentPolicyStateResponse) ProtoMessage() {}
 
 func (x *GetDeploymentPolicyStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[4]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -415,7 +297,7 @@ func (x *GetDeploymentPolicyStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentPolicyStateResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentPolicyStateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{4}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetDeploymentPolicyStateResponse) GetState() *PolicyState {
@@ -426,15 +308,16 @@ func (x *GetDeploymentPolicyStateResponse) GetState() *PolicyState {
 }
 
 // GetProjectTemplatePolicyStateRequest requests the policy state snapshot for
-// a project-scope template. The scope must be TEMPLATE_SCOPE_PROJECT — other
-// scopes return InvalidArgument. This is the project-template counterpart to
-// DeploymentService.GetDeploymentPolicyState.
+// a project-scope template. The `namespace` MUST classify as a project
+// namespace — other kinds return InvalidArgument. This is the
+// project-template counterpart to DeploymentService.GetDeploymentPolicyState.
 type GetProjectTemplatePolicyStateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning project (scope must be
-	// TEMPLATE_SCOPE_PROJECT; scope_name is the project slug).
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	// name is the template's DNS label slug within the project.
+	// namespace is the Kubernetes namespace that owns the project-scope
+	// template. The resolver classifies the namespace as a project namespace;
+	// other classifications are rejected.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// name is the template's DNS label slug within the project namespace.
 	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -442,7 +325,7 @@ type GetProjectTemplatePolicyStateRequest struct {
 
 func (x *GetProjectTemplatePolicyStateRequest) Reset() {
 	*x = GetProjectTemplatePolicyStateRequest{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[5]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -454,7 +337,7 @@ func (x *GetProjectTemplatePolicyStateRequest) String() string {
 func (*GetProjectTemplatePolicyStateRequest) ProtoMessage() {}
 
 func (x *GetProjectTemplatePolicyStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[5]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -467,14 +350,14 @@ func (x *GetProjectTemplatePolicyStateRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetProjectTemplatePolicyStateRequest.ProtoReflect.Descriptor instead.
 func (*GetProjectTemplatePolicyStateRequest) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{5}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetProjectTemplatePolicyStateRequest) GetScope() *TemplateScopeRef {
+func (x *GetProjectTemplatePolicyStateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *GetProjectTemplatePolicyStateRequest) GetName() string {
@@ -495,7 +378,7 @@ type GetProjectTemplatePolicyStateResponse struct {
 
 func (x *GetProjectTemplatePolicyStateResponse) Reset() {
 	*x = GetProjectTemplatePolicyStateResponse{}
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[6]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -507,7 +390,7 @@ func (x *GetProjectTemplatePolicyStateResponse) String() string {
 func (*GetProjectTemplatePolicyStateResponse) ProtoMessage() {}
 
 func (x *GetProjectTemplatePolicyStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_holos_console_v1_policy_state_proto_msgTypes[6]
+	mi := &file_holos_console_v1_policy_state_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -520,7 +403,7 @@ func (x *GetProjectTemplatePolicyStateResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use GetProjectTemplatePolicyStateResponse.ProtoReflect.Descriptor instead.
 func (*GetProjectTemplatePolicyStateResponse) Descriptor() ([]byte, []int) {
-	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{6}
+	return file_holos_console_v1_policy_state_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetProjectTemplatePolicyStateResponse) GetState() *PolicyState {
@@ -534,17 +417,11 @@ var File_holos_console_v1_policy_state_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_policy_state_proto_rawDesc = "" +
 	"\n" +
-	"#holos/console/v1/policy_state.proto\x12\x10holos.console.v1\"h\n" +
-	"\x10TemplateScopeRef\x125\n" +
-	"\x05scope\x18\x01 \x01(\x0e2\x1f.holos.console.v1.TemplateScopeR\x05scope\x12\x1d\n" +
-	"\n" +
-	"scope_name\x18\x02 \x01(\tR\tscopeName\"\xac\x01\n" +
-	"\x11LinkedTemplateRef\x125\n" +
-	"\x05scope\x18\x01 \x01(\x0e2\x1f.holos.console.v1.TemplateScopeR\x05scope\x12\x1d\n" +
-	"\n" +
-	"scope_name\x18\x02 \x01(\tR\tscopeName\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12-\n" +
-	"\x12version_constraint\x18\x04 \x01(\tR\x11versionConstraint\"\xe7\x02\n" +
+	"#holos/console/v1/policy_state.proto\x12\x10holos.console.v1\"t\n" +
+	"\x11LinkedTemplateRef\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12-\n" +
+	"\x12version_constraint\x18\x03 \x01(\tR\x11versionConstraint\"\xe7\x02\n" +
 	"\vPolicyState\x12D\n" +
 	"\vapplied_set\x18\x01 \x03(\v2#.holos.console.v1.LinkedTemplateRefR\n" +
 	"appliedSet\x12D\n" +
@@ -559,17 +436,12 @@ const file_holos_console_v1_policy_state_proto_rawDesc = "" +
 	"\aproject\x18\x01 \x01(\tR\aproject\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"W\n" +
 	" GetDeploymentPolicyStateResponse\x123\n" +
-	"\x05state\x18\x01 \x01(\v2\x1d.holos.console.v1.PolicyStateR\x05state\"t\n" +
-	"$GetProjectTemplatePolicyStateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\x05state\x18\x01 \x01(\v2\x1d.holos.console.v1.PolicyStateR\x05state\"X\n" +
+	"$GetProjectTemplatePolicyStateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\\\n" +
 	"%GetProjectTemplatePolicyStateResponse\x123\n" +
-	"\x05state\x18\x01 \x01(\v2\x1d.holos.console.v1.PolicyStateR\x05state*\x87\x01\n" +
-	"\rTemplateScope\x12\x1e\n" +
-	"\x1aTEMPLATE_SCOPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
-	"\x1bTEMPLATE_SCOPE_ORGANIZATION\x10\x01\x12\x19\n" +
-	"\x15TEMPLATE_SCOPE_FOLDER\x10\x02\x12\x1a\n" +
-	"\x16TEMPLATE_SCOPE_PROJECT\x10\x03BCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x05state\x18\x01 \x01(\v2\x1d.holos.console.v1.PolicyStateR\x05stateBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_policy_state_proto_rawDescOnce sync.Once
@@ -583,33 +455,27 @@ func file_holos_console_v1_policy_state_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_policy_state_proto_rawDescData
 }
 
-var file_holos_console_v1_policy_state_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_policy_state_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_holos_console_v1_policy_state_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_holos_console_v1_policy_state_proto_goTypes = []any{
-	(TemplateScope)(0),                            // 0: holos.console.v1.TemplateScope
-	(*TemplateScopeRef)(nil),                      // 1: holos.console.v1.TemplateScopeRef
-	(*LinkedTemplateRef)(nil),                     // 2: holos.console.v1.LinkedTemplateRef
-	(*PolicyState)(nil),                           // 3: holos.console.v1.PolicyState
-	(*GetDeploymentPolicyStateRequest)(nil),       // 4: holos.console.v1.GetDeploymentPolicyStateRequest
-	(*GetDeploymentPolicyStateResponse)(nil),      // 5: holos.console.v1.GetDeploymentPolicyStateResponse
-	(*GetProjectTemplatePolicyStateRequest)(nil),  // 6: holos.console.v1.GetProjectTemplatePolicyStateRequest
-	(*GetProjectTemplatePolicyStateResponse)(nil), // 7: holos.console.v1.GetProjectTemplatePolicyStateResponse
+	(*LinkedTemplateRef)(nil),                     // 0: holos.console.v1.LinkedTemplateRef
+	(*PolicyState)(nil),                           // 1: holos.console.v1.PolicyState
+	(*GetDeploymentPolicyStateRequest)(nil),       // 2: holos.console.v1.GetDeploymentPolicyStateRequest
+	(*GetDeploymentPolicyStateResponse)(nil),      // 3: holos.console.v1.GetDeploymentPolicyStateResponse
+	(*GetProjectTemplatePolicyStateRequest)(nil),  // 4: holos.console.v1.GetProjectTemplatePolicyStateRequest
+	(*GetProjectTemplatePolicyStateResponse)(nil), // 5: holos.console.v1.GetProjectTemplatePolicyStateResponse
 }
 var file_holos_console_v1_policy_state_proto_depIdxs = []int32{
-	0, // 0: holos.console.v1.TemplateScopeRef.scope:type_name -> holos.console.v1.TemplateScope
-	0, // 1: holos.console.v1.LinkedTemplateRef.scope:type_name -> holos.console.v1.TemplateScope
-	2, // 2: holos.console.v1.PolicyState.applied_set:type_name -> holos.console.v1.LinkedTemplateRef
-	2, // 3: holos.console.v1.PolicyState.current_set:type_name -> holos.console.v1.LinkedTemplateRef
-	2, // 4: holos.console.v1.PolicyState.added_refs:type_name -> holos.console.v1.LinkedTemplateRef
-	2, // 5: holos.console.v1.PolicyState.removed_refs:type_name -> holos.console.v1.LinkedTemplateRef
-	3, // 6: holos.console.v1.GetDeploymentPolicyStateResponse.state:type_name -> holos.console.v1.PolicyState
-	1, // 7: holos.console.v1.GetProjectTemplatePolicyStateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3, // 8: holos.console.v1.GetProjectTemplatePolicyStateResponse.state:type_name -> holos.console.v1.PolicyState
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	0, // 0: holos.console.v1.PolicyState.applied_set:type_name -> holos.console.v1.LinkedTemplateRef
+	0, // 1: holos.console.v1.PolicyState.current_set:type_name -> holos.console.v1.LinkedTemplateRef
+	0, // 2: holos.console.v1.PolicyState.added_refs:type_name -> holos.console.v1.LinkedTemplateRef
+	0, // 3: holos.console.v1.PolicyState.removed_refs:type_name -> holos.console.v1.LinkedTemplateRef
+	1, // 4: holos.console.v1.GetDeploymentPolicyStateResponse.state:type_name -> holos.console.v1.PolicyState
+	1, // 5: holos.console.v1.GetProjectTemplatePolicyStateResponse.state:type_name -> holos.console.v1.PolicyState
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_policy_state_proto_init() }
@@ -622,14 +488,13 @@ func file_holos_console_v1_policy_state_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_policy_state_proto_rawDesc), len(file_holos_console_v1_policy_state_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   7,
+			NumEnums:      0,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_holos_console_v1_policy_state_proto_goTypes,
 		DependencyIndexes: file_holos_console_v1_policy_state_proto_depIdxs,
-		EnumInfos:         file_holos_console_v1_policy_state_proto_enumTypes,
 		MessageInfos:      file_holos_console_v1_policy_state_proto_msgTypes,
 	}.Build()
 	File_holos_console_v1_policy_state_proto = out.File

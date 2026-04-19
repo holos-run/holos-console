@@ -4,12 +4,16 @@ import {
   type TemplatePolicyBindingTargetRef,
   type LinkedTemplatePolicyRef,
 } from '@/queries/templatePolicyBindings'
-import { TemplateScope } from '@/queries/templates'
+import {
+  TemplateScope,
+  namespaceFor,
+  scopeFromNamespace,
+  scopeNameFromNamespace,
+} from '@/lib/scope-shim'
 import {
   TemplatePolicyBindingTargetRefSchema,
   LinkedTemplatePolicyRefSchema,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
-import { TemplateScopeRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 
 /**
  * Draft shape for a single target ref while the user is authoring a binding.
@@ -83,10 +87,7 @@ export function targetRefProtoToDraft(
 /** Build a LinkedTemplatePolicyRef proto from a binding draft. */
 export function draftToPolicyRef(draft: BindingDraft): LinkedTemplatePolicyRef {
   return create(LinkedTemplatePolicyRefSchema, {
-    scopeRef: create(TemplateScopeRefSchema, {
-      scope: draft.policyScope,
-      scopeName: draft.policyScopeName,
-    }),
+    namespace: namespaceFor(draft.policyScope, draft.policyScopeName),
     name: draft.policyName,
   })
 }
@@ -104,8 +105,9 @@ export function bindingProtoToDraft(
     targetRefs?: TemplatePolicyBindingTargetRef[]
   },
 ): BindingDraft {
-  const policyScope = binding.policyRef?.scopeRef?.scope ?? TemplateScope.UNSPECIFIED
-  const policyScopeName = binding.policyRef?.scopeRef?.scopeName ?? ''
+  const policyNamespace = binding.policyRef?.namespace ?? ''
+  const policyScope = scopeFromNamespace(policyNamespace)
+  const policyScopeName = scopeNameFromNamespace(policyNamespace)
   const policyName = binding.policyRef?.name ?? ''
   return {
     name: binding.name ?? '',

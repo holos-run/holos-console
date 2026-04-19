@@ -22,8 +22,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, makeProjectScope, TemplateScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, makeProjectScope, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
+import { TemplateScope, namespaceFor, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
@@ -181,10 +182,12 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   }
 
   const handleOpenLinkedEdit = () => {
-    setDraftLinkedTemplateKeys((template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name)))
+    setDraftLinkedTemplateKeys((template?.linkedTemplates ?? []).map(t =>
+      linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name),
+    ))
     const vcMap = new Map<string, string>()
     for (const lt of template?.linkedTemplates ?? []) {
-      vcMap.set(linkableKey(lt.scope, lt.scopeName, lt.name), lt.versionConstraint ?? '')
+      vcMap.set(linkableKey(scopeFromNamespace(lt.namespace), scopeNameFromNamespace(lt.namespace), lt.name), lt.versionConstraint ?? '')
     }
     setDraftVersionConstraints(vcMap)
     setLinkedEditError(null)
@@ -198,7 +201,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         .map((key) => {
           const parsed = parseLinkableKey(key)
           const vc = draftVersionConstraints.get(key) ?? ''
-          return { scope: parsed.scope, scopeName: parsed.scopeName, name: parsed.name, versionConstraint: vc } as LinkedTemplateRef
+          return {
+            namespace: namespaceFor(parsed.scope, parsed.scopeName),
+            name: parsed.name,
+            versionConstraint: vc,
+          } as LinkedTemplateRef
         })
       await updateMutation.mutateAsync({
         linkedTemplates,
@@ -319,8 +326,10 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                         </div>
                       )
                     }
-                    const linkedKeys = (template?.linkedTemplates ?? []).map(t => linkableKey(t.scope, t.scopeName, t.name))
-                    const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                    const linkedKeys = (template?.linkedTemplates ?? []).map(t =>
+                      linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name),
+                    )
+                    const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
                     // `forced=true` flags ancestor templates that a
                     // TemplatePolicy REQUIRE rule pins onto this project at
                     // render time. Surface them alongside explicitly linked
@@ -341,11 +350,12 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       <div className="flex flex-col gap-2">
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
-                            const scopeLbl = t.scopeRef?.scope === TemplateScope.ORGANIZATION ? 'Org' : t.scopeRef?.scope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            const tScope = scopeFromNamespace(t.namespace)
+                            const scopeLbl = tScope === TemplateScope.ORGANIZATION ? 'Org' : tScope === TemplateScope.FOLDER ? 'Folder' : undefined
                             const forced = !!t.forced
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
-                              (u) => u.ref?.scope === t.scopeRef?.scope && u.ref?.scopeName === t.scopeRef?.scopeName && u.ref?.name === t.name
+                              (u) => u.ref?.namespace === t.namespace && u.ref?.name === t.name
                             )
                             const currentVersion = updateEntry?.currentVersion
                             const latestVersion = updateEntry?.latestVersion
@@ -555,14 +565,14 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <div className="space-y-4" aria-label="Linked platform templates">
             {(() => {
               const orgTemplates = linkableTemplates.filter(
-                (t) => t.scopeRef?.scope === TemplateScope.ORGANIZATION,
+                (t) => scopeFromNamespace(t.namespace) === TemplateScope.ORGANIZATION,
               )
               const folderTemplates = linkableTemplates.filter(
-                (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
+                (t) => scopeFromNamespace(t.namespace) === TemplateScope.FOLDER,
               )
               const renderGroup = (templates: typeof linkableTemplates) =>
                 templates.map((t) => {
-                  const key = linkableKey(t.scopeRef?.scope, t.scopeRef?.scopeName, t.name)
+                  const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
                   const hasReleases = t.releases && t.releases.length > 0
                   const forced = !!t.forced
                   return (

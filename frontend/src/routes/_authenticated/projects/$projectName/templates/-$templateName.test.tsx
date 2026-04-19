@@ -604,9 +604,9 @@ describe('DeploymentTemplateDetailPage', () => {
     // resolution at render time (via the folder resolver); the user cannot
     // opt out via this form.
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' } },
-      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', forced: false, scopeRef: { scope: 2, scopeName: 'platform' } },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, namespace: "holos-org-acme" },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, namespace: "holos-org-acme" },
+      { name: 'team-network-policy', displayName: 'Team Network Policy', description: 'Adds network policy', forced: false, namespace: "holos-fld-platform" },
     ]
 
     it('shows linked templates section with empty state when no linkable templates exist', () => {
@@ -659,7 +659,7 @@ describe('DeploymentTemplateDetailPage', () => {
     it('does not render Always applied badge on non-forced linked templates', () => {
       const nonForced = mockLinkable.map((t) => ({ ...t, forced: false }))
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: nonForced, isPending: false })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme' }] })
       render(<DeploymentTemplateDetailPage />)
       // No forced templates, so the Always applied badge is not shown.
       expect(screen.queryByText(/always applied/i)).not.toBeInTheDocument()
@@ -667,7 +667,7 @@ describe('DeploymentTemplateDetailPage', () => {
 
     it('shows linked template names as badges', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText('HTTPRoute Gateway')).toBeInTheDocument()
     })
@@ -695,7 +695,7 @@ describe('DeploymentTemplateDetailPage', () => {
 
     it('clicking edit linked templates button opens dialog', async () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme' }] })
       const user = userEvent.setup()
       render(<DeploymentTemplateDetailPage />)
       await user.click(screen.getByRole('button', { name: /edit linked platform templates/i }))
@@ -741,7 +741,7 @@ describe('DeploymentTemplateDetailPage', () => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
             linkedTemplates: expect.arrayContaining([
-              expect.objectContaining({ scope: 1, scopeName: 'acme', name: 'httproute' }),
+              expect.objectContaining({ namespace: 'holos-org-acme', name: 'httproute' }),
             ]),
             updateLinkedTemplates: true,
           }),
@@ -813,7 +813,7 @@ describe('DeploymentTemplateDetailPage', () => {
     it('useRenderTemplate is called with template linked templates', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
-        { name: 'httproute', scope: 1, scopeName: 'acme' },
+        { name: 'httproute', namespace: 'holos-org-acme' },
       ] })
       render(<DeploymentTemplateDetailPage />)
       const calls = (useRenderTemplate as Mock).mock.calls
@@ -821,7 +821,7 @@ describe('DeploymentTemplateDetailPage', () => {
       // arg[5] is linkedTemplates
       expect(lastCall[5]).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'httproute', scope: 1, scopeName: 'acme' }),
+          expect.objectContaining({ name: 'httproute', namespace: 'holos-org-acme' }),
         ]),
       )
     })
@@ -839,8 +839,8 @@ describe('DeploymentTemplateDetailPage', () => {
     it('shows scope badge per template in read-only display', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [
-        { name: 'httproute', scope: 1, scopeName: 'acme' },
-        { name: 'team-network-policy', scope: 2, scopeName: 'platform' },
+        { name: 'httproute', namespace: 'holos-org-acme' },
+        { name: 'team-network-policy', namespace: 'holos-fld-platform' },
       ] })
       render(<DeploymentTemplateDetailPage />)
       // Org badge for httproute and reference-grant (mandatory)
@@ -869,21 +869,21 @@ describe('DeploymentTemplateDetailPage', () => {
 
   describe('version status indicator', () => {
     const mockLinkable = [
-      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
-      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, scopeRef: { scope: 1, scopeName: 'acme' }, releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
-      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', forced: false, scopeRef: { scope: 2, scopeName: 'platform' }, releases: [] },
+      { name: 'reference-grant', displayName: 'Reference Grant', description: 'Adds a ReferenceGrant', forced: true, namespace: "holos-org-acme", releases: [{ version: '1.0.0' }, { version: '1.1.0' }] },
+      { name: 'httproute', displayName: 'HTTPRoute Gateway', description: 'Adds an HTTPRoute', forced: false, namespace: "holos-org-acme", releases: [{ version: '2.0.0' }, { version: '2.1.0' }] },
+      { name: 'no-releases', displayName: 'No Releases Template', description: 'No releases', forced: false, namespace: "holos-fld-platform", releases: [] },
     ]
 
     it('shows green check icon when current version equals latest version', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       ;(useCheckUpdates as Mock).mockReturnValue({
         data: [
-          { ref: { scope: 1, scopeName: 'acme', name: 'httproute' }, currentVersion: '2.1.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
+          { ref: { namespace: 'holos-org-acme', name: 'httproute' }, currentVersion: '2.1.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
         ],
         isPending: false,
         error: null,
       })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme', versionConstraint: '^2.0.0' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme', versionConstraint: '^2.0.0' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByLabelText('Up to date')).toBeInTheDocument()
       expect(screen.getByText('v2.1.0')).toBeInTheDocument()
@@ -893,12 +893,12 @@ describe('DeploymentTemplateDetailPage', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       ;(useCheckUpdates as Mock).mockReturnValue({
         data: [
-          { ref: { scope: 1, scopeName: 'acme', name: 'httproute' }, currentVersion: '2.0.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
+          { ref: { namespace: 'holos-org-acme', name: 'httproute' }, currentVersion: '2.0.0', latestVersion: '2.1.0', latestCompatibleVersion: '2.1.0', breakingUpdateAvailable: false },
         ],
         isPending: false,
         error: null,
       })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme', versionConstraint: '^2.0.0' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme', versionConstraint: '^2.0.0' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByLabelText('Update available')).toBeInTheDocument()
       expect(screen.getByText('v2.0.0')).toBeInTheDocument()
@@ -908,19 +908,19 @@ describe('DeploymentTemplateDetailPage', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
       ;(useCheckUpdates as Mock).mockReturnValue({
         data: [
-          { ref: { scope: 2, scopeName: 'platform', name: 'no-releases' }, currentVersion: '', latestVersion: '', latestCompatibleVersion: '', breakingUpdateAvailable: false },
+          { ref: { namespace: 'holos-fld-platform', name: 'no-releases' }, currentVersion: '', latestVersion: '', latestCompatibleVersion: '', breakingUpdateAvailable: false },
         ],
         isPending: false,
         error: null,
       })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'no-releases', scope: 2, scopeName: 'platform' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'no-releases', namespace: 'holos-fld-platform' }] })
       render(<DeploymentTemplateDetailPage />)
       expect(screen.getByText('unversioned')).toBeInTheDocument()
     })
 
     it('passes includeCurrent: true to useCheckUpdates', () => {
       ;(useListLinkableTemplates as Mock).mockReturnValue({ data: mockLinkable, isPending: false })
-      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', scope: 1, scopeName: 'acme' }] })
+      setupMocks(Role.OWNER, { ...mockTemplate, linkedTemplates: [{ name: 'httproute', namespace: 'holos-org-acme' }] })
       render(<DeploymentTemplateDetailPage />)
       // useCheckUpdates should be called with scope, templateName, and options including includeCurrent
       expect(useCheckUpdates as Mock).toHaveBeenCalledWith(
@@ -942,9 +942,9 @@ describe('DeploymentTemplateDetailPage', () => {
       ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
         data: {
           $typeName: 'holos.console.v1.PolicyState',
-          appliedSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
-          currentSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'base', versionConstraint: '' }],
-          addedRefs: drift ? [{ $typeName: 'holos.console.v1.LinkedTemplateRef', scope: 1, scopeName: 'acme', name: 'sidecar', versionConstraint: '' }] : [],
+          appliedSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'base', versionConstraint: '' }],
+          currentSet: [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'base', versionConstraint: '' }],
+          addedRefs: drift ? [{ $typeName: 'holos.console.v1.LinkedTemplateRef', namespace: 'holos-org-acme', name: 'sidecar', versionConstraint: '' }] : [],
           removedRefs: [],
           drift,
           hasAppliedState: true,

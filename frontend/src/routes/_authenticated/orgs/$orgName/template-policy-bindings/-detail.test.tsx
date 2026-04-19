@@ -100,7 +100,7 @@ function makeBinding() {
     description: 'Attach require-http to ingress',
     creatorEmail: 'jane@example.com',
     policyRef: {
-      scopeRef: { scope: 1, scopeName: 'test-org' },
+      namespace: "holos-org-test-org",
       name: 'require-http',
     },
     targetRefs: [

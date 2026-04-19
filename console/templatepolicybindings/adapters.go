@@ -11,7 +11,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // PolicyExistsGetter is the narrow interface this package asks of the
@@ -21,7 +21,7 @@ import (
 // console/templatepolicies (which would create a cycle once the policy
 // resolver also imports bindings in HOL-596).
 type PolicyExistsGetter interface {
-	GetPolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (*corev1.ConfigMap, error)
+	GetPolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (*corev1.ConfigMap, error)
 }
 
 // PolicyExistsAdapter implements PolicyExistsResolver over a
@@ -42,7 +42,7 @@ func NewPolicyExistsAdapter(g PolicyExistsGetter) *PolicyExistsAdapter {
 // PolicyExists reports whether a TemplatePolicy with the given scope and
 // name exists. Returns (false, nil) for K8s NotFound so the handler can
 // cleanly reject with CodeInvalidArgument.
-func (a *PolicyExistsAdapter) PolicyExists(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (bool, error) {
+func (a *PolicyExistsAdapter) PolicyExists(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (bool, error) {
 	if a == nil || a.Getter == nil {
 		return false, fmt.Errorf("policy-exists adapter is not configured")
 	}
@@ -120,7 +120,7 @@ func NewProjectExistsAdapter(client kubernetes.Interface, r *resolver.Resolver) 
 // given project slug exists. Returns (false, nil) if the namespace is
 // absent or unmanaged; returns an error only for unexpected K8s
 // failures.
-func (a *ProjectExistsAdapter) ProjectExists(ctx context.Context, _ consolev1.TemplateScope, _, projectName string) (bool, error) {
+func (a *ProjectExistsAdapter) ProjectExists(ctx context.Context, _ scopeshim.Scope, _, projectName string) (bool, error) {
 	if a == nil || a.Client == nil || a.Resolver == nil {
 		return false, fmt.Errorf("project-exists adapter is not configured")
 	}

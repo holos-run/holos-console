@@ -2,10 +2,15 @@ import { create } from '@bufbuild/protobuf'
 import { TemplatePolicyKind } from '@/queries/templatePolicies'
 import type { TemplatePolicyRule } from '@/queries/templatePolicies'
 import {
-  TemplateScope,
   linkableKey,
   parseLinkableKey,
 } from '@/queries/templates'
+import {
+  TemplateScope,
+  namespaceFor,
+  scopeFromNamespace,
+  scopeNameFromNamespace,
+} from '@/lib/scope-shim'
 import { TemplatePolicyRuleSchema } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 
@@ -44,8 +49,7 @@ export function ruleDraftToProto(draft: RuleDraft): TemplatePolicyRule {
   return create(TemplatePolicyRuleSchema, {
     kind: draft.kind,
     template: create(LinkedTemplateRefSchema, {
-      scope: scope as TemplateScope,
-      scopeName,
+      namespace: namespaceFor(scope as TemplateScope, scopeName),
       name,
       versionConstraint: draft.versionConstraint,
     }),
@@ -64,7 +68,7 @@ export function ruleProtoToDraft(rule: TemplatePolicyRule): RuleDraft {
   return {
     kind: rule.kind,
     templateKey: tmpl
-      ? linkableKey(tmpl.scope, tmpl.scopeName, tmpl.name)
+      ? linkableKey(scopeFromNamespace(tmpl.namespace), scopeNameFromNamespace(tmpl.namespace), tmpl.name)
       : '',
     versionConstraint: tmpl?.versionConstraint ?? '',
   }

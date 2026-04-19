@@ -9,7 +9,7 @@ import (
 
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // OrgGrantResolver resolves organization-level grants for access checks.
@@ -30,13 +30,13 @@ type FolderGrantResolver interface {
 // table exists only at org/folder, so any attempt to check a project-scope
 // policy here is a programming error that earlier handler validation should
 // have caught.
-func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope consolev1.TemplateScope, scopeName string, perm rbac.Permission) error {
+func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, perm rbac.Permission) error {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return h.checkOrgAccess(ctx, claims, scopeName, perm)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return h.checkFolderAccess(ctx, claims, scopeName, perm)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template policies cannot be scoped to a project; use an organization or folder scope"))
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))

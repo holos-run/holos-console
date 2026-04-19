@@ -3,7 +3,7 @@ import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb'
+import { TemplateScope, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
 import type {
   LinkedTemplateRef,
   PolicyState,
@@ -56,15 +56,17 @@ export interface PolicySectionProps {
  * Example: "org:acme/base-app", "folder:infra/istio", "project:web/api@>=1.0.0".
  */
 function formatRef(ref: LinkedTemplateRef): string {
+  const scope = scopeFromNamespace(ref.namespace)
+  const scopeName = scopeNameFromNamespace(ref.namespace)
   const scopeLabel =
-    ref.scope === TemplateScope.ORGANIZATION
+    scope === TemplateScope.ORGANIZATION
       ? 'org'
-      : ref.scope === TemplateScope.FOLDER
+      : scope === TemplateScope.FOLDER
         ? 'folder'
-        : ref.scope === TemplateScope.PROJECT
+        : scope === TemplateScope.PROJECT
           ? 'project'
           : 'unknown'
-  const base = `${scopeLabel}:${ref.scopeName}/${ref.name}`
+  const base = `${scopeLabel}:${scopeName}/${ref.name}`
   return ref.versionConstraint ? `${base}@${ref.versionConstraint}` : base
 }
 
@@ -80,7 +82,7 @@ function RefList({ refs, testid }: { refs: LinkedTemplateRef[]; testid: string }
     <ul className="flex flex-col gap-1" data-testid={testid}>
       {refs.map((ref) => (
         <li
-          key={`${ref.scope}/${ref.scopeName}/${ref.name}/${ref.versionConstraint ?? ''}`}
+          key={`${ref.namespace}/${ref.name}/${ref.versionConstraint ?? ''}`}
           className="font-mono text-xs text-muted-foreground"
         >
           {formatRef(ref)}

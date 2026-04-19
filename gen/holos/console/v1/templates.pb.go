@@ -137,10 +137,11 @@ func (x *TemplateDefaults) GetDescription() string {
 // GetTemplateDefaultsRequest requests the defaults block for a template.
 type GetTemplateDefaultsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope of the template. Only
-	// TEMPLATE_SCOPE_PROJECT is meaningful today, but the scope field is
-	// preserved for symmetry with other template RPCs and future use.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the template. Only
+	// project namespaces carry meaningful defaults today, but this RPC is
+	// accepted at any scope for symmetry; non-project namespaces return an
+	// empty TemplateDefaults.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the template's DNS label slug.
 	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -177,11 +178,11 @@ func (*GetTemplateDefaultsRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetTemplateDefaultsRequest) GetScope() *TemplateScopeRef {
+func (x *GetTemplateDefaultsRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *GetTemplateDefaultsRequest) GetName() string {
@@ -240,14 +241,14 @@ func (x *GetTemplateDefaultsResponse) GetDefaults() *TemplateDefaults {
 }
 
 // Template is a CUE template that produces Kubernetes resource manifests.
-// It is stored as a Kubernetes ConfigMap in the namespace of its owning scope.
-// (ADR 021 Decision 4)
+// It is stored as a Kubernetes ConfigMap in the namespace identified by
+// `namespace` (ADR 021 Decision 4).
 type Template struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// name is the unique identifier (DNS label slug) within the scope.
+	// name is the unique identifier (DNS label slug) within the namespace.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// scope_ref identifies the owning scope (level + name).
-	ScopeRef *TemplateScopeRef `protobuf:"bytes,2,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
+	// namespace is the Kubernetes namespace that owns this template.
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// display_name is a human-readable name.
 	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// description explains what the template produces.
@@ -255,12 +256,12 @@ type Template struct {
 	// cue_template is the CUE source code.
 	CueTemplate string `protobuf:"bytes,5,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
 	// defaults provides optional default values for deployment form fields.
-	// Only meaningful for project-scope templates.
+	// Only meaningful for project-namespace templates.
 	Defaults *TemplateDefaults `protobuf:"bytes,6,opt,name=defaults,proto3" json:"defaults,omitempty"`
-	// linked_templates lists templates in ancestor scopes to unify with this
-	// template at render time. Replaces linked_org_templates from v1alpha1.
-	// Ancestor templates forced onto a project by a TemplatePolicy REQUIRE rule
-	// always unify regardless of this list.
+	// linked_templates lists templates in ancestor namespaces to unify with
+	// this template at render time. Replaces linked_org_templates from
+	// v1alpha1. Ancestor templates forced onto a project by a TemplatePolicy
+	// REQUIRE rule always unify regardless of this list.
 	LinkedTemplates []*LinkedTemplateRef `protobuf:"bytes,7,rep,name=linked_templates,json=linkedTemplates,proto3" json:"linked_templates,omitempty"`
 	// enabled controls whether this template is eligible to appear in selection
 	// lists and to participate in render-time unification. Disabled templates
@@ -312,11 +313,11 @@ func (x *Template) GetName() string {
 	return ""
 }
 
-func (x *Template) GetScopeRef() *TemplateScopeRef {
+func (x *Template) GetNamespace() string {
 	if x != nil {
-		return x.ScopeRef
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *Template) GetDisplayName() string {
@@ -368,10 +369,10 @@ func (x *Template) GetVersion() string {
 	return ""
 }
 
-// ListTemplatesRequest requests all templates visible in the given scope.
+// ListTemplatesRequest requests all templates visible in the given namespace.
 type ListTemplatesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Scope         *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -406,11 +407,11 @@ func (*ListTemplatesRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *ListTemplatesRequest) GetScope() *TemplateScopeRef {
+func (x *ListTemplatesRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 // ListTemplatesResponse contains the list of templates.
@@ -458,10 +459,10 @@ func (x *ListTemplatesResponse) GetTemplates() []*Template {
 	return nil
 }
 
-// GetTemplateRequest requests a single template by name within a scope.
+// GetTemplateRequest requests a single template by (namespace, name).
 type GetTemplateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Scope         *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -497,11 +498,11 @@ func (*GetTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *GetTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *GetTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *GetTemplateRequest) GetName() string {
@@ -556,10 +557,10 @@ func (x *GetTemplateResponse) GetTemplate() *Template {
 	return nil
 }
 
-// CreateTemplateRequest creates a new template in the given scope.
+// CreateTemplateRequest creates a new template in the given namespace.
 type CreateTemplateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Scope         *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Template      *Template              `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -595,11 +596,11 @@ func (*CreateTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *CreateTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *CreateTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *CreateTemplateRequest) GetTemplate() *Template {
@@ -656,9 +657,9 @@ func (x *CreateTemplateResponse) GetName() string {
 
 // UpdateTemplateRequest updates an existing template.
 type UpdateTemplateRequest struct {
-	state    protoimpl.MessageState `protogen:"open.v1"`
-	Scope    *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	Template *Template              `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Template  *Template              `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
 	// update_linked_templates signals that the linked_templates field on the template
 	// message should be written. When false (default), existing linked templates are
 	// preserved regardless of the template.linked_templates value. When true, the
@@ -699,11 +700,11 @@ func (*UpdateTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *UpdateTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *UpdateTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *UpdateTemplateRequest) GetTemplate() *Template {
@@ -760,7 +761,7 @@ func (*UpdateTemplateResponse) Descriptor() ([]byte, []int) {
 // DeleteTemplateRequest deletes a template.
 type DeleteTemplateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Scope         *TemplateScopeRef      `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -796,11 +797,11 @@ func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *DeleteTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *DeleteTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *DeleteTemplateRequest) GetName() string {
@@ -853,8 +854,9 @@ func (*DeleteTemplateResponse) Descriptor() ([]byte, []int) {
 // (ADR 021 Decision 6)
 type RenderTemplateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope for resolving ancestor templates.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the render target, used
+	// to resolve ancestor templates.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// cue_template is the CUE source to evaluate. May be a draft (unsaved) value.
 	CueTemplate string `protobuf:"bytes,2,opt,name=cue_template,json=cueTemplate,proto3" json:"cue_template,omitempty"`
 	// cue_platform_input contains CUE source for platform-provided values
@@ -865,8 +867,8 @@ type RenderTemplateRequest struct {
 	// cue_template at the "input" path to supply concrete values for template
 	// parameters matching the ProjectInput schema.
 	CueProjectInput string `protobuf:"bytes,4,opt,name=cue_project_input,json=cueProjectInput,proto3" json:"cue_project_input,omitempty"`
-	// linked_templates lists scope-qualified template references to include in
-	// preview unification. Allows draft templates to preview their effective
+	// linked_templates lists (namespace, name) template references to include
+	// in preview unification. Allows draft templates to preview their effective
 	// rendering with the chosen linking list before saving.
 	LinkedTemplates []*LinkedTemplateRef `protobuf:"bytes,5,rep,name=linked_templates,json=linkedTemplates,proto3" json:"linked_templates,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -903,11 +905,11 @@ func (*RenderTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *RenderTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *RenderTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *RenderTemplateRequest) GetCueTemplate() string {
@@ -1105,11 +1107,12 @@ func (x *RenderTemplateResponse) GetProjectResourcesStructuredJson() string {
 	return ""
 }
 
-// CloneTemplateRequest copies an existing template to a new name within the same scope.
+// CloneTemplateRequest copies an existing template to a new name within the
+// same namespace.
 type CloneTemplateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// source_name is the name of the template to copy.
 	SourceName string `protobuf:"bytes,2,opt,name=source_name,json=sourceName,proto3" json:"source_name,omitempty"`
 	// name is the DNS label slug for the new template.
@@ -1150,11 +1153,11 @@ func (*CloneTemplateRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *CloneTemplateRequest) GetScope() *TemplateScopeRef {
+func (x *CloneTemplateRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *CloneTemplateRequest) GetSourceName() string {
@@ -1223,20 +1226,22 @@ func (x *CloneTemplateResponse) GetName() string {
 	return ""
 }
 
-// ListLinkableTemplatesRequest requests enabled templates in ancestor scopes
-// that the given scope may explicitly link.
+// ListLinkableTemplatesRequest requests enabled templates in ancestor
+// namespaces that the given namespace may explicitly link.
 type ListLinkableTemplatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope is the starting scope (e.g. SCOPE_PROJECT for a project template).
-	// The handler walks up the hierarchy and returns enabled ancestor templates.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the starting namespace (e.g. a project namespace for a
+	// project template). The handler walks up the hierarchy and returns enabled
+	// ancestor templates.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// include_self_scope, when true, also returns enabled templates at the
-	// request's own scope in addition to ancestor-scope templates. Default false
-	// preserves the existing semantics for project-template linking UIs, which
-	// only link against ancestor-scope templates. The TemplatePolicy editor sets
-	// this to true so org-scope policies can pick org-scope templates (there are
-	// no ancestors to pick from otherwise) and folder-scope policies can pick
-	// templates owned by the same folder. See HOL-561.
+	// request's own namespace in addition to ancestor-namespace templates.
+	// Default false preserves the existing semantics for project-template
+	// linking UIs, which only link against ancestor-namespace templates. The
+	// TemplatePolicy editor sets this to true so org-namespace policies can
+	// pick org-namespace templates (there are no ancestors to pick from
+	// otherwise) and folder-namespace policies can pick templates owned by the
+	// same folder. See HOL-561.
 	IncludeSelfScope bool `protobuf:"varint,2,opt,name=include_self_scope,json=includeSelfScope,proto3" json:"include_self_scope,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -1272,11 +1277,11 @@ func (*ListLinkableTemplatesRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *ListLinkableTemplatesRequest) GetScope() *TemplateScopeRef {
+func (x *ListLinkableTemplatesRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *ListLinkableTemplatesRequest) GetIncludeSelfScope() bool {
@@ -1289,8 +1294,8 @@ func (x *ListLinkableTemplatesRequest) GetIncludeSelfScope() bool {
 // LinkableTemplate describes a single template available for explicit linking.
 type LinkableTemplate struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope_ref identifies the scope that owns this template.
-	ScopeRef *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
+	// namespace is the Kubernetes namespace that owns this template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the template's DNS label slug.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// display_name is the human-readable name.
@@ -1350,11 +1355,11 @@ func (*LinkableTemplate) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *LinkableTemplate) GetScopeRef() *TemplateScopeRef {
+func (x *LinkableTemplate) GetNamespace() string {
 	if x != nil {
-		return x.ScopeRef
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *LinkableTemplate) GetName() string {
@@ -1437,11 +1442,12 @@ func (x *ListLinkableTemplatesResponse) GetTemplates() []*LinkableTemplate {
 	return nil
 }
 
-// ListAncestorTemplatesRequest requests templates from all ancestor scopes.
+// ListAncestorTemplatesRequest requests templates from all ancestor
+// namespaces of the given namespace.
 type ListAncestorTemplatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope is the starting scope (e.g. SCOPE_PROJECT).
-	Scope         *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the starting namespace (e.g. a project namespace).
+	Namespace     string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1476,14 +1482,14 @@ func (*ListAncestorTemplatesRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *ListAncestorTemplatesRequest) GetScope() *TemplateScopeRef {
+func (x *ListAncestorTemplatesRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
-// ListAncestorTemplatesResponse contains ancestor templates grouped by scope.
+// ListAncestorTemplatesResponse contains ancestor templates.
 type ListAncestorTemplatesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Templates     []*Template            `protobuf:"bytes,1,rep,name=templates,proto3" json:"templates,omitempty"`
@@ -1535,8 +1541,8 @@ type Release struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// template_name is the DNS label slug of the template this release belongs to.
 	TemplateName string `protobuf:"bytes,1,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
-	// scope_ref identifies the owning scope of the template.
-	ScopeRef *TemplateScopeRef `protobuf:"bytes,2,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
+	// namespace is the Kubernetes namespace that owns the template.
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// version is the semver version string (e.g. "1.2.3").
 	Version string `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	// changelog describes what changed in this release.
@@ -1591,11 +1597,11 @@ func (x *Release) GetTemplateName() string {
 	return ""
 }
 
-func (x *Release) GetScopeRef() *TemplateScopeRef {
+func (x *Release) GetNamespace() string {
 	if x != nil {
-		return x.ScopeRef
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *Release) GetVersion() string {
@@ -1728,9 +1734,9 @@ func (x *TemplateUpdate) GetBreakingUpdateAvailable() bool {
 // CreateReleaseRequest publishes a new release for a template.
 type CreateReleaseRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope of the template.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	// release is the release to create. template_name, scope_ref, version,
+	// namespace is the Kubernetes namespace that owns the template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// release is the release to create. template_name, namespace, version,
 	// cue_template, and defaults are required.
 	Release       *Release `protobuf:"bytes,2,opt,name=release,proto3" json:"release,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1767,11 +1773,11 @@ func (*CreateReleaseRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *CreateReleaseRequest) GetScope() *TemplateScopeRef {
+func (x *CreateReleaseRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *CreateReleaseRequest) GetRelease() *Release {
@@ -1829,8 +1835,8 @@ func (x *CreateReleaseResponse) GetRelease() *Release {
 // ListReleasesRequest requests all releases for a template.
 type ListReleasesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope of the template.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// template_name is the DNS label slug of the template.
 	TemplateName  string `protobuf:"bytes,2,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1867,11 +1873,11 @@ func (*ListReleasesRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{27}
 }
 
-func (x *ListReleasesRequest) GetScope() *TemplateScopeRef {
+func (x *ListReleasesRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *ListReleasesRequest) GetTemplateName() string {
@@ -1926,11 +1932,12 @@ func (x *ListReleasesResponse) GetReleases() []*Release {
 	return nil
 }
 
-// GetReleaseRequest requests a single release by template, scope, and version.
+// GetReleaseRequest requests a single release by (namespace, template_name,
+// version).
 type GetReleaseRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the owning scope of the template.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace that owns the template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// template_name is the DNS label slug of the template.
 	TemplateName string `protobuf:"bytes,2,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
 	// version is the semver version string to retrieve.
@@ -1969,11 +1976,11 @@ func (*GetReleaseRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{29}
 }
 
-func (x *GetReleaseRequest) GetScope() *TemplateScopeRef {
+func (x *GetReleaseRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *GetReleaseRequest) GetTemplateName() string {
@@ -2035,13 +2042,15 @@ func (x *GetReleaseResponse) GetRelease() *Release {
 	return nil
 }
 
-// CheckUpdatesRequest asks for available updates for linked templates in a scope.
+// CheckUpdatesRequest asks for available updates for linked templates in a
+// namespace.
 type CheckUpdatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// scope identifies the scope whose linked templates should be checked.
-	Scope *TemplateScopeRef `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	// namespace is the Kubernetes namespace whose linked templates should be
+	// checked.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// template_name is the template whose linked templates should be checked.
-	// If empty, all templates in the scope are checked.
+	// If empty, all templates in the namespace are checked.
 	TemplateName string `protobuf:"bytes,2,opt,name=template_name,json=templateName,proto3" json:"template_name,omitempty"`
 	// include_current, when true, causes the response to include entries for
 	// linked templates that are already at their latest compatible version (i.e.
@@ -2083,11 +2092,11 @@ func (*CheckUpdatesRequest) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *CheckUpdatesRequest) GetScope() *TemplateScopeRef {
+func (x *CheckUpdatesRequest) GetNamespace() string {
 	if x != nil {
-		return x.Scope
+		return x.Namespace
 	}
-	return nil
+	return ""
 }
 
 func (x *CheckUpdatesRequest) GetTemplateName() string {
@@ -2154,7 +2163,7 @@ var File_holos_console_v1_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\n" +
-	" holos/console/v1/templates.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"holos/console/v1/deployments.proto\x1a#holos/console/v1/policy_state.proto\x1a\x1bholos/console/v1/rbac.proto\"\xde\x01\n" +
+	" holos/console/v1/templates.proto\x12\x10holos.console.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"holos/console/v1/deployments.proto\x1a#holos/console/v1/policy_state.proto\"\xde\x01\n" +
 	"\x10TemplateDefaults\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
 	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x18\n" +
@@ -2163,15 +2172,15 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x03env\x18\x05 \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
 	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x12\n" +
 	"\x04name\x18\a \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\b \x01(\tR\vdescription\"j\n" +
-	"\x1aGetTemplateDefaultsRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\"N\n" +
+	"\x1aGetTemplateDefaultsRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"]\n" +
 	"\x1bGetTemplateDefaultsResponse\x12>\n" +
-	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\x9c\x03\n" +
+	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\xf9\x02\n" +
 	"\bTemplate\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
-	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12!\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12!\n" +
 	"\fcue_template\x18\x05 \x01(\tR\vcueTemplate\x12>\n" +
@@ -2179,32 +2188,32 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x10linked_templates\x18\a \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\x12\x18\n" +
 	"\aenabled\x18\t \x01(\bR\aenabled\x12\x18\n" +
 	"\aversion\x18\n" +
-	" \x01(\tR\aversionJ\x04\b\b\x10\tR\tmandatory\"P\n" +
-	"\x14ListTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"Q\n" +
+	" \x01(\tR\aversionJ\x04\b\b\x10\tR\tmandatory\"4\n" +
+	"\x14ListTemplatesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"Q\n" +
 	"\x15ListTemplatesResponse\x128\n" +
-	"\ttemplates\x18\x01 \x03(\v2\x1a.holos.console.v1.TemplateR\ttemplates\"b\n" +
-	"\x12GetTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\ttemplates\x18\x01 \x03(\v2\x1a.holos.console.v1.TemplateR\ttemplates\"F\n" +
+	"\x12GetTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"M\n" +
 	"\x13GetTemplateResponse\x126\n" +
-	"\btemplate\x18\x01 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\"\x89\x01\n" +
-	"\x15CreateTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x126\n" +
+	"\btemplate\x18\x01 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\"m\n" +
+	"\x15CreateTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x126\n" +
 	"\btemplate\x18\x02 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\",\n" +
 	"\x16CreateTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xc1\x01\n" +
-	"\x15UpdateTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x126\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa5\x01\n" +
+	"\x15UpdateTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x126\n" +
 	"\btemplate\x18\x02 \x01(\v2\x1a.holos.console.v1.TemplateR\btemplate\x126\n" +
 	"\x17update_linked_templates\x18\x03 \x01(\bR\x15updateLinkedTemplates\"\x18\n" +
-	"\x16UpdateTemplateResponse\"e\n" +
-	"\x15DeleteTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x12\n" +
+	"\x16UpdateTemplateResponse\"I\n" +
+	"\x15DeleteTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\x18\n" +
-	"\x16DeleteTemplateResponse\"\x9e\x02\n" +
-	"\x15RenderTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12!\n" +
+	"\x16DeleteTemplateResponse\"\x82\x02\n" +
+	"\x15RenderTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12!\n" +
 	"\fcue_template\x18\x02 \x01(\tR\vcueTemplate\x12,\n" +
 	"\x12cue_platform_input\x18\x03 \x01(\tR\x10cuePlatformInput\x12*\n" +
 	"\x11cue_project_input\x18\x04 \x01(\tR\x0fcueProjectInput\x12N\n" +
@@ -2226,34 +2235,34 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x14_platform_input_jsonB\x15\n" +
 	"\x13_project_input_jsonB%\n" +
 	"#_platform_resources_structured_jsonB$\n" +
-	"\"_project_resources_structured_json\"\xa8\x01\n" +
-	"\x14CloneTemplateRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12\x1f\n" +
+	"\"_project_resources_structured_json\"\x8c\x01\n" +
+	"\x14CloneTemplateRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1f\n" +
 	"\vsource_name\x18\x02 \x01(\tR\n" +
 	"sourceName\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"+\n" +
 	"\x15CloneTemplateResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x01\n" +
-	"\x1cListLinkableTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12,\n" +
-	"\x12include_self_scope\x18\x02 \x01(\bR\x10includeSelfScope\"\x8c\x02\n" +
-	"\x10LinkableTemplate\x12?\n" +
-	"\tscope_ref\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"j\n" +
+	"\x1cListLinkableTemplatesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12,\n" +
+	"\x12include_self_scope\x18\x02 \x01(\bR\x10includeSelfScope\"\xe9\x01\n" +
+	"\x10LinkableTemplate\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x125\n" +
 	"\breleases\x18\x06 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\x12\x16\n" +
 	"\x06forced\x18\a \x01(\bR\x06forcedJ\x04\b\x05\x10\x06R\tmandatory\"a\n" +
 	"\x1dListLinkableTemplatesResponse\x12@\n" +
-	"\ttemplates\x18\x01 \x03(\v2\".holos.console.v1.LinkableTemplateR\ttemplates\"X\n" +
-	"\x1cListAncestorTemplatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\"Y\n" +
+	"\ttemplates\x18\x01 \x03(\v2\".holos.console.v1.LinkableTemplateR\ttemplates\"<\n" +
+	"\x1cListAncestorTemplatesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"Y\n" +
 	"\x1dListAncestorTemplatesResponse\x128\n" +
-	"\ttemplates\x18\x01 \x03(\v2\x1a.holos.console.v1.TemplateR\ttemplates\"\xec\x02\n" +
+	"\ttemplates\x18\x01 \x03(\v2\x1a.holos.console.v1.TemplateR\ttemplates\"\xc9\x02\n" +
 	"\aRelease\x12#\n" +
-	"\rtemplate_name\x18\x01 \x01(\tR\ftemplateName\x12?\n" +
-	"\tscope_ref\x18\x02 \x01(\v2\".holos.console.v1.TemplateScopeRefR\bscopeRef\x12\x18\n" +
+	"\rtemplate_name\x18\x01 \x01(\tR\ftemplateName\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12\x1c\n" +
 	"\tchangelog\x18\x04 \x01(\tR\tchangelog\x12%\n" +
 	"\x0eupgrade_advice\x18\x05 \x01(\tR\rupgradeAdvice\x12!\n" +
@@ -2266,25 +2275,25 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x0fcurrent_version\x18\x02 \x01(\tR\x0ecurrentVersion\x12:\n" +
 	"\x19latest_compatible_version\x18\x03 \x01(\tR\x17latestCompatibleVersion\x12%\n" +
 	"\x0elatest_version\x18\x04 \x01(\tR\rlatestVersion\x12:\n" +
-	"\x19breaking_update_available\x18\x05 \x01(\bR\x17breakingUpdateAvailable\"\x85\x01\n" +
-	"\x14CreateReleaseRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x123\n" +
+	"\x19breaking_update_available\x18\x05 \x01(\bR\x17breakingUpdateAvailable\"i\n" +
+	"\x14CreateReleaseRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x123\n" +
 	"\arelease\x18\x02 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"L\n" +
 	"\x15CreateReleaseResponse\x123\n" +
-	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"t\n" +
-	"\x13ListReleasesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12#\n" +
+	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"X\n" +
+	"\x13ListReleasesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
 	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\"M\n" +
 	"\x14ListReleasesResponse\x125\n" +
-	"\breleases\x18\x01 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\"\x8c\x01\n" +
-	"\x11GetReleaseRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12#\n" +
+	"\breleases\x18\x01 \x03(\v2\x19.holos.console.v1.ReleaseR\breleases\"p\n" +
+	"\x11GetReleaseRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
 	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\"I\n" +
 	"\x12GetReleaseResponse\x123\n" +
-	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"\x9d\x01\n" +
-	"\x13CheckUpdatesRequest\x128\n" +
-	"\x05scope\x18\x01 \x01(\v2\".holos.console.v1.TemplateScopeRefR\x05scope\x12#\n" +
+	"\arelease\x18\x01 \x01(\v2\x19.holos.console.v1.ReleaseR\arelease\"\x81\x01\n" +
+	"\x13CheckUpdatesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
 	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\x12'\n" +
 	"\x0finclude_current\x18\x03 \x01(\bR\x0eincludeCurrent\"R\n" +
 	"\x14CheckUpdatesResponse\x12:\n" +
@@ -2355,85 +2364,67 @@ var file_holos_console_v1_templates_proto_goTypes = []any{
 	(*CheckUpdatesRequest)(nil),                   // 31: holos.console.v1.CheckUpdatesRequest
 	(*CheckUpdatesResponse)(nil),                  // 32: holos.console.v1.CheckUpdatesResponse
 	(*EnvVar)(nil),                                // 33: holos.console.v1.EnvVar
-	(*TemplateScopeRef)(nil),                      // 34: holos.console.v1.TemplateScopeRef
-	(*LinkedTemplateRef)(nil),                     // 35: holos.console.v1.LinkedTemplateRef
-	(*timestamppb.Timestamp)(nil),                 // 36: google.protobuf.Timestamp
-	(*GetProjectTemplatePolicyStateRequest)(nil),  // 37: holos.console.v1.GetProjectTemplatePolicyStateRequest
-	(*GetProjectTemplatePolicyStateResponse)(nil), // 38: holos.console.v1.GetProjectTemplatePolicyStateResponse
+	(*LinkedTemplateRef)(nil),                     // 34: holos.console.v1.LinkedTemplateRef
+	(*timestamppb.Timestamp)(nil),                 // 35: google.protobuf.Timestamp
+	(*GetProjectTemplatePolicyStateRequest)(nil),  // 36: holos.console.v1.GetProjectTemplatePolicyStateRequest
+	(*GetProjectTemplatePolicyStateResponse)(nil), // 37: holos.console.v1.GetProjectTemplatePolicyStateResponse
 }
 var file_holos_console_v1_templates_proto_depIdxs = []int32{
 	33, // 0: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
-	34, // 1: holos.console.v1.GetTemplateDefaultsRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	0,  // 2: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
-	34, // 3: holos.console.v1.Template.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	0,  // 4: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
-	35, // 5: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
-	34, // 6: holos.console.v1.ListTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 7: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	34, // 8: holos.console.v1.GetTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 9: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
-	34, // 10: holos.console.v1.CreateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 11: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
-	34, // 12: holos.console.v1.UpdateTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 13: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
-	34, // 14: holos.console.v1.DeleteTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	34, // 15: holos.console.v1.RenderTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	35, // 16: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
-	34, // 17: holos.console.v1.CloneTemplateRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	34, // 18: holos.console.v1.ListLinkableTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	34, // 19: holos.console.v1.LinkableTemplate.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	23, // 20: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
-	19, // 21: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
-	34, // 22: holos.console.v1.ListAncestorTemplatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	3,  // 23: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	34, // 24: holos.console.v1.Release.scope_ref:type_name -> holos.console.v1.TemplateScopeRef
-	0,  // 25: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
-	36, // 26: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
-	35, // 27: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
-	34, // 28: holos.console.v1.CreateReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	23, // 29: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
-	23, // 30: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
-	34, // 31: holos.console.v1.ListReleasesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	23, // 32: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
-	34, // 33: holos.console.v1.GetReleaseRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	23, // 34: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
-	34, // 35: holos.console.v1.CheckUpdatesRequest.scope:type_name -> holos.console.v1.TemplateScopeRef
-	24, // 36: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
-	4,  // 37: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
-	6,  // 38: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
-	8,  // 39: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
-	10, // 40: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
-	12, // 41: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
-	14, // 42: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
-	16, // 43: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
-	18, // 44: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
-	21, // 45: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
-	25, // 46: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
-	27, // 47: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
-	29, // 48: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
-	31, // 49: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
-	1,  // 50: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
-	37, // 51: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
-	5,  // 52: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
-	7,  // 53: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
-	9,  // 54: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
-	11, // 55: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
-	13, // 56: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
-	15, // 57: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
-	17, // 58: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
-	20, // 59: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
-	22, // 60: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
-	26, // 61: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
-	28, // 62: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
-	30, // 63: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
-	32, // 64: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
-	2,  // 65: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
-	38, // 66: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
-	52, // [52:67] is the sub-list for method output_type
-	37, // [37:52] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	0,  // 1: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
+	0,  // 2: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
+	34, // 3: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	3,  // 4: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	3,  // 5: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
+	3,  // 6: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
+	3,  // 7: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
+	34, // 8: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	23, // 9: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
+	19, // 10: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
+	3,  // 11: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	0,  // 12: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
+	35, // 13: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
+	34, // 14: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
+	23, // 15: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
+	23, // 16: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
+	23, // 17: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
+	23, // 18: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
+	24, // 19: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
+	4,  // 20: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
+	6,  // 21: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
+	8,  // 22: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
+	10, // 23: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
+	12, // 24: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
+	14, // 25: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
+	16, // 26: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
+	18, // 27: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
+	21, // 28: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
+	25, // 29: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
+	27, // 30: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
+	29, // 31: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
+	31, // 32: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
+	1,  // 33: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
+	36, // 34: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
+	5,  // 35: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
+	7,  // 36: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
+	9,  // 37: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
+	11, // 38: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
+	13, // 39: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
+	15, // 40: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
+	17, // 41: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
+	20, // 42: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
+	22, // 43: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
+	26, // 44: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
+	28, // 45: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
+	30, // 46: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
+	32, // 47: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
+	2,  // 48: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
+	37, // 49: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
+	35, // [35:50] is the sub-list for method output_type
+	20, // [20:35] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_templates_proto_init() }
@@ -2443,7 +2434,6 @@ func file_holos_console_v1_templates_proto_init() {
 	}
 	file_holos_console_v1_deployments_proto_init()
 	file_holos_console_v1_policy_state_proto_init()
-	file_holos_console_v1_rbac_proto_init()
 	file_holos_console_v1_templates_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

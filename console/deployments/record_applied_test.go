@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -51,8 +52,8 @@ func aliceEditorCtx() context.Context {
 // with the effective ref set returned by AncestorTemplateProvider.
 func TestHandler_CreateDeployment_RecordsAppliedOnSuccess(t *testing.T) {
 	wantRefs := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "audit"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "audit", ""),
 	}
 	atp := &stubAncestorTemplateProvider{
 		sources:       []string{"// folder template"},
@@ -86,7 +87,7 @@ func TestHandler_CreateDeployment_RecordsAppliedOnSuccess(t *testing.T) {
 	}
 	for i, r := range wantRefs {
 		got := checker.lastRecordRefs[i]
-		if got.GetScope() != r.GetScope() || got.GetScopeName() != r.GetScopeName() || got.GetName() != r.GetName() {
+		if scopeshim.RefScope(got) != scopeshim.RefScope(r) || scopeshim.RefScopeName(got) != scopeshim.RefScopeName(r) || got.GetName() != r.GetName() {
 			t.Errorf("RecordApplied refs[%d]: got %+v, want %+v", i, got, r)
 		}
 	}
@@ -292,7 +293,7 @@ func TestHandler_CreateDeployment_NilCheckerIsSafe(t *testing.T) {
 // ref set returned by AncestorTemplateProvider after a successful reconcile.
 func TestHandler_UpdateDeployment_RecordsAppliedOnSuccess(t *testing.T) {
 	wantRefs := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "payments", Name: "audit"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "audit", ""),
 	}
 	atp := &stubAncestorTemplateProvider{
 		sources:       []string{"// folder template"},

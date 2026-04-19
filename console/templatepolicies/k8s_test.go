@@ -14,6 +14,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -35,26 +36,26 @@ func TestNamespaceForScopeRejectsProject(t *testing.T) {
 	k := newTestK8s()
 	tests := []struct {
 		name      string
-		scope     consolev1.TemplateScope
+		scope     scopeshim.Scope
 		scopeName string
 		wantErr   bool
 		wantNs    string
 	}{
 		{
 			name:      "org scope resolves to org namespace",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			scope:     scopeshim.ScopeOrganization,
 			scopeName: "acme",
 			wantNs:    "holos-org-acme",
 		},
 		{
 			name:      "folder scope resolves to folder namespace",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			scope:     scopeshim.ScopeFolder,
 			scopeName: "payments",
 			wantNs:    "holos-fld-payments",
 		},
 		{
 			name:      "project scope is rejected as ProjectNamespaceError",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+			scope:     scopeshim.ScopeProject,
 			scopeName: "payments-web",
 			wantErr:   true,
 		},
@@ -96,7 +97,7 @@ func TestCreatePolicyRejectsProjectNamespace(t *testing.T) {
 
 	_, err := k.CreatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"policy-test",
 		"Test",
@@ -128,7 +129,7 @@ func TestUpdatePolicyRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.UpdatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"policy-test",
 		nil, nil, nil, false,
@@ -146,7 +147,7 @@ func TestDeletePolicyRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	err := k.DeletePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"policy-test",
 	)
@@ -163,7 +164,7 @@ func TestListPolicyRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.ListPolicies(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 	)
 	if err == nil {
@@ -179,7 +180,7 @@ func TestGetPolicyRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.GetPolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"policy-test",
 	)
@@ -202,7 +203,7 @@ func TestCreatePolicyWritesConfigMap(t *testing.T) {
 	rules := []*consolev1.TemplatePolicyRule{sampleRule()}
 	cm, err := k.CreatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"require-httproute",
 		"Require HTTPRoute",
@@ -273,7 +274,7 @@ func TestUpdatePolicyPreservesExistingAnnotations(t *testing.T) {
 
 	updated, err := k.UpdatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"policy",
 		nil, nil,
@@ -308,12 +309,7 @@ func TestRulesAnnotationRoundtrip(t *testing.T) {
 	rules := []*consolev1.TemplatePolicyRule{
 		{
 			Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-			Template: &consolev1.LinkedTemplateRef{
-				Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				ScopeName:         "acme",
-				Name:              "reference-grant",
-				VersionConstraint: ">=1.0",
-			},
+			Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "reference-grant", ">=1.0"),
 		},
 	}
 	raw, err := marshalRules(rules)
@@ -406,7 +402,7 @@ func TestUpdatePolicyPreservesLegacyTarget(t *testing.T) {
 	// legacy target, so the proto rule arrives without one.
 	updated, err := k.UpdatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"policy",
 		nil, nil,
@@ -478,7 +474,7 @@ func TestUpdatePolicyPreservesLegacyTargetForDuplicateRules(t *testing.T) {
 	// have before the update.
 	updated, err := k.UpdatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"policy",
 		nil, nil,
@@ -538,7 +534,7 @@ func TestUpdatePolicyDoesNotInventLegacyTargetForNewRule(t *testing.T) {
 	// written without a fabricated target.
 	updated, err := k.UpdatePolicy(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"policy",
 		nil, nil,
@@ -615,10 +611,6 @@ func TestPackageDoesNotCallProjectNamespace(t *testing.T) {
 func sampleRule() *consolev1.TemplatePolicyRule {
 	return &consolev1.TemplatePolicyRule{
 		Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-		Template: &consolev1.LinkedTemplateRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-			ScopeName: "acme",
-			Name:      "reference-grant",
-		},
+		Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "reference-grant", ""),
 	}
 }

@@ -3,7 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TemplatePolicyBinding } from '@/queries/templatePolicyBindings'
-import { TemplateScope } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
 
 /**
  * PolicyBindingsSection surfaces the TemplatePolicyBindings that attach the
@@ -45,12 +45,11 @@ export function PolicyBindingsSection(props: PolicyBindingsSectionProps) {
       : TemplateScope.FOLDER
   const expectedScopeName =
     props.scopeType === 'organization' ? props.orgName : props.folderName
+  const expectedNamespace = namespaceFor(expectedScope, expectedScopeName)
 
   const matched = bindings.filter((b) => {
     if (b.policyRef?.name !== policyName) return false
-    const ref = b.policyRef?.scopeRef
-    if (!ref) return false
-    return ref.scope === expectedScope && ref.scopeName === expectedScopeName
+    return b.policyRef?.namespace === expectedNamespace
   })
 
   return (

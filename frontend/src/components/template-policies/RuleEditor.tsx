@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/tooltip'
 import { Trash2, Info, AlertTriangle } from 'lucide-react'
 import { TemplatePolicyKind } from '@/queries/templatePolicies'
-import { TemplateScope, linkableKey } from '@/queries/templates'
+import { linkableKey } from '@/queries/templates'
+import { TemplateScope, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
 import type { LinkableTemplate } from '@/queries/templates'
 import { newEmptyRule, type RuleDraft } from '@/components/template-policies/rule-draft'
 import {
@@ -56,8 +57,8 @@ export function RuleEditor({
 }: RuleEditorProps) {
   const templateItems: ComboboxItem[] = useMemo(() => {
     return linkableTemplates.map((t) => {
-      const scope = t.scopeRef?.scope ?? TemplateScope.UNSPECIFIED
-      const scopeName = t.scopeRef?.scopeName ?? ''
+      const scope = scopeFromNamespace(t.namespace)
+      const scopeName = scopeNameFromNamespace(t.namespace)
       const scopeLabel =
         scope === TemplateScope.ORGANIZATION
           ? 'org'

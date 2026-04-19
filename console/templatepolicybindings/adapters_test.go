@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
+	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // policyGetterStub satisfies PolicyExistsGetter for the PolicyExistsAdapter
@@ -23,7 +23,7 @@ type policyGetterStub struct {
 	found bool
 }
 
-func (p *policyGetterStub) GetPolicy(_ context.Context, _ consolev1.TemplateScope, _, _ string) (*corev1.ConfigMap, error) {
+func (p *policyGetterStub) GetPolicy(_ context.Context, _ scopeshim.Scope, _, _ string) (*corev1.ConfigMap, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -64,7 +64,7 @@ func TestPolicyExistsAdapter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := NewPolicyExistsAdapter(tt.getter)
-			got, err := a.PolicyExists(context.Background(), consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, "payments", "policy")
+			got, err := a.PolicyExists(context.Background(), scopeshim.ScopeFolder, "payments", "policy")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -179,7 +179,7 @@ func TestProjectExistsAdapter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := a.ProjectExists(context.Background(), consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, "payments", tt.project)
+			got, err := a.ProjectExists(context.Background(), scopeshim.ScopeFolder, "payments", tt.project)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

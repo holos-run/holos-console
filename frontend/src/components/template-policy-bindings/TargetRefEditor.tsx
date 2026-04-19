@@ -15,7 +15,8 @@ import type { TargetRefDraft } from './binding-draft'
 import { useListDeployments } from '@/queries/deployments'
 import { useListProjects } from '@/queries/projects'
 import { useListTemplates } from '@/queries/templates'
-import { TemplateScope, makeProjectScope } from '@/queries/templates'
+import { makeProjectScope } from '@/queries/templates'
+import { TemplateScope, scopeFromNamespace } from '@/lib/scope-shim'
 
 // Kind options exposed to the target-row select. UNSPECIFIED is intentionally
 // omitted — the backend rejects it and the UI must not offer it.
@@ -155,7 +156,7 @@ function TargetRow({
       }))
     }
     return projectTemplates
-      .filter((t) => t.scopeRef?.scope === TemplateScope.PROJECT)
+      .filter((t) => scopeFromNamespace(t.namespace) === TemplateScope.PROJECT)
       .map((t) => ({
         value: t.name,
         label: t.displayName ? `${t.displayName} (${t.name})` : t.name,

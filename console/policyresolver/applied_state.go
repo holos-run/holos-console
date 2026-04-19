@@ -13,6 +13,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -117,8 +118,8 @@ func MarshalAppliedRenderSet(refs []*consolev1.LinkedTemplateRef) ([]byte, error
 			continue
 		}
 		stored = append(stored, storedLinkedRef{
-			Scope:             scopeLabelValue(r.GetScope()),
-			ScopeName:         r.GetScopeName(),
+			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
+			ScopeName:         scopeshim.RefScopeName(r),
 			Name:              r.GetName(),
 			VersionConstraint: r.GetVersionConstraint(),
 		})
@@ -139,12 +140,12 @@ func UnmarshalAppliedRenderSet(raw string) ([]*consolev1.LinkedTemplateRef, erro
 	}
 	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, s := range stored {
-		refs = append(refs, &consolev1.LinkedTemplateRef{
-			Scope:             scopeFromLabel(s.Scope),
-			ScopeName:         s.ScopeName,
-			Name:              s.Name,
-			VersionConstraint: s.VersionConstraint,
-		})
+		refs = append(refs, scopeshim.NewLinkedTemplateRef(
+			scopeFromLabel(s.Scope),
+			s.ScopeName,
+			s.Name,
+			s.VersionConstraint,
+		))
 	}
 	return refs, nil
 }
@@ -340,13 +341,13 @@ func renderStateConfigMapName(kind TargetKind, project, target string) string {
 
 // scopeLabelValue maps a TemplateScope enum to the canonical scope label
 // value. Kept package-private to avoid conflicting with templates.scopeLabelValue.
-func scopeLabelValue(scope consolev1.TemplateScope) string {
+func scopeLabelValue(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return v1alpha2.TemplateScopeFolder
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return v1alpha2.TemplateScopeProject
 	default:
 		return ""
@@ -354,16 +355,16 @@ func scopeLabelValue(scope consolev1.TemplateScope) string {
 }
 
 // scopeFromLabel is the inverse of scopeLabelValue.
-func scopeFromLabel(label string) consolev1.TemplateScope {
+func scopeFromLabel(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.TemplateScopeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	case v1alpha2.TemplateScopeProject:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+		return scopeshim.ScopeProject
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }
 
@@ -418,7 +419,7 @@ func DiffRenderSets(applied, current []*consolev1.LinkedTemplateRef) (added, rem
 
 // refKey normalizes a LinkedTemplateRef to its comparison tuple.
 type refKey struct {
-	scope             consolev1.TemplateScope
+	scope             scopeshim.Scope
 	scopeName         string
 	name              string
 	versionConstraint string
@@ -426,8 +427,8 @@ type refKey struct {
 
 func keyForRef(r *consolev1.LinkedTemplateRef) refKey {
 	return refKey{
-		scope:             r.GetScope(),
-		scopeName:         r.GetScopeName(),
+		scope:             scopeshim.RefScope(r),
+		scopeName:         scopeshim.RefScopeName(r),
 		name:              r.GetName(),
 		versionConstraint: r.GetVersionConstraint(),
 	}

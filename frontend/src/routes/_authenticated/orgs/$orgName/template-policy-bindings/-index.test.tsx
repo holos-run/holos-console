@@ -71,7 +71,7 @@ function makeBinding(
     description: options.description ?? '',
     creatorEmail: options.creatorEmail ?? '',
     policyRef: options.policyName
-      ? { scopeRef: { scope: 1, scopeName: 'test-org' }, name: options.policyName }
+      ? { namespace: "holos-org-test-org", name: options.policyName }
       : undefined,
     targetRefs: Array.from({ length: options.targets ?? 0 }, (_, i) => ({
       kind: 1,

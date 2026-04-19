@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -82,14 +83,14 @@ func TestGetDeploymentPolicyState(t *testing.T) {
 		HasAppliedState: true,
 		Drift:           true,
 		AppliedSet: []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
 		},
 		CurrentSet: []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "eng", Name: "audit"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "eng", "audit", ""),
 		},
 		AddedRefs: []*consolev1.LinkedTemplateRef{
-			{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "eng", Name: "audit"},
+			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "eng", "audit", ""),
 		},
 	}
 
