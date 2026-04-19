@@ -27,7 +27,7 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 
 ## Spec Inventory
 
-`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests. After HOL-654 landed, `create-dialogs.spec.ts` was also deleted; the remaining tables still list all three for historical context.
+`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests. After HOL-654 landed, `create-dialogs.spec.ts` was also deleted. After HOL-655 landed, `deployments.spec.ts` and `org-settings.spec.ts` were also deleted; the remaining tables still list all five for historical context.
 
 ### Summary Table
 
@@ -37,20 +37,22 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 | `profile.spec.ts` | 5 | **Refactor-to-unit** (all 5) | **done (HOL-653)** — file deleted |
 | `navigation.spec.ts` | 2 | **Split** → both refactored to unit | **done (HOL-653)** — file deleted |
 | `create-dialogs.spec.ts` | 5 | **Refactor-to-unit** (all 5) | **done (HOL-654)** — file deleted |
-| `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) | pending (HOL-655) |
-| `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) | pending (HOL-655) |
+| `org-settings.spec.ts` | 2 | **Refactor-to-unit** (all 2) | **done (HOL-655)** — file deleted |
+| `deployments.spec.ts` | 3 | **Refactor-to-unit** (all 3) | **done (HOL-655)** — file deleted |
 | `folders.spec.ts` | 6 | **Keep** (K8s CRUD) | keep |
 | `folder-rbac.spec.ts` | 3 | **Keep** (K8s RBAC cascade) | keep |
 | `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) | keep |
 | `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) | pending (HOL-658) |
 | `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) | pending (HOL-656) |
-| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 + HOL-654 complete: 12 tests removed from E2E |
+| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 + HOL-654 + HOL-655 complete: 17 tests removed from E2E |
 
 Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) — 23 move to unit/Go tests, 3 are deleted as redundant with existing coverage. The remaining E2E job is focused on OIDC auth and real K8s round-trips.
 
 **HOL-653 delta**: After this phase, `frontend/e2e/` holds **9 spec files** and **51 `test(...)` blocks** (5 profile + 2 navigation deleted).
 
 **HOL-654 delta**: After this phase, `frontend/e2e/` holds **8 spec files** and **46 `test(...)` blocks** (5 create-dialogs deleted). The new Vitest coverage lives in `frontend/src/components/create-project-dialog.test.tsx` (3 new tests: auto-derived-slug submit + navigate, manual override + reset affordance, pending submit), `frontend/src/components/create-org-dialog.test.tsx` (1 new test: pending submit), and `frontend/src/components/app-sidebar.test.tsx` (4 new tests across two describes: org-picker with existing orgs surfaces a "New Organization" item below the listed orgs, and the symmetric project-picker assertion for "New Project").
+
+**HOL-655 delta**: After this phase, `frontend/e2e/` holds **6 spec files** and **41 `test(...)` blocks** (3 deployments + 2 org-settings deleted). The audit plan was satisfied almost entirely by coverage that already existed in `-new.test.tsx`, `-index.test.tsx`, `-settings.test.tsx`, and `app-sidebar.test.tsx` (the no-templates affordance, Create Deployment link wiring, RBAC-driven button visibility, `Org Settings` sidebar link, and display-name / description / sharing form state were all already asserted at the component level). Two small anti-regression tests were added to preserve invariants the E2E suite uniquely exercised: `renders as a standalone page (not inside a dialog)` in `frontend/src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` (guards against the Create Deployment modal regression from issue #396), and `renders the {orgName} / Settings breadcrumb on the page header` in `frontend/src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` (guards the `"{orgName} / Settings"` header string the E2E sidebar-click test asserted). No `deployments.spec.ts` case required a K8s round-trip to observe persistence — the Deployment creation round-trip lives entirely under `folder-templates.spec.ts` — so the spec was fully removed rather than split.
 
 ---
 
@@ -129,7 +131,7 @@ Also added `"disables submit and shows Creating… label while the mutation is p
 
 `create-dialogs.spec.ts` deleted in HOL-654. All coverage lives in the three extended unit-test files.
 
-### `org-settings.spec.ts` — Refactor-to-unit (all 2)
+### `org-settings.spec.ts` — Refactor-to-unit (all 2) — **DONE (HOL-655)**
 
 Both tests are pure sidebar-link-visibility and route-renders-with-org-name. No server round-trip beyond what the standard app-sidebar unit test already covers.
 
@@ -141,14 +143,14 @@ Both tests are pure sidebar-link-visibility and route-renders-with-org-name. No 
 - `vi.mock('@/queries/organizations', () => ({ useListOrganizations: vi.fn(), useGetOrganization: vi.fn() }))`
 - `vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))`
 
-| Test | Verdict | Target | New unit test(s) |
+| Test | Verdict | Target | Outcome |
 | --- | --- | --- | --- |
-| `Org Settings page > settings link appears in sidebar when org is selected` | **Refactor** | `app-sidebar.test.tsx` | New: `"sidebar shows Org Settings link when an org is selected"` — mock `useOrg` with `{ name: 'test-org' }`, render sidebar, assert link visible. |
-| `Org Settings page > clicking Settings in sidebar navigates to settings page` | **Refactor** | `-settings.test.tsx` | Not a new unit test — the existing `-settings.test.tsx` already covers the page rendering. The navigation portion is redundant with router mocks; **drop** the click-assertion and rely on the existing test's render proof. |
+| `Org Settings page > settings link appears in sidebar when org is selected` | **Refactor** | `app-sidebar.test.tsx` | Already covered by the existing `"renders org Settings link labeled 'Org Settings' with correct href"` test (plus the sibling `"shows 'Org Settings' label instead of 'Settings' in org nav"`). Both mock `useOrg` with a selected org and assert the link renders with the correct href — exactly the E2E invariant. No new test required. |
+| `Org Settings page > clicking Settings in sidebar navigates to settings page` | **Refactor** | `-settings.test.tsx` | The page-render portion is covered by existing tests (`"renders display name and description from org data"`, `"renders name (slug) as read-only"`, etc.). Added `"renders the {orgName} / Settings breadcrumb on the page header"` to cover the exact `"{orgName} / Settings"` header string the E2E test asserted after navigating. |
 
-**Delete entire `org-settings.spec.ts`.** This phase lives in **HOL-655**.
+**`org-settings.spec.ts` deleted** in HOL-655.
 
-### `deployments.spec.ts` — Refactor-to-unit (all 3)
+### `deployments.spec.ts` — Refactor-to-unit (all 3) — **DONE (HOL-655)**
 
 The no-templates affordance is a pure UI branch on `useListTemplates({ scope: 'PROJECT' })` returning empty. The "clicking Create Deployment navigates to new page" test is pure router behaviour. The "has templates → shows submit button" test is the mirror of the empty case.
 
@@ -159,13 +161,13 @@ The no-templates affordance is a pure UI branch on `useListTemplates({ scope: 'P
 - `vi.mock('@/queries/deployments', () => ({ useListDeployments: vi.fn(), useCreateDeployment: vi.fn() }))`
 - `vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))`
 
-| Test | Verdict | Target | New unit test |
+| Test | Verdict | Target | Outcome |
 | --- | --- | --- | --- |
-| `Create Deployment page — no-templates affordance > shows "No templates available..." when no templates exist` | **Refactor** | `-new.test.tsx` | New: `"shows no-templates affordance and create-a-template link when template list is empty"` — mock `useListTemplates` returning `data: []`, assert `getByText(/no templates available/i)` and `getByRole('link', { name: /create a template/i })`. |
-| `... > does not show no-templates affordance when templates exist` | **Refactor** | `-new.test.tsx` | New: `"hides no-templates affordance when templates are available"` — mock `useListTemplates` with one template, assert `queryByText(/no templates available/i)` is null and the Create Deployment submit button is enabled. |
-| `... > clicking "Create Deployment" link on list page navigates to new page` | **Refactor** | `frontend/src/routes/_authenticated/projects/$projectName/deployments/-index.test.tsx` | New: `"Create Deployment link points to the /new route"` — assert the `<Link>` component's `to` prop resolves to `deployments/new` (no router round-trip needed). |
+| `Create Deployment page — no-templates affordance > shows "No templates available..." when no templates exist` | **Refactor** | `-new.test.tsx` | Already covered by the existing `"shows 'no templates' link to create templates page when no templates exist"` and the field-ordering variant `"renders 'No templates available' fallback as the first field when templates list is empty"`. Both mock `useListTemplates` with `data: []` and assert the affordance plus the `create a template` link. |
+| `... > does not show no-templates affordance when templates exist` | **Refactor** | `-new.test.tsx` | Already covered by `"does not show 'no templates' message when templates exist"` (negation of the above). The submit button is rendered by every other test in the file already. |
+| `... > clicking "Create Deployment" link on list page navigates to new page` | **Refactor** | `-index.test.tsx` | Already covered by `"renders Create Deployment link for owners"`, `"renders Create Deployment link for editors"`, `"does not render Create Deployment link for viewers"`, and `"Create Deployment link in empty state navigates to new page"`. All four assert the link's `href` resolves to `deployments/new`. Added `"renders as a standalone page (not inside a dialog)"` in `-new.test.tsx` to preserve the E2E anti-regression against the pre-#396 modal. |
 
-**Delete entire `deployments.spec.ts`.** This phase lives in **HOL-655**.
+**`deployments.spec.ts` deleted** in HOL-655.
 
 ### `folders.spec.ts` — Keep (all 5, require K8s)
 
@@ -250,7 +252,7 @@ After the refactor:
 | --- | --- | --- |
 | HOL-653 | profile.spec.ts (5), navigation.spec.ts (1) | 6 tests → Vitest |
 | HOL-654 | create-dialogs.spec.ts (5) | 5 tests → Vitest |
-| HOL-655 | deployments.spec.ts (3), org-settings.spec.ts (2) | 5 tests → Vitest |
+| HOL-655 | deployments.spec.ts (3), org-settings.spec.ts (2) | 5 tests → Vitest (DONE) |
 | HOL-656 | multi-persona.spec.ts Dev Token (4), Persona Switching (3) | 4 → Go, 3 → Vitest |
 | HOL-657 | — | Measure E2E CI wall-clock after the four refactor phases; compare against the 11m 23s baseline. |
 | HOL-658 | auth.spec.ts trims, helpers.ts cleanup, mobile consolidation | Remove dead helpers, trim auth-spec overlaps, decide on mobile responsive tests. |

@@ -136,6 +136,16 @@ describe('CreateDeploymentPage', () => {
     expect(elements.length).toBeGreaterThan(0)
   })
 
+  it('renders as a standalone page (not inside a dialog)', () => {
+    // Regression: the Create Deployment affordance used to open a modal
+    // dialog; issue #396 moved it to a dedicated /deployments/new route.
+    // The E2E test asserted page.getByRole(dialog) was not visible;
+    // replicate that anti-regression at the component level so the Vitest
+    // migration (HOL-655) preserves the invariant.
+    render(<CreateDeploymentPage />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('renders Display Name field', () => {
     render(<CreateDeploymentPage />)
     expect(screen.getByLabelText(/display name/i)).toBeInTheDocument()

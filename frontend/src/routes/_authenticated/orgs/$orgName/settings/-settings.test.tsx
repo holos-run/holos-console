@@ -121,6 +121,16 @@ describe('OrgSettingsPage', () => {
     expect(screen.getByText('A test organization')).toBeInTheDocument()
   })
 
+  it('renders the {orgName} / Settings breadcrumb on the page header', () => {
+    // Regression: the org-settings E2E spec (HOL-655) asserted the header
+    // rendered the string "{orgName} / Settings" after navigating from the
+    // sidebar. Replicating it at the component level keeps the invariant
+    // covered without the browser round-trip.
+    setupMocks()
+    render(<OrgSettingsPage />)
+    expect(screen.getByText('test-org / Settings')).toBeInTheDocument()
+  })
+
   it('renders name (slug) as read-only', () => {
     setupMocks()
     render(<OrgSettingsPage />)
