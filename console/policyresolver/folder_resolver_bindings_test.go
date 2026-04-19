@@ -10,6 +10,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -40,13 +41,15 @@ func testUnmarshalPolicyRef(raw string) (*consolev1.LinkedTemplatePolicyRef, err
 	if err := json.Unmarshal([]byte(raw), &sr); err != nil {
 		return nil, err
 	}
-	return &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     scopeFromTemplateLabelTest(sr.Scope),
-			ScopeName: sr.ScopeName,
-		},
-		Name: sr.Name,
-	}, nil
+	// HOL-619 removed TemplateScopeRef from proto; the namespace is derived
+	// from (scope, scopeName) via the shim's default resolver so tests that
+	// build the wire-form via storedPolicyRefTest continue to exercise the
+	// same classification path the production unmarshaler uses.
+	return scopeshim.NewLinkedTemplatePolicyRef(
+		scopeFromTemplateLabelTest(sr.Scope),
+		sr.ScopeName,
+		sr.Name,
+	), nil
 }
 
 // testUnmarshalTargetRefs mirrors templatepolicybindings.UnmarshalTargetRefs.
@@ -69,16 +72,16 @@ func testUnmarshalTargetRefs(raw string) ([]*consolev1.TemplatePolicyBindingTarg
 	return refs, nil
 }
 
-func scopeFromTemplateLabelTest(label string) consolev1.TemplateScope {
+func scopeFromTemplateLabelTest(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.TemplateScopeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	case v1alpha2.TemplateScopeProject:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+		return scopeshim.ScopeProject
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }
 
@@ -179,11 +182,7 @@ func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testin
 	}
 
 	explicit := []*consolev1.LinkedTemplateRef{
-		{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-			ScopeName: "acme",
-			Name:      "explicit",
-		},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "explicit", ""),
 	}
 	pl := &policyListerFromClient{items: nil}
 	bl := &bindingListerFromMap{items: bindings}

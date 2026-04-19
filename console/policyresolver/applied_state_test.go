@@ -9,6 +9,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -69,8 +70,8 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	refs := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "t1"},
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "eng", Name: "t2", VersionConstraint: ">=1.0"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "t1", ""),
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "eng", "t2", ">=1.0"),
 	}
 	err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", refs)
 	if err != nil {
@@ -105,8 +106,8 @@ func TestRecordAppliedRenderSet_RoundTripViaRead(t *testing.T) {
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	refs := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "httproute"},
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER, ScopeName: "eng", Name: "audit", VersionConstraint: ">=2.0.0"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "eng", "audit", ">=2.0.0"),
 	}
 	if err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", refs); err != nil {
 		t.Fatalf("RecordAppliedRenderSet: %v", err)
@@ -159,7 +160,7 @@ func TestReadAppliedRenderSet_IgnoresProjectNamespaceAnnotation(t *testing.T) {
 
 	cmName := renderStateConfigMapName(TargetKindDeployment, "lilies", "api")
 	payload, _ := MarshalAppliedRenderSet([]*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "stale"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "stale", ""),
 	})
 	cm := buildForbiddenRenderStateCM(cmName, ns["projectLilies"], string(payload))
 	if _, err := client.CoreV1().ConfigMaps(ns["projectLilies"]).Create(context.Background(), &cm, metav1.CreateOptions{}); err != nil {
@@ -199,10 +200,10 @@ func TestRecordAppliedRenderSet_Idempotent(t *testing.T) {
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	v1 := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "a"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "a", ""),
 	}
 	v2 := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "b"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "b", ""),
 	}
 	if err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", v1); err != nil {
 		t.Fatalf("first Record: %v", err)
@@ -228,10 +229,10 @@ func TestRecordAppliedRenderSet_BothTargetKinds(t *testing.T) {
 	c := NewAppliedRenderStateClient(client, r, walker)
 
 	dep := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "dep-tmpl"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "dep-tmpl", ""),
 	}
 	prj := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "prj-tmpl"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "prj-tmpl", ""),
 	}
 	if err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", dep); err != nil {
 		t.Fatalf("Record deployment: %v", err)
@@ -258,9 +259,9 @@ func TestRecordAppliedRenderSet_BothTargetKinds(t *testing.T) {
 
 // TestDiffRenderSets covers the diff classification used by drift detection.
 func TestDiffRenderSets(t *testing.T) {
-	a := &consolev1.LinkedTemplateRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "a"}
-	b := &consolev1.LinkedTemplateRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "b"}
-	c := &consolev1.LinkedTemplateRef{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "c"}
+	a := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "a", "")
+	b := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "b", "")
+	c := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "c", "")
 
 	tests := []struct {
 		name      string

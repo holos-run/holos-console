@@ -12,6 +12,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -50,14 +51,14 @@ func (e *ProjectNamespaceError) Error() string {
 // folder-only-storage invariant lives in exactly one place. The handler must
 // not reach past this function into per-scope namespace derivation; doing so
 // would bypass the classification check.
-func (k *K8sClient) namespaceForScope(scope consolev1.TemplateScope, scopeName string) (string, error) {
+func (k *K8sClient) namespaceForScope(scope scopeshim.Scope, scopeName string) (string, error) {
 	var ns string
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		ns = k.Resolver.OrgNamespace(scopeName)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		ns = k.Resolver.FolderNamespace(scopeName)
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		// Project scope never produces a valid namespace for policy storage.
 		// We intentionally do NOT call the resolver's project-namespace
 		// helper here — the regression test in k8s_test.go asserts this
@@ -87,7 +88,7 @@ func (k *K8sClient) namespaceForScope(scope consolev1.TemplateScope, scopeName s
 }
 
 // ListPolicies returns every TemplatePolicy ConfigMap in the scope's namespace.
-func (k *K8sClient) ListPolicies(ctx context.Context, scope consolev1.TemplateScope, scopeName string) ([]corev1.ConfigMap, error) {
+func (k *K8sClient) ListPolicies(ctx context.Context, scope scopeshim.Scope, scopeName string) ([]corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -137,7 +138,7 @@ func UnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 }
 
 // GetPolicy retrieves a single TemplatePolicy ConfigMap by name.
-func (k *K8sClient) GetPolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (*corev1.ConfigMap, error) {
+func (k *K8sClient) GetPolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -155,7 +156,7 @@ func (k *K8sClient) GetPolicy(ctx context.Context, scope consolev1.TemplateScope
 // JSON in the AnnotationTemplatePolicyRules annotation so the ConfigMap has no
 // data payload of its own — all policy state lives in annotations, mirroring
 // the linked-templates annotation pattern on Template ConfigMaps.
-func (k *K8sClient) CreatePolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name, displayName, description, creatorEmail string, rules []*consolev1.TemplatePolicyRule) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreatePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name, displayName, description, creatorEmail string, rules []*consolev1.TemplatePolicyRule) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -202,7 +203,7 @@ func (k *K8sClient) CreatePolicy(ctx context.Context, scope consolev1.TemplateSc
 // into TemplatePolicyBindings after a routine UpdatePolicy call. The
 // runtime resolver ignores the payload either way — preservation is
 // purely for migration safety.
-func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string, displayName, description *string, rules []*consolev1.TemplatePolicyRule, updateRules bool) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdatePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string, displayName, description *string, rules []*consolev1.TemplatePolicyRule, updateRules bool) (*corev1.ConfigMap, error) {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return nil, err
@@ -239,7 +240,7 @@ func (k *K8sClient) UpdatePolicy(ctx context.Context, scope consolev1.TemplateSc
 
 // DeletePolicy deletes a TemplatePolicy ConfigMap. Not-found errors propagate
 // from the Kubernetes client so the handler can map them to connect.CodeNotFound.
-func (k *K8sClient) DeletePolicy(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) error {
+func (k *K8sClient) DeletePolicy(ctx context.Context, scope scopeshim.Scope, scopeName, name string) error {
 	ns, err := k.namespaceForScope(scope, scopeName)
 	if err != nil {
 		return err
@@ -258,11 +259,11 @@ func (k *K8sClient) DeletePolicy(ctx context.Context, scope consolev1.TemplateSc
 // so fall through to empty string — which would make any ConfigMap unusable
 // and therefore catch any bug that routed a project scope through this
 // function.
-func scopeLabelValue(scope consolev1.TemplateScope) string {
+func scopeLabelValue(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return v1alpha2.TemplateScopeFolder
 	default:
 		return ""
@@ -331,8 +332,8 @@ func legacyKeyForProtoRule(r *consolev1.TemplatePolicyRule) legacyRuleKey {
 	tmpl := r.GetTemplate()
 	return legacyRuleKey{
 		kind:      kindToString(r.GetKind()),
-		scope:     templateScopeLabel(tmpl.GetScope()),
-		scopeName: tmpl.GetScopeName(),
+		scope:     templateScopeLabel(scopeshim.RefScope(tmpl)),
+		scopeName: scopeshim.RefScopeName(tmpl),
 		name:      tmpl.GetName(),
 	}
 }
@@ -393,8 +394,8 @@ func marshalRulesPreservingLegacy(rules []*consolev1.TemplatePolicyRule, legacyT
 		}
 		if tmpl := r.GetTemplate(); tmpl != nil {
 			sr.Template = storedTemplateRef{
-				Scope:             templateScopeLabel(tmpl.GetScope()),
-				ScopeName:         tmpl.GetScopeName(),
+				Scope:             templateScopeLabel(scopeshim.RefScope(tmpl)),
+				ScopeName:         scopeshim.RefScopeName(tmpl),
 				Name:              tmpl.GetName(),
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
@@ -431,12 +432,12 @@ func unmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 		// selection runs through TemplatePolicyBinding.
 		rule := &consolev1.TemplatePolicyRule{
 			Kind: kindFromString(s.Kind),
-			Template: &consolev1.LinkedTemplateRef{
-				Scope:             scopeFromTemplateLabel(s.Template.Scope),
-				ScopeName:         s.Template.ScopeName,
-				Name:              s.Template.Name,
-				VersionConstraint: s.Template.VersionConstraint,
-			},
+			Template: scopeshim.NewLinkedTemplateRef(
+				scopeFromTemplateLabel(s.Template.Scope),
+				s.Template.ScopeName,
+				s.Template.Name,
+				s.Template.VersionConstraint,
+			),
 		}
 		rules = append(rules, rule)
 	}
@@ -468,28 +469,28 @@ func kindFromString(s string) consolev1.TemplatePolicyKind {
 // templateScopeLabel mirrors templates.scopeLabelValue but lives here so this
 // package does not import console/templates (avoiding a dependency cycle
 // with the render-time resolver wiring in HOL-567).
-func templateScopeLabel(scope consolev1.TemplateScope) string {
+func templateScopeLabel(scope scopeshim.Scope) string {
 	switch scope {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION:
+	case scopeshim.ScopeOrganization:
 		return v1alpha2.TemplateScopeOrganization
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER:
+	case scopeshim.ScopeFolder:
 		return v1alpha2.TemplateScopeFolder
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
+	case scopeshim.ScopeProject:
 		return v1alpha2.TemplateScopeProject
 	default:
 		return ""
 	}
 }
 
-func scopeFromTemplateLabel(label string) consolev1.TemplateScope {
+func scopeFromTemplateLabel(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.TemplateScopeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	case v1alpha2.TemplateScopeProject:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+		return scopeshim.ScopeProject
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/holos-run/holos-console/console/deployments/statuscache"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -1678,12 +1679,12 @@ func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedT
 			result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
 			for _, ref := range refs {
 				if ref.Name != "" {
-					result = append(result, &consolev1.LinkedTemplateRef{
-						Scope:             scopeFromLabel(ref.Scope),
-						ScopeName:         ref.ScopeName,
-						Name:              ref.Name,
-						VersionConstraint: ref.VersionConstraint,
-					})
+					result = append(result, scopeshim.NewLinkedTemplateRef(
+						scopeFromLabel(ref.Scope),
+						ref.ScopeName,
+						ref.Name,
+						ref.VersionConstraint,
+					))
 				}
 			}
 			return result
@@ -1704,10 +1705,19 @@ func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedT
 		}
 		result := make([]*consolev1.LinkedTemplateRef, 0, len(names))
 		for _, n := range names {
-			result = append(result, &consolev1.LinkedTemplateRef{
-				Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-				Name:  n,
-			})
+			// Legacy v1alpha2 refs lived at the unique organization scope;
+			// the deployment's project slug is the scope_name anchor, but
+			// the scope_name ("org name") was implicit in the ConfigMap
+			// namespace. Passing an empty scopeName lets the shim fall
+			// back to the caller's default resolver, which — combined
+			// with the deployment's own ancestor chain — converges on the
+			// correct org namespace at render time.
+			result = append(result, scopeshim.NewLinkedTemplateRef(
+				scopeshim.ScopeOrganization,
+				"",
+				n,
+				"",
+			))
 		}
 		return result
 	}
@@ -1729,16 +1739,16 @@ func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
 }
 
 // scopeFromLabel converts a label string back to a TemplateScope enum value.
-func scopeFromLabel(label string) consolev1.TemplateScope {
+func scopeFromLabel(label string) scopeshim.Scope {
 	switch label {
 	case v1alpha2.TemplateScopeOrganization:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+		return scopeshim.ScopeOrganization
 	case v1alpha2.TemplateScopeFolder:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+		return scopeshim.ScopeFolder
 	case v1alpha2.TemplateScopeProject:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+		return scopeshim.ScopeProject
 	default:
-		return consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		return scopeshim.ScopeUnspecified
 	}
 }
 

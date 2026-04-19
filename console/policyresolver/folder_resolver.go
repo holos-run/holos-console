@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -245,17 +246,21 @@ func (r *folderResolver) Resolve(
 		if !bindingAppliesTo(b, project, targetKind, targetName) {
 			continue
 		}
-		scopeRef := b.PolicyRef.GetScopeRef()
-		if scopeRef == nil {
-			slog.WarnContext(ctx, "template policy binding has no policy_ref scope; treating as no-op",
+		// HOL-619 collapsed scope_ref into a flat (namespace, name) pair on
+		// LinkedTemplatePolicyRef. Classify the carried namespace back into
+		// (scope, scopeName) via the shim so the rest of this loop (and the
+		// storage layer it feeds) keeps working until HOL-621/HOL-622
+		// rewrite them.
+		if b.PolicyRef.GetNamespace() == "" {
+			slog.WarnContext(ctx, "template policy binding has no policy_ref namespace; treating as no-op",
 				slog.String("bindingNamespace", b.Namespace),
 				slog.String("binding", b.Name),
 			)
 			continue
 		}
 		coveredPolicies[policyKey{
-			scope:     scopeRef.GetScope(),
-			scopeName: scopeRef.GetScopeName(),
+			scope:     scopeshim.PolicyRefScope(b.PolicyRef),
+			scopeName: scopeshim.PolicyRefScopeName(b.PolicyRef),
 			name:      b.PolicyRef.GetName(),
 		}] = struct{}{}
 	}
@@ -322,16 +327,16 @@ func (r *folderResolver) Resolve(
 		if tmpl == nil || tmpl.GetName() == "" {
 			continue
 		}
-		key := keyForTemplateRef(tmpl.GetScope(), tmpl.GetScopeName(), tmpl.GetName())
+		key := keyForTemplateRef(scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName())
 		if _, ok := effectiveSet[key]; ok {
 			continue
 		}
-		ref := &consolev1.LinkedTemplateRef{
-			Scope:             tmpl.GetScope(),
-			ScopeName:         tmpl.GetScopeName(),
-			Name:              tmpl.GetName(),
-			VersionConstraint: tmpl.GetVersionConstraint(),
-		}
+		ref := scopeshim.NewLinkedTemplateRef(
+			scopeshim.RefScope(tmpl),
+			scopeshim.RefScopeName(tmpl),
+			tmpl.GetName(),
+			tmpl.GetVersionConstraint(),
+		)
 		effective = append(effective, ref)
 		effectiveSet[key] = ref
 	}
@@ -361,7 +366,7 @@ func (r *folderResolver) Resolve(
 			if tmpl == nil {
 				continue
 			}
-			if keyForTemplateRef(tmpl.GetScope(), tmpl.GetScopeName(), tmpl.GetName()) == key {
+			if keyForTemplateRef(scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName()) == key {
 				excluded = true
 				break
 			}
@@ -378,7 +383,7 @@ func (r *folderResolver) Resolve(
 // namespace + metadata.name. The resolver uses it to decide which policies
 // are covered by at least one matching binding for a render target.
 type policyKey struct {
-	scope     consolev1.TemplateScope
+	scope     scopeshim.Scope
 	scopeName string
 	name      string
 }
@@ -434,7 +439,7 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 // other packages (tests, drift-detection helpers) can reason about set
 // membership without re-implementing the triple.
 type RefKey struct {
-	Scope     consolev1.TemplateScope
+	Scope     scopeshim.Scope
 	ScopeName string
 	Name      string
 }
@@ -442,15 +447,15 @@ type RefKey struct {
 // keyForRefProto is the package-internal dedup key (not exported).
 func keyForRefProto(r *consolev1.LinkedTemplateRef) RefKey {
 	return RefKey{
-		Scope:     r.GetScope(),
-		ScopeName: r.GetScopeName(),
+		Scope:     scopeshim.RefScope(r),
+		ScopeName: scopeshim.RefScopeName(r),
 		Name:      r.GetName(),
 	}
 }
 
 // keyForTemplateRef builds a RefKey from raw scope/name fields. Used when
 // materializing a REQUIRE rule's template ref into an effective entry.
-func keyForTemplateRef(scope consolev1.TemplateScope, scopeName, name string) RefKey {
+func keyForTemplateRef(scope scopeshim.Scope, scopeName, name string) RefKey {
 	return RefKey{Scope: scope, ScopeName: scopeName, Name: name}
 }
 

@@ -15,6 +15,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -74,23 +75,23 @@ func testUnmarshalRules(raw string) ([]*consolev1.TemplatePolicyRule, error) {
 		case "exclude":
 			kind = consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE
 		}
-		scope := consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED
+		scope := scopeshim.ScopeUnspecified
 		switch s.Template.Scope {
 		case v1alpha2.TemplateScopeOrganization:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION
+			scope = scopeshim.ScopeOrganization
 		case v1alpha2.TemplateScopeFolder:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER
+			scope = scopeshim.ScopeFolder
 		case v1alpha2.TemplateScopeProject:
-			scope = consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT
+			scope = scopeshim.ScopeProject
 		}
 		rules = append(rules, &consolev1.TemplatePolicyRule{
 			Kind: kind,
-			Template: &consolev1.LinkedTemplateRef{
-				Scope:             scope,
-				ScopeName:         s.Template.ScopeName,
-				Name:              s.Template.Name,
-				VersionConstraint: s.Template.VersionConstraint,
-			},
+			Template: scopeshim.NewLinkedTemplateRef(
+				scope,
+				s.Template.ScopeName,
+				s.Template.Name,
+				s.Template.VersionConstraint,
+			),
 		})
 	}
 	return rules, nil
@@ -268,18 +269,10 @@ func TestFolderResolver_Resolve(t *testing.T) {
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
 	orgTmpl := func(name string) *consolev1.LinkedTemplateRef {
-		return &consolev1.LinkedTemplateRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-			ScopeName: "acme",
-			Name:      name,
-		}
+		return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", name, "")
 	}
 	folderTmpl := func(folder, name string) *consolev1.LinkedTemplateRef {
-		return &consolev1.LinkedTemplateRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-			ScopeName: folder,
-			Name:      name,
-		}
+		return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, "")
 	}
 
 	type want struct {
@@ -724,11 +717,7 @@ func TestFolderResolver_MultiFolderResolvesCorrectOwningFolder(t *testing.T) {
 // bootstrap must fail open (render proceeds with explicit refs only), not
 // closed (render errors on every call).
 func TestFolderResolver_MisconfiguredFallsOpen(t *testing.T) {
-	orgRef := &consolev1.LinkedTemplateRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName: "acme",
-		Name:      "httproute",
-	}
+	orgRef := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", "")
 
 	fr := NewFolderResolver(nil, nil, nil, nil)
 	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api", []*consolev1.LinkedTemplateRef{orgRef})
@@ -830,7 +819,7 @@ func TestFolderResolver_WalkerErrorReturnsExplicitRefs(t *testing.T) {
 	fr := NewFolderResolver(lister, walker, r, RuleUnmarshalerFunc(testUnmarshalRules))
 
 	explicit := []*consolev1.LinkedTemplateRef{
-		{Scope: consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION, ScopeName: "acme", Name: "t1"},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "t1", ""),
 	}
 	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api", explicit)
 	if err != nil {
@@ -858,12 +847,7 @@ func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
 	explicit := []*consolev1.LinkedTemplateRef{
-		{
-			Scope:             consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-			ScopeName:         "acme",
-			Name:              "httproute",
-			VersionConstraint: ">=1.0.0",
-		},
+		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ">=1.0.0"),
 	}
 	policies := map[string][]corev1.ConfigMap{
 		ns["org"]: {

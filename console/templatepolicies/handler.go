@@ -57,6 +57,7 @@ import (
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -76,7 +77,7 @@ var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 // import cycle; console/templates consumes this package transitively via
 // policyresolver for the render-time resolver wired in HOL-567.
 type TemplateExistsResolver interface {
-	TemplateExists(ctx context.Context, scope consolev1.TemplateScope, scopeName, name string) (bool, error)
+	TemplateExists(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (bool, error)
 }
 
 // Handler implements the TemplatePolicyService.
@@ -118,7 +119,7 @@ func (h *Handler) ListTemplatePolicies(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListTemplatePoliciesRequest],
 ) (*connect.Response[consolev1.ListTemplatePoliciesResponse], error) {
-	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +164,7 @@ func (h *Handler) GetTemplatePolicy(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetTemplatePolicyRequest],
 ) (*connect.Response[consolev1.GetTemplatePolicyResponse], error) {
-	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +207,7 @@ func (h *Handler) CreateTemplatePolicy(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateTemplatePolicyRequest],
 ) (*connect.Response[consolev1.CreateTemplatePolicyResponse], error) {
-	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +215,7 @@ func (h *Handler) CreateTemplatePolicy(
 	if policy == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy is required"))
 	}
-	if err := validatePolicyScopeRef(policy.GetScopeRef(), scope, scopeName); err != nil {
+	if err := validatePolicyNamespace(policy.GetNamespace(), req.Msg.GetNamespace()); err != nil {
 		return nil, err
 	}
 	if err := validatePolicyName(policy.GetName()); err != nil {
@@ -270,7 +271,7 @@ func (h *Handler) UpdateTemplatePolicy(
 	ctx context.Context,
 	req *connect.Request[consolev1.UpdateTemplatePolicyRequest],
 ) (*connect.Response[consolev1.UpdateTemplatePolicyResponse], error) {
-	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +279,7 @@ func (h *Handler) UpdateTemplatePolicy(
 	if policy == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy is required"))
 	}
-	if err := validatePolicyScopeRef(policy.GetScopeRef(), scope, scopeName); err != nil {
+	if err := validatePolicyNamespace(policy.GetNamespace(), req.Msg.GetNamespace()); err != nil {
 		return nil, err
 	}
 	name := policy.GetName()
@@ -353,7 +354,7 @@ func (h *Handler) DeleteTemplatePolicy(
 	ctx context.Context,
 	req *connect.Request[consolev1.DeleteTemplatePolicyRequest],
 ) (*connect.Response[consolev1.DeleteTemplatePolicyResponse], error) {
-	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetScope())
+	scope, scopeName, err := h.extractPolicyScope(req.Msg.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
@@ -388,58 +389,53 @@ func (h *Handler) DeleteTemplatePolicy(
 	return connect.NewResponse(&consolev1.DeleteTemplatePolicyResponse{}), nil
 }
 
-// extractPolicyScope validates a TemplateScopeRef for the TemplatePolicyService.
-// Beyond the basic checks performed by the templates handler, this function
-// also rejects TEMPLATE_SCOPE_PROJECT directly and reports the would-be
-// project namespace in the error message so operators can debug misrouted
-// clients. The same rejection applies on read and write so probing a project
-// namespace cannot leak data.
-func (h *Handler) extractPolicyScope(ref *consolev1.TemplateScopeRef) (consolev1.TemplateScope, string, error) {
-	if ref == nil {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope is required"))
+// extractPolicyScope classifies an incoming namespace for the
+// TemplatePolicyService into the legacy (scope, scopeName) pair still used
+// internally by the storage and access-check layers (HOL-621 rewrites those).
+// Project namespaces are rejected directly and the rejection message names
+// the project namespace so operators can debug misrouted clients. The same
+// rejection applies on read and write so probing a project namespace cannot
+// leak data.
+func (h *Handler) extractPolicyScope(namespace string) (scopeshim.Scope, string, error) {
+	if namespace == "" {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
 	}
-	switch ref.GetScope() {
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED:
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope must be specified"))
-	case consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT:
-		// Derive the project namespace name for the error message from the
-		// raw resolver prefixes. The k8s layer performs the authoritative
-		// ResourceTypeFromNamespace check and will re-reject there; this is
-		// the fast path so we can emit a precise diagnostic without a K8s
-		// round trip.
-		projectNs := h.resolver.NamespacePrefix + h.resolver.ProjectPrefix + ref.GetScopeName()
+	if h.resolver == nil {
+		return 0, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+	}
+	scope, scopeName, err := scopeshim.FromNamespace(h.resolver, namespace)
+	if err != nil {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if scope == scopeshim.ScopeProject {
 		return 0, "", connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("template policies cannot be stored in project namespace %q; use an organization or folder scope", projectNs))
+			fmt.Errorf("template policies cannot be stored in project namespace %q; use an organization or folder scope", namespace))
 	}
-	if ref.GetScopeName() == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope.scope_name is required"))
+	if scope == scopeshim.ScopeUnspecified {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace must classify as organization or folder"))
 	}
-	return ref.GetScope(), ref.GetScopeName(), nil
+	if scopeName == "" {
+		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
+	}
+	return scope, scopeName, nil
 }
 
-// validatePolicyScopeRef enforces the proto contract that every
-// TemplatePolicy carries a scope_ref and that it exactly matches the outer
-// request scope. The proto comment on CreateTemplatePolicyRequest.policy
-// states scope_ref is required; silently accepting a nil or mismatched
-// scope_ref would let a client believe a policy was stored at one scope when
-// it was actually stored at another. Project scope is rejected here too so
-// the storage-isolation guardrail (HOL-554) holds at the proto boundary and
-// not only via the downstream namespace check.
-func validatePolicyScopeRef(ref *consolev1.TemplateScopeRef, reqScope consolev1.TemplateScope, reqScopeName string) error {
-	if ref == nil {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy.scope_ref is required"))
+// validatePolicyNamespace enforces the proto contract that every
+// TemplatePolicy carries its owning namespace and that it exactly matches
+// the outer request namespace. The proto comments on
+// CreateTemplatePolicyRequest.policy and UpdateTemplatePolicyRequest.policy
+// state namespace is required; silently accepting a blank or mismatched
+// namespace would let a client believe a policy was stored at one location
+// when it was actually stored at another. Project namespaces are rejected
+// via the caller's extractPolicyScope (which has already classified
+// reqNamespace) so this function only needs to check equality.
+func validatePolicyNamespace(policyNamespace, reqNamespace string) error {
+	if policyNamespace == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy.namespace is required"))
 	}
-	if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED || ref.GetScopeName() == "" {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy.scope_ref.scope and policy.scope_ref.scope_name are required"))
-	}
-	if ref.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT {
+	if policyNamespace != reqNamespace {
 		return connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("policy.scope_ref cannot be TEMPLATE_SCOPE_PROJECT; template policies must live at folder or organization scope"))
-	}
-	if ref.GetScope() != reqScope || ref.GetScopeName() != reqScopeName {
-		return connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("policy.scope_ref (%s/%s) must match request scope (%s/%s)",
-				ref.GetScope(), ref.GetScopeName(), reqScope, reqScopeName))
+			fmt.Errorf("policy.namespace (%q) must match request namespace (%q)", policyNamespace, reqNamespace))
 	}
 	return nil
 }
@@ -484,11 +480,11 @@ func validatePolicyRules(rules []*consolev1.TemplatePolicyRule) error {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.name is required", i))
 		}
-		if tmpl.GetScope() == consolev1.TemplateScope_TEMPLATE_SCOPE_UNSPECIFIED {
+		if scopeshim.RefScope(tmpl) == scopeshim.ScopeUnspecified {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.scope is required", i))
 		}
-		if tmpl.GetScopeName() == "" {
+		if scopeshim.RefScopeName(tmpl) == "" {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.scope_name is required", i))
 		}
@@ -511,12 +507,13 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 		if tmpl == nil {
 			continue
 		}
-		exists, err := h.templateResolver.TemplateExists(ctx, tmpl.GetScope(), tmpl.GetScopeName(), tmpl.GetName())
+		exists, err := h.templateResolver.TemplateExists(ctx, scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName())
 		if err != nil {
 			slog.WarnContext(ctx, "template existence probe failed; continuing",
 				slog.Int("rule_index", i),
-				slog.String("template_scope", tmpl.GetScope().String()),
-				slog.String("template_scope_name", tmpl.GetScopeName()),
+				slog.String("template_scope", scopeshim.RefScope(tmpl).String()),
+				slog.String("template_scope_name", scopeshim.RefScopeName(tmpl)),
+				slog.String("template_namespace", tmpl.GetNamespace()),
 				slog.String("template_name", tmpl.GetName()),
 				slog.Any("error", err),
 			)
@@ -525,8 +522,9 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 		if !exists {
 			slog.WarnContext(ctx, "policy references template that does not currently exist",
 				slog.Int("rule_index", i),
-				slog.String("template_scope", tmpl.GetScope().String()),
-				slog.String("template_scope_name", tmpl.GetScopeName()),
+				slog.String("template_scope", scopeshim.RefScope(tmpl).String()),
+				slog.String("template_scope_name", scopeshim.RefScopeName(tmpl)),
+				slog.String("template_namespace", tmpl.GetNamespace()),
 				slog.String("template_name", tmpl.GetName()),
 			)
 		}
@@ -534,20 +532,19 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 }
 
 // configMapToPolicy converts a stored ConfigMap into a TemplatePolicy proto.
-// The caller supplies the authoritative scope/scopeName pair because the
-// ConfigMap namespace alone is not enough to reconstruct the scope name in
-// all cases (cluster installers may configure non-default prefixes).
-func configMapToPolicy(cm *corev1.ConfigMap, scope consolev1.TemplateScope, scopeName string) *consolev1.TemplatePolicy {
+// The ConfigMap's Namespace field is the authoritative owning namespace, so
+// the response carries cm.Namespace directly (HOL-619 moved policies to be
+// namespace-keyed at the proto layer).
+func configMapToPolicy(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.TemplatePolicy {
+	_ = scope
+	_ = scopeName
 	policy := &consolev1.TemplatePolicy{
 		Name:         cm.Name,
+		Namespace:    cm.Namespace,
 		DisplayName:  cm.Annotations[v1alpha2.AnnotationDisplayName],
 		Description:  cm.Annotations[v1alpha2.AnnotationDescription],
 		CreatorEmail: cm.Annotations[v1alpha2.AnnotationCreatorEmail],
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     scope,
-			ScopeName: scopeName,
-		},
-		CreatedAt: timestamppb.New(cm.CreationTimestamp.Time),
+		CreatedAt:    timestamppb.New(cm.CreationTimestamp.Time),
 	}
 	if raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]; raw != "" {
 		rules, err := unmarshalRules(raw)

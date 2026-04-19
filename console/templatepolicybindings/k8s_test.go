@@ -15,6 +15,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -38,26 +39,26 @@ func TestNamespaceForScopeRejectsProject(t *testing.T) {
 	k := newTestK8s()
 	tests := []struct {
 		name      string
-		scope     consolev1.TemplateScope
+		scope     scopeshim.Scope
 		scopeName string
 		wantErr   bool
 		wantNs    string
 	}{
 		{
 			name:      "org scope resolves to org namespace",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
+			scope:     scopeshim.ScopeOrganization,
 			scopeName: "acme",
 			wantNs:    "holos-org-acme",
 		},
 		{
 			name:      "folder scope resolves to folder namespace",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+			scope:     scopeshim.ScopeFolder,
 			scopeName: "payments",
 			wantNs:    "holos-fld-payments",
 		},
 		{
 			name:      "project scope is rejected as ProjectNamespaceError",
-			scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+			scope:     scopeshim.ScopeProject,
 			scopeName: "payments-web",
 			wantErr:   true,
 		},
@@ -99,7 +100,7 @@ func TestCreateBindingRejectsProjectNamespace(t *testing.T) {
 
 	_, err := k.CreateBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"binding-test",
 		"Test",
@@ -132,7 +133,7 @@ func TestUpdateBindingRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.UpdateBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"binding-test",
 		nil, nil, nil, false, nil, false,
@@ -150,7 +151,7 @@ func TestDeleteBindingRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	err := k.DeleteBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"binding-test",
 	)
@@ -167,7 +168,7 @@ func TestListBindingsRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.ListBindings(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 	)
 	if err == nil {
@@ -183,7 +184,7 @@ func TestGetBindingRejectsProjectNamespace(t *testing.T) {
 	k := newTestK8s()
 	_, err := k.GetBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
+		scopeshim.ScopeProject,
 		"billing-web",
 		"binding-test",
 	)
@@ -208,7 +209,7 @@ func TestCreateBindingWritesConfigMap(t *testing.T) {
 	targets := []*consolev1.TemplatePolicyBindingTargetRef{sampleTargetRef()}
 	cm, err := k.CreateBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"bind-reference-grant",
 		"Bind reference grant",
@@ -247,11 +248,11 @@ func TestCreateBindingWritesConfigMap(t *testing.T) {
 	if parsedPolicy.GetName() != "require-http-route" {
 		t.Errorf("expected policy name require-http-route, got %q", parsedPolicy.GetName())
 	}
-	if parsedPolicy.GetScopeRef().GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION {
-		t.Errorf("expected org scope, got %v", parsedPolicy.GetScopeRef().GetScope())
+	if scopeshim.PolicyRefScope(parsedPolicy) != scopeshim.ScopeOrganization {
+		t.Errorf("expected org scope, got %v", scopeshim.PolicyRefScope(parsedPolicy))
 	}
-	if parsedPolicy.GetScopeRef().GetScopeName() != "acme" {
-		t.Errorf("expected policy scope name acme, got %q", parsedPolicy.GetScopeRef().GetScopeName())
+	if scopeshim.PolicyRefScopeName(parsedPolicy) != "acme" {
+		t.Errorf("expected policy scope name acme, got %q", scopeshim.PolicyRefScopeName(parsedPolicy))
 	}
 
 	rawTargets := cm.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs]
@@ -305,7 +306,7 @@ func TestUpdateBindingPreservesExistingAnnotations(t *testing.T) {
 	// should remain intact.
 	updated, err := k.UpdateBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"binding",
 		nil, nil,
@@ -356,16 +357,10 @@ func TestUpdateBindingPolicyRef(t *testing.T) {
 	fakeClient := fake.NewClientset(existing)
 	k := NewK8sClient(fakeClient, newTestResolver())
 
-	newRef := &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-			ScopeName: "payments",
-		},
-		Name: "new-policy",
-	}
+	newRef := scopeshim.NewLinkedTemplatePolicyRef(scopeshim.ScopeFolder, "payments", "new-policy")
 	updated, err := k.UpdateBinding(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 		"binding",
 		nil, nil,
@@ -382,8 +377,8 @@ func TestUpdateBindingPolicyRef(t *testing.T) {
 	if parsed.GetName() != "new-policy" {
 		t.Errorf("expected policy name new-policy after update, got %q", parsed.GetName())
 	}
-	if parsed.GetScopeRef().GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
-		t.Errorf("expected scope folder after update, got %v", parsed.GetScopeRef().GetScope())
+	if scopeshim.PolicyRefScope(parsed) != scopeshim.ScopeFolder {
+		t.Errorf("expected scope folder after update, got %v", scopeshim.PolicyRefScope(parsed))
 	}
 	if updated.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs] != `[]` {
 		t.Errorf("target-refs clobbered: %q", updated.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs])
@@ -421,7 +416,7 @@ func TestListBindingsReturnsManagedBindings(t *testing.T) {
 
 	list, err := k.ListBindings(
 		context.Background(),
-		consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
+		scopeshim.ScopeFolder,
 		"payments",
 	)
 	if err != nil {
@@ -451,13 +446,7 @@ func TestListBindingsInNamespace(t *testing.T) {
 // policy-ref annotation so external tooling (or future migrations) see a
 // stable shape.
 func TestPolicyRefAnnotationRoundtrip(t *testing.T) {
-	ref := &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-			ScopeName: "payments",
-		},
-		Name: "policy-a",
-	}
+	ref := scopeshim.NewLinkedTemplatePolicyRef(scopeshim.ScopeFolder, "payments", "policy-a")
 	raw, err := marshalPolicyRef(ref)
 	if err != nil {
 		t.Fatalf("marshalPolicyRef: %v", err)
@@ -479,8 +468,8 @@ func TestPolicyRefAnnotationRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshalPolicyRef: %v", err)
 	}
-	if parsed.GetScopeRef().GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
-		t.Errorf("scope lost on round trip: %v", parsed.GetScopeRef().GetScope())
+	if scopeshim.PolicyRefScope(parsed) != scopeshim.ScopeFolder {
+		t.Errorf("scope lost on round trip: %v", scopeshim.PolicyRefScope(parsed))
 	}
 }
 
@@ -624,13 +613,7 @@ func TestPackageDoesNotCallProjectNamespace(t *testing.T) {
 
 // samplePolicyRef returns a minimal valid policy ref suitable for fixtures.
 func samplePolicyRef() *consolev1.LinkedTemplatePolicyRef {
-	return &consolev1.LinkedTemplatePolicyRef{
-		ScopeRef: &consolev1.TemplateScopeRef{
-			Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-			ScopeName: "acme",
-		},
-		Name: "require-http-route",
-	}
+	return scopeshim.NewLinkedTemplatePolicyRef(scopeshim.ScopeOrganization, "acme", "require-http-route")
 }
 
 // sampleTargetRef returns a minimal valid target ref suitable for fixtures.

@@ -15,6 +15,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -112,7 +113,7 @@ type fakeTemplateResolver struct {
 	calls  int
 }
 
-func (f *fakeTemplateResolver) TemplateExists(_ context.Context, _ consolev1.TemplateScope, _, _ string) (bool, error) {
+func (f *fakeTemplateResolver) TemplateExists(_ context.Context, _ scopeshim.Scope, _, _ string) (bool, error) {
 	f.calls++
 	if f.err != nil {
 		return false, f.err
@@ -139,40 +140,35 @@ func newTestHandler(t *testing.T, shareUsers map[string]string) (*Handler, *fake
 	return h, fakeClient
 }
 
-// newFolderScope and newOrgScope are short constructors for the proto types
-// used in every table-driven case below.
-func newFolderScope(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER,
-		ScopeName: name,
-	}
+// newFolderScope and newOrgScope are short constructors for the namespace
+// strings used in every table-driven case below. HOL-619 removed
+// TemplateScopeRef from proto, so the helpers now return the Kubernetes
+// namespace the scope resolves to. The request-time namespace field is
+// the canonical scope discriminator; tests still classify it back to
+// (scope, scopeName) inside the handler via the scopeshim resolver.
+func newFolderScope(name string) string {
+	return scopeshim.DefaultResolver().FolderNamespace(name)
 }
 
-func newOrgScope(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-		ScopeName: name,
-	}
+func newOrgScope(name string) string {
+	return scopeshim.DefaultResolver().OrgNamespace(name)
 }
 
-func newProjectScope(name string) *consolev1.TemplateScopeRef {
-	return &consolev1.TemplateScopeRef{
-		Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_PROJECT,
-		ScopeName: name,
-	}
+func newProjectScope(name string) string {
+	return scopeshim.DefaultResolver().ProjectNamespace(name)
 }
 
-// basicPolicy builds a policy whose scope_ref matches the supplied request
-// scope. The outer request scope and the embedded policy scope must line up
-// for the handler to accept the request (see validatePolicyScopeRef); this
-// helper keeps the invariant in one place instead of duplicating scope_ref
-// construction at every call site.
-func basicPolicy(scope *consolev1.TemplateScopeRef) *consolev1.TemplatePolicy {
+// basicPolicy builds a policy whose namespace matches the supplied request
+// namespace. The outer request namespace and the embedded policy namespace
+// must line up for the handler to accept the request (see
+// validatePolicyNamespace); this helper keeps the invariant in one place
+// instead of duplicating namespace construction at every call site.
+func basicPolicy(namespace string) *consolev1.TemplatePolicy {
 	return &consolev1.TemplatePolicy{
 		Name:        "require-httproute",
 		DisplayName: "Require HTTPRoute",
 		Description: "Force HTTPRoute for every project",
-		ScopeRef:    scope,
+		Namespace:   namespace,
 		Rules:       []*consolev1.TemplatePolicyRule{sampleRule()},
 	}
 }
@@ -185,7 +181,7 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 
 	req := connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newProjectScope("billing-web"),
+		Namespace:  newProjectScope("billing-web"),
 		Policy: basicPolicy(newProjectScope("billing-web")),
 	})
 	ctx := authedCtx("owner@example.com", nil)
@@ -220,7 +216,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "list",
 			run: func() error {
 				_, err := h.ListTemplatePolicies(ctx, connect.NewRequest(&consolev1.ListTemplatePoliciesRequest{
-					Scope: newProjectScope("billing-web"),
+					Namespace: newProjectScope("billing-web"),
 				}))
 				return err
 			},
@@ -229,7 +225,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "get",
 			run: func() error {
 				_, err := h.GetTemplatePolicy(ctx, connect.NewRequest(&consolev1.GetTemplatePolicyRequest{
-					Scope: newProjectScope("billing-web"),
+					Namespace: newProjectScope("billing-web"),
 					Name:  "any",
 				}))
 				return err
@@ -239,7 +235,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "update",
 			run: func() error {
 				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
-					Scope:  newProjectScope("billing-web"),
+					Namespace:  newProjectScope("billing-web"),
 					Policy: basicPolicy(newProjectScope("billing-web")),
 				}))
 				return err
@@ -249,7 +245,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "delete",
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
-					Scope: newProjectScope("billing-web"),
+					Namespace: newProjectScope("billing-web"),
 					Name:  "any",
 				}))
 				return err
@@ -292,11 +288,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
 						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED,
-						Template: &consolev1.LinkedTemplateRef{
-							Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-							ScopeName: "acme",
-							Name:      "t",
-						},
+						Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "t", ""),
 					},
 				},
 			},
@@ -309,10 +301,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
 						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-						Template: &consolev1.LinkedTemplateRef{
-							Scope:     consolev1.TemplateScope_TEMPLATE_SCOPE_ORGANIZATION,
-							ScopeName: "acme",
-						},
+						Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "", ""),
 					},
 				},
 			},
@@ -330,14 +319,14 @@ func TestCreatePolicyValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Ensure every fixture in this table carries the matching
-			// scope_ref so the test isolates the field-level validation
-			// under test (rules, names) from the scope_ref check covered
-			// by TestCreatePolicyScopeRefValidation.
-			if tt.policy != nil && tt.policy.ScopeRef == nil {
-				tt.policy.ScopeRef = newFolderScope("payments")
+			// namespace so the test isolates the field-level validation
+			// under test (rules, names) from the namespace check covered
+			// by TestCreatePolicyNamespaceValidation.
+			if tt.policy != nil && tt.policy.Namespace == "" {
+				tt.policy.Namespace = newFolderScope("payments")
 			}
 			_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-				Scope:  newFolderScope("payments"),
+				Namespace:  newFolderScope("payments"),
 				Policy: tt.policy,
 			}))
 			if err == nil {
@@ -353,74 +342,62 @@ func TestCreatePolicyValidation(t *testing.T) {
 	}
 }
 
-// TestCreatePolicyScopeRefValidation covers the proto-contract check on
-// policy.scope_ref. The reviewer called out that the handler previously
-// accepted nil, mismatched, or project-scope scope_ref values and silently
-// stored the policy under the outer request scope; that let a client think a
-// policy had landed at one scope when it had actually landed at another and
-// also let a project-scope scope_ref slip past the HOL-554 storage-isolation
-// guardrail at the proto boundary.
-func TestCreatePolicyScopeRefValidation(t *testing.T) {
+// TestCreatePolicyNamespaceValidation covers the proto-contract check on
+// policy.namespace. HOL-619 replaced the per-message TemplateScopeRef with
+// a top-level namespace field that must match the request namespace.
+// The reviewer called out that the handler previously accepted nil,
+// mismatched, or project-scope scope_ref values and silently stored the
+// policy under the outer request scope; the equivalent failure modes post
+// HOL-619 are an empty or mismatched namespace.
+func TestCreatePolicyNamespaceValidation(t *testing.T) {
 	h, _ := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 	ctx := authedCtx("owner@example.com", nil)
 
 	tests := []struct {
-		name    string
-		reqRef  *consolev1.TemplateScopeRef
-		polRef  *consolev1.TemplateScopeRef
-		wantMsg string
+		name     string
+		reqNs    string
+		polNs    string
+		wantMsg  string
 	}{
 		{
-			name:    "missing policy scope_ref",
-			reqRef:  newFolderScope("payments"),
-			polRef:  nil,
-			wantMsg: "policy.scope_ref is required",
+			name:    "missing policy namespace",
+			reqNs:   newFolderScope("payments"),
+			polNs:   "",
+			wantMsg: "policy.namespace",
 		},
 		{
-			name:    "empty policy scope_ref fields",
-			reqRef:  newFolderScope("payments"),
-			polRef:  &consolev1.TemplateScopeRef{},
-			wantMsg: "policy.scope_ref.scope",
+			name:    "mismatched folder vs org",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newOrgScope("payments"),
+			wantMsg: "must match request namespace",
 		},
 		{
-			name:    "mismatched scope kind org vs folder",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newOrgScope("payments"),
-			wantMsg: "must match request scope",
+			name:    "mismatched folder names",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newFolderScope("identity"),
+			wantMsg: "must match request namespace",
 		},
 		{
-			name:    "mismatched scope kind folder vs org",
-			reqRef:  newOrgScope("acme"),
-			polRef:  newFolderScope("acme"),
-			wantMsg: "must match request scope",
+			name:    "mismatched org names",
+			reqNs:   newOrgScope("acme"),
+			polNs:   newOrgScope("other"),
+			wantMsg: "must match request namespace",
 		},
 		{
-			name:    "mismatched folder name",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newFolderScope("identity"),
-			wantMsg: "must match request scope",
-		},
-		{
-			name:    "mismatched org name",
-			reqRef:  newOrgScope("acme"),
-			polRef:  newOrgScope("other"),
-			wantMsg: "must match request scope",
-		},
-		{
-			name:    "project-scope policy scope_ref at folder request",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newProjectScope("billing-web"),
-			wantMsg: "TEMPLATE_SCOPE_PROJECT",
+			name:    "project-scope policy at folder request",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newProjectScope("billing-web"),
+			wantMsg: "must match request namespace",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-				Scope:  tt.reqRef,
-				Policy: basicPolicy(tt.polRef),
+				Namespace: tt.reqNs,
+				Policy:    basicPolicy(tt.polNs),
 			}))
 			if err == nil {
-				t.Fatal("expected scope_ref validation error")
+				t.Fatal("expected namespace validation error")
 			}
 			if connect.CodeOf(err) != connect.CodeInvalidArgument {
 				t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
@@ -431,40 +408,40 @@ func TestCreatePolicyScopeRefValidation(t *testing.T) {
 		})
 	}
 
-	t.Run("valid matching folder scope is accepted", func(t *testing.T) {
+	t.Run("valid matching folder namespace is accepted", func(t *testing.T) {
 		_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-			Scope:  newFolderScope("payments"),
-			Policy: basicPolicy(newFolderScope("payments")),
+			Namespace: newFolderScope("payments"),
+			Policy:    basicPolicy(newFolderScope("payments")),
 		}))
 		if err != nil {
-			t.Fatalf("matching folder scope_ref must be accepted: %v", err)
+			t.Fatalf("matching folder namespace must be accepted: %v", err)
 		}
 	})
 }
 
-// TestUpdatePolicyScopeRefValidation mirrors the create-path coverage for
+// TestUpdatePolicyNamespaceValidation mirrors the create-path coverage for
 // UpdateTemplatePolicy. The update path is independently vulnerable because
 // callers commonly round-trip a proto Policy fetched from Get and could edit
-// scope_ref to escape the outer scope guard.
-func TestUpdatePolicyScopeRefValidation(t *testing.T) {
+// policy.namespace to escape the outer namespace guard.
+func TestUpdatePolicyNamespaceValidation(t *testing.T) {
 	// Seed a policy we can legitimately update in the happy-path subtest.
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 	ctx := authedCtx("owner@example.com", nil)
 	if _, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newFolderScope("payments"),
-		Policy: basicPolicy(newFolderScope("payments")),
+		Namespace: newFolderScope("payments"),
+		Policy:    basicPolicy(newFolderScope("payments")),
 	})); err != nil {
 		t.Fatalf("seeding: %v", err)
 	}
 	_ = fakeClient
 
-	update := func(reqRef, polRef *consolev1.TemplateScopeRef) error {
+	update := func(reqNs, polNs string) error {
 		_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
-			Scope: reqRef,
+			Namespace: reqNs,
 			Policy: &consolev1.TemplatePolicy{
-				Name:     "require-httproute",
-				ScopeRef: polRef,
-				Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
+				Name:      "require-httproute",
+				Namespace: polNs,
+				Rules:     []*consolev1.TemplatePolicyRule{sampleRule()},
 			},
 		}))
 		return err
@@ -472,40 +449,40 @@ func TestUpdatePolicyScopeRefValidation(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		reqRef  *consolev1.TemplateScopeRef
-		polRef  *consolev1.TemplateScopeRef
+		reqNs   string
+		polNs   string
 		wantMsg string
 	}{
 		{
-			name:    "missing policy scope_ref",
-			reqRef:  newFolderScope("payments"),
-			polRef:  nil,
-			wantMsg: "policy.scope_ref is required",
+			name:    "missing policy namespace",
+			reqNs:   newFolderScope("payments"),
+			polNs:   "",
+			wantMsg: "policy.namespace",
 		},
 		{
 			name:    "mismatched scope kind",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newOrgScope("payments"),
-			wantMsg: "must match request scope",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newOrgScope("payments"),
+			wantMsg: "must match request namespace",
 		},
 		{
 			name:    "mismatched folder name",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newFolderScope("identity"),
-			wantMsg: "must match request scope",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newFolderScope("identity"),
+			wantMsg: "must match request namespace",
 		},
 		{
-			name:    "project-scope policy scope_ref",
-			reqRef:  newFolderScope("payments"),
-			polRef:  newProjectScope("billing-web"),
-			wantMsg: "TEMPLATE_SCOPE_PROJECT",
+			name:    "project-scope policy",
+			reqNs:   newFolderScope("payments"),
+			polNs:   newProjectScope("billing-web"),
+			wantMsg: "must match request namespace",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := update(tt.reqRef, tt.polRef)
+			err := update(tt.reqNs, tt.polNs)
 			if err == nil {
-				t.Fatal("expected scope_ref validation error")
+				t.Fatal("expected namespace validation error")
 			}
 			if connect.CodeOf(err) != connect.CodeInvalidArgument {
 				t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
@@ -530,7 +507,7 @@ func TestCreatePolicyHappyPath(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newFolderScope("payments"),
+		Namespace:  newFolderScope("payments"),
 		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
@@ -553,7 +530,7 @@ func TestCreatePolicyPermissionDeniedForViewer(t *testing.T) {
 	ctx := authedCtx("viewer@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newFolderScope("payments"),
+		Namespace:  newFolderScope("payments"),
 		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err == nil {
@@ -569,7 +546,7 @@ func TestCreatePolicyAtOrgScope(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newOrgScope("acme"),
+		Namespace:  newOrgScope("acme"),
 		Policy: basicPolicy(newOrgScope("acme")),
 	}))
 	if err != nil {
@@ -591,7 +568,7 @@ func TestDeleteMissingPolicyReturnsNotFound(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
-		Scope: newFolderScope("payments"),
+		Namespace: newFolderScope("payments"),
 		Name:  "does-not-exist",
 	}))
 	if err == nil {
@@ -637,10 +614,10 @@ func TestUpdatePreservesUnspecifiedFields(t *testing.T) {
 
 	ctx := authedCtx("owner@example.com", nil)
 	_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
-		Scope: newFolderScope("payments"),
+		Namespace: newFolderScope("payments"),
 		Policy: &consolev1.TemplatePolicy{
 			Name:     "policy",
-			ScopeRef: newFolderScope("payments"),
+			Namespace: newFolderScope("payments"),
 			Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
 		},
 	}))
@@ -672,7 +649,7 @@ func TestTemplateExistsProbeDoesNotBlockOnTransientError(t *testing.T) {
 
 	ctx := authedCtx("owner@example.com", nil)
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newFolderScope("payments"),
+		Namespace:  newFolderScope("payments"),
 		Policy: basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
@@ -690,14 +667,14 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	if _, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Scope:  newFolderScope("payments"),
+		Namespace:  newFolderScope("payments"),
 		Policy: basicPolicy(newFolderScope("payments")),
 	})); err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
 	}
 
 	resp, err := h.ListTemplatePolicies(ctx, connect.NewRequest(&consolev1.ListTemplatePoliciesRequest{
-		Scope: newFolderScope("payments"),
+		Namespace: newFolderScope("payments"),
 	}))
 	if err != nil {
 		t.Fatalf("ListTemplatePolicies: %v", err)
@@ -712,8 +689,8 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 	if len(got.GetRules()) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(got.GetRules()))
 	}
-	if got.GetScopeRef().GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
-		t.Errorf("expected folder scope, got %v", got.GetScopeRef().GetScope())
+	if gotScope, _, err := scopeshim.FromNamespace(scopeshim.DefaultResolver(), got.GetNamespace()); err != nil || gotScope != scopeshim.ScopeFolder {
+		t.Errorf("expected folder scope from namespace %q, got scope=%v err=%v", got.GetNamespace(), gotScope, err)
 	}
 
 	// List directly via the fake client to verify no project-namespace
@@ -887,7 +864,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create at folder scope (no folder grant)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Scope:  newFolderScope("payments"),
+					Namespace:  newFolderScope("payments"),
 					Policy: basicPolicy(newFolderScope("payments")),
 				}))
 				return err
@@ -898,7 +875,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create at organization scope (no org grant)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Scope:  newOrgScope("acme"),
+					Namespace:  newOrgScope("acme"),
 					Policy: basicPolicy(newOrgScope("acme")),
 				}))
 				return err
@@ -909,7 +886,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create targeting project namespace (storage-isolation rejection)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Scope:  newProjectScope("billing-web"),
+					Namespace:  newProjectScope("billing-web"),
 					Policy: basicPolicy(newProjectScope("billing-web")),
 				}))
 				return err
@@ -920,10 +897,10 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Update folder-scope policy (no folder grant)",
 			run: func() error {
 				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
-					Scope: newFolderScope("payments"),
+					Namespace: newFolderScope("payments"),
 					Policy: &consolev1.TemplatePolicy{
 						Name:     "require-httproute",
-						ScopeRef: newFolderScope("payments"),
+						Namespace: newFolderScope("payments"),
 						Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
 					},
 				}))
@@ -935,7 +912,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Delete folder-scope policy (no folder grant)",
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
-					Scope: newFolderScope("payments"),
+					Namespace: newFolderScope("payments"),
 					Name:  "require-httproute",
 				}))
 				return err
@@ -946,7 +923,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Delete targeting project namespace (storage-isolation rejection)",
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
-					Scope: newProjectScope("billing-web"),
+					Namespace: newProjectScope("billing-web"),
 					Name:  "any",
 				}))
 				return err

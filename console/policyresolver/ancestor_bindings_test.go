@@ -9,6 +9,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -213,14 +214,14 @@ func TestAncestorBindingLister_DecodesPolicyRefAndTargets(t *testing.T) {
 		t.Fatalf("expected 1 binding; got %d", len(got))
 	}
 	rb := got[0]
-	if rb.PolicyRef == nil || rb.PolicyRef.GetScopeRef() == nil {
+	if rb.PolicyRef == nil || rb.PolicyRef.GetNamespace() == "" {
 		t.Fatalf("expected decoded policy ref; got %+v", rb.PolicyRef)
 	}
-	if rb.PolicyRef.GetScopeRef().GetScope() != consolev1.TemplateScope_TEMPLATE_SCOPE_FOLDER {
-		t.Errorf("expected folder scope; got %v", rb.PolicyRef.GetScopeRef().GetScope())
+	if scopeshim.PolicyRefScope(rb.PolicyRef) != scopeshim.ScopeFolder {
+		t.Errorf("expected folder scope; got %v", scopeshim.PolicyRefScope(rb.PolicyRef))
 	}
-	if rb.PolicyRef.GetScopeRef().GetScopeName() != "eng" {
-		t.Errorf("expected scope_name=eng; got %q", rb.PolicyRef.GetScopeRef().GetScopeName())
+	if scopeshim.PolicyRefScopeName(rb.PolicyRef) != "eng" {
+		t.Errorf("expected scope_name=eng; got %q", scopeshim.PolicyRefScopeName(rb.PolicyRef))
 	}
 	if rb.PolicyRef.GetName() != "eng-audit" {
 		t.Errorf("expected policy name=eng-audit; got %q", rb.PolicyRef.GetName())
