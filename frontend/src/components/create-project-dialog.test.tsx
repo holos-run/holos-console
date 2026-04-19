@@ -381,4 +381,38 @@ describe('CreateProjectDialog', () => {
     expect(submit).toBeDefined()
     expect(submit.disabled).toBe(true)
   })
+
+  // Required-field coverage migrated from `frontend/e2e/create-dialogs.spec.ts`
+  // (HOL-654). The dialog requires both `name` and `organization` — the submit
+  // button stays disabled until both are present. Without these assertions,
+  // a regression that re-enables submit with blank required inputs would slip
+  // past `make test-ui` now that the E2E spec is removed.
+  it('disables submit when the name field is empty', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    const submit = screen.getByRole('button', { name: /^create$/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+  })
+
+  it('disables submit when the organization is empty even if a name is typed', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), {
+      target: { value: 'New Project' },
+    })
+
+    const submit = screen.getByRole('button', { name: /^create$/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+  })
+
+  it('enables submit once both name and organization are provided', () => {
+    render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} defaultOrganization="my-org" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/my project/i), {
+      target: { value: 'New Project' },
+    })
+
+    const submit = screen.getByRole('button', { name: /^create$/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(false)
+  })
 })
