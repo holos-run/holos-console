@@ -62,8 +62,13 @@ export function useUpdateOrganization() {
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (params: { name: string; displayName?: string; description?: string; defaultFolder?: string }) =>
-      client.updateOrganization(params),
+    mutationFn: (params: {
+      name: string
+      displayName?: string
+      description?: string
+      defaultFolder?: string
+      gatewayNamespace?: string
+    }) => client.updateOrganization(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connect-query'] })
     },

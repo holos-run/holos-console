@@ -63,6 +63,7 @@ const mockOrg = {
   defaultUserGrants: [{ principal: 'bob@example.com', role: 1 }],
   defaultRoleGrants: [{ principal: 'engineering', role: 2 }],
   defaultFolder: 'default',
+  gatewayNamespace: 'custom-gateway',
   userRole: 3, // OWNER
 }
 
@@ -228,6 +229,101 @@ describe('OrgSettingsPage', () => {
       expect(screen.getByText('A test organization')).toBeInTheDocument()
       const mutateAsync = (useUpdateOrganization as Mock).mock.results[0].value.mutateAsync
       expect(mutateAsync).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Gateway Namespace inline edit', () => {
+    it('renders the current gatewayNamespace from the mocked org', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      expect(screen.getByText('custom-gateway')).toBeInTheDocument()
+    })
+
+    it('renders an empty-state hint when gatewayNamespace is unset', () => {
+      setupMocks({ gatewayNamespace: '' })
+      render(<OrgSettingsPage />)
+      // Empty-state copy should mention the istio-ingress default.
+      expect(screen.getByText(/not set/i)).toBeInTheDocument()
+      expect(screen.getByText(/istio-ingress/i)).toBeInTheDocument()
+    })
+
+    it('clicking pencil switches to input with current value', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const editButtons = screen.getAllByRole('button', { name: /edit gateway namespace/i })
+      fireEvent.click(editButtons[0])
+      const input = screen.getByRole('textbox', { name: /gateway namespace/i })
+      expect(input).toBeInTheDocument()
+      expect((input as HTMLInputElement).value).toBe('custom-gateway')
+    })
+
+    it('saving calls useUpdateOrganization with new gatewayNamespace', async () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const editButtons = screen.getAllByRole('button', { name: /edit gateway namespace/i })
+      fireEvent.click(editButtons[0])
+      const input = screen.getByRole('textbox', { name: /gateway namespace/i })
+      fireEvent.change(input, { target: { value: 'platform-gateway' } })
+      fireEvent.click(screen.getByRole('button', { name: /save gateway namespace/i }))
+      const mutateAsync = (useUpdateOrganization as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith({
+          name: 'test-org',
+          gatewayNamespace: 'platform-gateway',
+        })
+      })
+    })
+
+    it('saving an empty value calls useUpdateOrganization with gatewayNamespace: ""', async () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const editButtons = screen.getAllByRole('button', { name: /edit gateway namespace/i })
+      fireEvent.click(editButtons[0])
+      const input = screen.getByRole('textbox', { name: /gateway namespace/i })
+      fireEvent.change(input, { target: { value: '' } })
+      fireEvent.click(screen.getByRole('button', { name: /save gateway namespace/i }))
+      const mutateAsync = (useUpdateOrganization as Mock).mock.results[0].value.mutateAsync
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith({
+          name: 'test-org',
+          gatewayNamespace: '',
+        })
+      })
+    })
+
+    it('cancel restores previous value without calling useUpdateOrganization', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const editButtons = screen.getAllByRole('button', { name: /edit gateway namespace/i })
+      fireEvent.click(editButtons[0])
+      const input = screen.getByRole('textbox', { name: /gateway namespace/i })
+      fireEvent.change(input, { target: { value: 'changed-gateway' } })
+      fireEvent.click(screen.getByRole('button', { name: /cancel gateway namespace/i }))
+      expect(screen.getByText('custom-gateway')).toBeInTheDocument()
+      const mutateAsync = (useUpdateOrganization as Mock).mock.results[0].value.mutateAsync
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('shows a DNS-1123 validation hint while editing an invalid value', () => {
+      setupMocks()
+      render(<OrgSettingsPage />)
+      const editButtons = screen.getAllByRole('button', { name: /edit gateway namespace/i })
+      fireEvent.click(editButtons[0])
+      const input = screen.getByRole('textbox', { name: /gateway namespace/i })
+      fireEvent.change(input, { target: { value: 'INVALID_NS' } })
+      // A small client-side hint should appear; server-side still authoritative.
+      expect(screen.getByText(/dns-1123/i)).toBeInTheDocument()
+    })
+
+    it('renders read-only (no edit pencil) for non-owners', () => {
+      setupMocks({ userRole: 1 }) // VIEWER
+      render(<OrgSettingsPage />)
+      // The current value still renders.
+      expect(screen.getByText('custom-gateway')).toBeInTheDocument()
+      // But there is no edit affordance for non-owners.
+      expect(
+        screen.queryByRole('button', { name: /edit gateway namespace/i }),
+      ).not.toBeInTheDocument()
     })
   })
 
