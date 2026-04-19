@@ -48,6 +48,7 @@ import (
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
+	controllermgr "github.com/holos-run/holos-console/internal/controller"
 )
 
 //go:embed all:dist
@@ -168,6 +169,12 @@ func derivePostLogoutRedirectURI(origin string) string {
 type Server struct {
 	cfg   Config
 	ready atomic.Bool
+	// controllerMgr is the embedded controller-runtime manager (HOL-620).
+	// The /readyz probe ANDs s.ready with controllerMgr.Ready() so the pod
+	// stays 503 until the listener is up AND every informer cache has
+	// completed its initial sync. Nil when Serve runs without a Kubernetes
+	// config (dummy-secret-only mode).
+	controllerMgr *controllermgr.Manager
 }
 
 // New creates a new Server with the given configuration.
@@ -208,13 +215,23 @@ func (s *Server) Serve(ctx context.Context) error {
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		if s.ready.Load() {
+		// HOL-620: /readyz only flips to 200 when the listener has
+		// finished wiring up AND the controller-runtime manager's
+		// informer cache has completed its initial sync. The cache
+		// check short-circuits to `true` when the manager is nil —
+		// that case is dummy-secret-only mode, which has no cluster
+		// and therefore nothing to sync.
+		cacheReady := true
+		if s.controllerMgr != nil {
+			cacheReady = s.controllerMgr.Ready()
+		}
+		if s.ready.Load() && cacheReady {
 			w.WriteHeader(http.StatusOK)
 			io.WriteString(w, "ok")
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			io.WriteString(w, "not ready")
+			return
 		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		io.WriteString(w, "not ready")
 	})
 
 	// Configure ConnectRPC interceptors for public routes (no auth required)
@@ -249,10 +266,51 @@ func (s *Server) Serve(ctx context.Context) error {
 	path, handler := consolev1connect.NewVersionServiceHandler(versionHandler, publicInterceptors)
 	mux.Handle(path, handler)
 
-	// Initialize Kubernetes client for secrets (may be nil if no cluster available)
+	// Initialize Kubernetes client for secrets (may be nil if no cluster available).
+	// We share the resolved REST config with the controller-runtime manager
+	// below so there is a single loader for the cluster connection.
+	restConfig, err := secrets.NewRestConfig()
+	if err != nil {
+		return fmt.Errorf("failed to resolve kubernetes REST config: %w", err)
+	}
 	k8sClientset, err := secrets.NewClientset()
 	if err != nil {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	// HOL-620: embed the controller-runtime manager when a cluster config
+	// is available. The manager owns the informer caches HOL-621 rewires
+	// every storage client to read from; for now it lands the three
+	// reconcilers (Template, TemplatePolicy, TemplatePolicyBinding) that
+	// publish the Gateway-API-style status surface defined in ADR 030. We
+	// gate the console /readyz probe on mgr.Ready() so the pod stays 503
+	// until the cache is warm.
+	if k8sClientset != nil && restConfig != nil {
+		mgr, err := controllermgr.NewManager(restConfig, nil, controllermgr.Options{
+			// controller-runtime enforces a process-global uniqueness
+			// check on controller names to prevent Prometheus metric
+			// collisions. The console metrics server is separate
+			// (mux.Handle("/metrics") below) and the controller-runtime
+			// metrics listener is disabled, so collisions are not a
+			// concern. Skipping the guard lets `console.Server.Serve`
+			// be invoked multiple times in the same test process
+			// (testscript creates a fresh server per script), which
+			// would otherwise trip the name-registry.
+			SkipControllerNameValidation: true,
+			// Mirror the namespace-prefix configuration the resolver
+			// already reads from flags so the TemplatePolicyBinding
+			// reconciler computes the same project namespace names
+			// the console's RPC handlers use.
+			NamespacePrefix:    s.cfg.NamespacePrefix,
+			OrganizationPrefix: s.cfg.OrganizationPrefix,
+			FolderPrefix:       s.cfg.FolderPrefix,
+			ProjectPrefix:      s.cfg.ProjectPrefix,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build controller manager: %w", err)
+		}
+		s.controllerMgr = mgr
+		slog.Info("controller-runtime manager initialized")
 	}
 
 	// Register services (protected - requires auth)
@@ -635,7 +693,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	slog.Info("starting server", "addr", s.cfg.ListenAddr, "scheme", scheme)
 	slog.Info("ready", "version", GetVersion(), "url", s.cfg.Origin)
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		if s.cfg.PlainHTTP {
 			errCh <- server.ListenAndServe()
@@ -651,6 +709,18 @@ func (s *Server) Serve(ctx context.Context) error {
 			errCh <- server.Serve(listener)
 		}
 	}()
+
+	// HOL-620: run the embedded controller-runtime manager alongside the
+	// HTTP listener. A manager failure (cache sync timeout, API server
+	// unreachable) tears the whole process down so Kubernetes reschedules
+	// the pod — the same failure mode as an HTTP listener error.
+	if s.controllerMgr != nil {
+		go func() {
+			if err := s.controllerMgr.Start(ctx); err != nil {
+				errCh <- fmt.Errorf("controller manager exited: %w", err)
+			}
+		}()
+	}
 
 	select {
 	case <-ctx.Done():

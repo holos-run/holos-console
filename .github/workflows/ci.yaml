@@ -87,6 +87,19 @@ jobs:
           done
           kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
+      # The controller-runtime manager embedded in holos-console (HOL-620) starts
+      # informers over templates.holos.run/v1alpha1 at boot. The manager fails
+      # its initial cache sync — and the console treats that as fatal — when
+      # the target cluster does not have the CRDs installed. Apply the CRDs,
+      # admission policies, and RBAC here, in the same order scripts/kind-up
+      # uses for local clusters (ADR 030). Order matters: CRDs first so the
+      # ValidatingAdmissionPolicies can reference templates.holos.run kinds.
+      - name: Install holos-console CRDs, admission policies, and RBAC
+        run: |
+          kubectl apply -f config/crd/
+          kubectl apply -f config/admission/
+          kubectl apply -f config/rbac/
+
       - name: Install Playwright browsers
         run: |
           cd frontend
