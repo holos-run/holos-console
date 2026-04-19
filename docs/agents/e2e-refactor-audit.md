@@ -27,7 +27,7 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 
 ## Spec Inventory
 
-`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests. After HOL-654 landed, `create-dialogs.spec.ts` was also deleted. After HOL-655 landed, `deployments.spec.ts` and `org-settings.spec.ts` were also deleted; the remaining tables still list all five for historical context.
+`frontend/e2e/` originally contained **11 spec files** totalling **1,576 test-lines** across **58 `test(...)` blocks** (plus `helpers.ts` at 250 lines). After HOL-653 landed, `profile.spec.ts` and `navigation.spec.ts` were deleted and their coverage folded into Vitest unit tests. After HOL-654 landed, `create-dialogs.spec.ts` was also deleted. After HOL-655 landed, `deployments.spec.ts` and `org-settings.spec.ts` were also deleted. After HOL-656 landed, the `Dev Token Endpoint` and `Persona Switching` describes in `multi-persona.spec.ts` were deleted (the `Multi-Persona RBAC` describe remains, keeping 3 tests in the spec); the remaining tables still list all six for historical context.
 
 ### Summary Table
 
@@ -43,8 +43,8 @@ Measured from the CI `E2E Tests` job on the last three `main` merges before this
 | `folder-rbac.spec.ts` | 3 | **Keep** (K8s RBAC cascade) | keep |
 | `folder-templates.spec.ts` | 2 | **Keep** (K8s template release) | keep |
 | `secrets.spec.ts` | 6 | **Split** (4 Keep, 1 Refactor, 1 Delete) | pending (HOL-658) |
-| `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) | pending (HOL-656) |
-| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 + HOL-654 + HOL-655 complete: 17 tests removed from E2E |
+| `multi-persona.spec.ts` | 10 | **Split** (4 → Go tests, 2 → unit, 1 Delete, 3 Keep) | **done (HOL-656)** — 7 tests removed from E2E |
+| **Total** | **58** | **Keep: 32, Refactor: 23, Delete: 3** | HOL-653 + HOL-654 + HOL-655 + HOL-656 complete: 24 tests removed from E2E |
 
 Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) — 23 move to unit/Go tests, 3 are deleted as redundant with existing coverage. The remaining E2E job is focused on OIDC auth and real K8s round-trips.
 
@@ -53,6 +53,8 @@ Projected reduction: **~45% of E2E test bodies** leave the E2E suite (26 of 58) 
 **HOL-654 delta**: After this phase, `frontend/e2e/` holds **8 spec files** and **46 `test(...)` blocks** (5 create-dialogs deleted). The new Vitest coverage lives in `frontend/src/components/create-project-dialog.test.tsx` (3 new tests: auto-derived-slug submit + navigate, manual override + reset affordance, pending submit), `frontend/src/components/create-org-dialog.test.tsx` (1 new test: pending submit), and `frontend/src/components/app-sidebar.test.tsx` (4 new tests across two describes: org-picker with existing orgs surfaces a "New Organization" item below the listed orgs, and the symmetric project-picker assertion for "New Project").
 
 **HOL-655 delta**: After this phase, `frontend/e2e/` holds **6 spec files** and **41 `test(...)` blocks** (3 deployments + 2 org-settings deleted). The audit plan was satisfied almost entirely by coverage that already existed in `-new.test.tsx`, `-index.test.tsx`, `-settings.test.tsx`, and `app-sidebar.test.tsx` (the no-templates affordance, Create Deployment link wiring, RBAC-driven button visibility, `Org Settings` sidebar link, and display-name / description / sharing form state were all already asserted at the component level). Two small anti-regression tests were added to preserve invariants the E2E suite uniquely exercised: `renders as a standalone page (not inside a dialog)` in `frontend/src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` (guards against the Create Deployment modal regression from issue #396), and `renders the {orgName} / Settings breadcrumb on the page header` in `frontend/src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` (guards the `"{orgName} / Settings"` header string the E2E sidebar-click test asserted). No `deployments.spec.ts` case required a K8s round-trip to observe persistence — the Deployment creation round-trip lives entirely under `folder-templates.spec.ts` — so the spec was fully removed rather than split.
+
+**HOL-656 delta**: After this phase, `frontend/e2e/` holds **6 spec files** and **34 `test(...)` blocks** (4 Dev Token Endpoint cases + 3 Persona Switching cases removed from `multi-persona.spec.ts`; the 3 Multi-Persona RBAC cases remain). The new Go coverage lives in `console/oidc/token_exchange_test.go`: `TestHandleTokenExchange_Personas` (4 sub-tests — admin/platform/product/SRE response-shape table), `TestHandleTokenExchange_SignatureVerification` (4 sub-tests — JWS parse + public-key verify per persona, covering the invariant the browser tests implicitly relied on when they injected the returned id_token into sessionStorage), `TestHandleTokenExchange_ClaimContents` (3 sub-tests — iss/aud/sub/email/email_verified/groups/iat/exp claims plus the 1-hour expiry window), and an extended `TestHandleTokenExchange_UnknownEmail` (2 sub-tests that assert the `"unknown test user email"` body fragment the E2E case checked, including the exact `unknown@example.com` literal). The new Vitest coverage lives in `frontend/src/routes/_authenticated/-profile.test.tsx` under `ProfilePage persona email rendering`: an `it.each` over all four persona emails plus a rerender test that swaps useAuth's return value and asserts the displayed email updates. `getPersonaToken`, `switchPersona`, and `loginAsPersona` stay in `frontend/e2e/helpers.ts` — the remaining three RBAC tests still use them.
 
 ---
 
@@ -216,7 +218,7 @@ CRUD tests exercise the real Kubernetes secrets API, which unit tests cannot rep
 
 The two mobile tests are the only refactor candidates in this spec; the CRUD tests stay. This phase (if scoped) would live in **HOL-658** cleanup.
 
-### `multi-persona.spec.ts` — Split (4 → Go tests, 3 → unit, 3 Keep)
+### `multi-persona.spec.ts` — Split (4 → Go tests, 3 → unit, 3 Keep) — **DONE (HOL-656)**
 
 The first four tests call `POST /api/dev/token` and assert the response shape — they do **not** need a browser. Move them to Go tests against the `HandleTokenExchange` handler in `console/oidc/token_exchange_test.go` (which already contains similar unit tests via `httptest`). The three persona-switching tests exercise UI email display; the three RBAC grant tests require K8s.
 
@@ -226,23 +228,23 @@ The first four tests call `POST /api/dev/token` and assert the response shape �
 
 | Test | Verdict | Target | Notes |
 | --- | --- | --- | --- |
-| `Dev Token Endpoint > should return a valid token for the platform engineer persona` | **Refactor to Go** | `console/oidc/token_exchange_test.go` | New: `TestHandleTokenExchange_PlatformEngineer` — POST to the handler with `platform@localhost`, assert response includes `id_token`, `email`, `groups: ["owner"]`, `expires_in > 0`. |
-| `Dev Token Endpoint > should return a valid token for the product engineer persona` | **Refactor to Go** | `console/oidc/token_exchange_test.go` | New: `TestHandleTokenExchange_ProductEngineer` — symmetric, `groups: ["editor"]`. |
-| `Dev Token Endpoint > should return a valid token for the SRE persona` | **Refactor to Go** | `console/oidc/token_exchange_test.go` | New: `TestHandleTokenExchange_SRE` — symmetric, `groups: ["viewer"]`. |
-| `Dev Token Endpoint > should reject unknown email addresses` | **Refactor to Go** | `console/oidc/token_exchange_test.go` | New: `TestHandleTokenExchange_UnknownEmail` — POST with `unknown@example.com`, assert status 400 and body contains `"unknown test user email"`. |
-| `Persona Switching > should login as platform engineer and show correct email` | **Refactor-to-unit** | `-profile.test.tsx` | New: `"shows platform engineer email when useAuth returns platform profile"` — mock `useAuth` with `email: 'platform@localhost'`, assert visible. |
-| `Persona Switching > should switch from admin to SRE persona` | **Refactor-to-unit** | `-profile.test.tsx` | New: combined render test that rerenders with two different `useAuth` return values and asserts the email updates. Note: this is a shallow equivalence to the browser-based test; the sessionStorage/reload mechanics don't need coverage because they're covered by the auth-layout and transport unit tests (`-_authenticated.test.tsx`, `transport.test.ts`). |
-| `Persona Switching > should switch between all three non-admin personas` | **Delete (redundant)** | — | A single cycle-through-emails unit test covers the same logic as the three-step browser test. Skip this one. |
+| `Dev Token Endpoint > should return a valid token for the platform engineer persona` | **Refactored to Go** | `console/oidc/token_exchange_test.go` | Added as the `platform engineer persona returns owner group` row in `TestHandleTokenExchange_Personas` (table-driven); spot-checks `id_token`, `email`, `groups: ["owner"]`, `expires_in > 0`. Signature verification and claim contents are asserted by `TestHandleTokenExchange_SignatureVerification` / `TestHandleTokenExchange_ClaimContents`. |
+| `Dev Token Endpoint > should return a valid token for the product engineer persona` | **Refactored to Go** | `console/oidc/token_exchange_test.go` | Added as the `product engineer persona returns editor group` row in `TestHandleTokenExchange_Personas` (table-driven). |
+| `Dev Token Endpoint > should return a valid token for the SRE persona` | **Refactored to Go** | `console/oidc/token_exchange_test.go` | Added as the `SRE persona returns viewer group` row in `TestHandleTokenExchange_Personas` (table-driven). |
+| `Dev Token Endpoint > should reject unknown email addresses` | **Refactored to Go** | `console/oidc/token_exchange_test.go` | Extended `TestHandleTokenExchange_UnknownEmail` to a two-row table that covers both `nobody@localhost` and the E2E literal `unknown@example.com`, and added the body-fragment assertion (`strings.Contains(body, "unknown test user email")`). |
+| `Persona Switching > should login as platform engineer and show correct email` | **Refactored to unit** | `-profile.test.tsx` | Added `ProfilePage persona email rendering` describe with an `it.each` over all four persona emails (platform, product, SRE, admin); each row mocks `useAuth` with the persona's email and asserts it renders on the profile page. |
+| `Persona Switching > should switch from admin to SRE persona` | **Refactored to unit** | `-profile.test.tsx` | Added `updates the displayed email when useAuth rerenders with a new persona` — renders as admin, rerenders with SRE's email, asserts the new email appears and the old one is gone. |
+| `Persona Switching > should switch between all three non-admin personas` | **Deleted (redundant)** | — | The `it.each` over all four personas plus the rerender test together cover the same logic as the three-step browser test. Deleted rather than split. |
 | `Multi-Persona RBAC > platform engineer can create an org and grant SRE viewer access` | **Keep** | — | K8s org create + RBAC grant. |
 | `Multi-Persona RBAC > SRE can list the org after being granted viewer access` | **Keep** | — | K8s list with persona-scoped RBAC. |
 | `Multi-Persona RBAC > product engineer can access the org with editor privileges` | **Keep** | — | K8s list with editor-scoped RBAC. |
 
-After the refactor:
-- Delete the `Dev Token Endpoint` describe (4 tests moved to Go).
-- Delete the `Persona Switching` describe (2 refactored to unit, 1 deleted).
-- Keep the `Multi-Persona RBAC` describe intact.
+After the refactor (landed in HOL-656):
+- The `Dev Token Endpoint` describe was deleted from `multi-persona.spec.ts`; the 4 response-shape cases plus their signature-verification and claim-content invariants moved to `console/oidc/token_exchange_test.go`.
+- The `Persona Switching` describe was deleted from `multi-persona.spec.ts`; 2 cases moved to `-profile.test.tsx` (per-persona email render + rerender-swap), the three-persona cycle was dropped as redundant.
+- The `Multi-Persona RBAC` describe is unchanged; it still covers org create + RBAC grants against a real K8s cluster.
 
-**Result: `multi-persona.spec.ts` shrinks from 9 tests to 3.** This phase lives in **HOL-656**.
+**Result: `multi-persona.spec.ts` shrank from 10 tests to 3.** This phase lived in **HOL-656**.
 
 ---
 
@@ -253,7 +255,7 @@ After the refactor:
 | HOL-653 | profile.spec.ts (5), navigation.spec.ts (1) | 6 tests → Vitest |
 | HOL-654 | create-dialogs.spec.ts (5) | 5 tests → Vitest |
 | HOL-655 | deployments.spec.ts (3), org-settings.spec.ts (2) | 5 tests → Vitest (DONE) |
-| HOL-656 | multi-persona.spec.ts Dev Token (4), Persona Switching (3) | 4 → Go, 3 → Vitest |
+| HOL-656 | multi-persona.spec.ts Dev Token (4), Persona Switching (3) | 4 → Go, 3 → Vitest (DONE) |
 | HOL-657 | — | Measure E2E CI wall-clock after the four refactor phases; compare against the 11m 23s baseline. |
 | HOL-658 | auth.spec.ts trims, helpers.ts cleanup, mobile consolidation | Remove dead helpers, trim auth-spec overlaps, decide on mobile responsive tests. |
 
