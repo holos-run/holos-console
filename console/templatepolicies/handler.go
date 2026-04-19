@@ -42,17 +42,16 @@ package templatepolicies
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -133,14 +132,14 @@ func (h *Handler) ListTemplatePolicies(
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListPolicies(ctx, scope, scopeName)
+	items, err := h.k8s.ListPolicies(ctx, req.Msg.GetNamespace())
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	policies := make([]*consolev1.TemplatePolicy, 0, len(cms))
-	for i := range cms {
-		policies = append(policies, configMapToPolicy(&cms[i], scope, scopeName))
+	policies := make([]*consolev1.TemplatePolicy, 0, len(items))
+	for i := range items {
+		policies = append(policies, templatePolicyCRDToProto(&items[i]))
 	}
 
 	// HOL-560: audit shape harmonized with console/folders/handler.go. List and
@@ -182,7 +181,7 @@ func (h *Handler) GetTemplatePolicy(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetPolicy(ctx, scope, scopeName, name)
+	p, err := h.k8s.GetPolicy(ctx, req.Msg.GetNamespace(), name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -198,7 +197,7 @@ func (h *Handler) GetTemplatePolicy(
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplatePolicyResponse{
-		Policy: configMapToPolicy(cm, scope, scopeName),
+		Policy: templatePolicyCRDToProto(p),
 	}), nil
 }
 
@@ -239,7 +238,7 @@ func (h *Handler) CreateTemplatePolicy(
 	// service is momentarily unavailable.
 	h.probeReferencedTemplates(ctx, policy.GetRules())
 
-	_, err = h.k8s.CreatePolicy(ctx, scope, scopeName, policy.GetName(), policy.GetDisplayName(), policy.GetDescription(), claims.Email, policy.GetRules())
+	_, err = h.k8s.CreatePolicy(ctx, req.Msg.GetNamespace(), policy.GetName(), policy.GetDisplayName(), policy.GetDescription(), claims.Email, policy.GetRules())
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -303,7 +302,7 @@ func (h *Handler) UpdateTemplatePolicy(
 	// empty" for the top-level metadata fields. The previous read is also
 	// required to surface NotFound before we attempt the Update (the K8s API
 	// would otherwise return a less-informative error).
-	existing, err := h.k8s.GetPolicy(ctx, scope, scopeName, name)
+	existing, err := h.k8s.GetPolicy(ctx, req.Msg.GetNamespace(), name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -316,21 +315,21 @@ func (h *Handler) UpdateTemplatePolicy(
 	if policy.GetDisplayName() != "" {
 		dn := policy.GetDisplayName()
 		displayName = &dn
-	} else if _, ok := existing.Annotations[v1alpha2.AnnotationDisplayName]; !ok {
+	} else if existing.Spec.DisplayName == "" {
 		empty := ""
 		displayName = &empty
 	}
 	if policy.GetDescription() != "" {
 		d := policy.GetDescription()
 		description = &d
-	} else if _, ok := existing.Annotations[v1alpha2.AnnotationDescription]; !ok {
+	} else if existing.Spec.Description == "" {
 		empty := ""
 		description = &empty
 	}
 
 	h.probeReferencedTemplates(ctx, policy.GetRules())
 
-	_, err = h.k8s.UpdatePolicy(ctx, scope, scopeName, name, displayName, description, policy.GetRules(), true)
+	_, err = h.k8s.UpdatePolicy(ctx, req.Msg.GetNamespace(), name, displayName, description, policy.GetRules(), true)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -372,7 +371,7 @@ func (h *Handler) DeleteTemplatePolicy(
 		return nil, err
 	}
 
-	if err := h.k8s.DeletePolicy(ctx, scope, scopeName, name); err != nil {
+	if err := h.k8s.DeletePolicy(ctx, req.Msg.GetNamespace(), name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -531,45 +530,31 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 	}
 }
 
-// configMapToPolicy converts a stored ConfigMap into a TemplatePolicy proto.
-// The ConfigMap's Namespace field is the authoritative owning namespace, so
-// the response carries cm.Namespace directly (HOL-619 moved policies to be
-// namespace-keyed at the proto layer).
-func configMapToPolicy(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.TemplatePolicy {
-	_ = scope
-	_ = scopeName
+// templatePolicyCRDToProto converts a TemplatePolicy CRD into its proto
+// representation. HOL-662 rewrote this from the legacy ConfigMap path — rules
+// are now on the CRD spec directly, and display_name / description are typed
+// fields instead of annotations. creator_email remains an annotation because
+// the CRD does not yet have a field for it; we surface it as a best-effort
+// audit pointer.
+func templatePolicyCRDToProto(p *templatesv1alpha1.TemplatePolicy) *consolev1.TemplatePolicy {
 	policy := &consolev1.TemplatePolicy{
-		Name:         cm.Name,
-		Namespace:    cm.Namespace,
-		DisplayName:  cm.Annotations[v1alpha2.AnnotationDisplayName],
-		Description:  cm.Annotations[v1alpha2.AnnotationDescription],
-		CreatorEmail: cm.Annotations[v1alpha2.AnnotationCreatorEmail],
-		CreatedAt:    timestamppb.New(cm.CreationTimestamp.Time),
-	}
-	if raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]; raw != "" {
-		rules, err := unmarshalRules(raw)
-		if err != nil {
-			slog.Warn("failed to parse template policy rules annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		} else {
-			policy.Rules = rules
-		}
+		Name:         p.Name,
+		Namespace:    p.Namespace,
+		DisplayName:  p.Spec.DisplayName,
+		Description:  p.Spec.Description,
+		CreatorEmail: p.Annotations[v1alpha2.AnnotationCreatorEmail],
+		CreatedAt:    timestamppb.New(p.CreationTimestamp.Time),
+		Rules:        CRDRulesToProto(p.Spec.Rules),
 	}
 	return policy
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The
-// function also recognises the package-level ProjectNamespaceError and maps
-// it to CodeInvalidArgument so the handler does not have to duplicate the
-// type switch at every call site.
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. HOL-662
+// removed the ProjectNamespaceError type-switch — the CEL
+// ValidatingAdmissionPolicy shipped in HOL-618 rejects project-namespace
+// creates at admission time, so the handler only needs the generic
+// k8serrors taxonomy here (plus extractPolicyScope as defense-in-depth).
 func mapK8sError(err error) error {
-	var pne *ProjectNamespaceError
-	if errors.As(err, &pne) {
-		return connect.NewError(connect.CodeInvalidArgument, pne)
-	}
 	if k8serrors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}

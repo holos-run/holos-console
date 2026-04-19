@@ -11,26 +11,28 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // policyGetterStub satisfies PolicyExistsGetter for the PolicyExistsAdapter
 // tests. The err field drives the result; when nil and found is true the
-// getter returns an empty ConfigMap.
+// getter returns an empty TemplatePolicy CRD. HOL-662 migrated the return
+// type from *corev1.ConfigMap to *templatesv1alpha1.TemplatePolicy.
 type policyGetterStub struct {
 	err   error
 	found bool
 }
 
-func (p *policyGetterStub) GetPolicy(_ context.Context, _ scopeshim.Scope, _, _ string) (*corev1.ConfigMap, error) {
+func (p *policyGetterStub) GetPolicy(_ context.Context, _, _ string) (*templatesv1alpha1.TemplatePolicy, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
 	if !p.found {
-		return nil, k8serrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "missing")
+		return nil, k8serrors.NewNotFound(schema.GroupResource{Group: "templates.holos.run", Resource: "templatepolicies"}, "missing")
 	}
-	return &corev1.ConfigMap{}, nil
+	return &templatesv1alpha1.TemplatePolicy{}, nil
 }
 
 // TestPolicyExistsAdapter covers the NotFound / found / other-error cases.
@@ -63,7 +65,7 @@ func TestPolicyExistsAdapter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := NewPolicyExistsAdapter(tt.getter)
+			a := NewPolicyExistsAdapter(tt.getter, newTestResolver())
 			got, err := a.PolicyExists(context.Background(), scopeshim.ScopeFolder, "payments", "policy")
 			if tt.wantErr {
 				if err == nil {

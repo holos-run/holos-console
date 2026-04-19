@@ -2,17 +2,16 @@ package templatepolicybindings
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -151,14 +150,14 @@ func (h *Handler) ListTemplatePolicyBindings(
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListBindings(ctx, scope, scopeName)
+	items, err := h.k8s.ListBindings(ctx, req.Msg.GetNamespace())
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	bindings := make([]*consolev1.TemplatePolicyBinding, 0, len(cms))
-	for i := range cms {
-		bindings = append(bindings, configMapToBinding(&cms[i], scope, scopeName))
+	bindings := make([]*consolev1.TemplatePolicyBinding, 0, len(items))
+	for i := range items {
+		bindings = append(bindings, templatePolicyBindingCRDToProto(&items[i]))
 	}
 
 	slog.InfoContext(ctx, "template policy bindings listed",
@@ -197,7 +196,7 @@ func (h *Handler) GetTemplatePolicyBinding(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetBinding(ctx, scope, scopeName, name)
+	b, err := h.k8s.GetBinding(ctx, req.Msg.GetNamespace(), name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -213,7 +212,7 @@ func (h *Handler) GetTemplatePolicyBinding(
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplatePolicyBindingResponse{
-		Binding: configMapToBinding(cm, scope, scopeName),
+		Binding: templatePolicyBindingCRDToProto(b),
 	}), nil
 }
 
@@ -271,8 +270,7 @@ func (h *Handler) CreateTemplatePolicyBinding(
 
 	_, err = h.k8s.CreateBinding(
 		ctx,
-		scope,
-		scopeName,
+		req.Msg.GetNamespace(),
 		binding.GetName(),
 		binding.GetDisplayName(),
 		binding.GetDescription(),
@@ -351,7 +349,7 @@ func (h *Handler) UpdateTemplatePolicyBinding(
 	// an Update to a non-existent binding still returns
 	// connect.CodeNotFound regardless of the submitted policy_ref — clients
 	// rely on that distinction for idempotent upsert flows.
-	existing, err := h.k8s.GetBinding(ctx, scope, scopeName, name)
+	existing, err := h.k8s.GetBinding(ctx, req.Msg.GetNamespace(), name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -371,22 +369,21 @@ func (h *Handler) UpdateTemplatePolicyBinding(
 	if binding.GetDisplayName() != "" {
 		dn := binding.GetDisplayName()
 		displayName = &dn
-	} else if _, ok := existing.Annotations[v1alpha2.AnnotationDisplayName]; !ok {
+	} else if existing.Spec.DisplayName == "" {
 		empty := ""
 		displayName = &empty
 	}
 	if binding.GetDescription() != "" {
 		d := binding.GetDescription()
 		description = &d
-	} else if _, ok := existing.Annotations[v1alpha2.AnnotationDescription]; !ok {
+	} else if existing.Spec.Description == "" {
 		empty := ""
 		description = &empty
 	}
 
 	_, err = h.k8s.UpdateBinding(
 		ctx,
-		scope,
-		scopeName,
+		req.Msg.GetNamespace(),
 		name,
 		displayName,
 		description,
@@ -434,7 +431,7 @@ func (h *Handler) DeleteTemplatePolicyBinding(
 		return nil, err
 	}
 
-	if err := h.k8s.DeleteBinding(ctx, scope, scopeName, name); err != nil {
+	if err := h.k8s.DeleteBinding(ctx, req.Msg.GetNamespace(), name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -590,11 +587,12 @@ func validateTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) error 
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("target_refs[%d]: project_name must be a valid DNS label, got %q", i, ref.GetProjectName()))
 		}
-		key := targetKindToString(ref.GetKind()) + "|" + ref.GetProjectName() + "|" + ref.GetName()
+		kindStr := targetKindString(ref.GetKind())
+		key := kindStr + "|" + ref.GetProjectName() + "|" + ref.GetName()
 		if prev, ok := seen[key]; ok {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("target_refs[%d]: duplicate of target_refs[%d] (kind=%s, project=%s, name=%s)",
-					i, prev, targetKindToString(ref.GetKind()), ref.GetProjectName(), ref.GetName()))
+					i, prev, kindStr, ref.GetProjectName(), ref.GetName()))
 		}
 		seen[key] = i
 	}
@@ -723,12 +721,11 @@ func (h *Handler) validateTargetProjects(
 	return nil
 }
 
-// scopeNamespace mirrors K8sClient.namespaceForScope for validation use in
-// this file. It intentionally does not go through the K8sClient helper
-// because that helper carries a ProjectNamespaceError contract the handler
-// layer would otherwise need to re-map; the handler rejects project scope
-// at extractBindingScope, so this helper refuses project scope with a
-// plain error for any other path that might reach it.
+// scopeNamespace derives the Kubernetes namespace name from a (scope,
+// scopeName) pair so the handler's ancestor-chain validation can translate
+// between the legacy scope model and the CRD's namespace-keyed identity.
+// Project scope is refused here as defense-in-depth; extractBindingScope
+// already rejects project namespaces up front.
 func (h *Handler) scopeNamespace(scope scopeshim.Scope, scopeName string) (string, error) {
 	switch scope {
 	case scopeshim.ScopeOrganization:
@@ -741,57 +738,46 @@ func (h *Handler) scopeNamespace(scope scopeshim.Scope, scopeName string) (strin
 	}
 }
 
-// configMapToBinding converts a stored ConfigMap into a TemplatePolicyBinding
-// proto. The ConfigMap's Namespace field is the authoritative owning
-// namespace, so the response carries cm.Namespace directly (HOL-619 moved
-// bindings to be namespace-keyed at the proto layer).
-func configMapToBinding(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.TemplatePolicyBinding {
-	_ = scope
-	_ = scopeName
+// templatePolicyBindingCRDToProto converts a TemplatePolicyBinding CRD into
+// its proto representation. HOL-662 replaced the ConfigMap-annotation path
+// with structured CRD spec fields: policy_ref and target_refs come out of
+// b.Spec, not JSON-encoded annotations. creator_email remains an annotation
+// because the CRD does not yet have a dedicated field for it.
+func templatePolicyBindingCRDToProto(b *templatesv1alpha1.TemplatePolicyBinding) *consolev1.TemplatePolicyBinding {
 	binding := &consolev1.TemplatePolicyBinding{
-		Name:         cm.Name,
-		Namespace:    cm.Namespace,
-		DisplayName:  cm.Annotations[v1alpha2.AnnotationDisplayName],
-		Description:  cm.Annotations[v1alpha2.AnnotationDescription],
-		CreatorEmail: cm.Annotations[v1alpha2.AnnotationCreatorEmail],
-		CreatedAt:    timestamppb.New(cm.CreationTimestamp.Time),
-	}
-	if raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyBindingPolicyRef]; raw != "" {
-		parsed, err := unmarshalPolicyRef(raw)
-		if err != nil {
-			slog.Warn("failed to parse template policy binding policy ref annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		} else if parsed != nil {
-			binding.PolicyRef = parsed
-		}
-	}
-	if raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyBindingTargetRefs]; raw != "" {
-		parsed, err := unmarshalTargetRefs(raw)
-		if err != nil {
-			slog.Warn("failed to parse template policy binding target refs annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		} else {
-			binding.TargetRefs = parsed
-		}
+		Name:         b.Name,
+		Namespace:    b.Namespace,
+		DisplayName:  b.Spec.DisplayName,
+		Description:  b.Spec.Description,
+		CreatorEmail: b.Annotations[v1alpha2.AnnotationCreatorEmail],
+		CreatedAt:    timestamppb.New(b.CreationTimestamp.Time),
+		PolicyRef:    CRDPolicyRefToProto(b.Spec.PolicyRef),
+		TargetRefs:   CRDTargetRefsToProto(b.Spec.TargetRefs),
 	}
 	return binding
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The
-// function also recognises the package-level ProjectNamespaceError and
-// maps it to CodeInvalidArgument so the handler does not have to
-// duplicate the type switch at every call site.
-func mapK8sError(err error) error {
-	var pne *ProjectNamespaceError
-	if errors.As(err, &pne) {
-		return connect.NewError(connect.CodeInvalidArgument, pne)
+// targetKindString returns the short lowercase label for a target kind for
+// duplicate-detection keys and error messages. It intentionally matches the
+// CRD's stored enum values so debug logs line up with what operators see in
+// kubectl.
+func targetKindString(k consolev1.TemplatePolicyBindingTargetKind) string {
+	switch k {
+	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE:
+		return "project-template"
+	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT:
+		return "deployment"
+	default:
+		return "unspecified"
 	}
+}
+
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. HOL-662
+// removed the ProjectNamespaceError type-switch — the CEL
+// ValidatingAdmissionPolicy shipped in HOL-618 rejects project-namespace
+// creates at admission time, so the handler only needs the generic
+// k8serrors taxonomy here (plus extractBindingScope as defense-in-depth).
+func mapK8sError(err error) error {
 	if k8serrors.IsNotFound(err) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}

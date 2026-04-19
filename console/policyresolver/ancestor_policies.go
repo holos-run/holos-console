@@ -4,25 +4,26 @@ import (
 	"context"
 	"log/slog"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// ResolvedPolicy is the decoded form of a TemplatePolicy ConfigMap bundled
-// with the scope identity the resolver needs to match against a binding's
+// ResolvedPolicy is the decoded form of a TemplatePolicy CRD bundled with
+// the scope identity the resolver needs to match against a binding's
 // policy_ref. The resolver uses this shape (rather than a flat rule slice)
 // so a binding can select the exact policy it targets — two policies in the
 // same ancestor chain can share rule template names, and the binding chooses
 // among them by (scope, scope_name, name).
 type ResolvedPolicy struct {
-	// Name is the policy's DNS-label slug (the ConfigMap's metadata.name).
+	// Name is the policy's DNS-label slug (the CRD's metadata.name).
 	Name string
 	// Namespace is the folder or organization namespace that owns the
-	// policy ConfigMap. Used as the authoritative source of (scope,
-	// scope_name) via the resolver's prefix classification — the scope
-	// label on the ConfigMap is advisory.
+	// policy CRD. Used as the authoritative source of (scope, scope_name)
+	// via the resolver's prefix classification — the scope label on the
+	// CRD is advisory.
 	Namespace string
 	// Scope is the TemplateScope derived from Namespace (organization or
 	// folder). Project scope is unreachable because project namespaces
@@ -32,7 +33,8 @@ type ResolvedPolicy struct {
 	// Namespace.
 	ScopeName string
 	// Rules are the parsed REQUIRE/EXCLUDE rules on this policy,
-	// preserving the authored order.
+	// preserving the authored order. HOL-662 populates them from the
+	// CRD spec directly.
 	Rules []*consolev1.TemplatePolicyRule
 }
 
@@ -55,7 +57,6 @@ type AncestorPolicyLister struct {
 	policyLister PolicyListerInNamespace
 	walker       WalkerInterface
 	resolver     *resolver.Resolver
-	unmarshaler  RuleUnmarshaler
 }
 
 // NewAncestorPolicyLister returns a lister wired with the given dependencies.
@@ -66,13 +67,11 @@ func NewAncestorPolicyLister(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
 	r *resolver.Resolver,
-	unmarshaler RuleUnmarshaler,
 ) *AncestorPolicyLister {
 	return &AncestorPolicyLister{
 		policyLister: policyLister,
 		walker:       walker,
 		resolver:     r,
-		unmarshaler:  unmarshaler,
 	}
 }
 
@@ -99,18 +98,17 @@ func NewAncestorPolicyLister(
 // sneak in without required templates — a security-relevant outcome that
 // deserves explicit handling at the call site.
 //
-// Individual per-namespace lister or parse errors do not abort traversal;
-// they are logged and the namespace is skipped. This matches the resolver
-// contract that a single corrupted policy ConfigMap should not prevent
-// legitimate policies in peer namespaces from being honored.
+// Individual per-namespace lister errors do not abort traversal; they are
+// logged and the namespace is skipped. This matches the resolver contract
+// that a single corrupted policy should not prevent legitimate policies in
+// peer namespaces from being honored.
 func (a *AncestorPolicyLister) ListRules(ctx context.Context, startNs string) ([]*consolev1.TemplatePolicyRule, error) {
-	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil || a.unmarshaler == nil {
+	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil {
 		slog.WarnContext(ctx, "ancestor policy lister is misconfigured; returning no rules",
 			slog.String("startNs", startNs),
 			slog.Bool("policyListerNil", a == nil || a.policyLister == nil),
 			slog.Bool("walkerNil", a == nil || a.walker == nil),
 			slog.Bool("resolverNil", a == nil || a.resolver == nil),
-			slog.Bool("unmarshalerNil", a == nil || a.unmarshaler == nil),
 		)
 		return nil, nil
 	}
@@ -132,7 +130,7 @@ func (a *AncestorPolicyLister) ListRules(ctx context.Context, startNs string) ([
 		if kind == v1alpha2.ResourceTypeProject {
 			continue
 		}
-		cms, listErr := a.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
+		items, listErr := a.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
 		if listErr != nil {
 			slog.WarnContext(ctx, "failed to list template policies in ancestor namespace",
 				slog.String("namespace", ns.Name),
@@ -140,22 +138,9 @@ func (a *AncestorPolicyLister) ListRules(ctx context.Context, startNs string) ([
 			)
 			continue
 		}
-		for i := range cms {
-			cm := &cms[i]
-			raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
-			if raw == "" {
-				continue
-			}
-			parsed, parseErr := a.unmarshaler.UnmarshalRules(raw)
-			if parseErr != nil {
-				slog.WarnContext(ctx, "failed to parse template policy rules; skipping policy",
-					slog.String("namespace", ns.Name),
-					slog.String("policy", cm.Name),
-					slog.Any("error", parseErr),
-				)
-				continue
-			}
-			for _, rule := range parsed {
+		for i := range items {
+			p := &items[i]
+			for _, rule := range crdRulesToProto(p.Spec.Rules) {
 				if rule == nil {
 					continue
 				}
@@ -175,19 +160,16 @@ func (a *AncestorPolicyLister) ListRules(ctx context.Context, startNs string) ([
 // Ordering matches ListRules: closest ancestor first, list order within each
 // namespace. Project namespaces are skipped (HOL-554 storage-isolation).
 //
-// Fail-open and per-namespace error behavior mirrors ListRules. A policy
-// whose rules annotation is empty or malformed is skipped with a warning,
-// but a malformed scope-prefix classification on the namespace causes the
-// whole namespace to be skipped — the resolver has no way to report a
-// policy whose scope it cannot identify.
+// Fail-open and per-namespace error behavior mirrors ListRules. A namespace
+// whose scope-prefix classification fails is skipped — the resolver has no
+// way to report a policy whose scope it cannot identify.
 func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string) ([]*ResolvedPolicy, error) {
-	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil || a.unmarshaler == nil {
+	if a == nil || a.policyLister == nil || a.walker == nil || a.resolver == nil {
 		slog.WarnContext(ctx, "ancestor policy lister is misconfigured; returning no policies",
 			slog.String("startNs", startNs),
 			slog.Bool("policyListerNil", a == nil || a.policyLister == nil),
 			slog.Bool("walkerNil", a == nil || a.walker == nil),
 			slog.Bool("resolverNil", a == nil || a.resolver == nil),
-			slog.Bool("unmarshalerNil", a == nil || a.unmarshaler == nil),
 		)
 		return nil, nil
 	}
@@ -215,7 +197,7 @@ func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string)
 			// template-policy-binding kind itself); skip quietly.
 			continue
 		}
-		cms, listErr := a.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
+		items, listErr := a.policyLister.ListPoliciesInNamespace(ctx, ns.Name)
 		if listErr != nil {
 			slog.WarnContext(ctx, "failed to list template policies in ancestor namespace",
 				slog.String("namespace", ns.Name),
@@ -223,30 +205,11 @@ func (a *AncestorPolicyLister) ListPolicies(ctx context.Context, startNs string)
 			)
 			continue
 		}
-		for i := range cms {
-			cm := &cms[i]
-			raw := cm.Annotations[v1alpha2.AnnotationTemplatePolicyRules]
-			if raw == "" {
-				continue
-			}
-			parsed, parseErr := a.unmarshaler.UnmarshalRules(raw)
-			if parseErr != nil {
-				slog.WarnContext(ctx, "failed to parse template policy rules; skipping policy",
-					slog.String("namespace", ns.Name),
-					slog.String("policy", cm.Name),
-					slog.Any("error", parseErr),
-				)
-				continue
-			}
-			rules := make([]*consolev1.TemplatePolicyRule, 0, len(parsed))
-			for _, rule := range parsed {
-				if rule == nil {
-					continue
-				}
-				rules = append(rules, rule)
-			}
+		for i := range items {
+			p := &items[i]
+			rules := crdRulesToProto(p.Spec.Rules)
 			out = append(out, &ResolvedPolicy{
-				Name:      cm.Name,
+				Name:      p.Name,
 				Namespace: ns.Name,
 				Scope:     scope,
 				ScopeName: scopeName,
@@ -267,6 +230,55 @@ func templateScopeForResourceType(kind string) scopeshim.Scope {
 		return scopeshim.ScopeOrganization
 	case v1alpha2.ResourceTypeFolder:
 		return scopeshim.ScopeFolder
+	default:
+		return scopeshim.ScopeUnspecified
+	}
+}
+
+// crdRulesToProto converts CRD spec rules into proto TemplatePolicyRule
+// values. This mirrors templatepolicies.CRDRulesToProto but is duplicated
+// here to avoid an import cycle: console/templatepolicies imports
+// console/policyresolver for the resolver interface. The mapping is simple
+// enough that duplication is cheaper than restructuring the cycle.
+func crdRulesToProto(rules []templatesv1alpha1.TemplatePolicyRule) []*consolev1.TemplatePolicyRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]*consolev1.TemplatePolicyRule, 0, len(rules))
+	for i := range rules {
+		r := &rules[i]
+		out = append(out, &consolev1.TemplatePolicyRule{
+			Kind: crdKindToProto(r.Kind),
+			Template: scopeshim.NewLinkedTemplateRef(
+				scopeFromTemplateLabel(r.Template.Scope),
+				r.Template.ScopeName,
+				r.Template.Name,
+				r.Template.VersionConstraint,
+			),
+		})
+	}
+	return out
+}
+
+func crdKindToProto(k templatesv1alpha1.TemplatePolicyKind) consolev1.TemplatePolicyKind {
+	switch k {
+	case templatesv1alpha1.TemplatePolicyKindRequire:
+		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE
+	case templatesv1alpha1.TemplatePolicyKindExclude:
+		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE
+	default:
+		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED
+	}
+}
+
+func scopeFromTemplateLabel(label string) scopeshim.Scope {
+	switch label {
+	case v1alpha2.TemplateScopeOrganization:
+		return scopeshim.ScopeOrganization
+	case v1alpha2.TemplateScopeFolder:
+		return scopeshim.ScopeFolder
+	case v1alpha2.TemplateScopeProject:
+		return scopeshim.ScopeProject
 	default:
 		return scopeshim.ScopeUnspecified
 	}
