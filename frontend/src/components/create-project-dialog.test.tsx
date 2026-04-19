@@ -293,15 +293,16 @@ describe('CreateProjectDialog', () => {
   // (docs/agents/e2e-refactor-audit.md) which classified all 5 tests in that
   // spec as Refactor-to-unit.
 
-  it('submits with auto-derived slug and navigates to the new project secrets page', async () => {
+  it('submits with auto-derived slug and navigates to the new project secrets page using the server-returned name', async () => {
     const displayName = 'E2E Create Project'
-    const expectedSlug = 'e2e-create-project'
-    // The hook returns the server-assigned canonical name. The dialog must use
-    // *that* name — not the locally-derived slug — when navigating, because
-    // the backend may canonicalise the slug (e.g. normalise length). Return a
-    // slightly different value to catch regressions where the component
-    // navigates using local state instead of the response.
-    mockMutateAsync.mockResolvedValue({ name: expectedSlug })
+    const localSlug = 'e2e-create-project'
+    // The backend canonicalises project names (e.g. normalising length or
+    // resolving collisions), so the name we navigate to MUST come from the
+    // mutation response, not from local state. Return a slug that differs from
+    // `localSlug` — if a regression makes the component navigate using the
+    // locally-derived name, the navigate assertion will fail.
+    const serverSlug = 'e2e-create-project-canonical'
+    mockMutateAsync.mockResolvedValue({ name: serverSlug })
 
     render(
       <CreateProjectDialog
@@ -317,14 +318,14 @@ describe('CreateProjectDialog', () => {
     })
     expect(
       (screen.getByPlaceholderText(/my-project/i) as HTMLInputElement).value,
-    ).toBe(expectedSlug)
+    ).toBe(localSlug)
 
     fireEvent.submit(screen.getByRole('form'))
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: expectedSlug,
+          name: localSlug,
           displayName,
           organization: 'my-org',
         }),
@@ -334,7 +335,7 @@ describe('CreateProjectDialog', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({
         to: '/projects/$projectName/secrets',
-        params: { projectName: expectedSlug },
+        params: { projectName: serverSlug },
       })
     })
   })
