@@ -41,4 +41,29 @@ resources:
   kind: TemplatePolicyBinding
   path: github.com/holos-run/holos-console/api/templates/v1alpha1
   version: v1alpha1
+# The secrets.holos.run entries below are M0 placeholders scaffolded by
+# HOL-687. The exact kinds and scope land in M1; ADR 031 locks the group
+# name, version, and the "CRs carry refs, not material" guardrail that the
+# M1 types will enforce. Placeholder kinds: Secret and SecretBinding (per
+# HOL-687 acceptance criteria). Printer columns and the precise scope
+# follow the HOL-615 conventions (Ready/Generation/Age, plus ResolvedRefs
+# for kinds with cross-object references) once M1 lands.
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: secrets
+  kind: Secret
+  path: github.com/holos-run/holos-console/api/secrets/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: secrets
+  kind: SecretBinding
+  path: github.com/holos-run/holos-console/api/secrets/v1alpha1
+  version: v1alpha1
 version: "3"
