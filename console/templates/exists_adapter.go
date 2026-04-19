@@ -14,6 +14,11 @@ import (
 // console/templates import cycle, since the render-time resolver
 // (HOL-567) has the templates package consume templatepolicies
 // indirectly through policyresolver.
+//
+// The adapter keeps its external (scope, scopeName, name) signature
+// unchanged because the templatepolicies package still thinks in scope
+// terms; the adapter translates to a namespace internally before calling
+// the namespace-keyed K8sClient.GetTemplate (HOL-621).
 type TemplateExistsAdapter struct {
 	k8s *K8sClient
 }
@@ -32,7 +37,11 @@ func (a *TemplateExistsAdapter) TemplateExists(ctx context.Context, scope scopes
 	if a == nil || a.k8s == nil {
 		return false, nil
 	}
-	_, err := a.k8s.GetTemplate(ctx, scope, scopeName, name)
+	ns, err := a.k8s.namespaceForScope(scope, scopeName)
+	if err != nil {
+		return false, err
+	}
+	_, err = a.k8s.GetTemplate(ctx, ns, name)
 	if err == nil {
 		return true, nil
 	}

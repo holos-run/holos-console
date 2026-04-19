@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/deployments/statuscache"
@@ -357,7 +358,18 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		// Unified templates K8s client (replaces both templates.K8sClient and
 		// org_templates.K8sClient from v1alpha1 — ADR 021 Decision 1).
-		templatesK8s := templates.NewK8sClient(k8sClientset, nsResolver)
+		//
+		// HOL-621: Template CRUD now routes through the embedded controller
+		// manager's cache-backed client.Client; Release CRUD still uses the
+		// client-go kubernetes.Interface until the Release CRD lands
+		// (HOL-615 Phase 6). The template client is only wired when the
+		// controller manager was successfully initialized above — without
+		// it there is no cache to read from.
+		var templateCtrlClient ctrlclient.Client
+		if s.controllerMgr != nil {
+			templateCtrlClient = s.controllerMgr.GetClient()
+		}
+		templatesK8s := templates.NewK8sClient(k8sClientset, templateCtrlClient, nsResolver)
 
 		// TemplatePolicy resolution seam (HOL-566 Phase 4, wired in HOL-567
 		// Phase 5). The real folderResolver is threaded through every render
