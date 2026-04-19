@@ -74,6 +74,10 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const [editingDescription, setEditingDescription] = useState(false)
   const [draftDescription, setDraftDescription] = useState('')
 
+  // Gateway Namespace inline edit
+  const [editingGatewayNamespace, setEditingGatewayNamespace] = useState(false)
+  const [draftGatewayNamespace, setDraftGatewayNamespace] = useState('')
+
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -103,6 +107,16 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
     try {
       await updateOrganization.mutateAsync({ name: orgName, description: draftDescription })
       setEditingDescription(false)
+      toast.success('Saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleSaveGatewayNamespace = async () => {
+    try {
+      await updateOrganization.mutateAsync({ name: orgName, gatewayNamespace: draftGatewayNamespace })
+      setEditingGatewayNamespace(false)
       toast.success('Saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
@@ -162,10 +176,16 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const defaultUserGrants = (org?.defaultUserGrants ?? []) as Grant[]
   const defaultRoleGrants = (org?.defaultRoleGrants ?? []) as Grant[]
   const defaultFolder = org?.defaultFolder ?? ''
+  const gatewayNamespace = org?.gatewayNamespace ?? ''
   const folderItems = (folders ?? []).map((f) => ({
     value: f.name,
     label: f.displayName || f.name,
   }))
+
+  // DNS-1123 label: 1–63 chars, lowercase alphanumeric or '-', start and end with alphanumeric.
+  // The server is authoritative; this is a small client-side hint only.
+  const draftGatewayNamespaceIsValid =
+    draftGatewayNamespace === '' || /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/.test(draftGatewayNamespace)
 
   return (
     <Card>
@@ -309,6 +329,68 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                  </>
+                )}
+              </div>
+
+              {/* Gateway Namespace */}
+              <div className="flex items-start gap-2">
+                <span className="w-32 text-sm text-muted-foreground shrink-0 pt-2">Gateway Namespace</span>
+                {editingGatewayNamespace ? (
+                  <div className="flex-1 flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        autoFocus
+                        aria-label="gateway namespace"
+                        value={draftGatewayNamespace}
+                        onChange={(e) => setDraftGatewayNamespace(e.target.value)}
+                        className="flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && draftGatewayNamespaceIsValid) handleSaveGatewayNamespace()
+                        }}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="save gateway namespace"
+                        onClick={handleSaveGatewayNamespace}
+                        disabled={updateOrganization.isPending || !draftGatewayNamespaceIsValid}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="cancel gateway namespace"
+                        onClick={() => setEditingGatewayNamespace(false)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {!draftGatewayNamespaceIsValid && (
+                      <span className="text-xs text-destructive">
+                        Must be a DNS-1123 label: lowercase letters, digits, or '-'; 1–63 chars; start and end with alphanumeric.
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Leave empty to clear and fall back to the platform default (istio-ingress).
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-sm ${gatewayNamespace ? 'font-mono' : 'text-muted-foreground'} pt-2`}>
+                      {gatewayNamespace || 'Not set — defaults to istio-ingress'}
+                    </span>
+                    {isOwner && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="edit gateway namespace"
+                        onClick={() => { setDraftGatewayNamespace(gatewayNamespace); setEditingGatewayNamespace(true) }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
