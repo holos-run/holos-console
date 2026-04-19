@@ -18,7 +18,7 @@ Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (buil
 
 ## Multi-Persona E2E Helpers
 
-`frontend/e2e/helpers.ts` exports `getPersonaToken()`, `switchPersona()`, `loginAsPersona()`, and `apiGrantOrgAccess()` for tests that verify RBAC behavior across different roles. These helpers use the dev token endpoint (`POST /api/dev/token`) to obtain tokens and inject them into sessionStorage. See `docs/e2e-testing.md` for usage patterns.
+`frontend/e2e/helpers.ts` exports `loginAsPersona()` and `apiGrantOrgAccess()` for tests that verify RBAC behavior across different roles. `loginAsPersona()` uses the dev token endpoint (`POST /api/dev/token`) to obtain a signed ID token and inject it into sessionStorage. See `docs/e2e-testing.md` for usage patterns.
 
 ## Related
 

@@ -11,11 +11,15 @@ opening a PR.
 
 ## Testing
 
-- [Test Strategy](docs/agents/test-strategy.md) — Prefer unit tests; reserve E2E for OIDC login and real K8s round-trips.
-- [Testing Patterns](docs/agents/testing-patterns.md) — Go table-driven tests, Vitest + RTL for UI, Playwright for E2E, multi-persona helpers.
-- [Testing Guide](docs/testing.md) — Full decision-rule table and ConnectRPC mock worked example.
-- [E2E Testing](docs/e2e-testing.md) — Tight iteration loop, port overrides, multi-persona helpers, and which tests need Kubernetes.
-- [E2E Refactor Audit](docs/agents/e2e-refactor-audit.md) — Per-spec verdict (Keep / Refactor-to-unit / Split / Delete) with target test files and mocks for each row; consumed by HOL-653 through HOL-658.
+All testing guidance lives in this repo. Read the entries below in order the first time; after that, jump straight to the doc you need.
+
+1. [Test Strategy](docs/agents/test-strategy.md) — Decision rule: prefer unit tests; reserve E2E for the OIDC login flow (requires a real Dex server) and full-stack CRUD round-trips (require a real Kubernetes cluster).
+2. [Testing Patterns](docs/agents/testing-patterns.md) — Frameworks and conventions per layer: Go table-driven tests with `k8s.io/client-go/kubernetes/fake`, Vitest + React Testing Library + jsdom for UI with `vi.mock('@/queries/*')` for ConnectRPC hooks, Playwright for E2E, plus the `loginAsPersona()` multi-persona helper.
+3. [Testing Guide](docs/testing.md) — Full decision-rule table (what belongs in a unit vs. E2E test), the ConnectRPC mock worked example, route-directory test-file naming rules (`-<name>.test.tsx`), and the catalog of existing unit-test files.
+4. [E2E Testing](docs/e2e-testing.md) — Tight iteration loop against running servers, port overrides, multi-persona helpers, and the per-spec table of which E2E tests require Kubernetes.
+5. [E2E Refactor Audit](docs/agents/e2e-refactor-audit.md) — Historical per-spec verdict (Keep / Refactor-to-unit / Split / Delete) consumed by HOL-653 through HOL-658, and the post-refactor CI timing results (Results section: `E2E Tests` job dropped from ~11m 23s to ~7m 43s).
+
+**Make targets**: `make test-go` (Go tests), `make test-ui` (Vitest unit tests), `make test-e2e` (Playwright, needs `make certs` and a k3d cluster), `make test` (all three). Run `make generate` before committing if proto or generated code is affected.
 
 ## Guardrails
 

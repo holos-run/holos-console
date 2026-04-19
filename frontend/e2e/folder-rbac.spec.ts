@@ -17,10 +17,9 @@ import {
  *
  * Note: The embedded Dex provider registers multiple test personas (admin,
  * platform, product, sre) with distinct RBAC roles. Multi-user RBAC tests
- * can use the switchPersona() and loginAsPersona() helpers from helpers.ts
- * to test cross-persona permission boundaries. These tests currently validate
- * the admin/owner path and confirm that RBAC metadata is persisted correctly
- * in Kubernetes.
+ * can use the loginAsPersona() helper from helpers.ts to test cross-persona
+ * permission boundaries. These tests currently validate the admin/owner path
+ * and confirm that RBAC metadata is persisted correctly in Kubernetes.
  *
  * Requires a real Kubernetes cluster (k3d or equivalent).
  * Run with: make test-e2e

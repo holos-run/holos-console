@@ -4,7 +4,6 @@ import {
   DEFAULT_PASSWORD,
   buildAuthorizeUrl,
   navigateToDexLogin,
-  navigatePastConnectorSelection,
   loginViaProfilePage,
 } from './helpers'
 
@@ -184,16 +183,13 @@ test.describe('Profile Page', () => {
   })
 
   test('should display token claims after login', async ({ page }) => {
+    // Smoke test that a real Dex-issued ID token renders claims on /profile.
+    // Per-claim label enumeration (sub/email/iss/aud/iat/exp) is covered by
+    // the unit test in frontend/src/routes/_authenticated/-profile.test.tsx;
+    // keep this E2E assertion minimal so it only verifies the real-token path.
     await loginViaProfilePage(page)
 
-    // Verify claims view is visible by default
     await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Subject (sub)')).toBeVisible()
-    await expect(page.getByText('Email', { exact: true })).toBeVisible()
-    await expect(page.getByText('Issuer (iss)')).toBeVisible()
-    await expect(page.getByText('Audience (aud)')).toBeVisible()
-    await expect(page.getByText('Issued At (iat)')).toBeVisible()
-    await expect(page.getByText('Expires (exp)')).toBeVisible()
 
     await page.screenshot({
       path: 'e2e/screenshots/profile-token-claims.png',
@@ -202,10 +198,11 @@ test.describe('Profile Page', () => {
   })
 
   test('should include roles / groups in claims view', async ({ page }) => {
+    // Smoke test that groups from a real Dex-issued token render on /profile.
+    // Label enumeration is covered by the -profile.test.tsx unit test.
     await loginViaProfilePage(page)
 
-    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Roles / Groups')).toBeVisible()
+    await expect(page.getByText('Roles / Groups')).toBeVisible({ timeout: 5000 })
 
     await page.screenshot({
       path: 'e2e/screenshots/profile-roles.png',
@@ -225,29 +222,4 @@ test.describe('Profile Page', () => {
     await expect(issuerValue).toContainText('/dex')
   })
 
-  test('should switch to raw JSON view and show complete claims', async ({ page }) => {
-    await loginViaProfilePage(page)
-
-    await expect(page.getByText('Token Claims')).toBeVisible({ timeout: 5000 })
-
-    // Click the Raw button in the segmented control
-    await page.getByRole('button', { name: /raw/i }).last().click()
-
-    // Verify JSON is displayed. Use the explicit role="code" attribute on the
-    // raw-JSON pre element to avoid matching inline <code> elements that the
-    // API Access card adds to the same page.
-    const pre = page.locator('[role="code"]')
-    await expect(pre).toBeVisible()
-    await expect(pre).toContainText('"iss"')
-    await expect(pre).toContainText('"aud"')
-    await expect(pre).toContainText('"sub"')
-
-    // Verify copy button
-    await expect(page.getByRole('button', { name: /copy to clipboard/i })).toBeVisible()
-
-    await page.screenshot({
-      path: 'e2e/screenshots/profile-raw-claims.png',
-      fullPage: true,
-    })
-  })
 })

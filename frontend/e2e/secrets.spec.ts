@@ -239,14 +239,10 @@ test.describe('Secrets Page', () => {
 test.describe('Mobile Responsive Layout', () => {
   // These tests run with the mobile-chrome project (iPhone 13 viewport)
   // and verify responsive behavior. On desktop viewport they are skipped.
-
-  test('should show hamburger menu and hide sidebar on mobile', async ({ page }, testInfo) => {
-    test.skip(testInfo.project?.name !== 'mobile-chrome', 'mobile-only test')
-    await loginAndNavigate(page, '/profile')
-
-    // Hamburger button should be visible (SidebarTrigger)
-    await expect(page.getByRole('button', { name: /toggle sidebar/i })).toBeVisible({ timeout: 5000 })
-  })
+  //
+  // The mobile-chrome project runs every remaining spec at a phone viewport
+  // and catches responsive regressions for free; the hamburger-visible smoke
+  // that used to live here duplicated that coverage and was removed in HOL-658.
 
   test('should open drawer and show sidebar navigation on mobile', async ({ page }, testInfo) => {
     test.skip(testInfo.project?.name !== 'mobile-chrome', 'mobile-only test')
