@@ -204,12 +204,25 @@ func waitForCondition(t *testing.T, c client.Client, obj client.Object, key type
 // admission policies and the binding resolver can read its resource-type.
 func mustCreateNamespace(t *testing.T, c client.Client, name, resourceType string) {
 	t.Helper()
+	mustCreateNamespaceWithParent(t, c, name, resourceType, "")
+}
+
+// mustCreateNamespaceWithParent installs a namespace carrying the
+// resource-type label and (optionally) a console.holos.run/parent label
+// pointing at parentNs. Used by the binding reconciler ancestor-chain tests
+// so the cache walker can resolve a real hierarchy.
+func mustCreateNamespaceWithParent(t *testing.T, c client.Client, name, resourceType, parentNs string) {
+	t.Helper()
+	labels := map[string]string{
+		"console.holos.run/resource-type": resourceType,
+	}
+	if parentNs != "" {
+		labels["console.holos.run/parent"] = parentNs
+	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"console.holos.run/resource-type": resourceType,
-			},
+			Name:   name,
+			Labels: labels,
 		},
 	}
 	if err := c.Create(context.Background(), ns); err != nil {
@@ -402,14 +415,15 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 	// Defaults are NamespacePrefix="", ProjectPrefix="prj-" so project
 	// "mytarget" resolves to namespace "prj-mytarget". The binding's
 	// policyRef also needs a resolvable TemplatePolicy (ResolvedRefs
-	// now evaluates both target_refs and policyRef), so seed the
-	// organization namespace and the referenced policy.
+	// now evaluates both target_refs and policyRef) AND the policy's
+	// namespace must lie in the binding namespace's ancestor chain, so
+	// link fldNS -> orgNS via console.holos.run/parent.
 	orgNS := "org-transition-acme"
 	fldNS := "fld-binding-transition"
 	prjNS := "prj-mytarget"
-	mustCreateNamespace(t, e.client, orgNS, "organization")
-	mustCreateNamespace(t, e.client, fldNS, "folder")
-	mustCreateNamespace(t, e.client, prjNS, "project")
+	mustCreateNamespaceWithParent(t, e.client, orgNS, "organization", "")
+	mustCreateNamespaceWithParent(t, e.client, fldNS, "folder", orgNS)
+	mustCreateNamespaceWithParent(t, e.client, prjNS, "project", orgNS)
 
 	policy := &v1alpha1.TemplatePolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "require-one", Namespace: orgNS},
@@ -487,13 +501,15 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 	// org-acme holds the TemplatePolicy; prj-target holds the referenced
 	// Template. Folder namespace fld-bind hosts the binding. Defaults:
 	// NamespacePrefix="", OrganizationPrefix="org-", FolderPrefix="fld-",
-	// ProjectPrefix="prj-".
+	// ProjectPrefix="prj-". Link fld-bind and prj-target to org-acme via
+	// console.holos.run/parent so the reconciler's ancestor-chain check
+	// resolves the binding's policy ref as reachable.
 	orgNS := "org-acme"
 	fldNS := "fld-bind"
 	prjNS := "prj-target"
-	mustCreateNamespace(t, e.client, orgNS, "organization")
-	mustCreateNamespace(t, e.client, fldNS, "folder")
-	mustCreateNamespace(t, e.client, prjNS, "project")
+	mustCreateNamespaceWithParent(t, e.client, orgNS, "organization", "")
+	mustCreateNamespaceWithParent(t, e.client, fldNS, "folder", orgNS)
+	mustCreateNamespaceWithParent(t, e.client, prjNS, "project", orgNS)
 
 	// Pre-create the target Template so targetRefs resolve; that isolates
 	// the ResolvedRefs surface to the policyRef branch under test.
@@ -567,6 +583,88 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 	}
 
 	waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionTrue)
+}
+
+// TestTemplatePolicyBinding_ResolvedRefs_OutOfChainPolicyRejected asserts
+// ResolvedRefs goes False with PolicyNotFound reason when the binding's
+// policyRef names an existing TemplatePolicy that does NOT sit in the
+// binding's ancestor chain. Matches the RPC handler's AncestorChainResolver
+// gate so controller-published status and write-path validation agree.
+func TestTemplatePolicyBinding_ResolvedRefs_OutOfChainPolicyRejected(t *testing.T) {
+	e := startEnv(t)
+	_, cancel, errCh := startManager(t, e.cfg)
+	t.Cleanup(func() { stopManager(t, cancel, errCh) })
+
+	// Two disjoint trees: org-alpha owns fld-alpha1 + prj-alpha-target;
+	// org-beta owns a policy that alpha's binding will try (and fail) to
+	// reference. The ancestor walker from fld-alpha1 reaches org-alpha
+	// and stops, so org-beta/policy is unreachable.
+	orgAlpha := "org-alpha"
+	orgBeta := "org-beta"
+	fldAlpha := "fld-alpha1"
+	prjAlpha := "prj-alpha-target"
+	mustCreateNamespaceWithParent(t, e.client, orgAlpha, "organization", "")
+	mustCreateNamespaceWithParent(t, e.client, orgBeta, "organization", "")
+	mustCreateNamespaceWithParent(t, e.client, fldAlpha, "folder", orgAlpha)
+	mustCreateNamespaceWithParent(t, e.client, prjAlpha, "project", orgAlpha)
+
+	// Policy lives in the wrong org.
+	policy := &v1alpha1.TemplatePolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "beta-only", Namespace: orgBeta},
+		Spec: v1alpha1.TemplatePolicySpec{
+			DisplayName: "beta-only",
+			Rules: []v1alpha1.TemplatePolicyRule{{
+				Kind: v1alpha1.TemplatePolicyKindRequire,
+				Template: v1alpha1.LinkedTemplateRef{
+					Scope: "organization", ScopeName: "beta", Name: "ignored",
+				},
+			}},
+		},
+	}
+	if err := e.client.Create(context.Background(), policy); err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+
+	// Target Template exists (so targetRefs resolve).
+	tmpl := &v1alpha1.Template{
+		ObjectMeta: metav1.ObjectMeta{Name: "alpha-target", Namespace: prjAlpha},
+		Spec: v1alpha1.TemplateSpec{
+			DisplayName: "alpha-target",
+			Enabled:     true,
+			CueTemplate: "package holos\n",
+		},
+	}
+	if err := e.client.Create(context.Background(), tmpl); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	binding := &v1alpha1.TemplatePolicyBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "cross-tree", Namespace: fldAlpha},
+		Spec: v1alpha1.TemplatePolicyBindingSpec{
+			DisplayName: "cross-tree",
+			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
+				Scope: "organization", ScopeName: "beta", Name: "beta-only",
+			},
+			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
+				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
+				ProjectName: "alpha-target",
+				Name:        "alpha-target",
+			}},
+		},
+	}
+	if err := e.client.Create(context.Background(), binding); err != nil {
+		t.Fatalf("create binding: %v", err)
+	}
+	bkey := client.ObjectKeyFromObject(binding)
+
+	read := &v1alpha1.TemplatePolicyBinding{}
+	cond := waitForCondition(t, e.client, read, bkey, v1alpha1.TemplatePolicyBindingConditionResolvedRefs, metav1.ConditionFalse)
+	if cond.Reason != v1alpha1.TemplatePolicyBindingReasonPolicyNotFound {
+		t.Fatalf("ResolvedRefs reason=%q want %q", cond.Reason, v1alpha1.TemplatePolicyBindingReasonPolicyNotFound)
+	}
+	if !strings.Contains(cond.Message, "not reachable") {
+		t.Fatalf("ResolvedRefs message=%q expected substring \"not reachable\"", cond.Message)
+	}
 }
 
 // TestTemplate_NoHotLoop asserts the reconciler does not re-write status

@@ -34,7 +34,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
+
+// bindingAncestorMaxDepth matches console/resolver/walker.go's maxWalkDepth.
+// The reconciler mirrors the walker's invariant (organization is the root; at
+// most maxWalkDepth hops before we give up) so reconciler-level reachability
+// stays consistent with the RPC handler check.
+const bindingAncestorMaxDepth = 5
 
 // TemplatePolicyBindingReconciler reconciles a TemplatePolicyBinding. The
 // binding contract mirrors the Gateway API HTTPRoute status surface: an
@@ -222,6 +229,23 @@ func bindingAcceptedCondition(binding *v1alpha1.TemplatePolicyBinding) metav1.Co
 			Message: "spec.policyRef must set both name and scopeName",
 		}
 	}
+	// Scope must name a hierarchy level owning a TemplatePolicy. The CRD
+	// enum pins this to {organization, folder}, but objects created through
+	// paths that bypass CRD validation (tests, direct apiserver writes,
+	// legacy imports) can still surface invalid scopes. Fail Accepted here
+	// so the object does not fall through to ResolvedRefs=True on a
+	// malformed spec.
+	switch strings.ToLower(binding.Spec.PolicyRef.Scope) {
+	case "organization", "folder":
+		// OK
+	default:
+		return metav1.Condition{
+			Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
+			Status:  metav1.ConditionFalse,
+			Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
+			Message: fmt.Sprintf("spec.policyRef.scope %q is not a valid scope (expected organization or folder)", binding.Spec.PolicyRef.Scope),
+		}
+	}
 	return metav1.Condition{
 		Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
 		Status:  metav1.ConditionTrue,
@@ -275,10 +299,13 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 	}
 
 	// spec.policyRef: the referenced TemplatePolicy must exist in the
-	// namespace implied by PolicyRef.Scope + PolicyRef.ScopeName. If the
-	// scope discriminator is invalid we leave ResolvedRefs on the earlier
-	// Accepted=False surface — ResolvedRefs specifically reports on
-	// existence, not well-formedness.
+	// namespace implied by PolicyRef.Scope + PolicyRef.ScopeName AND live
+	// in a namespace reachable from the binding's own namespace via the
+	// console.holos.run/parent ancestor chain. bindingAcceptedCondition
+	// has already screened out bad scope discriminators; policyRefNamespace
+	// returning ok=false here would mean we raced with an Accepted=False
+	// surface, so we only walk the chain when we can compute a target
+	// namespace.
 	policyNs, ok := r.policyRefNamespace(binding.Spec.PolicyRef)
 	if ok {
 		var policy v1alpha1.TemplatePolicy
@@ -294,6 +321,26 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 				}, nil
 			}
 			return metav1.Condition{}, fmt.Errorf("get TemplatePolicy %s/%s: %w", policyNs, binding.Spec.PolicyRef.Name, err)
+		}
+
+		// Reachability: walk the binding's ancestor chain and require
+		// that policyNs appears in it. A folder binding can name its
+		// own folder or any ancestor organization; an organization
+		// binding can only name its own organization. This mirrors the
+		// RPC handler's AncestorChainResolver gate so the reconciler
+		// does not report Ready=True on objects the write path rejects.
+		reachable, err := r.policyNamespaceInAncestorChain(ctx, binding.Namespace, policyNs)
+		if err != nil {
+			return metav1.Condition{}, fmt.Errorf("walking ancestor chain from %q: %w", binding.Namespace, err)
+		}
+		if !reachable {
+			return metav1.Condition{
+				Type:   v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
+				Status: metav1.ConditionFalse,
+				Reason: v1alpha1.TemplatePolicyBindingReasonPolicyNotFound,
+				Message: fmt.Sprintf("TemplatePolicy %s/%s (scope=%s) is not reachable from binding namespace %q via the ancestor chain",
+					policyNs, binding.Spec.PolicyRef.Name, binding.Spec.PolicyRef.Scope, binding.Namespace),
+			}, nil
 		}
 	}
 
@@ -319,6 +366,63 @@ func (r *TemplatePolicyBindingReconciler) policyRefNamespace(ref v1alpha1.Linked
 	default:
 		return "", false
 	}
+}
+
+// policyNamespaceInAncestorChain walks the console.holos.run/parent label
+// chain starting at bindingNamespace and reports whether policyNamespace
+// appears anywhere in the chain (including bindingNamespace itself). The walk
+// terminates when a namespace with resource-type=organization is seen, an
+// iteration cap is hit (mirrors resolver.Walker's maxWalkDepth = 5), or a
+// cycle is detected. Namespace reads go through the cache-backed client the
+// manager already primes in NewManager.
+//
+// Missing namespaces in the middle of the chain are treated as "not
+// reachable" rather than an error: the chain can only resolve what the cache
+// currently holds, and the binding reconciler is re-enqueued naturally when
+// any Namespace changes via the Namespace informer controller-runtime starts
+// for us. Bubbling a transient apierror would flip ResolvedRefs=False with a
+// misleading reason.
+func (r *TemplatePolicyBindingReconciler) policyNamespaceInAncestorChain(ctx context.Context, bindingNamespace, policyNamespace string) (bool, error) {
+	if bindingNamespace == policyNamespace {
+		return true, nil
+	}
+	visited := make(map[string]bool, bindingAncestorMaxDepth+1)
+	current := bindingNamespace
+	for i := 0; i <= bindingAncestorMaxDepth; i++ {
+		if visited[current] {
+			// Cycle in the label graph. Surface "not reachable" — the
+			// upstream data is broken, and the reconciler should not
+			// claim Ready=True on a cluster in that state.
+			return false, nil
+		}
+		visited[current] = true
+
+		var ns corev1.Namespace
+		if err := r.Get(ctx, types.NamespacedName{Name: current}, &ns); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("get Namespace %q: %w", current, err)
+		}
+		if current == policyNamespace {
+			return true, nil
+		}
+		if ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeOrganization {
+			// Top of the tree and we still have not seen policyNs.
+			return false, nil
+		}
+		parent := ns.Labels[v1alpha2.AnnotationParent]
+		if parent == "" {
+			// Non-organization namespace without a parent label is
+			// malformed for the console's hierarchy. Treat as not
+			// reachable; an admin fix will re-trigger reconcile on
+			// the label write.
+			return false, nil
+		}
+		current = parent
+	}
+	// Hit the depth cap without finding policyNs or an organization root.
+	return false, nil
 }
 
 // projectNamespace maps a project name to the Kubernetes namespace the
