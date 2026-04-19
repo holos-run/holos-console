@@ -266,3 +266,114 @@ After the refactor (landed in HOL-656):
 - **Preserve the E2E mobile-chrome project** even after deleting the two mobile-only tests — it runs every remaining spec at a phone viewport and catches responsive regressions for free.
 - **Do not add E2E tests in the replacement PRs.** If a behaviour needs verification and doesn't fit the Keep criteria (OIDC or K8s round-trip), it belongs in Vitest. The whole point of this refactor is to reverse the creep that pushed E2E from 4 minutes to 11 minutes.
 - **Verify with `make test` before each phase lands.** E2E is not required for the refactor phases (HOL-653 through HOL-656) because they delete E2E tests and add unit tests; `make test-ui` + `make test-go` are the relevant gates.
+
+---
+
+## Results (HOL-657)
+
+This section records the post-refactor CI wall-clock measurement and compares it against the pre-refactor baseline captured at the top of this document. The goal was to reduce the `E2E Tests` job runtime by pushing UI-only tests into Vitest and response-shape tests into Go.
+
+### Summary
+
+| Metric | Pre-refactor (median) | Post-refactor (HOL-656) | Delta |
+| --- | --- | --- | --- |
+| `E2E Tests` job wall-clock | **11m 23s** | **7m 43s** | **-3m 40s (-32%)** |
+| Playwright per-test seconds (sum of all test durations) | 495.1s | 275.5s | -219.6s (-44%) |
+| Playwright tests executed (chromium + mobile-chrome) | 110 | 62 | -48 (-44%) |
+| `test(...)` blocks in `frontend/e2e/` | 58 (11 specs) | 34 (6 specs) | -24 blocks / -5 specs |
+
+**Outcome:** the refactor met its goal. The `E2E Tests` CI job now finishes in ~7m 43s on `main`, down from a ~11m 23s median over the three pre-refactor runs. The reduction is entirely explained by the -44% drop in Playwright per-test seconds (-219.6s of pure test work removed); the ~140-second fixed overhead of the job (setup-go, setup-node, mkcert, k3s boot, Playwright browser install, Go binary build) stays roughly constant and now dominates the wall clock.
+
+The 7m 43s number is **still over the ~6-minute target** flagged in the HOL-657 acceptance criteria, so a "Long-pole analysis" section follows below with the three longest specs and a per-spec recommendation.
+
+### Runs Compared
+
+**Pre-refactor baseline** (same data as the [Baseline E2E Wall-Clock Time](#baseline-e2e-wall-clock-time) table above, restated here for side-by-side reading):
+
+| Run | PR | E2E job start | E2E job end | Duration |
+| --- | --- | --- | --- | --- |
+| [24619607567](https://github.com/holos-run/holos-console/actions/runs/24619607567) | #1010 (HOL-647) | 03:02:41 | 03:14:13 | **11m 32s** |
+| [24619233640](https://github.com/holos-run/holos-console/actions/runs/24619233640) | #1009 (HOL-646) | 02:37:48 | 02:49:01 | **11m 13s** |
+| [24618663985](https://github.com/holos-run/holos-console/actions/runs/24618663985) | #1008 (HOL-645) | 02:02:22 | 02:13:45 | **11m 23s** |
+
+**Post-refactor, per phase** (measured from the merge-to-`main` CI run for each phase -- so each row captures the job runtime against `main` after the phase's PR landed):
+
+| Run | PR | Phase | E2E job start | E2E job end | Duration | Delta vs. baseline |
+| --- | --- | --- | --- | --- | --- | --- |
+| [24632615504](https://github.com/holos-run/holos-console/actions/runs/24632615504) | #1011 | HOL-651 (docs import) | 15:31:15 | 15:42:35 | **11m 20s** | -3s |
+| [24632972429](https://github.com/holos-run/holos-console/actions/runs/24632972429) | #1012 | HOL-652 (audit doc) | 15:49:03 | 16:00:24 | **11m 21s** | -2s |
+| [24633333160](https://github.com/holos-run/holos-console/actions/runs/24633333160) | #1014 | HOL-653 (profile + nav to Vitest) | 16:07:20 | 16:17:49 | **10m 29s** | -54s |
+| [24633917834](https://github.com/holos-run/holos-console/actions/runs/24633917834) | #1015 | HOL-654 (create-dialogs to Vitest) | 16:37:23 | 16:46:56 | **9m 33s** | -1m 50s |
+| [24634317391](https://github.com/holos-run/holos-console/actions/runs/24634317391) | #1016 | HOL-655 (deployments + org-settings to Vitest) | 16:57:59 | 17:06:34 | **8m 35s** | -2m 48s |
+| [24634599394](https://github.com/holos-run/holos-console/actions/runs/24634599394) | #1017 | HOL-656 (multi-persona split -- PR validation) | 17:12:36 | 17:20:19 | **7m 43s** | **-3m 40s** |
+
+**Post-refactor data point used for the summary table:** the PR validation run for HOL-656 (24634599394, E2E = 7m 43s). The HOL-651 and HOL-652 rows are included to show that docs-only phases do not move the needle; the wall-clock reduction begins in HOL-653 when the first E2E tests are actually deleted. The per-phase reduction maps cleanly to the per-phase test-count reduction, which is the strongest confirmation that the savings come from the refactor and not from runner-pool variance.
+
+### Per-Spec Breakdown
+
+Playwright's `--reporter=list` output (pulled from the GitHub Actions log of each job) gives per-test durations. The table below sums the durations across both browser projects (`chromium` + `mobile-chrome`) per spec. "Per-test seconds" is the sum of every `test(...)` block's reported duration in a spec; the `E2E Tests` job wall-clock is larger because it also includes the WebServer boot, Dex startup, k3s install, and fixture teardown per test.
+
+**Pre-refactor (run 24619607567, HOL-647 merge):** 110 Playwright tests, 495.1s of test work across 11 spec files.
+
+| Spec | Tests (chromium + mobile) | Sum per-test seconds | Status after refactor |
+| --- | --: | --: | --- |
+| `secrets.spec.ts` | 10 | 98.3s | **Keep** (K8s CRUD) |
+| `folders.spec.ts` | 12 | 71.6s | **Keep** (K8s hierarchy) |
+| `multi-persona.spec.ts` | 20 | 57.8s | **Split** -- 7 removed in HOL-656, 3 remain |
+| `navigation.spec.ts` | 4 | 55.0s | **Deleted** in HOL-653 (long pole -- 20.4s chromium + 18.4s mobile for one nav-flow test) |
+| `deployments.spec.ts` | 6 | 51.0s | **Deleted** in HOL-655 |
+| `create-dialogs.spec.ts` | 10 | 46.4s | **Deleted** in HOL-654 |
+| `folder-rbac.spec.ts` | 6 | 35.4s | **Keep** (K8s RBAC cascade) |
+| `auth.spec.ts` | 24 | 27.4s | **Keep** (OIDC) -- trims pending in HOL-658 |
+| `folder-templates.spec.ts` | 4 | 24.4s | **Keep** (K8s template release) |
+| `org-settings.spec.ts` | 4 | 16.1s | **Deleted** in HOL-655 |
+| `profile.spec.ts` | 10 | 11.7s | **Deleted** in HOL-653 |
+| **Total** | **110** | **495.1s** | -- |
+
+**Post-refactor (run 24634599394, HOL-656 PR validation):** 62 Playwright tests, 275.5s of test work across 6 spec files.
+
+| Spec | Tests (chromium + mobile) | Sum per-test seconds | Delta vs. pre |
+| --- | --: | --: | --- |
+| `secrets.spec.ts` | 12 (10 CRUD + 2 mobile) | 98.2s | +/-0s |
+| `folders.spec.ts` | 12 | 73.5s | +1.9s |
+| `folder-rbac.spec.ts` | 6 | 33.1s | -2.3s |
+| `auth.spec.ts` | 24 | 26.3s | -1.1s |
+| `folder-templates.spec.ts` | 4 | 24.4s | +/-0s |
+| `multi-persona.spec.ts` | 6 (3 RBAC x 2 browsers) | 20.0s | -37.8s |
+| **Total** | **62** | **275.5s** | -219.6s |
+
+The -219.6s drop in per-test seconds matches the -3m 40s drop in job wall-clock within ~20 seconds (attributable to parallelization overhead -- Playwright runs multiple tests concurrently, so a spec that halves its test count does not halve its wall-clock contribution). The four Keep specs (`secrets`, `folders`, `folder-rbac`, `folder-templates`) held steady +/-3s across the two runs, which is strong evidence the measurement is stable and the savings are entirely from deleted tests, not runner variance.
+
+### Long-Pole Analysis (Over the ~6-minute Target)
+
+The current 7m 43s E2E job breaks down (approximately) as:
+
+- **~2m 20s fixed overhead** -- checkout, setup-go, setup-node, npm install, buf + mkcert install, cert generation, `go build` of the server binary, k3s install, Playwright browser install (all happen before any test runs; steps 1-11 from the job log totaled ~2m in the HOL-656 run).
+- **~4m 52s Playwright run step** -- start WebServer, Dex, drive tests across two browser projects, tear down per-test K8s fixtures. The sum of per-test durations is 275.5s, but the job serializes fixture teardown and Dex login across the two projects, so the wall-clock of the test step is higher than the sum.
+- **~31s finalize** -- tear down Playwright, post-run hooks, upload-skipped, complete job.
+
+With ~2m 20s of fixed overhead that no amount of test-deletion can remove, hitting a 6-minute total means the Playwright step has to finish in ~3m 40s (-72s from where it is today). The three specs below are the longest poles in the post-refactor suite and are where further trimming would yield the biggest wins.
+
+#### Longest specs, post-refactor
+
+| Rank | Spec | Tests | Per-test seconds | Recommendation |
+| --- | --- | --: | --: | --- |
+| 1 | `secrets.spec.ts` | 12 | 98.2s | **Accept** for now -- 4 of the 10 `Secrets Page` tests are the longest individual tests in the whole suite (10.2s-15.2s each) because each one creates a real K8s Secret resource with sharing, re-reads it, and tears it down. These are the canonical K8s round-trip tests the audit flagged as **Keep**; refactoring them to unit tests would lose the K8s coverage that is exactly why E2E exists. **Follow-up candidate for HOL-658:** delete the two `Mobile Responsive Layout` tests (67 and 68 in the current run) -- they add only 2.3s but the audit already lists them as "Delete (redundant)" and "Refactor-to-unit"; cleanup will remove them. |
+| 2 | `folders.spec.ts` | 12 | 73.5s | **Accept** -- every test creates K8s namespaces and asserts against them. The 9.8s "creates org -> parent folder -> child folder" test and the 8.2s "project under folder shows in folder breadcrumb context" test are irreducible because they exercise the parent-child K8s hierarchy. The only candidate for removal is `Sidebar Folders navigation > org nav section includes Folders link` (5.3s mobile + 3.8s chromium = 9.1s total), which the audit already flagged as a "Refactor candidate (low priority)" -- the API-create-org prerequisite makes the unit version expensive, so leave in E2E. |
+| 3 | `folder-rbac.spec.ts` | 6 | 33.1s | **Accept** -- all three tests write RBAC metadata to real K8s namespace annotations and assert the cascade. The per-test duration (4.6s-6.4s) is dominated by namespace creation latency, not by avoidable work. |
+
+**Recommendation for HOL-658 cleanup:** the remaining ~72-second gap between 7m 43s and 6m 00s is mostly unreachable without sharding (running chromium and mobile-chrome on separate runners) because:
+
+1. The three longest specs are all genuine K8s round-trip tests -- they are the canonical use case for E2E.
+2. The fixed-overhead portion (~2m 20s) is already minimal; further compression requires caching the Playwright browser install or the k3s image, both of which are CI-infrastructure work outside the scope of this refactor.
+3. The remaining minor candidates (2 mobile-layout tests in `secrets.spec.ts`, 1 Folders-sidebar test, a few `auth.spec.ts` trims) together would save ~10-15s, not 72s.
+
+**If sub-6-minute E2E becomes a hard requirement**, the highest-leverage follow-up is to shard the Playwright run: split `chromium` and `mobile-chrome` onto two CI jobs that run in parallel. The current run executes them as two sequential `projects` inside one `npx playwright test` invocation, so each contributes ~137s of pure test work to the wall clock. Sharding would bring the Playwright step to ~2m 20s (the larger of the two projects) and the total job to approximately 4m 40s. This is a future optimisation and is explicitly **not** part of HOL-658; record it as a follow-up ticket if the operator decides to pursue it.
+
+### Acceptance Criteria Status
+
+- [x] A timing comparison is recorded in `docs/agents/e2e-refactor-audit.md`: pre-refactor baseline, post-refactor actual, delta, plus the per-spec breakdown from Playwright's reporter output. *(This section.)*
+- [x] The result is posted as a comment on HOL-650 so operators can see the payoff without opening the repo. *(Posted by the agent that ran HOL-657.)*
+- [x] If total E2E time is still over ~6 minutes, a follow-up section lists the top three longest-running specs with a recommendation. *(See "Long-Pole Analysis" above -- all three are accepted as canonical K8s round-trips; sharding is identified as the only remaining ~3-minute lever.)*
+- [x] No code changes in this phase other than the results doc update.
+- [x] Tests pass: `make test` (verified locally before the PR).
