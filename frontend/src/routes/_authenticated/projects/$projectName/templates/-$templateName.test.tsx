@@ -312,6 +312,32 @@ describe('DeploymentTemplateDetailPage', () => {
     expect(platformInput.value).toContain('gatewayNamespace: "istio-ingress"')
   })
 
+  // HOL-646 review round 1: a project EDITOR may have project-read but
+  // not org-read permission. In that case useGetOrganization returns an
+  // error or stays pending. We must NOT silently substitute "istio-ingress"
+  // — the backend (HOL-644) still injects the org's actually-configured
+  // gateway namespace at render time, so a fabricated default would
+  // mislead. Omit the field entirely instead.
+  it('Platform Input omits gatewayNamespace when org query is pending', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).not.toContain('gatewayNamespace')
+  })
+
+  it('Platform Input omits gatewayNamespace when org query errors', async () => {
+    setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('forbidden') })
+    const user = userEvent.setup()
+    render(<DeploymentTemplateDetailPage projectName="test-project" templateName="web-app" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).not.toContain('gatewayNamespace')
+  })
+
   it('Project Input textarea contains name, image, tag, and port', async () => {
     setupMocks(Role.OWNER, undefined, 'apiVersion: v1\n')
     const user = userEvent.setup()

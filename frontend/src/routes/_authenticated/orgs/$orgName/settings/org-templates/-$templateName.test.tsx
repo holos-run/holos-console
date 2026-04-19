@@ -87,4 +87,35 @@ describe('OrgTemplateDetailPage', () => {
     const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
     expect(platformInput.value).toContain('gatewayNamespace: "istio-ingress"')
   })
+
+  // HOL-646 review round 1: org-query failure (e.g. user can read the
+  // template via a folder/project grant but cannot read the parent org)
+  // must NOT silently substitute the platform default. Omit the field
+  // entirely so the preview does not advertise a value that may differ
+  // from what the backend actually injects at render time.
+  it('Platform Input omits gatewayNamespace when org query is pending', async () => {
+    ;(useGetTemplate as Mock).mockReturnValue({ data: mockTemplate, isPending: false, error: null })
+    ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
+    ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'clone' }), isPending: false })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
+    ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+    const user = userEvent.setup()
+    render(<OrgTemplateDetailPage orgName="test-org" templateName="platform-base" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).not.toContain('gatewayNamespace')
+  })
+
+  it('Platform Input omits gatewayNamespace when org query errors', async () => {
+    ;(useGetTemplate as Mock).mockReturnValue({ data: mockTemplate, isPending: false, error: null })
+    ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
+    ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'clone' }), isPending: false })
+    ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: new Error('forbidden') })
+    ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
+    const user = userEvent.setup()
+    render(<OrgTemplateDetailPage orgName="test-org" templateName="platform-base" />)
+    await user.click(screen.getByRole('tab', { name: /preview/i }))
+    const platformInput = screen.getByRole('textbox', { name: /platform input/i }) as HTMLTextAreaElement
+    expect(platformInput.value).not.toContain('gatewayNamespace')
+  })
 })

@@ -54,7 +54,7 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
 
   const scope = makeOrgScope(orgName)
   const { data: template, isPending, error } = useGetTemplate(scope, templateName)
-  const { data: org } = useGetOrganization(orgName)
+  const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(orgName)
   const updateMutation = useUpdateTemplate(scope, templateName)
   const cloneMutation = useCloneTemplate(scope)
 
@@ -77,9 +77,17 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
 
   // Use the authoring org's configured gateway namespace (HOL-526) so the
   // preview default matches what the backend injects at render time. Fall
-  // back to "istio-ingress" when the org has not configured one.
-  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
-  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  gatewayNamespace: "${gatewayNamespace}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  // back to "istio-ingress" only after the org query has successfully
+  // resolved with no value configured. While the org load is pending or
+  // errored (e.g. user lacks org-read permission), omit the field entirely
+  // so the preview never advertises a value that may be incorrect — the
+  // backend (HOL-644) still injects the org's actual value at render time.
+  const orgLoaded = !orgPending && !orgError
+  const gatewayNamespace = orgLoaded ? (org?.gatewayNamespace || 'istio-ingress') : ''
+  const gatewayNamespaceLine = gatewayNamespace
+    ? `  gatewayNamespace: "${gatewayNamespace}"\n`
+    : ''
+  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n${gatewayNamespaceLine}  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   const handleSave = async () => {

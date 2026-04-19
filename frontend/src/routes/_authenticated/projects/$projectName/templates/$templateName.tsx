@@ -59,7 +59,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   // platform-input preview default so the preview matches what the backend
   // will inject at render time. The project's parent organization is the
   // source of truth for this setting.
-  const { data: org } = useGetOrganization(project?.organization ?? '')
+  const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(project?.organization ?? '')
   const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
   const updateMutation = useUpdateTemplate(scope, templateName)
   const deleteMutation = useDeleteTemplate(scope)
@@ -102,9 +102,18 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const canDelete = userRole === Role.OWNER
   const canEditLinks = userRole === Role.OWNER
 
-  // Falls back to "istio-ingress" when the org has not configured one.
-  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
-  const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n  gatewayNamespace: "${gatewayNamespace}"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
+  // Fall back to "istio-ingress" only after the org query has successfully
+  // resolved with no value configured. While the org load is pending or
+  // errored (e.g. a project EDITOR may not have org-read permission), omit
+  // the field entirely so the preview never advertises a value that may be
+  // incorrect — the backend (HOL-644) still injects the org's actual value
+  // at render time.
+  const orgLoaded = (project?.organization ?? '').length > 0 && !orgPending && !orgError
+  const gatewayNamespace = orgLoaded ? (org?.gatewayNamespace || 'istio-ingress') : ''
+  const gatewayNamespaceLine = gatewayNamespace
+    ? `  gatewayNamespace: "${gatewayNamespace}"\n`
+    : ''
+  const defaultPlatformInput = `platform: {\n  project:          "${projectName}"\n  namespace:        "holos-prj-${projectName}"\n${gatewayNamespaceLine}  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
   const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   // handleReconcile triggers an UpdateTemplate with the template's current

@@ -243,7 +243,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
   // platform-input preview default so the preview matches what the backend
   // will inject at render time.
-  const { data: org } = useGetOrganization(project?.organization ?? '')
+  const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(project?.organization ?? '')
   const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
 
   const userRole = project?.userRole ?? Role.VIEWER
@@ -266,13 +266,21 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
     (t) => t.scopeRef?.scope === TemplateScope.FOLDER,
   )
 
-  // Falls back to "istio-ingress" when the org has not configured one.
-  const gatewayNamespace = org?.gatewayNamespace || 'istio-ingress'
+  // Fall back to "istio-ingress" only after the org query has successfully
+  // resolved with no value configured. While the org load is pending or
+  // errored (e.g. a project EDITOR may not have org-read permission), omit
+  // the field entirely so the preview never advertises a value that may be
+  // incorrect — the backend (HOL-644) still injects the org's actual value
+  // at render time.
+  const orgLoaded = (project?.organization ?? '').length > 0 && !orgPending && !orgError
+  const gatewayNamespace = orgLoaded ? (org?.gatewayNamespace || 'istio-ingress') : ''
+  const gatewayNamespaceLine = gatewayNamespace
+    ? `\tgatewayNamespace: "${gatewayNamespace}"\n`
+    : ''
   const previewCuePlatformInput = `platform: {
 \tproject:          "${projectName}"
 \tnamespace:        "holos-prj-${projectName}"
-\tgatewayNamespace: "${gatewayNamespace}"
-\tclaims: {
+${gatewayNamespaceLine}\tclaims: {
 \t\tiss:            "https://login.example.com"
 \t\tsub:            "user-abc123"
 \t\tiat:            1743868800
