@@ -5,6 +5,9 @@ import React from 'react'
 
 // Mock router and sidebar dependencies
 const mockNavigate = vi.fn()
+// Configurable per-test so we can drive route-based gating (active-state
+// highlighting on the Project tree children).
+let mockPathname = '/'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -27,11 +30,15 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       }
       return <a href={href}>{children}</a>
     },
-    useRouter: () => ({ state: { location: { pathname: '/' } }, navigate: mockNavigate }),
+    useRouter: () => ({ state: { location: { pathname: mockPathname } }, navigate: mockNavigate }),
     useNavigate: () => vi.fn(),
   }
 })
 
+// Forward `isActive` as `data-active` so active-state highlighting can be
+// asserted; the real sidebar primitives do the same internally. `asChild`
+// passes through untouched so `<Link>` / button children render without
+// wrapping.
 vi.mock('@/components/ui/sidebar', () => ({
   Sidebar: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -49,31 +56,44 @@ vi.mock('@/components/ui/sidebar', () => ({
     asChild,
     isActive,
     ...rest
-  }: React.HTMLAttributes<HTMLElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) => {
-    void isActive
-    return asChild ? <>{children}</> : <button {...rest}>{children}</button>
-  },
+  }: React.HTMLAttributes<HTMLElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) =>
+    asChild ? <>{children}</> : (
+      <button data-active={isActive ? 'true' : 'false'} {...rest}>
+        {children}
+      </button>
+    ),
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarMenuSub: ({ children }: { children: React.ReactNode }) => (
     <ul data-testid="sidebar-menu-sub">{children}</ul>
   ),
-  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => (
+    <li>{children}</li>
+  ),
   SidebarMenuSubButton: ({
     children,
     asChild,
     isActive,
     ...rest
   }: React.HTMLAttributes<HTMLElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) => {
-    void isActive
-    return asChild ? <>{children}</> : <a {...rest}>{children}</a>
+    const activeAttr = isActive ? 'true' : 'false'
+    if (asChild) {
+      // Wrap the single child in a span that carries the data-active
+      // attribute so tests can assert the active state without caring how
+      // the child (Link / button / etc.) renders.
+      return <span data-active={activeAttr}>{children}</span>
+    }
+    return (
+      <a data-active={activeAttr} {...rest}>
+        {children}
+      </a>
+    )
   },
   SidebarSeparator: () => <hr />,
 }))
 
-// Flatten Collapsible so CollapsibleContent is always rendered for the
-// expanded-state assertions (the open/closed toggle is radix-driven and
-// portaled in the real app; the component's expand/collapse behavior is
-// exercised in the dedicated behavior suite below via a separate mock).
+// Flatten Collapsible so CollapsibleContent is always rendered. The primitive
+// open/close state is Radix-driven and covered separately by the integration
+// test in -app-sidebar.hover.test.tsx.
 vi.mock('@/components/ui/collapsible', () => ({
   Collapsible: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   CollapsibleTrigger: ({
@@ -91,9 +111,8 @@ vi.mock('@/components/ui/collapsible', () => ({
   ),
 }))
 
-// Flatten Tooltip so the TooltipContent is always in the DOM and its
-// contents can be asserted directly without simulating hover. The real
-// Tooltip portals and is gated on a user interaction.
+// Flatten Tooltip so TooltipContent renders inline; content-level assertions
+// live here, hover/focus wiring lives in the integration test.
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -150,6 +169,7 @@ describe('AppSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockNavigate.mockReset()
+    mockPathname = '/'
     setDefaults()
   })
 
@@ -216,6 +236,7 @@ describe('AppSidebar', () => {
 describe('AppSidebar — org selected', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPathname = '/'
     setDefaults()
     ;(useOrg as Mock).mockReturnValue({
       organizations: [{ name: 'my-org', displayName: 'My Org' }],
@@ -265,9 +286,12 @@ describe('AppSidebar — org selected', () => {
 // HOL-604: the project section becomes a collapsible tree labeled "Project"
 // with a tooltip surfacing the display name + slug. Children render inside a
 // SidebarMenuSub in the canonical order: Secrets, Deployments, Templates,
-// Settings. Collapse state is radix-driven and exercised at the primitive
-// level; these tests flatten the Collapsible mock and assert against the
-// rendered children directly.
+// Settings.
+//
+// This suite flattens the Collapsible / Tooltip primitives so content-level
+// assertions (order, routing, active state, tooltip contents) are direct.
+// The real hover + expand/collapse behavior is covered by
+// -app-sidebar.hover.test.tsx which renders with the unmocked primitives.
 describe('AppSidebar — Project tree (HOL-604)', () => {
   function setupProjectSelected() {
     ;(useOrg as Mock).mockReturnValue({
@@ -286,6 +310,7 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPathname = '/'
     setDefaults()
     setupProjectSelected()
   })
@@ -304,12 +329,15 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
     expect(trigger.textContent).not.toContain('My Project')
   })
 
-  it('renders a tooltip containing the project display name and slug on separate lines', () => {
+  it('renders a tooltip whose first line is the display name and second is the slug', () => {
     render(<AppSidebar />)
     const tooltip = screen.getByTestId('project-tree-tooltip')
-    const lines = Array.from(tooltip.querySelectorAll('div')).map((el) => el.textContent)
-    expect(lines).toContain('My Project')
-    expect(lines).toContain('my-project')
+    // Direct-child divs carry the two lines; nested descendants (if any)
+    // are intentionally excluded to lock in the order.
+    const lineDivs = Array.from(tooltip.children).filter(
+      (el): el is HTMLElement => el.tagName === 'DIV',
+    )
+    expect(lineDivs.map((el) => el.textContent)).toEqual(['My Project', 'my-project'])
   })
 
   it('falls back to the slug for the display-name line when displayName is empty', () => {
@@ -321,12 +349,14 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
     })
     render(<AppSidebar />)
     const tooltip = screen.getByTestId('project-tree-tooltip')
-    // Both lines resolve to the slug when there is no displayName.
-    const lines = Array.from(tooltip.querySelectorAll('div')).map((el) => el.textContent)
-    expect(lines.filter((t) => t === 'my-project').length).toBeGreaterThanOrEqual(2)
+    const lineDivs = Array.from(tooltip.children).filter(
+      (el): el is HTMLElement => el.tagName === 'DIV',
+    )
+    // Both lines collapse to the slug when there is no displayName.
+    expect(lineDivs.map((el) => el.textContent)).toEqual(['my-project', 'my-project'])
   })
 
-  it('renders Secrets as the only child when deploymentsEnabled is false', () => {
+  it('renders only Secrets and Settings (no Deployments/Templates) when deploymentsEnabled is false', () => {
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
     render(<AppSidebar />)
     const sub = screen.getByTestId('sidebar-menu-sub')
@@ -377,5 +407,47 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
     })
     render(<AppSidebar />)
     expect(screen.queryByTestId('project-tree')).not.toBeInTheDocument()
+  })
+
+  // Active-state highlighting: the `isActive` prop on each child is surfaced
+  // on the wrapping <span data-active="..."> by the mock so we can assert
+  // the route-based gate without caring about the internal primitive.
+  describe('active-state highlighting', () => {
+    beforeEach(() => {
+      ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
+    })
+
+    function activeOf(linkName: RegExp) {
+      const link = screen.getByRole('link', { name: linkName })
+      // The mock wraps the <a> in a <span data-active="..."> when asChild
+      // is used (SidebarMenuSubButton asChild -> Link).
+      return link.parentElement?.getAttribute('data-active')
+    }
+
+    it('marks the Secrets child active when the pathname is /projects/<name>/secrets', () => {
+      mockPathname = '/projects/my-project/secrets'
+      render(<AppSidebar />)
+      expect(activeOf(/^secrets$/i)).toBe('true')
+      expect(activeOf(/^deployments$/i)).toBe('false')
+      expect(activeOf(/^settings$/i)).toBe('false')
+    })
+
+    it('marks the Settings child active when the pathname is /projects/<name>/settings (trailing slash stripped)', () => {
+      mockPathname = '/projects/my-project/settings'
+      render(<AppSidebar />)
+      expect(activeOf(/^settings$/i)).toBe('true')
+      expect(activeOf(/^secrets$/i)).toBe('false')
+    })
+
+    it('marks only the matching child active when the pathname is a deeper sub-route', () => {
+      // Secrets detail page, e.g. /projects/my-project/secrets/foo — the
+      // Secrets child should be active, not the other children.
+      mockPathname = '/projects/my-project/secrets/api-key'
+      render(<AppSidebar />)
+      expect(activeOf(/^secrets$/i)).toBe('true')
+      expect(activeOf(/^deployments$/i)).toBe('false')
+      expect(activeOf(/^templates$/i)).toBe('false')
+      expect(activeOf(/^settings$/i)).toBe('false')
+    })
   })
 })

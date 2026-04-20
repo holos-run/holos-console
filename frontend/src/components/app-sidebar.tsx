@@ -204,7 +204,7 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        {selectedProject && projectNavItems.length > 0 && (
+        {projectNavItems.length > 0 && (
           <SidebarGroup data-testid="project-tree">
             <SidebarGroupContent>
               <SidebarMenu>
