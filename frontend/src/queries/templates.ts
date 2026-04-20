@@ -62,6 +62,48 @@ export function useListTemplates(namespace: string) {
   })
 }
 
+// useSearchTemplates returns templates matching the given filters across every
+// namespace scope the caller can see. Introduced in HOL-607 for the unified
+// Templates index at /orgs/$orgName/templates. Pass `organization` to restrict
+// results to namespaces reachable from that org root; omit or pass empty
+// strings to leave a filter dimension unconstrained.
+function searchTemplatesKey(
+  namespace: string,
+  name: string,
+  displayNameContains: string,
+  organization: string,
+) {
+  return ['templates', 'search', namespace, name, displayNameContains, organization] as const
+}
+
+export function useSearchTemplates(params: {
+  namespace?: string
+  name?: string
+  displayNameContains?: string
+  organization?: string
+}) {
+  const namespace = params.namespace ?? ''
+  const name = params.name ?? ''
+  const displayNameContains = params.displayNameContains ?? ''
+  const organization = params.organization ?? ''
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: searchTemplatesKey(namespace, name, displayNameContains, organization),
+    queryFn: async () => {
+      const response = await client.searchTemplates({
+        namespace,
+        name,
+        displayNameContains,
+        organization,
+      })
+      return response.templates
+    },
+    enabled: isAuthenticated,
+  })
+}
+
 function templateDefaultsKey(namespace: string, name: string) {
   return ['templates', 'defaults', namespace, name] as const
 }
