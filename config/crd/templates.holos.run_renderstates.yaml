@@ -1,0 +1,243 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: renderstates.templates.holos.run
+spec:
+  group: templates.holos.run
+  names:
+    categories:
+    - holos
+    kind: RenderState
+    listKind: RenderStateList
+    plural: renderstates
+    shortNames:
+    - rstate
+    singular: renderstate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.project
+      name: Project
+      type: string
+    - jsonPath: .spec.targetKind
+      name: TargetKind
+      type: string
+    - jsonPath: .spec.targetName
+      name: TargetName
+      type: string
+    - jsonPath: .spec.appliedRefs[*]
+      name: Refs
+      priority: 1
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          RenderState records the effective set of LinkedTemplateRef values last
+          applied to a render target (a Deployment or a project-scope Template).
+          Render-state snapshots are evidence of a past render — they are not
+          read by the live render path. The drift checker consults them to
+          surface policy drift via DeploymentStatusSummary.policy_drift,
+          GetDeploymentPolicyState, and GetProjectTemplatePolicyState.
+
+          Storage location is a security-relevant invariant: a RenderState that
+          belongs to a folder-namespace-owned project MUST live in the folder
+          namespace (or the organization namespace when the project's parent is
+          the organization), NEVER in a project namespace. Project owners hold
+          namespace-scoped write access and could otherwise forge drift evidence
+          — write a fake `RenderState` matching the live render output, and the
+          drift checker would report no drift even after a policy revoked a
+          required template. The ValidatingAdmissionPolicy shipped in
+          `config/admission/renderstate-folder-or-org-only.yaml` enforces the
+          invariant at the API server.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              RenderStateSpec describes the effective set of LinkedTemplateRef values
+              last applied to a single render target. A RenderState is evidence of a
+              past render — it is never read by the live render path itself; the
+              drift checker consults it to compare a freshly resolved set against the
+              last applied set, and the live render path always recomputes.
+            properties:
+              appliedRefs:
+                description: |-
+                  AppliedRefs is the resolved render set the live render path
+                  produced at the last successful Create/Update of the render
+                  target. Empty list is meaningful: it means "successfully rendered
+                  with zero linked templates" and is distinct from the absence of a
+                  RenderState (which means "never applied").
+                items:
+                  description: |-
+                    RenderStateLinkedTemplateRef is the structured form of a single resolved
+                    template reference recorded on a RenderState. The shape mirrors the
+                    flattened LinkedTemplateRef type used elsewhere in the templates API
+                    group (HOL-723) so render-state evidence stores the same `(namespace,
+                    name, versionConstraint)` triple the resolver consumes.
+                  properties:
+                    name:
+                      description: Name is the DNS label slug of the referenced template.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace is the Kubernetes namespace that owns the referenced
+                        template. The resolver classifies the namespace into its hierarchy
+                        kind (organization, folder, project) at render time — render-state
+                        readers can do the same without needing to denormalize scope at
+                        write time.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                      type: string
+                    versionConstraint:
+                      description: |-
+                        VersionConstraint is the semver constraint expression last
+                        resolved against this reference (for example "" or ">=1.2"). Empty
+                        when the reference targets the live (unversioned) Template.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              project:
+                description: |-
+                  Project is the slug of the project that owns the render target.
+                  Records live in the folder or organization namespace that owns
+                  the project, so the project slug is carried on the spec (and
+                  mirrored to a label) to keep `(targetKind, project, targetName)`
+                  queries efficient.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                type: string
+              targetKind:
+                description: |-
+                  TargetKind identifies the kind of render target this snapshot
+                  belongs to.
+                enum:
+                - Deployment
+                - ProjectTemplate
+                type: string
+              targetName:
+                description: |-
+                  TargetName is the render target's own name (the deployment name
+                  or the project-scope template name).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                type: string
+            required:
+            - project
+            - targetKind
+            - targetName
+            type: object
+          status:
+            description: |-
+              RenderStateStatus describes the observed state of a RenderState. There
+              is no reconciler for RenderState today (the live handler writes the
+              object on the success path of Create/Update render-target paths), so
+              the status surface stays minimal. Following the Gateway-API convention
+              from ADR 030 keeps the door open for a future reconciler that emits
+              e.g. a `Stale` condition without reshaping the resource.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of this
+                  RenderState's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent generation observed for
+                  this RenderState by a future reconciler. Currently unused.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

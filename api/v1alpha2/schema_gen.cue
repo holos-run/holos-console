@@ -35,48 +35,6 @@
 // very binding the platform meant to constrain them with (HOL-554).
 #ResourceTypeTemplatePolicyBinding: "template-policy-binding"
 
-// ResourceTypeRenderState is the resource type label value for
-// applied-render-set ConfigMaps (HOL-557/HOL-567). A render-state
-// ConfigMap records the effective set of LinkedTemplateRef values last
-// applied to a given render target (deployment or project-scope
-// template). It is keyed by `(targetKind, targetName)` within a single
-// folder or organization namespace. Render-state ConfigMaps MUST live
-// in the folder namespace that owns the project (falling back to the
-// organization namespace when the project's immediate parent is the
-// organization) — NEVER in a project namespace, because project owners
-// have namespace-scoped write access and could otherwise forge drift
-// evidence.
-#ResourceTypeRenderState: "render-state"
-
-// LabelRenderTargetKind records the kind of render target a render-state
-// ConfigMap belongs to. Values are "deployment" (mirrors
-// ResourceTypeDeployment) or "project-template".
-#LabelRenderTargetKind: "console.holos.run/render-target-kind"
-
-// LabelRenderTargetProject records the project slug owning the render
-// target. Folder-namespace render-state ConfigMaps carry this label so
-// the handler can list by project without re-walking the ancestor
-// chain.
-#LabelRenderTargetProject: "console.holos.run/render-target-project"
-
-// LabelRenderTargetName records the render target's own name
-// (deployment name or template name within the project).
-#LabelRenderTargetName: "console.holos.run/render-target-name"
-
-// AnnotationAppliedRenderSet stores the JSON-serialized list of
-// LinkedTemplateRef values applied at the last successful render of the
-// target. Used to detect policy drift by comparing the stored set
-// against the current resolver output.
-#AnnotationAppliedRenderSet: "console.holos.run/applied-render-set"
-
-// RenderTargetKindDeployment is the LabelRenderTargetKind value for
-// Deployment render targets.
-#RenderTargetKindDeployment: "deployment"
-
-// RenderTargetKindProjectTemplate is the LabelRenderTargetKind value
-// for project-scope Template render targets.
-#RenderTargetKindProjectTemplate: "project-template"
-
 // Annotations.
 #AnnotationDisplayName:  "console.holos.run/display-name"
 #AnnotationDescription:  "console.holos.run/description"

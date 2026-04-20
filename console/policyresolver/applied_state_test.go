@@ -5,14 +5,55 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
+
+// renderStateScheme registers the kinds the AppliedRenderStateClient writes
+// against. Tests build their own scheme rather than reaching into
+// folder_resolver_test.go's helpers because the RenderState CRD lives in
+// the templates v1alpha1 package, which the legacy ConfigMap scheme did
+// not register.
+func renderStateScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	s := runtime.NewScheme()
+	if err := corev1.AddToScheme(s); err != nil {
+		t.Fatalf("registering corev1: %v", err)
+	}
+	if err := templatesv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("registering templates v1alpha1: %v", err)
+	}
+	return s
+}
+
+// buildRenderStateFixture wraps buildCtrlFixture to also register the
+// RenderState CRD on the controller-runtime client. The base fixture only
+// registers corev1 because the policy/binding tests do not need the
+// templates types.
+func buildRenderStateFixture(t *testing.T) (ctrlclient.Client, *resolver.Resolver, map[string]string) {
+	t.Helper()
+	_, r, ns := buildCtrlFixture()
+	scheme := renderStateScheme(t)
+	objects := []ctrlclient.Object{
+		mkNs(ns["org"], v1alpha2.ResourceTypeOrganization, ""),
+		mkNs(ns["folderEng"], v1alpha2.ResourceTypeFolder, ns["org"]),
+		mkNs(ns["folderTeamA"], v1alpha2.ResourceTypeFolder, ns["folderEng"]),
+		mkNs(ns["projectOrchids"], v1alpha2.ResourceTypeProject, ns["org"]),
+		mkNs(ns["projectLilies"], v1alpha2.ResourceTypeProject, ns["folderEng"]),
+		mkNs(ns["projectRoses"], v1alpha2.ResourceTypeProject, ns["folderTeamA"]),
+	}
+	client := ctrlfake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+	return client, r, ns
+}
 
 // walkerForCtrl builds a resolver.Walker backed by a controller-runtime
 // ctrlclient.Client. This mirrors production wiring (HOL-622), where the
@@ -29,7 +70,7 @@ func walkerForCtrl(c ctrlclient.Client, r *resolver.Resolver) *resolver.Walker {
 // TestFolderNamespaceForProject_NestedFolder picks the immediate folder
 // parent when the project lives under one or more folders.
 func TestFolderNamespaceForProject_NestedFolder(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -45,7 +86,7 @@ func TestFolderNamespaceForProject_NestedFolder(t *testing.T) {
 // TestFolderNamespaceForProject_FolderOnly picks the folder when the project
 // is directly under a folder with no intermediate folder.
 func TestFolderNamespaceForProject_FolderOnly(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -61,7 +102,7 @@ func TestFolderNamespaceForProject_FolderOnly(t *testing.T) {
 // TestFolderNamespaceForProject_DirectOrg falls back to the organization
 // namespace when a project's immediate parent is an org (no folder between).
 func TestFolderNamespaceForProject_DirectOrg(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -78,7 +119,7 @@ func TestFolderNamespaceForProject_DirectOrg(t *testing.T) {
 // storage-location invariant: the applied render set MUST be stored in the
 // owning folder namespace, not the project namespace.
 func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -92,29 +133,40 @@ func TestRecordAppliedRenderSet_WritesToFolderNamespace(t *testing.T) {
 	}
 
 	// Present in folder namespace.
-	cmName := renderStateConfigMapName(TargetKindDeployment, "lilies", "api")
-	cm := &corev1.ConfigMap{}
-	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["folderEng"], Name: cmName}, cm); err != nil {
-		t.Fatalf("expected ConfigMap in folder namespace, got error: %v", err)
+	rsName := renderStateObjectName(TargetKindDeployment, "lilies", "api")
+	rs := &templatesv1alpha1.RenderState{}
+	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["folderEng"], Name: rsName}, rs); err != nil {
+		t.Fatalf("expected RenderState in folder namespace, got error: %v", err)
 	}
-	if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeRenderState {
-		t.Errorf("missing resource-type label: got %q", cm.Labels[v1alpha2.LabelResourceType])
+	if rs.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
+		t.Errorf("missing managed-by label: got %q", rs.Labels[v1alpha2.LabelManagedBy])
 	}
-	if cm.Labels[v1alpha2.LabelProject] != "lilies" {
-		t.Errorf("wrong project label: got %q", cm.Labels[v1alpha2.LabelProject])
+	if rs.Labels[v1alpha2.LabelProject] != "lilies" {
+		t.Errorf("wrong project label: got %q", rs.Labels[v1alpha2.LabelProject])
+	}
+	if rs.Spec.TargetKind != templatesv1alpha1.RenderTargetKindDeployment {
+		t.Errorf("targetKind: got %q, want %q", rs.Spec.TargetKind, templatesv1alpha1.RenderTargetKindDeployment)
+	}
+	if rs.Spec.TargetName != "api" {
+		t.Errorf("targetName: got %q, want %q", rs.Spec.TargetName, "api")
+	}
+	if rs.Spec.Project != "lilies" {
+		t.Errorf("project: got %q, want %q", rs.Spec.Project, "lilies")
 	}
 
 	// Absent from project namespace.
-	stray := &corev1.ConfigMap{}
-	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["projectLilies"], Name: cmName}, stray); err == nil {
+	stray := &templatesv1alpha1.RenderState{}
+	if err := client.Get(context.Background(), types.NamespacedName{Namespace: ns["projectLilies"], Name: rsName}, stray); err == nil {
 		t.Errorf("applied render set leaked into project namespace; expected NotFound")
+	} else if !k8serrors.IsNotFound(err) {
+		t.Errorf("expected NotFound, got %v", err)
 	}
 }
 
 // TestRecordAppliedRenderSet_RoundTripViaRead: write then read returns the
 // same set and ok=true.
 func TestRecordAppliedRenderSet_RoundTripViaRead(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -146,7 +198,7 @@ func TestRecordAppliedRenderSet_RoundTripViaRead(t *testing.T) {
 
 // TestReadAppliedRenderSet_NotFound returns ok=false with no error.
 func TestReadAppliedRenderSet_NotFound(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -162,22 +214,33 @@ func TestReadAppliedRenderSet_NotFound(t *testing.T) {
 	}
 }
 
-// TestReadAppliedRenderSet_IgnoresProjectNamespaceAnnotation: a stale
-// project-namespace annotation must NOT satisfy a read. The HOL-554
+// TestReadAppliedRenderSet_IgnoresProjectNamespaceArtifact: a stale
+// project-namespace RenderState must NOT satisfy a read. The HOL-554
 // storage-isolation guardrail requires reads to consult only folder/org
-// storage. Writing a project-namespace ConfigMap by hand and asserting the
-// read returns ok=false proves the guardrail holds.
-func TestReadAppliedRenderSet_IgnoresProjectNamespaceAnnotation(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+// storage. Seeding a project-namespace RenderState by hand and asserting
+// the read returns ok=false proves the guardrail holds.
+//
+// Note on coverage scope: the controller-runtime fake client used here does
+// not enforce ValidatingAdmissionPolicy, so the seed succeeds at the
+// fixture layer. In a live cluster the same write is rejected by the
+// `renderstate-folder-or-org-only` admission policy shipped under
+// `config/admission/`. This test asserts the *handler-side* invariant
+// (reads ignore project-namespace storage); the admission-side invariant
+// (writes refused at the API server) is exercised separately by
+// `internal/controller`'s envtest suite.
+func TestReadAppliedRenderSet_IgnoresProjectNamespaceArtifact(t *testing.T) {
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 
-	cmName := renderStateConfigMapName(TargetKindDeployment, "lilies", "api")
-	payload, _ := MarshalAppliedRenderSet([]*consolev1.LinkedTemplateRef{
-		&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "stale"},
-	})
-	cm := buildForbiddenRenderStateCM(cmName, ns["projectLilies"], string(payload))
-	if err := client.Create(context.Background(), &cm); err != nil {
-		t.Fatalf("seed forbidden CM: %v", err)
+	rsName := renderStateObjectName(TargetKindDeployment, "lilies", "api")
+	rs := buildForbiddenRenderState(rsName, ns["projectLilies"], "lilies", "api",
+		[]templatesv1alpha1.RenderStateLinkedTemplateRef{{
+			Namespace: "holos-org-acme",
+			Name:      "stale",
+		}},
+	)
+	if err := client.Create(context.Background(), &rs); err != nil {
+		t.Fatalf("seed forbidden RenderState: %v", err)
 	}
 
 	c := NewAppliedRenderStateClient(client, r, walker)
@@ -193,14 +256,17 @@ func TestReadAppliedRenderSet_IgnoresProjectNamespaceAnnotation(t *testing.T) {
 	}
 }
 
-func buildForbiddenRenderStateCM(name, namespace, payload string) corev1.ConfigMap {
-	return corev1.ConfigMap{
+func buildForbiddenRenderState(name, namespace, project, targetName string, refs []templatesv1alpha1.RenderStateLinkedTemplateRef) templatesv1alpha1.RenderState {
+	return templatesv1alpha1.RenderState{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			Annotations: map[string]string{
-				v1alpha2.AnnotationAppliedRenderSet: payload,
-			},
+		},
+		Spec: templatesv1alpha1.RenderStateSpec{
+			TargetKind:  templatesv1alpha1.RenderTargetKindDeployment,
+			TargetName:  targetName,
+			Project:     project,
+			AppliedRefs: refs,
 		},
 	}
 }
@@ -208,7 +274,7 @@ func buildForbiddenRenderStateCM(name, namespace, payload string) corev1.ConfigM
 // TestRecordAppliedRenderSet_Idempotent: calling Record twice on the same
 // target overwrites rather than erroring with AlreadyExists.
 func TestRecordAppliedRenderSet_Idempotent(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 
@@ -237,7 +303,7 @@ func TestRecordAppliedRenderSet_Idempotent(t *testing.T) {
 // is recorded for both target kinds under a single project without overwriting
 // each other's storage.
 func TestRecordAppliedRenderSet_BothTargetKinds(t *testing.T) {
-	client, r, ns := buildCtrlFixture()
+	client, r, ns := buildRenderStateFixture(t)
 	walker := walkerForCtrl(client, r)
 	c := NewAppliedRenderStateClient(client, r, walker)
 

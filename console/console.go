@@ -432,14 +432,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		// or project-scope template. Reads consult ONLY folder/organization
 		// namespaces — any render-state artifact in a project namespace is
 		// ignored (HOL-554 storage-isolation guardrail).
-		// HOL-622 threads the cache-backed controller-runtime client into the
-		// applied-render-state path. The embedded Manager's ConfigMap informer
-		// is primed with a label selector scoped to
-		// managed-by=holos-console,resource-type=render-state, so drift checks
-		// read from the shared cache alongside policy and binding reads. If
-		// the Manager is disabled we fall back to a nil client; the render-
-		// state client returns nil on a nil client so drift silently no-ops
-		// until a Manager is re-enabled.
+		// HOL-694 migrated this client off ConfigMap storage onto a dedicated
+		// RenderState CRD (templates.holos.run/v1alpha1). The embedded Manager
+		// primes the RenderState informer eagerly so drift checks read from the
+		// shared cache alongside policy and binding reads. If the Manager is
+		// disabled we fall back to a nil client; the render-state client
+		// returns nil on a nil client so drift silently no-ops until a Manager
+		// is re-enabled.
 		var renderStateCtrlClient ctrlclient.Client
 		if s.controllerMgr != nil {
 			renderStateCtrlClient = s.controllerMgr.GetClient()

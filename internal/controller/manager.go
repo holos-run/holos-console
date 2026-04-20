@@ -35,19 +35,15 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 )
@@ -165,31 +161,20 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		cacheSyncTimeout = 90 * time.Second
 	}
 
-	// Restrict the ConfigMap cache to console-managed render-state records
-	// (HOL-622). ConfigMap is a cluster-wide high-churn kind; watching every
-	// ConfigMap in the cluster would explode the cache. The
-	// AppliedRenderStateClient only reads ConfigMaps labelled
-	// app.kubernetes.io/managed-by=holos-console,console.holos.run/resource-type=render-state,
-	// so we scope the informer to that label pair and the rest of the
-	// cluster's ConfigMaps never touch memory. Reads for unlabelled
-	// ConfigMaps would still hit the apiserver via the delegating client's
-	// fallback path, but the render-state path goes entirely through the
-	// cache.
-	renderStateSelector := labels.SelectorFromSet(labels.Set{
-		v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeRenderState,
-	})
+	// HOL-694 retired the ConfigMap cache scope: AppliedRenderStateClient
+	// is the last in-process consumer of the cache-backed client.Client
+	// that was reading ConfigMaps, and it now reads RenderState CRDs
+	// instead. Other ConfigMap call sites (release publishing, deployment
+	// caches) continue to use client-go directly without going through the
+	// controller-runtime cache. If a future caller needs cache-backed
+	// ConfigMap reads, restore a label-scoped Cache.ByObject entry to
+	// avoid watching every ConfigMap in the cluster.
 	ctrlOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: opts.MetricsBindAddress,
 		},
 		HealthProbeBindAddress: opts.HealthProbeBindAddress,
-		Cache: cache.Options{
-			ByObject: map[client.Object]cache.ByObject{
-				&corev1.ConfigMap{}: {Label: renderStateSelector},
-			},
-		},
 		// Console is a singleton Deployment today; leader election is
 		// off. Revisit when the cache becomes the authoritative read
 		// path (HOL-621+) and multi-replica rollouts are explored.
@@ -249,14 +234,15 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: priming namespace informer: %w", err)
 	}
 
-	// Prime the ConfigMap informer for render-state ConfigMaps (HOL-622).
-	// The label-scoped cache option set above means this informer only
-	// holds the console-managed render-state subset.
-	// AppliedRenderStateClient reads through mgr.GetClient(); with the
-	// informer primed the read lands in the cache instead of round-
-	// tripping to the apiserver on every drift check.
-	if _, err := mgr.GetCache().GetInformer(context.Background(), &corev1.ConfigMap{}); err != nil {
-		return nil, fmt.Errorf("controller.NewManager: priming configmap informer: %w", err)
+	// Prime the RenderState informer (HOL-694). No reconciler in this
+	// package watches RenderState yet (the live render path writes the
+	// object on the success path of Create/Update render-target handlers),
+	// so without this call the first read through mgr.GetClient() would
+	// lazily register the informer after /readyz is already green.
+	// Register it eagerly so cache-sync readiness covers the kind and an
+	// absent CRD / RBAC gap surfaces at Start rather than on first request.
+	if _, err := mgr.GetCache().GetInformer(context.Background(), &v1alpha1.RenderState{}); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: priming renderstate informer: %w", err)
 	}
 
 	// Prime the TemplateRelease informer (HOL-693). No reconciler in this
