@@ -745,23 +745,20 @@ func TestManager_MultiManagerFreshness(t *testing.T) {
 	waitForCondition(t, e.client, read, key, v1alpha1.TemplateConditionReady, metav1.ConditionTrue)
 }
 
-// TestManager_SyncErrorWhenCRDMissing: when the CRDs are not installed,
-// the manager's reconcilers cannot watch their primary kinds. We assert
-// that the Get-through-cache path of a reconciled kind fails fast rather
-// than silently hanging — the controller-runtime cache lazily creates
-// informers for types it did not know about at Start() time, and a
-// missing CRD surfaces as a NewTimeoutError on that path within the
-// caller's context deadline. This is the user-observable failure mode
-// HOL-620 wants to protect against: a broken deployment should not
-// pretend to be healthy.
+// TestManager_SyncErrorWhenCRDMissing: when the templates CRDs are not
+// installed, the manager should refuse to start — a broken deployment
+// must not pretend to be healthy.
 //
-// Note: the `Ready` flag itself is NOT a reliable signal for "CRD
-// missing" — controller-runtime's WaitForCacheSync only blocks on
-// informers that have been explicitly started, and the Namespace
-// informer (primed separately in NewManager) will still sync against
-// a clean envtest API server. The signal this test asserts on is the
-// cache-backed Get timing out, which is what the RPC handlers and
-// reconciler Get paths would observe at runtime.
+// HOL-693 moved this from a post-Start probe to a NewManager-time check:
+// the TemplateRelease informer is primed eagerly in NewManager (the
+// Template / TemplatePolicy / TemplatePolicyBinding reconcilers register
+// their own watches via For(), which the cache resolves at sync time;
+// TemplateRelease has no reconciler in this package so its informer is
+// registered explicitly). If the corresponding CRD is absent, that
+// eager registration surfaces the missing-CRD condition immediately via
+// a "no matches for kind" error, so the console pod fails to construct
+// its manager rather than reporting /readyz green and then failing on
+// first release read.
 func TestManager_SyncErrorWhenCRDMissing(t *testing.T) {
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		if assets := detectEnvtestAssets(); assets != "" {
@@ -777,62 +774,17 @@ func TestManager_SyncErrorWhenCRDMissing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = e.Stop() })
 
-	m, err := controllerpkg.NewManager(cfg, nil, controllerpkg.Options{
+	_, err = controllerpkg.NewManager(cfg, nil, controllerpkg.Options{
 		CacheSyncTimeout:             5 * time.Second,
 		SkipControllerNameValidation: true,
 	})
-	if err != nil {
-		t.Fatalf("NewManager: %v", err)
+	if err == nil {
+		t.Fatalf("expected NewManager to fail with CRD missing, got nil")
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- m.Start(ctx)
-	}()
-
-	// Give Start a moment to spin up.
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if m.Ready() {
-			break
-		}
-		select {
-		case err := <-errCh:
-			if err != nil {
-				return // Start surfaced the failure — good.
-			}
-			t.Fatalf("Start returned nil before the CRD-missing probe could run")
-		default:
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
-
-	// Probe the cache path for a kind whose CRD is missing. We expect a
-	// timeout-shaped error within a short deadline; a success here
-	// would mean the manager is silently serving from an empty cache.
-	getCtx, getCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer getCancel()
-	tmpl := &v1alpha1.Template{}
-	getErr := m.GetClient().Get(getCtx, types.NamespacedName{Namespace: "default", Name: "noop"}, tmpl)
-	if getErr == nil {
-		t.Fatalf("expected Get to fail with CRD missing, got nil")
-	}
-	if !apierrors.IsTimeout(getErr) && !apierrors.IsNotFound(getErr) &&
-		!errors.Is(getErr, context.DeadlineExceeded) && !strings.Contains(getErr.Error(), "no kind is registered") &&
-		!strings.Contains(getErr.Error(), "failed to get API group resources") &&
-		!strings.Contains(getErr.Error(), "no matches for kind") {
-		t.Logf("CRD-missing Get error: %v", getErr)
-	}
-	// Any of the above shapes is acceptable — the key property is that
-	// the failure surfaces rather than hanging.
-
-	cancel()
-	select {
-	case <-errCh:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("manager did not exit after cancel")
+	if !strings.Contains(err.Error(), "no matches for kind") &&
+		!strings.Contains(err.Error(), "failed to get API group resources") &&
+		!strings.Contains(err.Error(), "no kind is registered") {
+		t.Fatalf("NewManager error shape unexpected: %v", err)
 	}
 }
 

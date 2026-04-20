@@ -259,6 +259,16 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: priming configmap informer: %w", err)
 	}
 
+	// Prime the TemplateRelease informer (HOL-693). No reconciler in this
+	// package watches TemplateRelease yet (HOL-694 owns the controller), so
+	// without this call the first release read through mgr.GetClient() would
+	// lazily register the informer after /readyz is already green. Register
+	// it eagerly so cache-sync readiness covers the release kind and an
+	// absent CRD / RBAC gap surfaces at Start rather than on first request.
+	if _, err := mgr.GetCache().GetInformer(context.Background(), &v1alpha1.TemplateRelease{}); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: priming templaterelease informer: %w", err)
+	}
+
 	return m, nil
 }
 
