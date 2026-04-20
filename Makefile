@@ -99,8 +99,9 @@ debug: | console/dist ## Build debug executable.
 	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd/holos-console
 
 .PHONY: install
-install: build ## Install to GOPATH/bin
+install: build ## Install both binaries to GOPATH/bin
 	install bin/$(BIN_NAME) $(shell go env GOPATH)/bin/$(BIN_NAME)
+	install bin/$(INJECTOR_BIN_NAME) $(shell go env GOPATH)/bin/$(INJECTOR_BIN_NAME)
 
 .PHONY: clean
 clean: ## Clean executables.

@@ -17,6 +17,7 @@ limitations under the License.
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -95,6 +96,15 @@ func Command() *cobra.Command {
 // when the signal arrives.
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	if ctx == nil {
+		// Callers that invoke the root via cmd.Execute() or cmd.Run()
+		// directly (notably tests) don't set a context. Fall back to a
+		// plain Background context so mgr.Start(ctx) doesn't panic on
+		// the first controller-runtime lookup. The cmd/secret-injector
+		// main wires ctrl.SetupSignalHandler() into the context, so
+		// graceful shutdown still flows correctly in the real binary.
+		ctx = context.Background()
+	}
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
