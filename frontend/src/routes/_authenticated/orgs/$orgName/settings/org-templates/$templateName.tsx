@@ -14,7 +14,7 @@ export const Route = createFileRoute(
   component: OrgTemplateRedirect,
 })
 
-function OrgTemplateRedirect() {
+export function OrgTemplateRedirect() {
   const { orgName, templateName } = Route.useParams()
   const navigate = useNavigate()
   useEffect(() => {
@@ -31,6 +31,9 @@ function OrgTemplateRedirect() {
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
+        <span className="sr-only" role="status">
+          Redirecting to consolidated template editor…
+        </span>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-40 w-full" />
       </CardContent>

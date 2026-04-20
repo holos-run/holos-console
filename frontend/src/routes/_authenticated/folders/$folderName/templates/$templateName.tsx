@@ -16,10 +16,10 @@ export const Route = createFileRoute(
   component: FolderTemplateRedirect,
 })
 
-function FolderTemplateRedirect() {
+export function FolderTemplateRedirect() {
   const { folderName, templateName } = Route.useParams()
   const navigate = useNavigate()
-  const { data: folder, isPending, error } = useGetFolder(folderName)
+  const { data: folder, error } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
 
   useEffect(() => {
@@ -50,9 +50,11 @@ function FolderTemplateRedirect() {
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
+        <span className="sr-only" role="status">
+          Redirecting to consolidated template editor…
+        </span>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-40 w-full" />
-        {isPending && <span className="sr-only">Redirecting…</span>}
       </CardContent>
     </Card>
   )

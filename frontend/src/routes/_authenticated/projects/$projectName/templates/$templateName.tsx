@@ -16,10 +16,10 @@ export const Route = createFileRoute(
   component: ProjectTemplateRedirect,
 })
 
-function ProjectTemplateRedirect() {
+export function ProjectTemplateRedirect() {
   const { projectName, templateName } = Route.useParams()
   const navigate = useNavigate()
-  const { data: project, isPending, error } = useGetProject(projectName)
+  const { data: project, error } = useGetProject(projectName)
   const orgName = project?.organization ?? ''
 
   useEffect(() => {
@@ -50,9 +50,11 @@ function ProjectTemplateRedirect() {
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
+        <span className="sr-only" role="status">
+          Redirecting to consolidated template editor…
+        </span>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-40 w-full" />
-        {isPending && <span className="sr-only">Redirecting…</span>}
       </CardContent>
     </Card>
   )

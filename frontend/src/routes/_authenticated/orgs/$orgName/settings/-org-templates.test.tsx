@@ -8,9 +8,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return {
     ...actual,
     createFileRoute: () => () => ({
-      useParams: () => ({ orgName: 'test-org', templateName: 'reference-grant' }),
+      useParams: () => ({ orgName: 'test-org' }),
     }),
-    useNavigate: () => vi.fn(),
     Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode }) =>
       <a {...props}>{children}</a>,
   }
@@ -18,24 +17,11 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
-  useGetTemplate: vi.fn(),
-  useCreateTemplate: vi.fn(),
-  useUpdateTemplate: vi.fn(),
-  useCloneTemplate: vi.fn(),
-  useRenderTemplate: vi.fn(),
-  useListReleases: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
-  useCreateRelease: vi.fn().mockReturnValue({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
-
-vi.mock('@/hooks/use-debounced-value', () => ({
-  useDebouncedValue: vi.fn((value: unknown) => value),
-}))
-
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useListTemplates } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'

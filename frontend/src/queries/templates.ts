@@ -62,11 +62,6 @@ export function useListTemplates(namespace: string) {
   })
 }
 
-// useSearchTemplates returns templates matching the given filters across every
-// namespace scope the caller can see. Introduced in HOL-607 for the unified
-// Templates index at /orgs/$orgName/templates. Pass `organization` to restrict
-// results to namespaces reachable from that org root; omit or pass empty
-// strings to leave a filter dimension unconstrained.
 function searchTemplatesKey(
   namespace: string,
   name: string,
@@ -76,6 +71,13 @@ function searchTemplatesKey(
   return ['templates', 'search', namespace, name, displayNameContains, organization] as const
 }
 
+// useSearchTemplates returns templates matching the given filters across every
+// namespace scope the caller can see. Introduced in HOL-607 for the unified
+// Templates index at /orgs/$orgName/templates. Pass `organization` to restrict
+// results to namespaces reachable from that org root; omit or pass empty
+// strings to leave a filter dimension unconstrained. The hook waits until the
+// caller has resolved an organization before firing — avoiding a transient
+// unscoped search during the initial org-picker render.
 export function useSearchTemplates(params: {
   namespace?: string
   name?: string
@@ -100,7 +102,7 @@ export function useSearchTemplates(params: {
       })
       return response.templates
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && organization !== '',
   })
 }
 

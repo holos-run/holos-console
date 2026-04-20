@@ -8,6 +8,29 @@ import { Separator } from '@/components/ui/separator'
 import { useGetTemplate, useUpdateTemplate } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 
+// Platform/project input defaults for the preview pane. The backend injects
+// org-owned values (e.g. gatewayNamespace — HOL-526) at render time regardless
+// of what the preview ships up, so these strings are cosmetic seed values only.
+const DEFAULT_PLATFORM_INPUT = `platform: {
+  project:          "example-project"
+  namespace:        "prj-example-project"
+  claims: {
+    iss:            "https://login.example.com"
+    sub:            "user-abc123"
+    iat:            1743868800
+    exp:            1743872400
+    email:          "developer@example.com"
+    email_verified: true
+  }
+}`
+
+const DEFAULT_PROJECT_INPUT = `input: {
+  name:  "example"
+  image: "nginx"
+  tag:   "latest"
+  port:  8080
+}`
+
 export const Route = createFileRoute(
   '/_authenticated/orgs/$orgName/templates/$namespace/$name',
 )({
@@ -97,11 +120,6 @@ export function ConsolidatedTemplateEditorPage({
   }
 
   const displayName = template?.displayName || name
-  // Platform/project input defaults are plain placeholders; the backend
-  // injects org-owned values (e.g. gatewayNamespace — HOL-526) at render
-  // time regardless of what the preview pane ships up.
-  const defaultPlatformInput = `platform: {\n  project:          "example-project"\n  namespace:        "prj-example-project"\n  claims: {\n    iss:            "https://login.example.com"\n    sub:            "user-abc123"\n    iat:            1743868800\n    exp:            1743872400\n    email:          "developer@example.com"\n    email_verified: true\n  }\n}`
-  const defaultProjectInput = `input: {\n  name:  "example"\n  image: "nginx"\n  tag:   "latest"\n  port:  8080\n}`
 
   return (
     <Card>
@@ -138,8 +156,9 @@ export function ConsolidatedTemplateEditorPage({
             onChange={setCueTemplate}
             onSave={handleSave}
             isSaving={updateMutation.isPending}
-            defaultPlatformInput={defaultPlatformInput}
-            defaultProjectInput={defaultProjectInput}
+            defaultPlatformInput={DEFAULT_PLATFORM_INPUT}
+            defaultProjectInput={DEFAULT_PROJECT_INPUT}
+            linkedTemplates={template?.linkedTemplates ?? []}
             namespace={namespace}
           />
         </div>

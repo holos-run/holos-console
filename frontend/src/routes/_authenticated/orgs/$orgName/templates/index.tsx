@@ -108,7 +108,7 @@ export function OrgTemplatesIndexPage({
         </CardHeader>
         <CardContent>
           <div className="space-y-2" data-testid="templates-loading">
-            {[...Array(3)].map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
