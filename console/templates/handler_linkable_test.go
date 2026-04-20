@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
@@ -102,41 +103,15 @@ func enabledTemplateCM(ns, name, displayName, description string, _ bool) *corev
 	}
 }
 
-// makeReleaseCMWithData creates a release ConfigMap with CUE template and
-// defaults data so we can verify stripping behavior.
-func makeReleaseCMWithData(ns, templateName, version, cue, defaults string) *corev1.ConfigMap {
-	v, _ := ParseVersion(version)
-	data := map[string]string{
-		CueTemplateKey: cue,
-	}
-	if defaults != "" {
-		data[DefaultsKey] = defaults
-	}
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ReleaseConfigMapName(templateName, v),
-			Namespace: ns,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-				v1alpha2.LabelReleaseOf:     templateName,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationTemplateVersion: version,
-			},
-		},
-		Data: data,
-	}
-}
-
 // newLinkableTestHandler builds a Handler with an AncestorWalker wired up for
 // testing ListLinkableTemplates. Uses org-level grant resolver since linkable
-// templates come from ancestor (org/folder) scopes.
-func newLinkableTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, walker AncestorWalker) *Handler {
+// templates come from ancestor (org/folder) scopes. Release fixtures are
+// TemplateRelease CRDs (HOL-693) passed through the variadic extra argument
+// — the fake Clientset no longer stores release ConfigMaps.
+func newLinkableTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, walker AncestorWalker, extra ...ctrlclient.Object) *Handler {
 	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := newTestK8sClient(t, fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r, extra...)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 	handler.WithAncestorWalker(walker)
@@ -155,14 +130,14 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		orgNsObj := orgNS(org)
 		projectNsObj := projectNS(project)
 		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", false)
-		r1 := makeReleaseCMWithData("org-"+org, templateName, "1.0.0", validCue, `{"image":"nginx:1.0"}`)
-		r2 := makeReleaseCMWithData("org-"+org, templateName, "2.0.0", validCue, `{"image":"nginx:2.0"}`)
+		r1 := makeReleaseCRDWithData("org-"+org, templateName, "1.0.0", validCue, `{"image":"nginx:1.0"}`)
+		r2 := makeReleaseCRDWithData("org-"+org, templateName, "2.0.0", validCue, `{"image":"nginx:2.0"}`)
 
-		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl, r1, r2)
+		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker, r1, r2)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -190,15 +165,15 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		orgNsObj := orgNS(org)
 		projectNsObj := projectNS(project)
 		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", false)
-		r1 := makeReleaseCMWithData("org-"+org, templateName, "1.0.0", validCue, "")
-		r2 := makeReleaseCMWithData("org-"+org, templateName, "1.5.0", validCue, "")
-		r3 := makeReleaseCMWithData("org-"+org, templateName, "2.0.0", validCue, "")
+		r1 := makeReleaseCRDWithData("org-"+org, templateName, "1.0.0", validCue, "")
+		r2 := makeReleaseCRDWithData("org-"+org, templateName, "1.5.0", validCue, "")
+		r3 := makeReleaseCRDWithData("org-"+org, templateName, "2.0.0", validCue, "")
 
-		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl, r1, r2, r3)
+		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker, r1, r2, r3)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
@@ -226,13 +201,13 @@ func TestListLinkableTemplatesReleases(t *testing.T) {
 		orgNsObj := orgNS(org)
 		projectNsObj := projectNS(project)
 		tmpl := enabledTemplateCM("org-"+org, templateName, "HTTPRoute", "Expose via gateway", false)
-		r1 := makeReleaseCMWithData("org-"+org, templateName, "1.0.0", validCue, `{"image":"nginx:1.0"}`)
+		r1 := makeReleaseCRDWithData("org-"+org, templateName, "1.0.0", validCue, `{"image":"nginx:1.0"}`)
 
-		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl, r1)
+		fakeClient := fake.NewClientset(orgNsObj, projectNsObj, tmpl)
 		walker := &stubAncestorWalker{
 			ancestors: []*corev1.Namespace{projectNsObj, orgNsObj},
 		}
-		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker)
+		handler := newLinkableTestHandler(t, fakeClient, shareUsers, walker, r1)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{

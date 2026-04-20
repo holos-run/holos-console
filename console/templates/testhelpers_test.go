@@ -34,6 +34,15 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
+// DefaultsKey is the ConfigMap data key the legacy Template/Release
+// ConfigMap fixtures used to carry the TemplateDefaults JSON payload. The
+// HOL-661 / HOL-693 rewrites retired the constant from production code (the
+// CRD stores structured defaults in spec.defaults), but several fixture
+// helpers still round-trip the JSON form so they can keep their original
+// literal shape while the underlying K8sClient reads from CRDs. Scoped to
+// tests.
+const DefaultsKey = "defaults"
+
 // testScheme returns a runtime.Scheme registered with core and templates
 // v1alpha1 types — enough for the fake controller-runtime client to
 // List/Get/Create/Update/Delete Templates in a test.
@@ -165,16 +174,60 @@ func newFakeCtrlClient(t *testing.T, objs ...client.Object) client.Client {
 		Build()
 }
 
-// newTestK8sClient constructs a K8sClient for tests. The core fake.Clientset
-// continues to drive Release ConfigMap storage and Namespace reads; the
-// controller-runtime client is seeded from every template-labeled ConfigMap
-// in the Clientset, translated to Template CRDs. Tests that pre-date HOL-661
-// keep their existing fixtures and code unchanged.
-func newTestK8sClient(t *testing.T, cs *kfake.Clientset, r *resolver.Resolver) *K8sClient {
+// newTestK8sClient constructs a K8sClient for tests. The controller-runtime
+// client is seeded from every template-labeled ConfigMap in the Clientset
+// (translated to Template CRDs) plus any caller-supplied extra CRD objects
+// — typically TemplateRelease fixtures seeded via makeReleaseCRD. Namespace
+// reads still flow through the fake.Clientset that the fixtures populate.
+// Tests that pre-date HOL-693 keep their existing Template ConfigMap
+// fixtures unchanged; release fixtures move to TemplateRelease CRD shape.
+func newTestK8sClient(t *testing.T, cs *kfake.Clientset, r *resolver.Resolver, extra ...client.Object) *K8sClient {
 	t.Helper()
 	objs := seedTemplatesFromClientset(t, cs)
+	objs = append(objs, extra...)
 	ctrl := newFakeCtrlClient(t, objs...)
-	return NewK8sClient(cs, ctrl, r)
+	_ = cs
+	return NewK8sClient(ctrl, r)
+}
+
+// makeReleaseCRD builds a TemplateRelease CRD fixture. Tests pass the result
+// into newTestK8sClient's variadic seed argument so the fake
+// controller-runtime client observes the release on the first List / Get.
+// The label shape matches what CreateRelease writes in production (ADR 032).
+func makeReleaseCRD(ns, templateName, version string) *templatesv1alpha1.TemplateRelease {
+	return makeReleaseCRDWithData(ns, templateName, version, validCue, "")
+}
+
+// makeReleaseCRDWithData is a richer TemplateRelease fixture builder used by
+// suites that need non-default CUE source or a defaults payload. The defaults
+// argument is a JSON TemplateDefaults blob (same shape the retired release
+// ConfigMap encoded) so call sites ported from the ConfigMap-era tests can
+// keep their literal fixtures.
+func makeReleaseCRDWithData(ns, templateName, version, cue, defaults string) *templatesv1alpha1.TemplateRelease {
+	v, _ := ParseVersion(version)
+	rel := &templatesv1alpha1.TemplateRelease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ReleaseObjectName(templateName, v),
+			Namespace: ns,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:          v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:       "template-release",
+				"console.holos.run/release-of": templateName,
+			},
+		},
+		Spec: templatesv1alpha1.TemplateReleaseSpec{
+			TemplateName: templateName,
+			Version:      version,
+			CueTemplate:  cue,
+		},
+	}
+	if defaults != "" {
+		var d consolev1.TemplateDefaults
+		if err := json.Unmarshal([]byte(defaults), &d); err == nil {
+			rel.Spec.Defaults = protoDefaultsToCRD(&d)
+		}
+	}
+	return rel
 }
 
 // configMapToTemplate is a test-only bridge retained so handler_test.go's

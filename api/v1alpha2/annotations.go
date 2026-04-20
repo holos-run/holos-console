@@ -185,19 +185,6 @@ const (
 	// URLs.
 	AnnotationArgoCDLinkPrefix = "link.argocd.argoproj.io/"
 
-	// Release ConfigMap labels and annotations (ADR 024).
-
-	// ResourceTypeTemplateRelease is the resource type label value for release
-	// ConfigMaps, distinguishing them from live template ConfigMaps.
-	ResourceTypeTemplateRelease = "template-release"
-	// LabelReleaseOf identifies which template a release ConfigMap belongs to.
-	LabelReleaseOf = "console.holos.run/release-of"
-	// AnnotationTemplateVersion stores the semver version string of a release.
-	AnnotationTemplateVersion = "console.holos.run/template-version"
-	// ChangelogKey is the ConfigMap data key for the release changelog.
-	ChangelogKey = "changelog"
-	// UpgradeAdviceKey is the ConfigMap data key for upgrade advice text.
-	UpgradeAdviceKey = "upgrade-advice"
 	// TemplateScopeOrganization is the LabelTemplateScope value for org-level templates.
 	TemplateScopeOrganization = "organization"
 	// TemplateScopeFolder is the LabelTemplateScope value for folder-level templates.

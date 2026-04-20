@@ -56,7 +56,6 @@ import (
 	runtimepkg "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,11 +84,6 @@ type Env struct {
 	// writes (namespace Create, pre-populated fixtures) so the test
 	// body is not tangled with Eventually-wraps on trivial setup.
 	Direct ctrlclient.Client
-	// Core is a client-go Interface built from Cfg. The templates
-	// storage layer still reads and writes Release ConfigMaps through
-	// client-go (they are not part of the CRD surface), so tests wiring
-	// NewK8sClient need this handle in addition to the ctrlclient.
-	Core kubernetes.Interface
 }
 
 // Options controls what StartManager primes in the cache before
@@ -255,16 +249,10 @@ func StartManager(t *testing.T, opts Options) *Env {
 		waitForAdmissionPolicy(t, context.Background(), direct, name)
 	}
 
-	core, err := kubernetes.NewForConfig(shared.cfg)
-	if err != nil {
-		t.Fatalf("constructing core client: %v", err)
-	}
-
 	return &Env{
 		Cfg:    shared.cfg,
 		Client: mgr.GetClient(),
 		Direct: direct,
-		Core:   core,
 	}
 }
 

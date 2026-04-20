@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
@@ -256,9 +257,11 @@ func TestValidateCueSyntax(t *testing.T) {
 
 // newTestHandler builds a Handler wired to a fake K8s client and stub grant
 // resolver for link permission tests. The grant resolver maps emails to roles
-// via shareUsers so tests can control which role the caller has.
-func newTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
-	h, _ := newTestHandlerAndK8s(t, fakeClient, shareUsers)
+// via shareUsers so tests can control which role the caller has. Extra CRD
+// seed objects (typically TemplateRelease fixtures after HOL-693) flow into
+// the fake controller-runtime client that backs the Template CRUD path.
+func newTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, extra ...ctrlclient.Object) *Handler {
+	h, _ := newTestHandlerAndK8s(t, fakeClient, shareUsers, extra...)
 	return h
 }
 
@@ -266,10 +269,10 @@ func newTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[str
 // handler was wired with. Tests that need to assert on CRD state after a
 // handler call read through the K8sClient so the HOL-661 ctrl.Client path
 // is observable from within the test.
-func newTestHandlerAndK8s(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) (*Handler, *K8sClient) {
+func newTestHandlerAndK8s(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, extra ...ctrlclient.Object) (*Handler, *K8sClient) {
 	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := newTestK8sClient(t, fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r, extra...)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
 	return handler, k8s

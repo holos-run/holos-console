@@ -156,15 +156,18 @@ func boolStr(b bool) string {
 func newEnvtestK8sClient(t *testing.T) (*crdmgrtesting.Env, *K8sClient) {
 	t.Helper()
 	env := crdmgrtesting.StartManager(t, crdmgrtesting.Options{
-		Scheme:          testScheme(t),
-		InformerObjects: []ctrlclient.Object{&templatesv1alpha1.Template{}},
+		Scheme: testScheme(t),
+		InformerObjects: []ctrlclient.Object{
+			&templatesv1alpha1.Template{},
+			&templatesv1alpha1.TemplateRelease{},
+		},
 	})
 	if env == nil {
 		// Helper called t.Skip because envtest binaries are missing;
 		// propagate the skip to the caller.
 		t.SkipNow()
 	}
-	return env, NewK8sClient(env.Core, env.Client, testResolver())
+	return env, NewK8sClient(env.Client, testResolver())
 }
 
 // ensureNamespace creates a namespace if it does not already exist.
@@ -717,25 +720,8 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		liveCue := "// live folder template"
 		releaseCue := "// folder release 1.0.0"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", liveCue, false, true)
-
-		v, _ := ParseVersion("1.0.0")
-		releaseCM := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ReleaseConfigMapName("payments-policy", v),
-				Namespace: "fld-payments",
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     "payments-policy",
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: "1.0.0",
-				},
-			},
-			Data: map[string]string{CueTemplateKey: releaseCue},
-		}
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM, releaseCM), testResolver())
+		releaseCRD := makeReleaseCRDWithData("fld-payments", "payments-policy", "1.0.0", releaseCue, "")
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver(), releaseCRD)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
