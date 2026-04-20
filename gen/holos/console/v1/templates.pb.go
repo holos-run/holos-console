@@ -2159,6 +2159,141 @@ func (x *CheckUpdatesResponse) GetUpdates() []*TemplateUpdate {
 	return nil
 }
 
+// SearchTemplatesRequest requests templates matching the given filters across
+// any namespace scope the caller can see. All filters are optional; omit a
+// field to leave that dimension unconstrained. When every filter is empty
+// the response lists every template visible to the caller across every scope
+// (organization, folder, project). Introduced in HOL-601.
+type SearchTemplatesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// namespace, when non-empty, restricts results to templates owned by the
+	// given Kubernetes namespace. Equivalent to ListTemplates(namespace) when
+	// no other filters are set.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// name, when non-empty, restricts results to templates whose DNS label
+	// slug is an exact match. Combined with namespace this yields at most one
+	// result and is equivalent to GetTemplate(namespace, name).
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// display_name_contains, when non-empty, is a case-insensitive substring
+	// filter against Template.display_name. Empty means no display-name
+	// filtering (matches every template).
+	DisplayNameContains string `protobuf:"bytes,3,opt,name=display_name_contains,json=displayNameContains,proto3" json:"display_name_contains,omitempty"`
+	// organization, when non-empty, restricts results to templates owned by a
+	// namespace reachable from the given root organization. Intended for
+	// multi-org deployments where the caller wants to scope a search to one
+	// organization without enumerating every descendant namespace.
+	Organization  string `protobuf:"bytes,4,opt,name=organization,proto3" json:"organization,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchTemplatesRequest) Reset() {
+	*x = SearchTemplatesRequest{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchTemplatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchTemplatesRequest) ProtoMessage() {}
+
+func (x *SearchTemplatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchTemplatesRequest.ProtoReflect.Descriptor instead.
+func (*SearchTemplatesRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SearchTemplatesRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *SearchTemplatesRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SearchTemplatesRequest) GetDisplayNameContains() string {
+	if x != nil {
+		return x.DisplayNameContains
+	}
+	return ""
+}
+
+func (x *SearchTemplatesRequest) GetOrganization() string {
+	if x != nil {
+		return x.Organization
+	}
+	return ""
+}
+
+// SearchTemplatesResponse contains matching templates. Each Template carries
+// its own `namespace` field so callers can render a flat list across scopes
+// without a separate lookup.
+type SearchTemplatesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// templates lists the matching templates in no guaranteed order. The
+	// handler is free to page or truncate; this phase defines no cursor.
+	Templates     []*Template `protobuf:"bytes,1,rep,name=templates,proto3" json:"templates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchTemplatesResponse) Reset() {
+	*x = SearchTemplatesResponse{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchTemplatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchTemplatesResponse) ProtoMessage() {}
+
+func (x *SearchTemplatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchTemplatesResponse.ProtoReflect.Descriptor instead.
+func (*SearchTemplatesResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *SearchTemplatesResponse) GetTemplates() []*Template {
+	if x != nil {
+		return x.Templates
+	}
+	return nil
+}
+
 var File_holos_console_v1_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_templates_proto_rawDesc = "" +
@@ -2297,7 +2432,14 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\rtemplate_name\x18\x02 \x01(\tR\ftemplateName\x12'\n" +
 	"\x0finclude_current\x18\x03 \x01(\bR\x0eincludeCurrent\"R\n" +
 	"\x14CheckUpdatesResponse\x12:\n" +
-	"\aupdates\x18\x01 \x03(\v2 .holos.console.v1.TemplateUpdateR\aupdates2\xb9\f\n" +
+	"\aupdates\x18\x01 \x03(\v2 .holos.console.v1.TemplateUpdateR\aupdates\"\xa2\x01\n" +
+	"\x16SearchTemplatesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x122\n" +
+	"\x15display_name_contains\x18\x03 \x01(\tR\x13displayNameContains\x12\"\n" +
+	"\forganization\x18\x04 \x01(\tR\forganization\"S\n" +
+	"\x17SearchTemplatesResponse\x128\n" +
+	"\ttemplates\x18\x01 \x03(\v2\x1a.holos.console.v1.TemplateR\ttemplates2\xa1\r\n" +
 	"\x0fTemplateService\x12`\n" +
 	"\rListTemplates\x12&.holos.console.v1.ListTemplatesRequest\x1a'.holos.console.v1.ListTemplatesResponse\x12Z\n" +
 	"\vGetTemplate\x12$.holos.console.v1.GetTemplateRequest\x1a%.holos.console.v1.GetTemplateResponse\x12c\n" +
@@ -2314,7 +2456,8 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"GetRelease\x12#.holos.console.v1.GetReleaseRequest\x1a$.holos.console.v1.GetReleaseResponse\x12]\n" +
 	"\fCheckUpdates\x12%.holos.console.v1.CheckUpdatesRequest\x1a&.holos.console.v1.CheckUpdatesResponse\x12r\n" +
 	"\x13GetTemplateDefaults\x12,.holos.console.v1.GetTemplateDefaultsRequest\x1a-.holos.console.v1.GetTemplateDefaultsResponse\x12\x90\x01\n" +
-	"\x1dGetProjectTemplatePolicyState\x126.holos.console.v1.GetProjectTemplatePolicyStateRequest\x1a7.holos.console.v1.GetProjectTemplatePolicyStateResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x1dGetProjectTemplatePolicyState\x126.holos.console.v1.GetProjectTemplatePolicyStateRequest\x1a7.holos.console.v1.GetProjectTemplatePolicyStateResponse\x12f\n" +
+	"\x0fSearchTemplates\x12(.holos.console.v1.SearchTemplatesRequest\x1a).holos.console.v1.SearchTemplatesResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_templates_proto_rawDescOnce sync.Once
@@ -2328,7 +2471,7 @@ func file_holos_console_v1_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_holos_console_v1_templates_proto_goTypes = []any{
 	(*TemplateDefaults)(nil),                      // 0: holos.console.v1.TemplateDefaults
 	(*GetTemplateDefaultsRequest)(nil),            // 1: holos.console.v1.GetTemplateDefaultsRequest
@@ -2363,68 +2506,73 @@ var file_holos_console_v1_templates_proto_goTypes = []any{
 	(*GetReleaseResponse)(nil),                    // 30: holos.console.v1.GetReleaseResponse
 	(*CheckUpdatesRequest)(nil),                   // 31: holos.console.v1.CheckUpdatesRequest
 	(*CheckUpdatesResponse)(nil),                  // 32: holos.console.v1.CheckUpdatesResponse
-	(*EnvVar)(nil),                                // 33: holos.console.v1.EnvVar
-	(*LinkedTemplateRef)(nil),                     // 34: holos.console.v1.LinkedTemplateRef
-	(*timestamppb.Timestamp)(nil),                 // 35: google.protobuf.Timestamp
-	(*GetProjectTemplatePolicyStateRequest)(nil),  // 36: holos.console.v1.GetProjectTemplatePolicyStateRequest
-	(*GetProjectTemplatePolicyStateResponse)(nil), // 37: holos.console.v1.GetProjectTemplatePolicyStateResponse
+	(*SearchTemplatesRequest)(nil),                // 33: holos.console.v1.SearchTemplatesRequest
+	(*SearchTemplatesResponse)(nil),               // 34: holos.console.v1.SearchTemplatesResponse
+	(*EnvVar)(nil),                                // 35: holos.console.v1.EnvVar
+	(*LinkedTemplateRef)(nil),                     // 36: holos.console.v1.LinkedTemplateRef
+	(*timestamppb.Timestamp)(nil),                 // 37: google.protobuf.Timestamp
+	(*GetProjectTemplatePolicyStateRequest)(nil),  // 38: holos.console.v1.GetProjectTemplatePolicyStateRequest
+	(*GetProjectTemplatePolicyStateResponse)(nil), // 39: holos.console.v1.GetProjectTemplatePolicyStateResponse
 }
 var file_holos_console_v1_templates_proto_depIdxs = []int32{
-	33, // 0: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
+	35, // 0: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
 	0,  // 1: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
 	0,  // 2: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
-	34, // 3: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	36, // 3: holos.console.v1.Template.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
 	3,  // 4: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
 	3,  // 5: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
 	3,  // 6: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
 	3,  // 7: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
-	34, // 8: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
+	36, // 8: holos.console.v1.RenderTemplateRequest.linked_templates:type_name -> holos.console.v1.LinkedTemplateRef
 	23, // 9: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
 	19, // 10: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
 	3,  // 11: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
 	0,  // 12: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
-	35, // 13: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
-	34, // 14: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
+	37, // 13: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
+	36, // 14: holos.console.v1.TemplateUpdate.ref:type_name -> holos.console.v1.LinkedTemplateRef
 	23, // 15: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
 	23, // 16: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
 	23, // 17: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
 	23, // 18: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
 	24, // 19: holos.console.v1.CheckUpdatesResponse.updates:type_name -> holos.console.v1.TemplateUpdate
-	4,  // 20: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
-	6,  // 21: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
-	8,  // 22: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
-	10, // 23: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
-	12, // 24: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
-	14, // 25: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
-	16, // 26: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
-	18, // 27: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
-	21, // 28: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
-	25, // 29: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
-	27, // 30: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
-	29, // 31: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
-	31, // 32: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
-	1,  // 33: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
-	36, // 34: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
-	5,  // 35: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
-	7,  // 36: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
-	9,  // 37: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
-	11, // 38: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
-	13, // 39: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
-	15, // 40: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
-	17, // 41: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
-	20, // 42: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
-	22, // 43: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
-	26, // 44: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
-	28, // 45: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
-	30, // 46: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
-	32, // 47: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
-	2,  // 48: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
-	37, // 49: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
-	35, // [35:50] is the sub-list for method output_type
-	20, // [20:35] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	3,  // 20: holos.console.v1.SearchTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	4,  // 21: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
+	6,  // 22: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
+	8,  // 23: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
+	10, // 24: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
+	12, // 25: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
+	14, // 26: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
+	16, // 27: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
+	18, // 28: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
+	21, // 29: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
+	25, // 30: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
+	27, // 31: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
+	29, // 32: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
+	31, // 33: holos.console.v1.TemplateService.CheckUpdates:input_type -> holos.console.v1.CheckUpdatesRequest
+	1,  // 34: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
+	38, // 35: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
+	33, // 36: holos.console.v1.TemplateService.SearchTemplates:input_type -> holos.console.v1.SearchTemplatesRequest
+	5,  // 37: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
+	7,  // 38: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
+	9,  // 39: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
+	11, // 40: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
+	13, // 41: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
+	15, // 42: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
+	17, // 43: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
+	20, // 44: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
+	22, // 45: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
+	26, // 46: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
+	28, // 47: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
+	30, // 48: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
+	32, // 49: holos.console.v1.TemplateService.CheckUpdates:output_type -> holos.console.v1.CheckUpdatesResponse
+	2,  // 50: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
+	39, // 51: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
+	34, // 52: holos.console.v1.TemplateService.SearchTemplates:output_type -> holos.console.v1.SearchTemplatesResponse
+	37, // [37:53] is the sub-list for method output_type
+	21, // [21:37] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_templates_proto_init() }
@@ -2441,7 +2589,7 @@ func file_holos_console_v1_templates_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_templates_proto_rawDesc), len(file_holos_console_v1_templates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   33,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

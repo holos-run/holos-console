@@ -78,6 +78,9 @@ const (
 	// TemplateServiceGetProjectTemplatePolicyStateProcedure is the fully-qualified name of the
 	// TemplateService's GetProjectTemplatePolicyState RPC.
 	TemplateServiceGetProjectTemplatePolicyStateProcedure = "/holos.console.v1.TemplateService/GetProjectTemplatePolicyState"
+	// TemplateServiceSearchTemplatesProcedure is the fully-qualified name of the TemplateService's
+	// SearchTemplates RPC.
+	TemplateServiceSearchTemplatesProcedure = "/holos.console.v1.TemplateService/SearchTemplates"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -147,6 +150,18 @@ type TemplateServiceClient interface {
 	// A dedicated RPC keeps list responses cheap and makes the drift query
 	// symmetric with deployments.
 	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
+	// SearchTemplates returns templates visible to the caller across every
+	// namespace scope (organization, folder, project), optionally filtered by
+	// namespace, exact name, and a case-insensitive substring match against
+	// the display name. Introduced in HOL-601 to power the Linear-style
+	// navigation's unified Templates index — existing List*Templates RPCs
+	// continue to serve the per-namespace surface.
+	//
+	// Unlike ListTemplates, this RPC does NOT require the caller to know
+	// which namespace owns a template up front. The response includes each
+	// template's owning namespace so the UI can render a flat, sortable table
+	// across scopes without issuing N per-namespace calls.
+	SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -250,6 +265,12 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("GetProjectTemplatePolicyState")),
 			connect.WithClientOptions(opts...),
 		),
+		searchTemplates: connect.NewClient[v1.SearchTemplatesRequest, v1.SearchTemplatesResponse](
+			httpClient,
+			baseURL+TemplateServiceSearchTemplatesProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("SearchTemplates")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -270,6 +291,7 @@ type templateServiceClient struct {
 	checkUpdates                  *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
 	getTemplateDefaults           *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
 	getProjectTemplatePolicyState *connect.Client[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse]
+	searchTemplates               *connect.Client[v1.SearchTemplatesRequest, v1.SearchTemplatesResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -348,6 +370,11 @@ func (c *templateServiceClient) GetProjectTemplatePolicyState(ctx context.Contex
 	return c.getProjectTemplatePolicyState.CallUnary(ctx, req)
 }
 
+// SearchTemplates calls holos.console.v1.TemplateService.SearchTemplates.
+func (c *templateServiceClient) SearchTemplates(ctx context.Context, req *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error) {
+	return c.searchTemplates.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
 	// ListTemplates returns all templates the user can see in the given
@@ -415,6 +442,18 @@ type TemplateServiceHandler interface {
 	// A dedicated RPC keeps list responses cheap and makes the drift query
 	// symmetric with deployments.
 	GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error)
+	// SearchTemplates returns templates visible to the caller across every
+	// namespace scope (organization, folder, project), optionally filtered by
+	// namespace, exact name, and a case-insensitive substring match against
+	// the display name. Introduced in HOL-601 to power the Linear-style
+	// navigation's unified Templates index — existing List*Templates RPCs
+	// continue to serve the per-namespace surface.
+	//
+	// Unlike ListTemplates, this RPC does NOT require the caller to know
+	// which namespace owns a template up front. The response includes each
+	// template's owning namespace so the UI can render a flat, sortable table
+	// across scopes without issuing N per-namespace calls.
+	SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -514,6 +553,12 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("GetProjectTemplatePolicyState")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceSearchTemplatesHandler := connect.NewUnaryHandler(
+		TemplateServiceSearchTemplatesProcedure,
+		svc.SearchTemplates,
+		connect.WithSchema(templateServiceMethods.ByName("SearchTemplates")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -546,6 +591,8 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceGetTemplateDefaultsHandler.ServeHTTP(w, r)
 		case TemplateServiceGetProjectTemplatePolicyStateProcedure:
 			templateServiceGetProjectTemplatePolicyStateHandler.ServeHTTP(w, r)
+		case TemplateServiceSearchTemplatesProcedure:
+			templateServiceSearchTemplatesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -613,4 +660,8 @@ func (UnimplementedTemplateServiceHandler) GetTemplateDefaults(context.Context, 
 
 func (UnimplementedTemplateServiceHandler) GetProjectTemplatePolicyState(context.Context, *connect.Request[v1.GetProjectTemplatePolicyStateRequest]) (*connect.Response[v1.GetProjectTemplatePolicyStateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetProjectTemplatePolicyState is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.SearchTemplates is not implemented"))
 }
