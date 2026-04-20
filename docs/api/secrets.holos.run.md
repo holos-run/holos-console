@@ -46,12 +46,15 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
+| `secretRef` | `SecretKeyReference` | yes | Sibling `v1.Secret` reference that holds the upstream credential bytes. |
 | `secretRef.name` | `string` (min 1) | yes | `metadata.name` of the sibling `v1.Secret` in the same namespace. |
 | `secretRef.key` | `string` (min 1) | yes | Key inside the referenced `v1.Secret .data` that holds the upstream credential bytes. |
+| `upstream` | `Upstream` | yes | Endpoint tuple the injection binds to. |
 | `upstream.host` | `string` (min 1) | yes | Upstream hostname matched against `:authority` exactly (no wildcards). |
 | `upstream.scheme` | `enum { http, https }` | yes | Transport scheme. |
 | `upstream.port` | `int32` (1..65535) | no | Upstream TCP port; defaults by scheme when unset. |
 | `upstream.pathPrefix` | `string` | no | Literal URL path prefix the injection applies to. |
+| `injection` | `Injection` | yes | Header name and value template the injector writes on the hot path. |
 | `injection.header` | `string` (RFC 7230 token regex) | yes | HTTP request header the injector writes. |
 | `injection.valueTemplate` | `string` | no | Go `text/template` over `{{.Value}}`; admission rejects control chars (`upstreamsecret-valuetemplate-no-control-chars`). Empty means "pass `{{.Value}}` verbatim". |
 
@@ -79,18 +82,22 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
+| `authentication` | `Authentication` | yes | Authentication scheme + transport-specific knobs. |
 | `authentication.type` | `enum { APIKey, OIDC }` | yes | Authentication scheme. Admission rejects `OIDC` in v1alpha1 (`credential-authn-type-apikey-only`). |
 | `authentication.apiKey.headerName` | `string` (min 1) | when `type=APIKey` | HTTP header the injector writes on the hot path. |
+| `upstreamSecretRef` | `NamespacedSecretKeyReference` | yes | Sibling `v1.Secret` whose bytes are swapped onto the request. |
 | `upstreamSecretRef.namespace` | `string` | no | Target namespace; admission requires `== metadata.namespace` (`credential-upstreamref-same-namespace`). |
 | `upstreamSecretRef.name` | `string` (min 1) | yes | `metadata.name` of the sibling `UpstreamSecret`/`v1.Secret`. |
 | `upstreamSecretRef.key` | `string` (min 1) | yes | Key inside the referenced `v1.Secret .data`. |
 | `expiresAt` | `metav1.Time` (pointer) | no | Wall-clock expiry; reconciler moves `.status.phase` to `Expired` once elapsed. |
 | `revoked` | `bool` | no | Administrative revocation request; terminal. |
 | `bindToSourcePrincipal` | `*bool` | no | Reserved for M3; v1alpha1 admits but does not act on it. |
+| `rotation` | `Rotation` | no | Overlap window between a retiring credential and its successor. |
 | `rotation.graceSeconds` | `int32` (>=0) | no | Seconds a retiring credential remains valid after a successor is issued. |
-| `selector.targetRefs[].group` | `string` | no | API group of the target; `""` (core) is the only value accepted in v1alpha1. |
-| `selector.targetRefs[].kind` | `string` (min 1) | yes (when target set) | Target kind; admission accepts only `ServiceAccount`. |
-| `selector.targetRefs[].name` | `string` (min 1) | yes (when target set) | Target `metadata.name`; same-namespace lookup only. |
+| `selector` | `Selector` | no | Principals allowed to present this credential; when unset, no principal is bound in M1. |
+| `selector.targetRefs[].group` | `string` | no | API group of the target; `""` (core) is the only value the reconciler honours in M1 (no VAP in M1). |
+| `selector.targetRefs[].kind` | `string` (min 1) | yes (when target set) | Target kind; the M1 reconciler honours only `ServiceAccount` — no VAP narrows the CRD schema in this milestone. |
+| `selector.targetRefs[].name` | `string` (min 1) | yes (when target set) | Target `metadata.name`; same-namespace lookup only (reconciler-enforced; no VAP in M1). |
 | `selector.workloadSelector` | `*metav1.LabelSelector` | no | Pod-label selector OR-combined with `targetRefs`. |
 
 ### `status`
@@ -123,11 +130,14 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `direction` | `enum { Ingress, Egress }` | yes | Traffic direction the policy applies to at the bound target. |
+| `match` | `Match` | no | HTTP-layer predicate a request must satisfy for the policy to apply. |
 | `match.hosts[]` | `[]string` | no | Exact `:authority` values (no wildcards). |
 | `match.pathPrefixes[]` | `[]string` | no | URL path prefixes (literal; invariant-allowlisted exemption — URL-path match, not credential leak). |
 | `match.methods[]` | `[]string` (item regex `^[A-Za-z][A-Za-z0-9-]*$`) | no | RFC 7231 method tokens. |
+| `callerAuth` | `CallerAuth` | yes | Expected authentication scheme on matched requests. |
 | `callerAuth.type` | `enum { APIKey, OIDC }` | yes | Expected authentication scheme. Admission rejects `OIDC` (`secretinjectionpolicy-authn-type-apikey-only`). |
-| `upstreamRef.scope` | `enum { project, folder, organization }` | yes | Resolution scope; admission accepts only `project` in v1alpha1. |
+| `upstreamRef` | `UpstreamRef` | yes | Resolves the `UpstreamSecret` (M1) or `Credential` (M2) swapped in on the hot path. |
+| `upstreamRef.scope` | `enum { project, folder, organization }` | yes | Resolution scope. The CRD enum permits all three values; the M1 reconciler only supports `project` resolution — `folder`/`organization` are reserved for later milestones and are not narrowed by a VAP in M1. |
 | `upstreamRef.scopeName` | `string` (min 1) | yes | Project/folder/organization name that narrows the resolution. |
 | `upstreamRef.name` | `string` (min 1) | yes | `metadata.name` of the `UpstreamSecret` (M1) or `Credential` (M2) swapped in on the hot path. |
 
@@ -153,12 +163,14 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `policyRef.scope` | `enum { organization, folder }` | yes | Scope of the referenced policy; project-scope refs are rejected (`secretinjectionpolicybinding-policyref-same-namespace-or-ancestor`). |
-| `policyRef.namespace` | `string` (min 1) | yes | Namespace of the referenced `SecretInjectionPolicy`; admission verifies the namespace's `console.holos.run/resource-type` label matches `scope`. |
+| `policyRef` | `PolicyRef` | yes | References the `SecretInjectionPolicy` this binding attaches. |
+| `policyRef.scope` | `enum { organization, folder }` | yes | Scope of the referenced policy. Project-scope refs are rejected at the CRD enum (`PolicyRefScope` omits `project`), not by a VAP. |
+| `policyRef.namespace` | `string` (min 1) | yes | Namespace of the referenced `SecretInjectionPolicy`. Admission (`secretinjectionpolicybinding-policyref-same-namespace-or-ancestor`) requires this equal the binding's own namespace, the value of the binding-namespace's `console.holos.run/parent` label (direct parent), or the organization namespace synthesised as `holos-org-<console.holos.run/organization>` (owning organization). |
 | `policyRef.name` | `string` (min 1) | yes | `metadata.name` of the referenced policy. |
-| `targetRefs[].group` | `string` | no | API group of the target; `""` (core) is the only value accepted. |
-| `targetRefs[].kind` | `enum { ServiceAccount, Service }` | yes | Bound Kubernetes kind. |
-| `targetRefs[].namespace` | `string` (min 1) | yes | Target namespace; admission requires same namespace or a descendant of the binding's scope. |
+| `targetRefs` | `[]TargetRef` (min 1) | yes | Kubernetes objects the referenced policy applies to. |
+| `targetRefs[].group` | `string` | no | API group of the target; the reconciler honours `""` (core) in M1 — no VAP narrows the CRD schema. |
+| `targetRefs[].kind` | `enum { ServiceAccount, Service }` | yes | Bound Kubernetes kind (CRD-enum enforced). |
+| `targetRefs[].namespace` | `string` (min 1) | yes | Target `metadata.namespace` (reconciler-scoped; no VAP in M1 restricts it to the binding's own or descendant namespaces). |
 | `targetRefs[].name` | `string` (min 1) | yes | Target `metadata.name`. |
 | `workloadSelector` | `*metav1.LabelSelector` | no | Additional pod-label filter; `nil` means "no filter". |
 
@@ -198,7 +210,7 @@ tuples are rejected by the reconciler.
 | `secretinjectionpolicy-folder-or-org-only` | `SecretInjectionPolicy` | Rejects creation in project namespaces. |
 | `secretinjectionpolicy-authn-type-apikey-only` | `SecretInjectionPolicy` | v1alpha1 rejects `spec.callerAuth.type=OIDC`. |
 | `secretinjectionpolicybinding-folder-or-org-only` | `SecretInjectionPolicyBinding` | Rejects creation in project namespaces. |
-| `secretinjectionpolicybinding-policyref-same-namespace-or-ancestor` | `SecretInjectionPolicyBinding` | Binding's `policyRef` must resolve inside the same scope or an ancestor. |
+| `secretinjectionpolicybinding-policyref-same-namespace-or-ancestor` | `SecretInjectionPolicyBinding` | `spec.policyRef.namespace` must equal the binding's own namespace, the value of its namespace's `console.holos.run/parent` label (direct parent), or the synthesised `holos-org-<console.holos.run/organization>` root namespace. |
 | `namespace-scope-label-immutable` | `Namespace` | The `console.holos.run/resource-type` label is immutable post-creation and owned by the holos platform controller SA. |
 
 Rejection coverage is validated by the envtest negative-path suite at
