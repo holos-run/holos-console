@@ -37,18 +37,6 @@ vi.mock('@/queries/templatePolicyBindings', async () => {
   }
 })
 
-vi.mock('@/queries/templates', async () => {
-  const actual = await vi.importActual<typeof import('@/queries/templates')>(
-    '@/queries/templates',
-  )
-  return {
-    ...actual,
-    makeFolderScope: vi
-      .fn()
-      .mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
-  }
-})
-
 vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
 }))

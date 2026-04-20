@@ -60,19 +60,13 @@ vi.mock('lucide-react', () => ({
 
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
 import { UpdatesAvailableBadge, UpgradeDialog } from './template-updates'
-import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
+import { namespaceForOrg, namespaceForProject } from '@/lib/scope-labels'
 
-const testScope = { scope: TemplateScope.PROJECT, scopeName: 'test-project' } as any
+const testNamespace = namespaceForProject('test-project')
 
 function makeUpdate(overrides: Record<string, unknown> = {}) {
-  // Allow tests to override via either a raw proto `ref` shape
-  // (`namespace/name/versionConstraint`) or the legacy authoring shape
-  // (`scope/scopeName/name/versionConstraint`) via the `ref` override. The
-  // legacy shape is converted here so existing tests keep working.
   const overrideRef = (overrides as { ref?: unknown }).ref as
     | {
-        scope?: number
-        scopeName?: string
         namespace?: string
         name?: string
         versionConstraint?: string
@@ -80,16 +74,12 @@ function makeUpdate(overrides: Record<string, unknown> = {}) {
     | undefined
   const ref = overrideRef
     ? {
-        namespace:
-          overrideRef.namespace ??
-          (overrideRef.scope !== undefined
-            ? namespaceFor(overrideRef.scope, overrideRef.scopeName ?? '')
-            : ''),
+        namespace: overrideRef.namespace ?? '',
         name: overrideRef.name ?? '',
         versionConstraint: overrideRef.versionConstraint ?? '',
       }
     : {
-        namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+        namespace: namespaceForOrg('test-org'),
         name: 'platform-security',
         versionConstraint: '>=1.0.0 <2.0.0',
       }
@@ -122,7 +112,7 @@ describe('UpdatesAvailableBadge', () => {
       error: null,
     })
     const { container } = render(
-      <UpdatesAvailableBadge scope={testScope} templateName="my-template" />
+      <UpdatesAvailableBadge namespace={testNamespace} templateName="my-template" />
     )
     expect(container.textContent).toBe('')
   })
@@ -134,7 +124,7 @@ describe('UpdatesAvailableBadge', () => {
       error: null,
     })
     const { container } = render(
-      <UpdatesAvailableBadge scope={testScope} templateName="my-template" />
+      <UpdatesAvailableBadge namespace={testNamespace} templateName="my-template" />
     )
     expect(container.textContent).toBe('')
   })
@@ -146,7 +136,7 @@ describe('UpdatesAvailableBadge', () => {
       error: null,
     })
     render(
-      <UpdatesAvailableBadge scope={testScope} templateName="my-template" />
+      <UpdatesAvailableBadge namespace={testNamespace} templateName="my-template" />
     )
     expect(screen.getByText(/1 update/i)).toBeInTheDocument()
   })
@@ -161,7 +151,7 @@ describe('UpdatesAvailableBadge', () => {
       error: null,
     })
     render(
-      <UpdatesAvailableBadge scope={testScope} templateName="my-template" />
+      <UpdatesAvailableBadge namespace={testNamespace} templateName="my-template" />
     )
     expect(screen.getByText(/2 updates/i)).toBeInTheDocument()
   })
@@ -174,7 +164,7 @@ describe('UpdatesAvailableBadge', () => {
     })
     const handleClick = vi.fn()
     render(
-      <UpdatesAvailableBadge scope={testScope} templateName="my-template" onClick={handleClick} />
+      <UpdatesAvailableBadge namespace={testNamespace} templateName="my-template" onClick={handleClick} />
     )
     fireEvent.click(screen.getByText(/1 update/i))
     expect(handleClick).toHaveBeenCalled()
@@ -199,7 +189,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={[]}
       />
@@ -220,7 +210,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={[]}
       />
@@ -232,7 +222,7 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        namespace: namespaceFor(TemplateScope.ORGANIZATION, "test-org"),
+        namespace: namespaceForOrg("test-org"),
         name: "platform-security",
         versionConstraint: ">=1.0.0 <2.0.0",
       },
@@ -243,7 +233,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={linkedTemplates as any}
       />
@@ -265,7 +255,7 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        namespace: namespaceFor(TemplateScope.ORGANIZATION, "test-org"),
+        namespace: namespaceForOrg("test-org"),
         name: "platform-security",
         versionConstraint: ">=1.0.0 <2.0.0",
       },
@@ -280,7 +270,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={linkedTemplates as any}
       />
@@ -305,7 +295,7 @@ describe('UpgradeDialog', () => {
     mockMutateAsync.mockResolvedValue({})
     const linkedTemplates = [
       {
-        namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+        namespace: namespaceForOrg('test-org'),
         name: 'platform-security',
         versionConstraint: '>=1.0.0 <2.0.0',
       },
@@ -321,7 +311,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={linkedTemplates as any}
       />
@@ -350,7 +340,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={[]}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={[]}
       />
@@ -368,7 +358,7 @@ describe('UpgradeDialog', () => {
         open={true}
         onOpenChange={() => {}}
         updates={updates as any}
-        scope={testScope}
+        namespace={testNamespace}
         templateName="my-template"
         linkedTemplates={[]}
       />

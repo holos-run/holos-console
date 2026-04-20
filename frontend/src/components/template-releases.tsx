@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Tag } from 'lucide-react'
 import { useListReleases, useCreateRelease } from '@/queries/templates'
-import type { TemplateScopeRef, Release } from '@/queries/templates'
+import type { Release } from '@/queries/templates'
 
 // Semver validation regex: major.minor.patch
 const SEMVER_RE = /^\d+\.\d+\.\d+$/
@@ -63,7 +63,7 @@ function formatDate(ts: Release['createdAt']): string {
 }
 
 interface TemplateReleasesProps {
-  scope: TemplateScopeRef
+  namespace: string
   templateName: string
   canWrite: boolean
   /** Current CUE template source for creating a release from current state. */
@@ -72,9 +72,9 @@ interface TemplateReleasesProps {
   currentDefaults?: Release['defaults']
 }
 
-export function TemplateReleases({ scope, templateName, canWrite, currentCueTemplate, currentDefaults }: TemplateReleasesProps) {
-  const { data: releases, isPending, error } = useListReleases(scope, templateName)
-  const createMutation = useCreateRelease(scope, templateName)
+export function TemplateReleases({ namespace, templateName, canWrite, currentCueTemplate, currentDefaults }: TemplateReleasesProps) {
+  const { data: releases, isPending, error } = useListReleases(namespace, templateName)
+  const createMutation = useCreateRelease(namespace, templateName)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [version, setVersion] = useState('')

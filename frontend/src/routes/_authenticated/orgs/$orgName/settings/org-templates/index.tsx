@@ -6,7 +6,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, makeOrgScope } from '@/queries/templates'
+import { useListTemplates } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import { ORG_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
@@ -29,8 +30,8 @@ export function OrgTemplatesListPage({ orgName: propOrgName }: { orgName?: strin
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const scope = makeOrgScope(orgName)
-  const { data: templates, isPending, error } = useListTemplates(scope)
+  const namespace = namespaceForOrg(orgName)
+  const { data: templates, isPending, error } = useListTemplates(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER

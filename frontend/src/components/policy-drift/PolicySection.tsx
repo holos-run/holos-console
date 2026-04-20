@@ -3,7 +3,7 @@ import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TemplateScope, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
+import { scopeLabelFromNamespace, scopeNameFromNamespace } from '@/lib/scope-labels'
 import type {
   LinkedTemplateRef,
   PolicyState,
@@ -56,17 +56,9 @@ export interface PolicySectionProps {
  * Example: "org:acme/base-app", "folder:infra/istio", "project:web/api@>=1.0.0".
  */
 function formatRef(ref: LinkedTemplateRef): string {
-  const scope = scopeFromNamespace(ref.namespace)
+  const label = scopeLabelFromNamespace(ref.namespace) ?? 'unknown'
   const scopeName = scopeNameFromNamespace(ref.namespace)
-  const scopeLabel =
-    scope === TemplateScope.ORGANIZATION
-      ? 'org'
-      : scope === TemplateScope.FOLDER
-        ? 'folder'
-        : scope === TemplateScope.PROJECT
-          ? 'project'
-          : 'unknown'
-  const base = `${scopeLabel}:${scopeName}/${ref.name}`
+  const base = `${label}:${scopeName}/${ref.name}`
   return ref.versionConstraint ? `${base}@${ref.versionConstraint}` : base
 }
 

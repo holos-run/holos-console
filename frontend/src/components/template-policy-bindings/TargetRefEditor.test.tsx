@@ -34,8 +34,8 @@ vi.mock('@/queries/templates', async () => {
 import { TargetRefEditor } from './TargetRefEditor'
 import { useListProjects } from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
-import { useListTemplates, TemplateScope } from '@/queries/templates'
-import { namespaceFor } from '@/lib/scope-shim'
+import { useListTemplates } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import type { TargetRefDraft } from './binding-draft'
 
@@ -54,7 +54,7 @@ function stubQueries({
     {
       name: 'ingress',
       displayName: 'Ingress',
-      namespace: namespaceFor(TemplateScope.PROJECT, 'proj-a'),
+      namespace: namespaceForProject('proj-a'),
     },
   ],
   deployments = [{ name: 'web', displayName: 'Web' }],

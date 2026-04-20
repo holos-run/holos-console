@@ -22,9 +22,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, makeProjectScope, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useDeleteTemplate, useCloneTemplate, useListLinkableTemplates, useCheckUpdates, useGetProjectTemplatePolicyState, linkableKey, parseLinkableKey } from '@/queries/templates'
 import type { LinkedTemplateRef } from '@/queries/templates'
-import { TemplateScope, namespaceFor, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
+import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
@@ -53,18 +53,18 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   const templateName = propTemplateName ?? routeParams.templateName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeProjectScope(projectName)
-  const { data: template, isPending, error } = useGetTemplate(scope, templateName)
+  const namespace = namespaceForProject(projectName)
+  const { data: template, isPending, error } = useGetTemplate(namespace, templateName)
   const { data: project } = useGetProject(projectName)
   // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
   // platform-input preview default so the preview matches what the backend
   // will inject at render time. The project's parent organization is the
   // source of truth for this setting.
   const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(project?.organization ?? '')
-  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
-  const updateMutation = useUpdateTemplate(scope, templateName)
-  const deleteMutation = useDeleteTemplate(scope)
-  const cloneMutation = useCloneTemplate(scope)
+  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(namespace)
+  const updateMutation = useUpdateTemplate(namespace, templateName)
+  const deleteMutation = useDeleteTemplate(namespace)
+  const cloneMutation = useCloneTemplate(namespace)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -85,12 +85,12 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
   // Pass includeCurrent so the response includes version info for all linked
   // templates (not just those with pending updates), enabling the version
   // status indicator on each pill badge.
-  const { data: templateUpdates = [] } = useCheckUpdates(scope, templateName, { includeCurrent: true })
+  const { data: templateUpdates = [] } = useCheckUpdates(namespace, templateName, { includeCurrent: true })
 
   // Fetch the TemplatePolicy drift snapshot for this project-scope template
   // (HOL-567). PolicyState is sourced from the folder-namespace render-state
   // store — never read drift state directly from project-namespace resources.
-  const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetProjectTemplatePolicyState(scope, templateName)
+  const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetProjectTemplatePolicyState(namespace, templateName)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -183,11 +183,11 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
 
   const handleOpenLinkedEdit = () => {
     setDraftLinkedTemplateKeys((template?.linkedTemplates ?? []).map(t =>
-      linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name),
+      linkableKey(t.namespace, t.name),
     ))
     const vcMap = new Map<string, string>()
     for (const lt of template?.linkedTemplates ?? []) {
-      vcMap.set(linkableKey(scopeFromNamespace(lt.namespace), scopeNameFromNamespace(lt.namespace), lt.name), lt.versionConstraint ?? '')
+      vcMap.set(linkableKey(lt.namespace, lt.name), lt.versionConstraint ?? '')
     }
     setDraftVersionConstraints(vcMap)
     setLinkedEditError(null)
@@ -202,7 +202,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           const parsed = parseLinkableKey(key)
           const vc = draftVersionConstraints.get(key) ?? ''
           return {
-            namespace: namespaceFor(parsed.scope, parsed.scopeName),
+            namespace: parsed.namespace,
             name: parsed.name,
             versionConstraint: vc,
           } as LinkedTemplateRef
@@ -327,9 +327,9 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       )
                     }
                     const linkedKeys = (template?.linkedTemplates ?? []).map(t =>
-                      linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name),
+                      linkableKey(t.namespace, t.name),
                     )
-                    const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
+                    const keyOf = (t: (typeof linkableTemplates)[number]) => linkableKey(t.namespace, t.name)
                     // `forced=true` flags ancestor templates that a
                     // TemplatePolicy REQUIRE rule pins onto this project at
                     // render time. Surface them alongside explicitly linked
@@ -350,8 +350,8 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
                       <div className="flex flex-col gap-2">
                         <div className="flex flex-wrap gap-1">
                           {dedupedLinked.map((t) => {
-                            const tScope = scopeFromNamespace(t.namespace)
-                            const scopeLbl = tScope === TemplateScope.ORGANIZATION ? 'Org' : tScope === TemplateScope.FOLDER ? 'Folder' : undefined
+                            const tScopeLabel = scopeLabelFromNamespace(t.namespace)
+                            const scopeLbl = tScopeLabel === 'org' ? 'Org' : tScopeLabel === 'folder' ? 'Folder' : undefined
                             const forced = !!t.forced
                             // Look up version status from the check-updates response.
                             const updateEntry = templateUpdates.find(
@@ -478,7 +478,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
-              scope={scope}
+              namespace={namespace}
               linkedTemplates={template?.linkedTemplates ?? []}
             />
           </div>
@@ -565,14 +565,14 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
           <div className="space-y-4" aria-label="Linked platform templates">
             {(() => {
               const orgTemplates = linkableTemplates.filter(
-                (t) => scopeFromNamespace(t.namespace) === TemplateScope.ORGANIZATION,
+                (t) => scopeLabelFromNamespace(t.namespace) === 'org',
               )
               const folderTemplates = linkableTemplates.filter(
-                (t) => scopeFromNamespace(t.namespace) === TemplateScope.FOLDER,
+                (t) => scopeLabelFromNamespace(t.namespace) === 'folder',
               )
               const renderGroup = (templates: typeof linkableTemplates) =>
                 templates.map((t) => {
-                  const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
+                  const key = linkableKey(t.namespace, t.name)
                   const hasReleases = t.releases && t.releases.length > 0
                   const forced = !!t.forced
                   return (
@@ -711,7 +711,7 @@ export function DeploymentTemplateDetailPage({ projectName: propProjectName, tem
         updates={templateUpdates.filter(
           (u) => !!u.currentVersion && !!u.latestVersion && u.currentVersion !== u.latestVersion
         )}
-        scope={scope}
+        namespace={namespace}
         templateName={templateName}
         linkedTemplates={template?.linkedTemplates ?? []}
       />

@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRenderTemplate } from '@/queries/templates'
-import type { TemplateScopeRef, LinkedTemplateRef } from '@/queries/templates'
+import type { LinkedTemplateRef } from '@/queries/templates'
 
 interface RenderStatusIndicatorProps {
   isStale: boolean
@@ -95,8 +95,8 @@ export interface CueTemplateEditorProps {
   defaultPlatformInput?: string
   /** Default project input for the preview tab */
   defaultProjectInput?: string
-  /** Scope used to resolve ancestor platform templates when rendering the preview */
-  scope: TemplateScopeRef
+  /** Namespace used to resolve ancestor platform templates when rendering the preview */
+  namespace: string
   /** Linked template refs to include in the render preview for grouped output */
   linkedTemplates?: LinkedTemplateRef[]
 }
@@ -114,7 +114,7 @@ export function CueTemplateEditor({
   isSaving = false,
   defaultPlatformInput = '',
   defaultProjectInput = '',
-  scope,
+  namespace,
   linkedTemplates = [],
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
@@ -157,7 +157,7 @@ export function CueTemplateEditor({
     cueTemplate !== debouncedCueTemplate
 
   const { data: renderData, error: renderError, isFetching: isRendering } = useRenderTemplate(
-    scope,
+    namespace,
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',

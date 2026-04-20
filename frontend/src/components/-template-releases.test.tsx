@@ -70,14 +70,14 @@ vi.mock('lucide-react', () => ({
 
 import { useListReleases, useCreateRelease } from '@/queries/templates'
 import { TemplateReleases } from './template-releases'
-import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
+import { namespaceForOrg } from '@/lib/scope-labels'
 
-const testScope = { scope: TemplateScope.ORGANIZATION, scopeName: 'test-org' } as any
+const testNamespace = namespaceForOrg('test-org')
 
 function makeRelease(version: string, changelog: string, upgradeAdvice = '', createdAt?: Date) {
   return {
     templateName: 'my-template',
-    namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+    namespace: namespaceForOrg('test-org'),
     version,
     changelog,
     upgradeAdvice,
@@ -105,7 +105,7 @@ describe('TemplateReleases', () => {
 
   it('renders empty state when no releases exist', () => {
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     expect(screen.getByText(/no releases/i)).toBeInTheDocument()
   })
@@ -121,7 +121,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     const versions = screen.getAllByText(/^\d+\.\d+\.\d+$/)
     expect(versions[0]).toHaveTextContent('2.0.0')
@@ -139,7 +139,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     expect(screen.getByText('Latest')).toBeInTheDocument()
   })
@@ -152,7 +152,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     // The truncated text should be present (first 120 chars + ellipsis)
     const truncated = screen.getByText(new RegExp('^A{20,}'))
@@ -161,14 +161,14 @@ describe('TemplateReleases', () => {
 
   it('shows Create Release button when canWrite is true', () => {
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     expect(screen.getByText(/create release/i)).toBeInTheDocument()
   })
 
   it('hides Create Release button when canWrite is false', () => {
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={false} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={false} />
     )
     expect(screen.queryByText(/create release/i)).toBeNull()
   })
@@ -180,7 +180,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     expect(screen.getByTestId('dialog')).toBeInTheDocument()
@@ -191,7 +191,7 @@ describe('TemplateReleases', () => {
 
   it('validates invalid semver format', () => {
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     const versionInput = screen.getByLabelText(/version/i)
@@ -207,7 +207,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     const versionInput = screen.getByLabelText(/version/i)
@@ -219,7 +219,7 @@ describe('TemplateReleases', () => {
   it('submits create release form successfully', async () => {
     mockMutateAsync.mockResolvedValue({ release: makeRelease('1.0.0', 'First release') })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     const versionInput = screen.getByLabelText(/version/i)
@@ -245,7 +245,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     const versionInput = screen.getByLabelText(/version/i)
@@ -261,7 +261,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     // Default suggested version is 1.2.4 (patch), so no upgrade advice
@@ -271,7 +271,7 @@ describe('TemplateReleases', () => {
   it('shows error when create release fails', async () => {
     mockMutateAsync.mockRejectedValue(new Error('release creation failed'))
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     const versionInput = screen.getByLabelText(/version/i)
@@ -290,7 +290,7 @@ describe('TemplateReleases', () => {
       error: null,
     })
     render(
-      <TemplateReleases scope={testScope} templateName="my-template" canWrite={true} />
+      <TemplateReleases namespace={testNamespace} templateName="my-template" canWrite={true} />
     )
     fireEvent.click(screen.getByText(/create release/i))
     // Should show patch, minor, major radio options

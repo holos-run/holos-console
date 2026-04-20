@@ -13,7 +13,6 @@ import {
   type RuleDraft,
 } from '@/components/template-policies/rule-draft'
 import { useListLinkableTemplates } from '@/queries/templates'
-import type { TemplateScopeRef } from '@/queries/templates'
 
 /**
  * PolicyScope captures the allowed scope types for a template policy. The
@@ -26,7 +25,7 @@ export type PolicyScope = 'organization' | 'folder' | 'project' | 'unknown'
 export type PolicyFormProps = {
   mode: 'create' | 'edit'
   scopeType: PolicyScope
-  scopeRef: TemplateScopeRef
+  namespace: string
   canWrite: boolean
   initialValues?: {
     name: string
@@ -56,7 +55,7 @@ export type PolicyFormProps = {
 export function PolicyForm({
   mode,
   scopeType,
-  scopeRef,
+  namespace,
   canWrite,
   initialValues,
   submitLabel,
@@ -79,7 +78,7 @@ export function PolicyForm({
   // `includeSelfScope: true`, org-scope policies see an empty picker (no
   // ancestors) and folder-scope policies cannot reference templates owned by
   // the same folder. All other call sites keep the default (ancestor-only).
-  const { data: linkableTemplates = [] } = useListLinkableTemplates(scopeRef, {
+  const { data: linkableTemplates = [] } = useListLinkableTemplates(namespace, {
     includeSelfScope: true,
   })
 

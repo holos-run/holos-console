@@ -28,7 +28,6 @@ vi.mock('@/queries/deployments', () => ({
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
   useGetTemplateDefaults: vi.fn(),
-  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
 vi.mock('@/components/ui/combobox', () => ({

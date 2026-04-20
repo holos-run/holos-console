@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, makeFolderScope } from '@/queries/templates'
+import { useCreateTemplate } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 
 // EXAMPLE_FOLDER_PLATFORM_TEMPLATE is the example folder-level platform template CUE content.
@@ -76,8 +77,8 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
   const folderName = propFolderName ?? routeFolderName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeFolderScope(folderName)
-  const createMutation = useCreateTemplate(scope)
+  const namespace = namespaceForFolder(folderName)
+  const createMutation = useCreateTemplate(namespace)
   const { data: folder } = useGetFolder(folderName)
 
   const orgName = folder?.organization ?? ''

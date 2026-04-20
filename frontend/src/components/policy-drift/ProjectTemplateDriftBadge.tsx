@@ -1,7 +1,6 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PolicyDriftBadge } from './PolicySection'
 import { useGetProjectTemplatePolicyState } from '@/queries/templates'
-import type { TemplateScopeRef } from '@/queries/templates'
 
 // ProjectTemplateDriftBadge renders the PolicyDriftBadge on a project
 // template list row when the backend reports drift for the template.
@@ -18,13 +17,13 @@ import type { TemplateScopeRef } from '@/queries/templates'
 // been applied through the HOL-567 path. The component renders nothing
 // while the RPC is pending or errors.
 export function ProjectTemplateDriftBadge({
-  scope,
+  namespace,
   templateName,
 }: {
-  scope: TemplateScopeRef
+  namespace: string
   templateName: string
 }) {
-  const { data: state } = useGetProjectTemplatePolicyState(scope, templateName)
+  const { data: state } = useGetProjectTemplatePolicyState(namespace, templateName)
   if (!state?.drift) return null
   return (
     <TooltipProvider>

@@ -20,7 +20,7 @@ import {
   useUpdateTemplatePolicy,
   useDeleteTemplatePolicy,
 } from '@/queries/templatePolicies'
-import { makeOrgScope } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
@@ -61,7 +61,7 @@ export function OrgTemplatePolicyDetailPage({
   const policyName = propPolicyName ?? routeParams.policyName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeOrgScope(orgName)
+  const namespace = namespaceForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
   const userRole = org?.userRole ?? Role.VIEWER
   // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
@@ -76,13 +76,13 @@ export function OrgTemplatePolicyDetailPage({
     data: policy,
     isPending,
     error,
-  } = useGetTemplatePolicy(scope, policyName)
-  const updateMutation = useUpdateTemplatePolicy(scope, policyName)
-  const deleteMutation = useDeleteTemplatePolicy(scope)
+  } = useGetTemplatePolicy(namespace, policyName)
+  const updateMutation = useUpdateTemplatePolicy(namespace, policyName)
+  const deleteMutation = useDeleteTemplatePolicy(namespace)
   // HOL-598: surface TemplatePolicyBindings that reference this policy. The
   // list RPC returns every binding at the org scope; the section filters to
   // ones whose `policyRef.name` matches the current policy.
-  const bindingsQuery = useListTemplatePolicyBindings(scope)
+  const bindingsQuery = useListTemplatePolicyBindings(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -158,7 +158,7 @@ export function OrgTemplatePolicyDetailPage({
           <PolicyForm
             mode="edit"
             scopeType={scopeType}
-            scopeRef={scope}
+            namespace={namespace}
             canWrite={canWrite}
             initialValues={initialValues}
             lockName

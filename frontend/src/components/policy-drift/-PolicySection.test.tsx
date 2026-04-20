@@ -2,10 +2,32 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { PolicySection, PolicyDriftBadge } from './PolicySection'
 import type { PolicyState, LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb'
-import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
+import {
+  namespaceForFolder,
+  namespaceForOrg,
+  namespaceForProject,
+} from '@/lib/scope-labels'
 
-function makeRef(partial: Partial<LinkedTemplateRef> & { scope?: TemplateScope; scopeName?: string }): LinkedTemplateRef {
-  const scope = partial.scope ?? TemplateScope.ORGANIZATION
+type ScopeFixture = 'org' | 'folder' | 'project'
+
+function namespaceForFixture(scope: ScopeFixture, scopeName: string): string {
+  switch (scope) {
+    case 'org':
+      return namespaceForOrg(scopeName)
+    case 'folder':
+      return namespaceForFolder(scopeName)
+    case 'project':
+      return namespaceForProject(scopeName)
+  }
+}
+
+function makeRef(
+  partial: Partial<LinkedTemplateRef> & {
+    scope?: ScopeFixture
+    scopeName?: string
+  },
+): LinkedTemplateRef {
+  const scope = partial.scope ?? 'org'
   const scopeName = partial.scopeName ?? 'acme'
   // Drop scope/scopeName test-fixture fields before spreading — they are
   // not proto fields; the proto carries `namespace` directly.
@@ -13,7 +35,7 @@ function makeRef(partial: Partial<LinkedTemplateRef> & { scope?: TemplateScope; 
   void _s; void _sn
   return {
     $typeName: 'holos.console.v1.LinkedTemplateRef',
-    namespace: namespaceFor(scope, scopeName),
+    namespace: namespaceForFixture(scope, scopeName),
     name: 'base',
     versionConstraint: '',
     ...rest,
@@ -141,11 +163,11 @@ describe('PolicySection', () => {
       hasAppliedState: true,
       drift: true,
       currentSet: [
-        makeRef({ scope: TemplateScope.ORGANIZATION, scopeName: 'acme', name: 'base' }),
-        makeRef({ scope: TemplateScope.FOLDER, scopeName: 'infra', name: 'istio', versionConstraint: '>=1.0.0' }),
-        makeRef({ scope: TemplateScope.PROJECT, scopeName: 'web', name: 'api' }),
+        makeRef({ scope: 'org', scopeName: 'acme', name: 'base' }),
+        makeRef({ scope: 'folder', scopeName: 'infra', name: 'istio', versionConstraint: '>=1.0.0' }),
+        makeRef({ scope: 'project', scopeName: 'web', name: 'api' }),
       ],
-      addedRefs: [makeRef({ scope: TemplateScope.FOLDER, scopeName: 'infra', name: 'istio', versionConstraint: '>=1.0.0' })],
+      addedRefs: [makeRef({ scope: 'folder', scopeName: 'infra', name: 'istio', versionConstraint: '>=1.0.0' })],
     })
     render(<PolicySection state={state} />)
     // Added ref appears in both the added-refs list and the current

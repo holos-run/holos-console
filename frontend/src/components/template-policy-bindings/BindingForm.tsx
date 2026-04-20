@@ -17,8 +17,7 @@ import {
   type BindingMutationParams,
 } from './binding-draft'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
-import { TemplateScope, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
-import type { TemplateScopeRef } from '@/queries/templates'
+import { scopeLabelFromNamespace, scopeNameFromNamespace } from '@/lib/scope-labels'
 
 /**
  * BindingScope captures the allowed scope types for a TemplatePolicyBinding.
@@ -31,7 +30,8 @@ export type BindingScope = 'organization' | 'folder' | 'project' | 'unknown'
 export type BindingFormProps = {
   mode: 'create' | 'edit'
   scopeType: BindingScope
-  scopeRef: TemplateScopeRef
+  /** Namespace the binding will be created in. Drives policy picker scope. */
+  namespace: string
   /** Organization that owns the scope — required to populate the per-row
    * project picker. */
   organization: string
@@ -54,7 +54,7 @@ export type BindingFormProps = {
 export function BindingForm({
   mode,
   scopeType,
-  scopeRef,
+  namespace,
   organization,
   canWrite,
   initialValues,
@@ -74,20 +74,14 @@ export function BindingForm({
   // its scope can reach — same scope or an ancestor (verified by the backend).
   // The list RPC already applies the ancestor-chain walk so the Combobox
   // receives the authoritative set.
-  const { data: policies = [] } = useListTemplatePolicies(scopeRef)
+  const { data: policies = [] } = useListTemplatePolicies(namespace)
 
   const policyItems: ComboboxItem[] = useMemo(() => {
     return policies.map((p) => {
-      const scope = scopeFromNamespace(p.namespace)
+      const scopeLabel = scopeLabelFromNamespace(p.namespace) ?? 'unknown'
       const scopeName = scopeNameFromNamespace(p.namespace)
-      const scopeLabel =
-        scope === TemplateScope.ORGANIZATION
-          ? 'org'
-          : scope === TemplateScope.FOLDER
-            ? 'folder'
-            : 'unknown'
       return {
-        value: policyKey(scope, scopeName, p.name),
+        value: policyKey(p.namespace, p.name),
         label: `${scopeLabel} / ${scopeName} / ${p.name}`,
       }
     })
@@ -96,9 +90,9 @@ export function BindingForm({
   const selectedPolicyKey = useMemo(
     () =>
       draft.policyName
-        ? policyKey(draft.policyScope, draft.policyScopeName, draft.policyName)
+        ? policyKey(draft.policyNamespace, draft.policyName)
         : '',
-    [draft.policyScope, draft.policyScopeName, draft.policyName],
+    [draft.policyNamespace, draft.policyName],
   )
 
   const slugify = (val: string) =>

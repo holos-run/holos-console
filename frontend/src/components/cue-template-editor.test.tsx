@@ -14,11 +14,10 @@ vi.mock('@/queries/templates', () => ({
 
 import { CueTemplateEditor } from './cue-template-editor'
 import { useRenderTemplate } from '@/queries/templates'
-import { TemplateScope } from '@/lib/scope-shim'
-import { create } from '@bufbuild/protobuf'
+import { namespaceForProject } from '@/lib/scope-labels'
 
-// testScope is a placeholder scope used in tests.
-const testScope = { scope: TemplateScope.PROJECT, scopeName: 'test-project' } as unknown as ReturnType<typeof create>
+// testNamespace is a placeholder project namespace used in tests.
+const testNamespace = namespaceForProject('test-project')
 
 describe('CueTemplateEditor', () => {
   beforeEach(() => {
@@ -31,7 +30,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="// template content"
         onChange={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -45,7 +44,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="initial"
         onChange={onChange}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -59,7 +58,7 @@ describe('CueTemplateEditor', () => {
         cueTemplate="content"
         onChange={vi.fn()}
         readOnly={true}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     const textarea = screen.getByRole('textbox', { name: /cue template/i })
@@ -73,7 +72,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={true}
         onSave={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument()
@@ -86,7 +85,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={false}
         onSave={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
@@ -100,7 +99,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         readOnly={false}
         onSave={onSave}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
@@ -120,7 +119,7 @@ describe('CueTemplateEditor', () => {
         onChange={vi.fn()}
         defaultPlatformInput="platform: {}"
         defaultProjectInput="input: {}"
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
 
@@ -144,7 +143,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
 
@@ -164,7 +163,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -182,7 +181,7 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        scope={testScope}
+        namespace={testNamespace}
       />
     )
     await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -208,7 +207,7 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -240,7 +239,7 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -272,7 +271,7 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -300,7 +299,7 @@ describe('CueTemplateEditor', () => {
           onChange={vi.fn()}
           defaultPlatformInput={compactJson}
           defaultProjectInput={compactJson}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -324,7 +323,7 @@ describe('CueTemplateEditor', () => {
           onChange={vi.fn()}
           defaultPlatformInput={cueInput}
           defaultProjectInput={cueInput}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))
@@ -348,7 +347,7 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          scope={testScope}
+          namespace={testNamespace}
         />
       )
       await user.click(screen.getByRole('tab', { name: /preview/i }))

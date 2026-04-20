@@ -45,7 +45,6 @@ vi.mock('@/queries/templates', async () => {
   const actual = await vi.importActual<typeof import('@/queries/templates')>('@/queries/templates')
   return {
     ...actual,
-    makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
     // HOL-561: the TemplatePolicy editor passes `includeSelfScope: true` so
     // same-scope (folder) templates appear alongside ancestor (org) templates.
     // The test stub returns BOTH so tests can assert the picker surfaces the
@@ -232,7 +231,7 @@ describe('CreateFolderTemplatePolicyPage', () => {
     // hide folder-owned templates from the picker — the very regression
     // HOL-561 fixes.
     expect(useListLinkableTemplates).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: 2, scopeName: 'test-folder' }),
+      'holos-fld-test-folder',
       expect.objectContaining({ includeSelfScope: true }),
     )
   })

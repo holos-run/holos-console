@@ -13,26 +13,25 @@ import type {
   TemplatePolicyBindingTargetRef,
   LinkedTemplatePolicyRef,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
-import { type TemplateScopeRef, namespaceForRef } from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types/enums used by UI consumers.
 export type { TemplatePolicyBinding, TemplatePolicyBindingTargetRef, LinkedTemplatePolicyRef }
 export { TemplatePolicyBindingTargetKind }
 
-/** Query key helper for the template policy bindings list at a given scope. */
-function bindingListKey(scope: TemplateScopeRef) {
-  return ['templatePolicyBindings', 'list', scope.scope, scope.scopeName] as const
+/** Query key helper for the template policy bindings list at a given namespace. */
+function bindingListKey(namespace: string) {
+  return ['templatePolicyBindings', 'list', namespace] as const
 }
 
 /** Query key helper for a single template policy binding. */
-function bindingGetKey(scope: TemplateScopeRef, name: string) {
-  return ['templatePolicyBindings', 'get', scope.scope, scope.scopeName, name] as const
+function bindingGetKey(namespace: string, name: string) {
+  return ['templatePolicyBindings', 'get', namespace, name] as const
 }
 
-// useListTemplatePolicyBindings fetches all bindings visible within a scope.
+// useListTemplatePolicyBindings fetches all bindings visible within a namespace.
 // Mirrors the shape of useListTemplatePolicies in queries/templatePolicies.ts.
-export function useListTemplatePolicyBindings(scope: TemplateScopeRef) {
+export function useListTemplatePolicyBindings(namespace: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(
@@ -40,17 +39,17 @@ export function useListTemplatePolicyBindings(scope: TemplateScopeRef) {
     [transport],
   )
   return useQuery({
-    queryKey: bindingListKey(scope),
+    queryKey: bindingListKey(namespace),
     queryFn: async () => {
-      const response = await client.listTemplatePolicyBindings({ namespace: namespaceForRef(scope) })
+      const response = await client.listTemplatePolicyBindings({ namespace })
       return response.bindings
     },
-    enabled: isAuthenticated && !!scope.scopeName,
+    enabled: isAuthenticated && !!namespace,
   })
 }
 
-// useGetTemplatePolicyBinding fetches a single binding by name within a scope.
-export function useGetTemplatePolicyBinding(scope: TemplateScopeRef, name: string) {
+// useGetTemplatePolicyBinding fetches a single binding by name within a namespace.
+export function useGetTemplatePolicyBinding(namespace: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(
@@ -58,17 +57,17 @@ export function useGetTemplatePolicyBinding(scope: TemplateScopeRef, name: strin
     [transport],
   )
   return useQuery({
-    queryKey: bindingGetKey(scope, name),
+    queryKey: bindingGetKey(namespace, name),
     queryFn: async () => {
-      const response = await client.getTemplatePolicyBinding({ namespace: namespaceForRef(scope), name })
+      const response = await client.getTemplatePolicyBinding({ namespace, name })
       return response.binding
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!name,
+    enabled: isAuthenticated && !!namespace && !!name,
   })
 }
 
-// useCreateTemplatePolicyBinding creates a new binding at the given scope.
-export function useCreateTemplatePolicyBinding(scope: TemplateScopeRef) {
+// useCreateTemplatePolicyBinding creates a new binding at the given namespace.
+export function useCreateTemplatePolicyBinding(namespace: string) {
   const transport = useTransport()
   const client = useMemo(
     () => createClient(TemplatePolicyBindingService, transport),
@@ -83,12 +82,11 @@ export function useCreateTemplatePolicyBinding(scope: TemplateScopeRef) {
       policyRef: LinkedTemplatePolicyRef
       targetRefs: TemplatePolicyBindingTargetRef[]
     }) => {
-      const ns = namespaceForRef(scope)
       return client.createTemplatePolicyBinding({
-        namespace: ns,
+        namespace,
         binding: create(TemplatePolicyBindingSchema, {
           name: params.name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName,
           description: params.description,
           policyRef: params.policyRef,
@@ -97,14 +95,14 @@ export function useCreateTemplatePolicyBinding(scope: TemplateScopeRef) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
     },
   })
 }
 
 // useUpdateTemplatePolicyBinding updates an existing binding.
 export function useUpdateTemplatePolicyBinding(
-  scope: TemplateScopeRef,
+  namespace: string,
   name: string,
 ) {
   const transport = useTransport()
@@ -120,12 +118,11 @@ export function useUpdateTemplatePolicyBinding(
       policyRef: LinkedTemplatePolicyRef
       targetRefs: TemplatePolicyBindingTargetRef[]
     }) => {
-      const ns = namespaceForRef(scope)
       return client.updateTemplatePolicyBinding({
-        namespace: ns,
+        namespace,
         binding: create(TemplatePolicyBindingSchema, {
           name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           policyRef: params.policyRef,
@@ -134,14 +131,14 @@ export function useUpdateTemplatePolicyBinding(
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
-      queryClient.invalidateQueries({ queryKey: bindingGetKey(scope, name) })
+      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: bindingGetKey(namespace, name) })
     },
   })
 }
 
 // useDeleteTemplatePolicyBinding deletes a binding by name.
-export function useDeleteTemplatePolicyBinding(scope: TemplateScopeRef) {
+export function useDeleteTemplatePolicyBinding(namespace: string) {
   const transport = useTransport()
   const client = useMemo(
     () => createClient(TemplatePolicyBindingService, transport),
@@ -150,9 +147,9 @@ export function useDeleteTemplatePolicyBinding(scope: TemplateScopeRef) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { name: string }) =>
-      client.deleteTemplatePolicyBinding({ namespace: namespaceForRef(scope), ...params }),
+      client.deleteTemplatePolicyBinding({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
     },
   })
 }

@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, makeOrgScope } from '@/queries/templates'
+import { useCreateTemplate } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 
 // EXAMPLE_HTTPBIN_PLATFORM_TEMPLATE is the example org-level platform template CUE content.
@@ -110,8 +111,8 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeOrgScope(orgName)
-  const createMutation = useCreateTemplate(scope)
+  const namespace = namespaceForOrg(orgName)
+  const createMutation = useCreateTemplate(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER

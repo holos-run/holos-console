@@ -10,7 +10,7 @@ import {
   useListTemplatePolicies,
   countRulesByKind,
 } from '@/queries/templatePolicies'
-import { makeOrgScope } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 
 export const Route = createFileRoute(
@@ -36,8 +36,8 @@ export function OrgTemplatePoliciesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const scope = makeOrgScope(orgName)
-  const { data: policies, isPending, error } = useListTemplatePolicies(scope)
+  const namespace = namespaceForOrg(orgName)
+  const { data: policies, isPending, error } = useListTemplatePolicies(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER

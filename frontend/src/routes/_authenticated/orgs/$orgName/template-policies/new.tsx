@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplatePolicy } from '@/queries/templatePolicies'
-import { makeOrgScope } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import { PolicyForm, type PolicyScope } from '@/components/template-policies/PolicyForm'
 
@@ -34,8 +34,8 @@ export function CreateOrgTemplatePolicyPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeOrgScope(orgName)
-  const createMutation = useCreateTemplatePolicy(scope)
+  const namespace = namespaceForOrg(orgName)
+  const createMutation = useCreateTemplatePolicy(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
@@ -69,7 +69,7 @@ export function CreateOrgTemplatePolicyPage({
         <PolicyForm
           mode="create"
           scopeType={scopeType}
-          scopeRef={scope}
+          namespace={namespace}
           canWrite={canWrite}
           submitLabel="Create"
           pendingLabel="Creating..."

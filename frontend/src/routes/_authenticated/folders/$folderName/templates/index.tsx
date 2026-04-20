@@ -23,7 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, makeFolderScope } from '@/queries/templates'
+import { useListTemplates } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 import { FOLDER_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
@@ -64,8 +65,8 @@ export function FolderTemplatesIndexPage({
   const { data: folder } = useGetFolder(folderName)
   const orgName = propOrgName ?? folder?.organization ?? ''
 
-  const scope = makeFolderScope(folderName)
-  const { data: templates, isPending, error } = useListTemplates(scope)
+  const namespace = namespaceForFolder(folderName)
+  const { data: templates, isPending, error } = useListTemplates(namespace)
 
   const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER

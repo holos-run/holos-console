@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplatePolicyBinding } from '@/queries/templatePolicyBindings'
-import { makeFolderScope } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 import {
   BindingForm,
@@ -37,8 +37,8 @@ export function CreateFolderTemplatePolicyBindingPage({
   const folderName = propFolderName ?? routeFolderName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeFolderScope(folderName)
-  const createMutation = useCreateTemplatePolicyBinding(scope)
+  const namespace = namespaceForFolder(folderName)
+  const createMutation = useCreateTemplatePolicyBinding(namespace)
   const { data: folder } = useGetFolder(folderName)
 
   const orgName = folder?.organization ?? ''
@@ -94,7 +94,7 @@ export function CreateFolderTemplatePolicyBindingPage({
         <BindingForm
           mode="create"
           scopeType={scopeType}
-          scopeRef={scope}
+          namespace={namespace}
           organization={orgName}
           canWrite={canWrite}
           submitLabel="Create"
