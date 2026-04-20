@@ -1,0 +1,55 @@
+# CODEOWNERS for holos-console
+#
+# GitHub automatically requests review from the owners listed below when a pull
+# request modifies matching paths. See
+# https://docs.github.com/en/repositories/managing-your-repositories-settings-and-customizations/customizing-your-repository/about-code-owners
+# for the file format: `<glob> <owners...>`, and note that the LAST matching
+# rule wins.
+#
+# This file establishes non-overlapping ownership boundaries between the
+# templates/console code (the original holos-console product surface) and the
+# new secret-injector workload, per the HOL-674 M0 Foundation plan and
+# ADR-031. The smoke-test invariant is that a PR touching only
+# `api/templates/**` must request templates owners and NOT secret-injector
+# owners, and vice versa for `api/secrets/**` / `internal/secretinjector/**`.
+#
+# Team handles below are placeholders pending creation / confirmation of the
+# actual GitHub teams. See `HOL-690` for the human-action checklist.
+#
+#   @holos-run/templates-owners       — templates / console API, controller,
+#                                        cmd/holos-console, console-focused
+#                                        config, Dockerfile.console (+ symlink)
+#   @holos-run/secret-injector-owners — api/secrets, internal/secretinjector,
+#                                        cmd/secret-injector, config/secret-injector,
+#                                        Dockerfile.secret-injector
+#   @holos-run/frontend-owners        — frontend/**
+#   @holos-run/maintainers            — catch-all default owner
+#
+# Ordering note: later rules override earlier rules for the same path. The
+# catch-all MUST remain the first rule below so that the more specific path
+# rules that follow take precedence.
+
+# Default owner for anything not matched by a more specific rule (root files
+# like Makefile, go.mod, go.sum, README.md, LICENSE, etc.).
+* @holos-run/maintainers
+
+# --- Templates / console ownership -----------------------------------------
+/api/templates/ @holos-run/templates-owners
+/internal/controller/ @holos-run/templates-owners
+/cmd/holos-console/ @holos-run/templates-owners
+/config/crd/ @holos-run/templates-owners
+/config/rbac/ @holos-run/templates-owners
+/config/admission/ @holos-run/templates-owners
+/config/samples/ @holos-run/templates-owners
+/Dockerfile.console @holos-run/templates-owners
+/Dockerfile @holos-run/templates-owners
+
+# --- Secret-injector ownership ---------------------------------------------
+/api/secrets/ @holos-run/secret-injector-owners
+/internal/secretinjector/ @holos-run/secret-injector-owners
+/cmd/secret-injector/ @holos-run/secret-injector-owners
+/config/secret-injector/ @holos-run/secret-injector-owners
+/Dockerfile.secret-injector @holos-run/secret-injector-owners
+
+# --- Frontend ownership ----------------------------------------------------
+/frontend/ @holos-run/frontend-owners
